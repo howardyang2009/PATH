@@ -2,10 +2,10 @@ import { describe, expect, it } from "vitest";
 import { parseRunInvocation } from "../src/cli.js";
 
 /**
- * The `path run` **invocation value** (#architecture-deepening): the three forms the one command line
- * accepts, parsed into an arm that carries only what its form can use. This is the parser's own seam —
- * before, its contract was reachable only by running a whole command and reading the exit code, and its
- * compatibility matrix was a dozen `if` blocks every consumer had to re-read.
+ * The `path run` **invocation value** (#architecture-deepening): the three forms the one command
+ * line accepts, parsed into an arm that carries only what its form can use. This is the parser's
+ * own seam — before, its contract was reachable only by running a whole command and reading the
+ * exit code, and its compatibility matrix was a dozen `if` blocks every consumer had to re-read.
  */
 
 describe("parseRunInvocation — the three forms", () => {

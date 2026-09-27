@@ -14,8 +14,8 @@ import { ORDERED_RUN_STATUSES } from "./status-glyph.js";
 import { StatusPill } from "./status-pill.js";
 
 /**
- * Root runs the pane asks for. `GET /v0/runs` is most-recent-first (server-api-v0.md §3), so this is
- * a "latest N" window, not pagination.
+ * Root runs the pane asks for. `GET /v0/runs` is most-recent-first (server-api-v0.md §3), so this
+ * is a "latest N" window, not pagination.
  */
 const RUNS_LIMIT = 50;
 
@@ -28,7 +28,8 @@ export const RUNS_REFRESH_MS = 5000;
 /** One `RunStatus`, or `"all"` for the unfiltered list. */
 type StatusFilter = RunStatus | "all";
 
-/** Stable empty affordance, so a rail that never opted in neither allocates per render nor branches. */
+/** Stable empty affordance, so a rail that never opted in neither allocates per render nor
+ * branches. */
 const EMPTY_RESUME_FROM: ResumeFromAffordance = {
   runs: new Map(),
   selectedRunId: null,
@@ -52,8 +53,8 @@ export interface RunsListProps {
    */
   onResumed: (successorRootRunId: string) => void;
   /**
-   * Called after a run is deleted, so the app can drop the selection if it was watching that run and
-   * force an immediate re-read.
+   * Called after a run is deleted, so the app can drop the selection if it was watching that run
+   * and force an immediate re-read.
    */
   onDeleted: (rootRunId: string) => void;
   reloadNonce?: number;
@@ -122,8 +123,8 @@ export function RunsList({
     };
   }, [client, statusFilter, workflowId, scope]);
 
-  // A launch bumps `reloadNonce`: re-read once, in place. Mount is skipped so this never doubles the
-  // initial fetch; an unset `reloadNonce` opts out.
+  // A launch bumps `reloadNonce`: re-read once, in place. Mount is skipped so this never doubles
+  // the initial fetch; an unset `reloadNonce` opts out.
   const nonceStarted = useRef(false);
   useEffect(() => {
     if (reloadNonce === undefined) return;
@@ -183,26 +184,27 @@ export function RunsList({
       {state.phase === "error" && <PaneError what="runs" message={state.message} />}
       {state.phase === "ready" &&
         (state.value.length === 0 ? (
-          // Two empty states: "No runs yet." is only true of an unfiltered list, and an operator who
-          // narrowed the filter needs to know which of the two they hit.
+          // Two empty states: "No runs yet." is only true of an unfiltered list, and an operator
+          // who narrowed the filter needs to know which of the two they hit.
           <p className="pane-note">
             {statusFilter === "all" ? "No runs yet." : `No ${statusFilter} runs.`}
           </p>
         ) : (
           <ul className="runs">
             {state.value.map((run) => {
-              // The watched run shows its published display status, so a parked leaf reads `awaiting`;
-              // rows with no tree behind them keep their summary.
+              // The watched run shows its published display status, so a parked leaf reads
+              // `awaiting`; rows with no tree behind them keep their summary.
               const rowStatus = displayStatus?.get(run.run_id) ?? run.status;
-              // A live run offers no action: it cannot be resumed, and the server 409s a delete on it.
+              // A live run offers no action: it cannot be resumed, and the server 409s a delete on
+              // it.
               const inFlight = rowStatus === "running" || rowStatus === "awaiting";
               // Plain Resume stays visible but greyed on a `succeeded` run, so its pairing with
               // `Resume from …` reads. The panel is a sibling of the row button, never inside it.
               const canResume = run.status === "cancelled" || run.status === "failed";
               const showResume = isTerminal(run.status);
               const open = openFor === run.run_id;
-              // `Resume from …` needs a loaded tree, so only the watched run offers it — the one way back
-              // into a succeeded run (rerun from a chosen boundary, ADR 0033).
+              // `Resume from …` needs a loaded tree, so only the watched run offers it — the one
+              // way back into a succeeded run (rerun from a chosen boundary, ADR 0033).
               const showResumeFrom =
                 resumeFrom !== undefined && run.run_id === selectedRootRunId && !inFlight;
               return (
@@ -243,8 +245,8 @@ export function RunsList({
                               plainResumable={canResume}
                               showResumeFrom={showResumeFrom}
                               resumeFrom={resumeFrom ?? EMPTY_RESUME_FROM}
-                              // Masked launch secrets (ADR 0046), asked for before submit rather than
-                              // letting the engine refuse the resume.
+                              // Masked launch secrets (ADR 0046), asked for before submit rather
+                              // than letting the engine refuse the resume.
                               launchSecretKeys={run.launch_secret_keys}
                               onResumed={(successorRootRunId) => {
                                 setOpenFor(null);

@@ -243,7 +243,8 @@ describe("goto — a Step-Template body", () => {
     expect(template.success).toBe(true);
     if (!template.success) return;
 
-    // Instantiation re-mints ids and does not rewire targets, so the landed goto still names "missing".
+    // Instantiation re-mints ids and does not rewire targets, so the landed goto still names
+    // "missing".
     const landed = instantiate(template.data.body);
     expect(errorsOf([step("host"), ...landed])).toEqual([
       'body.2.target: goto target "missing" not found in this file',

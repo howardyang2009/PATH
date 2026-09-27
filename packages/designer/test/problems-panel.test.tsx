@@ -7,10 +7,10 @@ import { openWorkflowFile } from "../src/open-workflow.js";
 import { canonicalSerialize } from "../src/serialize.js";
 
 /**
- * #392 — the launch warning badge and the dangling-`workflow`-ref marker. A create-new child ref (#391)
- * points the parent at a path with no file yet; that transient state surfaces as a per-node ⚠ and a
- * problems-panel row, badges (never blocks) launch, and clears when the child's first save makes
- * discovery list it.
+ * #392 — the launch warning badge and the dangling-`workflow`-ref marker. A create-new child ref
+ * (#391) points the parent at a path with no file yet; that transient state surfaces as a per-node
+ * ⚠ and a problems-panel row, badges (never blocks) launch, and clears when the child's first save
+ * makes discovery list it.
  */
 
 function uuid(n: number): string {
@@ -20,7 +20,8 @@ function uuid(n: number): string {
 const PARENT_PATH = "flows/parent.workflow.json";
 const CHILD_PATH = "flows/child.workflow.json";
 
-/** A parent whose one `workflow` node refs `child.workflow.json` (resolves to `flows/child.workflow.json`). */
+/** A parent whose one `workflow` node refs `child.workflow.json` (resolves to
+ * `flows/child.workflow.json`). */
 function parentFile(withId: boolean): Record<string, unknown> {
   return {
     format: FORMAT_VERSION,
@@ -37,7 +38,8 @@ function parentFile(withId: boolean): Record<string, unknown> {
   };
 }
 
-/** The canonical on-disk bytes — what a save writes, so the file opens clean (launch not dirty-gated). */
+/** The canonical on-disk bytes — what a save writes, so the file opens clean (launch not
+ * dirty-gated). */
 function canonical(f: Record<string, unknown>): string {
   const opened = openWorkflowFile(JSON.stringify(f), DEFAULT_PLUGINS);
   if (opened.status !== "opened") throw new Error(opened.status);
@@ -103,9 +105,10 @@ describe("dangling-`workflow`-ref marker + launch badge", () => {
   });
 
   it("clears the marker when the child is saved and discovery next lists it", async () => {
-    // Id-less parent opens dirty (ids stamped on import), so Save is enabled without a UI edit. The stub
-    // reads `options.workflows` fresh per request, so flipping it before the save models the child's first
-    // save landing on disk; the save re-fetches discovery and the ref stops being dangling.
+    // Id-less parent opens dirty (ids stamped on import), so Save is enabled without a UI edit. The
+    // stub reads `options.workflows` fresh per request, so flipping it before the save models the
+    // child's first save landing on disk; the save re-fetches discovery and the ref stops being
+    // dangling.
     const options: StubServerOptions = {
       files: { [PARENT_PATH]: JSON.stringify(parentFile(false)) },
       workflows: { workflows: [summary(PARENT_PATH)] },

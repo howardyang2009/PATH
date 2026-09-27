@@ -12,9 +12,10 @@ export interface TemplateSaveInput {
 }
 
 /**
- * The save-as-template dialog: a new user template always lands in `.path/template/step-template/`, so the
- * author picks only the name and description (required — it is the palette blurb). Prefills from an opened
- * template's copy or a workflow's name. Create is create-only: a taken name is refused, never overwritten.
+ * The save-as-template dialog: a new user template always lands in `.path/template/step-template/`,
+ * so the author picks only the name and description (required — it is the palette blurb). Prefills
+ * from an opened template's copy or a workflow's name. Create is create-only: a taken name is
+ * refused, never overwritten.
  */
 export function SaveTemplateAsDialog({
   source,
@@ -24,9 +25,11 @@ export function SaveTemplateAsDialog({
   onCreated,
   onCancel,
 }: {
-  /** The opened template this saves a copy of, or `null` for a new template or a workflow's save. */
+  /** The opened template this saves a copy of, or `null` for a new template or a workflow's
+   * save. */
   source: TemplateSource | null;
-  /** The open workflow's name, when workflow mode saves it as a template (`source` is then `null`). */
+  /** The open workflow's name, when workflow mode saves it as a template (`source` is then
+   * `null`). */
   workflowName?: string;
   /** The source workflow's non-empty workflow-level fields a save as template drops. */
   droppedFields?: readonly string[];
@@ -35,7 +38,8 @@ export function SaveTemplateAsDialog({
   onCancel: () => void;
 }): JSX.Element {
   const fromWorkflow = workflowName !== undefined;
-  // A template source's name is taken, so its copy is prefilled `<name>-copy`; a workflow's name is not a template's.
+  // A template source's name is taken, so its copy is prefilled `<name>-copy`; a workflow's name is
+  // not a template's.
   const [name, setName] = useState(source ? `${source.name}-copy` : (workflowName ?? ""));
   const [description, setDescription] = useState(source?.description ?? "");
   const [submitting, setSubmitting] = useState(false);

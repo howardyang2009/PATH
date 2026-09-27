@@ -48,8 +48,9 @@ function workflowLevelFields(file: WorkflowFile): string[] {
   );
 }
 
-/** The Designer app: palette rail, canvas, and properties pane. `initialPath` is the deep-link `?path=`;
- * the armed palette value and the selected id both live here, above the canvas and the pane that read them. */
+/** The Designer app: palette rail, canvas, and properties pane. `initialPath` is the deep-link
+ * `?path=`; the armed palette value and the selected id both live here, above the canvas and the
+ * pane that read them. */
 export function App({
   client,
   initialPath,
@@ -60,11 +61,13 @@ export function App({
   const session = useOpenFile(client, initialPath);
   const arming = useArmed(client);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  // The first-save dialog for a from-scratch buffer, opened by the toolbar's Save when the frame has no path.
+  // The first-save dialog for a from-scratch buffer, opened by the toolbar's Save when the frame
+  // has no path.
   const [newFileOpen, setNewFileOpen] = useState(false);
   // The open-existing picker; a choice opens that discovered workflow as a fresh root, then closes.
   const [openExistingOpen, setOpenExistingOpen] = useState(false);
-  // Template mode's save dialogs: a new template's first save, or a Save as… copy of an opened template.
+  // Template mode's save dialogs: a new template's first save, or a Save as… copy of an opened
+  // template.
   const [saveAsDialog, setSaveAsDialog] = useState<
     | "new-template"
     | "template"
@@ -78,19 +81,20 @@ export function App({
     session.registry.phase === "ready" ? session.registry.plugins : [];
 
   const active = session.frames[session.activeIndex];
-  // A from-scratch buffer carries `path: null`; fold it to `undefined` so the toolbar, lease, launch, and
-  // the first-save dialog all branch on the single "no path yet" state.
+  // A from-scratch buffer carries `path: null`; fold it to `undefined` so the toolbar, lease,
+  // launch, and the first-save dialog all branch on the single "no path yet" state.
   const activePath = active?.path ?? undefined;
   // Author mode: the active frame is a `*.step-template.json` source, saved by template id.
   const activeTemplate = active?.template;
   const depth = session.activeIndex;
-  // Switching the active file (descend, pop, or open a different one) deselects — the previous file's
-  // node ids mean nothing here. The first population (no file → the initial file) is not a switch.
+  // Switching the active file (descend, pop, or open a different one) deselects — the previous
+  // file's node ids mean nothing here. The first population (no file → the initial file) is not a
+  // switch.
   const prevFrame = useRef<{ path?: string; depth: number } | null>(null);
   useEffect(() => {
     const prev = prevFrame.current;
-    // Reset only on a genuine change between two real files — never on the first population from "no
-    // file", the transition that raced a just-made selection.
+    // Reset only on a genuine change between two real files — never on the first population from
+    // "no file", the transition that raced a just-made selection.
     if (
       prev !== null &&
       prev.path !== undefined &&
@@ -104,21 +108,24 @@ export function App({
   const openedResult = openedResultOf(active);
   const openedFile = openedResult?.file ?? null;
 
-  // The nested-`workflow`-ref authoring flow, behind one seam (`useRefAuthoring`): the in-flight node, the
-  // reference-existing edit, and the create-new descent. Pane and canvas open it through one `onAuthorRef`.
+  // The nested-`workflow`-ref authoring flow, behind one seam (`useRefAuthoring`): the in-flight
+  // node, the reference-existing edit, and the create-new descent. Pane and canvas open it through
+  // one `onAuthorRef`.
   const refAuthoring = useRefAuthoring(session, openedFile, activePath);
 
-  // Workflow discovery, loaded once for the whole surface: the problems pass, the open-existing picker,
-  // the first-save directory list, and the ref-target picker all project this one snapshot, so a save
-  // that writes a file (or a scan landing mid-dialog) reads the same everywhere.
+  // Workflow discovery, loaded once for the whole surface: the problems pass, the open-existing
+  // picker, the first-save directory list, and the ref-target picker all project this one snapshot,
+  // so a save that writes a file (or a scan landing mid-dialog) reads the same everywhere.
   const discovery = useWorkflowDiscovery(client, session.saveState.phase);
   // Re-listed after each save, so a Save-As template shows up in the palette.
   const templateList = useTemplateList(client, session.saveState.phase);
 
-  // The active file's cross-node problem pass, behind one seam (`useFileProblems`), shared by its two
-  // readers — the canvas markers/panel and the launch button's warning count — so they cannot disagree.
+  // The active file's cross-node problem pass, behind one seam (`useFileProblems`), shared by its
+  // two readers — the canvas markers/panel and the launch button's warning count — so they cannot
+  // disagree.
   const problems = useFileProblems(openedFile, activePath, discovery);
-  // Launch is **badged, not blocked**: the count rides the launch button so the author runs knowingly.
+  // Launch is **badged, not blocked**: the count rides the launch button so the author runs
+  // knowingly.
   const warningCount = problems.length;
 
   // Every door that replaces the stack asks first when any frame on the stack has unsaved edits; an
@@ -156,19 +163,22 @@ export function App({
     if (confirmDiscard()) session.open(path);
   };
 
-  // The run surfaces, gathered into one module (`useRunWatch`); the App reads its derived values and
-  // wires its transitions onto the run dock. Key the run-watch on the **root** frame's workflow id, not
-  // the active file's: a `workflow`-ref descent keeps the same watched root run, and only a fresh
-  // `session.open` swaps the root frame — the one transition where the watched run's workflow is gone.
+  // The run surfaces, gathered into one module (`useRunWatch`); the App reads its derived values
+  // and wires its transitions onto the run dock. Key the run-watch on the **root** frame's workflow
+  // id, not the active file's: a `workflow`-ref descent keeps the same watched root run, and only a
+  // fresh `session.open` swaps the root frame — the one transition where the watched run's workflow
+  // is gone.
   const rootWorkflowId = openedResultOf(session.frames[0])?.file.id ?? null;
   const run = useRunWatch(client, rootWorkflowId);
 
-  // The lease is per file: acquire one for every *opened* frame on the stack, so a `workflow`-ref descent
-  // holds a second, independently-beating lease; a frame that only failed to open or a never-saved buffer
-  // takes none. The document policy below picks the doors and the leased paths from the session alone.
+  // The lease is per file: acquire one for every *opened* frame on the stack, so a `workflow`-ref
+  // descent holds a second, independently-beating lease; a frame that only failed to open or a
+  // never-saved buffer takes none. The document policy below picks the doors and the leased paths
+  // from the session alone.
   const policy = documentPolicy(session);
   const { sessionId, leases, takeover, reacquire } = useEditLeases(client, policy.leasedPaths);
-  // Delete removes the root file from disk (`planDelete`): always confirmed, since it cannot be undone.
+  // Delete removes the root file from disk (`planDelete`): always confirmed, since it cannot be
+  // undone.
   const deletePlan = planDelete({
     mode: session.mode,
     frames: session.frames,
@@ -187,8 +197,8 @@ export function App({
     )
       session.deleteActive(sessionId);
   };
-  // Dirty is content-equality against the active frame's baseline, the same fact launch and Save gate on
-  // — not a mutation flag. `active` is the frame the buffer and its baseline live on.
+  // Dirty is content-equality against the active frame's baseline, the same fact launch and Save
+  // gate on — not a mutation flag. `active` is the frame the buffer and its baseline live on.
   const dirty = frameDirty(active);
   // The undo/redo affordances read the active frame's own stack (per-file); the keyboard peer below
   // re-subscribes only when the enablement flips.
@@ -197,8 +207,8 @@ export function App({
   const { undo, redo } = session;
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
-      // Editing-key parity with the toolbar buttons: ⌘/Ctrl+Z undoes, +Shift+Z or Ctrl+Y redoes. A text
-      // field keeps its own native undo — a keystroke run is a field concern until it blurs.
+      // Editing-key parity with the toolbar buttons: ⌘/Ctrl+Z undoes, +Shift+Z or Ctrl+Y redoes. A
+      // text field keeps its own native undo — a keystroke run is a field concern until it blurs.
       const key = event.key.toLowerCase();
       if (!(event.metaKey || event.ctrlKey) || (key !== "z" && key !== "y")) return;
       const target = event.target as HTMLElement | null;
@@ -233,7 +243,8 @@ export function App({
             }}
           />
         }
-        // The top bar's centre names the file being edited; a file status, when there is one, replaces the name.
+        // The top bar's centre names the file being edited; a file status, when there is one,
+        // replaces the name.
         title={
           <FileStatus
             frame={active}
@@ -255,7 +266,8 @@ export function App({
             <EditingToolbar
               onNew={onNew}
               onOpen={onOpen}
-              // A new workflow or template (no path, no template source) has only Save: its first save.
+              // A new workflow or template (no path, no template source) has only Save: its first
+              // save.
               canSaveAs={policy.canSaveAs}
               saveState={session.saveState}
               dirty={dirty}
@@ -263,9 +275,10 @@ export function App({
               canRedo={canRedo}
               onUndo={undo}
               onRedo={redo}
-              // A from-scratch buffer (no path) has no on-disk file yet: Save opens the first-save dialog
-              // — the new-template dialog in template mode — rather than overwriting. A saved frame saves
-              // in place through the write route, and a template source writes back to its template by id.
+              // A from-scratch buffer (no path) has no on-disk file yet: Save opens the first-save
+              // dialog — the new-template dialog in template mode — rather than overwriting. A
+              // saved frame saves in place through the write route, and a template source writes
+              // back to its template by id.
               onSave={
                 policy.saveDoor === "new-template-dialog"
                   ? () => setSaveAsDialog("new-template")
@@ -273,8 +286,9 @@ export function App({
                     ? () => setNewFileOpen(true)
                     : session.save
               }
-              // Save as…: in template mode a copy to a new template; in workflow mode first a choice between
-              // a copy to a new workflow file and a new template made from the workflow's body.
+              // Save as…: in template mode a copy to a new template; in workflow mode first a
+              // choice between a copy to a new workflow file and a new template made from the
+              // workflow's body.
               onSaveAs={() => setSaveAsDialog(inTemplateMode ? "template" : "workflow-choice")}
               lease={activePath ? leases.get(activePath) : undefined}
               onTakeover={() => activePath && takeover(activePath)}
@@ -289,7 +303,8 @@ export function App({
             plugins={plugins}
             templateList={templateList}
             arming={arming}
-            // In template mode, a double-click opens the template source, discarding the current stack.
+            // In template mode, a double-click opens the template source, discarding the current
+            // stack.
             onEditTemplate={openTemplate}
             canEditTemplates={inTemplateMode}
           />
@@ -305,8 +320,9 @@ export function App({
                 problems={problems}
                 onNew={onNew}
                 onOpenExisting={onOpen}
-                // Double-click an unset `workflow` block to author its target — the same chooser the pane's
-                // "Add a workflow reference" opens, offered only when the parent has a path for a relative ref.
+                // Double-click an unset `workflow` block to author its target — the same chooser
+                // the pane's "Add a workflow reference" opens, offered only when the parent has a
+                // path for a relative ref.
                 onAuthorRef={refAuthoring.onAuthorRef}
                 workflowRunStatus={run.workflowRunStatus}
               />
@@ -321,8 +337,9 @@ export function App({
               plugins={plugins}
               applyEdit={session.applyEdit}
               onReselect={setSelectedId}
-              // The ref-target chooser needs the parent's path to store a relative ref, so offer it only for
-              // a file that has one; a from-scratch root falls back to the plain path field.
+              // The ref-target chooser needs the parent's path to store a relative ref, so offer it
+              // only for a file that has one; a from-scratch root falls back to the plain path
+              // field.
               onAddRefTarget={refAuthoring.onAuthorRef}
             />
           ) : (
@@ -342,9 +359,10 @@ export function App({
                 : undefined
             }
             plugins={plugins}
-            // An unwritten buffer has no file on disk for the server to load, so it cannot launch. A
-            // create-new child carries a pre-assigned path, so gate the launch handle on `written`, not on
-            // the path: an unwritten child reads as unsaved rather than relying on its always-dirty buffer.
+            // An unwritten buffer has no file on disk for the server to load, so it cannot launch.
+            // A create-new child carries a pre-assigned path, so gate the launch handle on
+            // `written`, not on the path: an unwritten child reads as unsaved rather than relying
+            // on its always-dirty buffer.
             workflowPath={active?.written ? (activePath ?? null) : null}
             workflowId={openedFile?.id ?? null}
             rootFile={openedFile}
@@ -362,8 +380,9 @@ export function App({
           />
         }
       />
-      {/* The first-save dialog rides above the shell, shown only for a from-scratch buffer (no path) whose
-        author asked to save. It decides the path; a successful create closes it and the frame is saved. */}
+      {/* The first-save dialog rides above the shell, shown only for a from-scratch buffer (no
+        path) whose author asked to save. It decides the path; a successful create closes it and the
+        frame is saved. */}
       {newFileOpen && openedFile && activePath === undefined && !activeTemplate ? (
         <NewFileDialog
           discovery={discovery}
@@ -373,8 +392,8 @@ export function App({
           onCancel={() => setNewFileOpen(false)}
         />
       ) : null}
-      {/* Template mode's save doors. A new template's first save picks its name and description; Save
-        as… names a copy of the opened template. A template saves only as a template. */}
+      {/* Template mode's save doors. A new template's first save picks its name and description;
+        Save as… names a copy of the opened template. A template saves only as a template. */}
       {saveAsDialog === "new-template" && openedFile && !activeTemplate ? (
         <SaveTemplateAsDialog
           source={null}
@@ -445,8 +464,9 @@ export function App({
           onCancel={() => setOpenTemplateOpen(false)}
         />
       ) : null}
-      {/* The ref-target chooser: reference an existing workflow, or create a new one and descend into
-        its fresh, unwritten child buffer. Shown only while an empty `workflow` node awaits a target. */}
+      {/* The ref-target chooser: reference an existing workflow, or create a new one and descend
+        into its fresh, unwritten child buffer. Shown only while an empty `workflow` node awaits a
+        target. */}
       {refAuthoring.target !== null ? (
         <RefTargetDialog
           discovery={discovery}

@@ -1,8 +1,9 @@
 import type { JsonValue } from "./json-value.js";
 
-/** Shared dot-path grammar for `${}` interpolation (docs/format/workflow-format.md §6) and the condition
- * language (§9): `root(.segment)*`, identifier or numeric segments, no wildcards. `checkDotPath`
- * decides load-time writability; `resolveDotPath` walks real values over the same grammar. */
+/** Shared dot-path grammar for `${}` interpolation (docs/format/workflow-format.md §6) and the
+ * condition language (§9): `root(.segment)*`, identifier or numeric segments, no wildcards.
+ * `checkDotPath` decides load-time writability; `resolveDotPath` walks real values over the same
+ * grammar. */
 const SEGMENT_PATTERN = /^(?:[A-Za-z_][A-Za-z0-9_-]*|\d+)$/;
 
 export interface DotPathCheckResult {
@@ -34,13 +35,15 @@ export function checkDotPath(path: string, allowedRoots: readonly string[]): Dot
   return { ok: true };
 }
 
-/** The walk's outcome. `found: false` is not necessarily an error — the `exists` condition treats an
- * unresolvable path as a plain `false` (mvp spec §5.2) — so the caller decides; `error` says why. */
+/** The walk's outcome. `found: false` is not necessarily an error — the `exists` condition treats
+ * an unresolvable path as a plain `false` (mvp spec §5.2) — so the caller decides; `error` says
+ * why. */
 export type DotPathResolution = { found: true; value: JsonValue } | { found: false; error: string };
 
 /** Walks a validated path against `roots`: array segments must be in-bounds integer indices, object
- * segments own properties, so an inherited key never resolves. `error` names the segment that stopped
- * the walk, not the whole path — the caller already knows the path and frames the failure itself. */
+ * segments own properties, so an inherited key never resolves. `error` names the segment that
+ * stopped the walk, not the whole path — the caller already knows the path and frames the failure
+ * itself. */
 export function resolveDotPath(
   roots: { readonly [root: string]: JsonValue },
   path: string,

@@ -16,25 +16,29 @@ const TS = expect.any(String);
 /** The envelope of an event about the root run itself: no node. */
 const rootEnvelope = (runId: string) => ({ ts: TS, run_id: runId, node_id: null, node_name: null });
 
-/** A workflow-run's context changes: `context` records under a run that started as a workflow-run. */
+/** A workflow-run's context changes: `context` records under a run that started as a
+ * workflow-run. */
 function contextChanges(observer: FakeObserver): RunEvent[] {
   const runIds = new Set(observer.runStarts().map((e) => e.runId));
   return observer.records("context").filter((e) => runIds.has(e.runId));
 }
 
 // The fixtures are known-valid `@3` files and `runWorkflow` takes the object directly (it does not
-// re-validate), so a bare parse + cast is enough here — schema validation lives at the load boundary.
+// re-validate), so a bare parse + cast is enough here — schema validation lives at the load
+// boundary.
 function loadFixture(name: string): WorkflowFile {
   return JSON.parse(readFileSync(join(fixturesDir, name), "utf8")) as WorkflowFile;
 }
 
-/** Plug a scripted `prompt`/`anthropic` worker in via the registry override seam (ADR 0021 sub-15). */
+/** Plug a scripted `prompt`/`anthropic` worker in via the registry override seam (ADR 0021
+ * sub-15). */
 function promptOverride(worker: WorkerDescriptor): WorkerOverrides {
   return { prompt: { anthropic: worker } };
 }
 
-// `stampGuids` already produces a valid `@3` file and `runWorkflow` never re-validates, so this stands
-// in for the schema's registry-scoped `parseWorkflowFile` as an identity pass for these run tests.
+// `stampGuids` already produces a valid `@3` file and `runWorkflow` never re-validates, so this
+// stands in for the schema's registry-scoped `parseWorkflowFile` as an identity pass for these run
+// tests.
 function parseWorkflowFile(file: WorkflowFile): WorkflowFile {
   return file;
 }
@@ -80,7 +84,8 @@ describe("runWorkflow — walking-skeleton basics (ticket #16, still true under 
 
   it("acceptance: races two binary sleeps under wait-one — the shorter wins, the longer is cancelled sibling-succeeded", async () => {
     // The real file, through the real schema: two branches publishing the same key `answer` — which
-    // `collect` would reject at load, but `wait-one` allows because only the winner's publish lands.
+    // `collect` would reject at load, but `wait-one` allows because only the winner's publish
+    // lands.
     const file = parseWorkflowFile(
       stampGuids({
         format: "path/workflow@5",
@@ -163,7 +168,8 @@ describe("runWorkflow — walking-skeleton basics (ticket #16, still true under 
 
   it("acceptance: every wait-one branch fails — the block fails to a synthetic aggregate, no winner lands (#196)", async () => {
     // Both arms exit non-zero. A failing wait-one branch cancels nothing (§2), so the race runs to
-    // exhaustion and, with no winner, the block fails to the aggregate — not a copy of either arm's error.
+    // exhaustion and, with no winner, the block fails to the aggregate — not a copy of either arm's
+    // error.
     const observer = fakeObserver();
     const file: WorkflowFile = {
       format: "path/workflow@5",
@@ -211,7 +217,8 @@ describe("runWorkflow — walking-skeleton basics (ticket #16, still true under 
 
     const result = await runWorkflow(stampNames(file), fixturesDir, { observer });
 
-    // The block fails with the synthetic aggregate, distinct from either arm's exit-code error (§2).
+    // The block fails with the synthetic aggregate, distinct from either arm's exit-code error
+    // (§2).
     expect(result.status).toBe("failed");
     expect(result.error).toMatch(/all 2 wait-one branches failed/);
     expect(result.error).not.toMatch(/\b7\b/);
@@ -225,8 +232,8 @@ describe("runWorkflow — walking-skeleton basics (ticket #16, still true under 
       false,
     );
 
-    // Each branch's own failure is still recorded on its own run row: map each arm's node to its run
-    // and assert that run's step-finished is `failed`.
+    // Each branch's own failure is still recorded on its own run row: map each arm's node to its
+    // run and assert that run's step-finished is `failed`.
     const failedRunIds = new Set(
       all.filter((o) => o.type === "step-finished" && o.status === "failed").map((o) => o.run_id),
     );
@@ -301,8 +308,9 @@ describe("runWorkflow — walking-skeleton basics (ticket #16, still true under 
 describe("runWorkflow — do-not-wait launch-and-continue (ticket #213)", () => {
   it("acceptance: launches a branch, discharges {} to the successor at once, and waits for the branch at the exit barrier", async () => {
     // One detached branch that takes 1s, then an instant successor. Launch-and-continue means the
-    // successor runs against the block's `{}` output without waiting for the branch; the enclosing-run
-    // barrier means the run does not finish until the branch is terminal (do-not-wait-join.md §2/§1.1).
+    // successor runs against the block's `{}` output without waiting for the branch; the
+    // enclosing-run barrier means the run does not finish until the branch is terminal
+    // (do-not-wait-join.md §2/§1.1).
     const file = parseWorkflowFile(
       stampGuids({
         format: "path/workflow@5",
@@ -331,8 +339,8 @@ describe("runWorkflow — do-not-wait launch-and-continue (ticket #213)", () => 
               },
             ],
           },
-          // The successor's default input is the block's output; it echoes its stdin, so its stdout is
-          // exactly what the block handed downstream — `{}` serialized.
+          // The successor's default input is the block's output; it echoes its stdin, so its stdout
+          // is exactly what the block handed downstream — `{}` serialized.
           {
             type: "binary",
             id: "after",
@@ -361,13 +369,13 @@ describe("runWorkflow — do-not-wait launch-and-continue (ticket #213)", () => 
     const finishedIndexOf = (nodeName: string) =>
       all.findIndex((o) => o.type === "step-finished" && o.run_id === runIdOf(nodeName));
 
-    // Launch-and-continue: the successor finished before the 1s branch, so it did not wait on it. The
-    // wide margin keeps the ordering deterministic even when a loaded CI runner slows the successor's
-    // own process spawn (an 80ms margin raced and flaked).
+    // Launch-and-continue: the successor finished before the 1s branch, so it did not wait on it.
+    // The wide margin keeps the ordering deterministic even when a loaded CI runner slows the
+    // successor's own process spawn (an 80ms margin raced and flaked).
     expect(finishedIndexOf("after")).toBeLessThan(finishedIndexOf("slow-notify"));
 
-    // Barrier: the detached branch reached `succeeded`, and it did so before the root run finished —
-    // the run never returned with the branch still live.
+    // Barrier: the detached branch reached `succeeded`, and it did so before the root run finished
+    // — the run never returned with the branch still live.
     expect(finishedOf("slow-notify")).toMatchObject({ status: "succeeded" });
     const rootFinishedIndex = all.findIndex(
       (o) => o.type === "step-finished" && o.run_id === observer.runStarts()[0]!.runId,
@@ -413,8 +421,8 @@ describe("runWorkflow — do-not-wait launch-and-continue (ticket #213)", () => 
     expect(result.status).toBe("succeeded");
 
     const join = observer.of("join-applied")[0]?.event;
-    // The join marks only that the block resolved: the launched branch is named, nothing landed, and
-    // there is no winner (that field is wait-one-only).
+    // The join marks only that the block resolved: the launched branch is named, nothing landed,
+    // and there is no winner (that field is wait-one-only).
     expect(join).toMatchObject({ node_name: "fire", branches: ["notify"], published_keys: [] });
     expect(join).not.toHaveProperty("winner");
   });
@@ -430,8 +438,9 @@ describe("runWorkflow — do-not-wait failure isolation (ticket #214, ADR 0008)"
 
   it("acceptance: a failed detached branch does not fail the run — the row is `failed`, the run ends `succeeded`", async () => {
     // The demoable case (§5, ADR 0008): a detached branch exits non-zero while the main path
-    // succeeds. The block discharged at the join, so the run ends on its main path alone — `succeeded`
-    // — with the branch's `failed` recorded on its own run row and narrated by its own `step-finished`.
+    // succeeds. The block discharged at the join, so the run ends on its main path alone —
+    // `succeeded` — with the branch's `failed` recorded on its own run row and narrated by its own
+    // `step-finished`.
     const file = parseWorkflowFile(
       stampGuids({
         format: "path/workflow@5",
@@ -487,9 +496,9 @@ describe("runWorkflow — do-not-wait failure isolation (ticket #214, ADR 0008)"
   });
 
   it("a detached branch failure cancels neither its siblings nor the main path (§5, §6)", async () => {
-    // Two detached siblings: one exits non-zero at once, the other sleeps then succeeds. A `collect`
-    // failure would cross-cancel the in-flight sibling (`sibling-failed`); do-not-wait cancels nothing.
-    // The surviving sibling runs to `succeeded` and the main path is untouched.
+    // Two detached siblings: one exits non-zero at once, the other sleeps then succeeds. A
+    // `collect` failure would cross-cancel the in-flight sibling (`sibling-failed`); do-not-wait
+    // cancels nothing. The surviving sibling runs to `succeeded` and the main path is untouched.
     const file = parseWorkflowFile(
       stampGuids({
         format: "path/workflow@5",
@@ -559,8 +568,9 @@ describe("runWorkflow — do-not-wait failure isolation (ticket #214, ADR 0008)"
 
   it("adds no new run-cancelled cause; an operator root-cancel reaches an in-flight detached branch under `operator` (§6)", async () => {
     // A detached branch and the main path both sleep long enough to still be live when the operator
-    // aborts the root. do-not-wait adds no sibling-driven cancel path, so the only abort that reaches
-    // the branch is the existing operator one, and it lands under the existing cause `operator`.
+    // aborts the root. do-not-wait adds no sibling-driven cancel path, so the only abort that
+    // reaches the branch is the existing operator one, and it lands under the existing cause
+    // `operator`.
     const file = parseWorkflowFile(
       stampGuids({
         format: "path/workflow@5",
@@ -609,19 +619,21 @@ describe("runWorkflow — do-not-wait failure isolation (ticket #214, ADR 0008)"
     await pending;
 
     const cancels = observer.of("run-cancelled").map((e) => e.event);
-    // The operator abort reached the detached branch's leaf, under the pre-existing cause `operator`.
+    // The operator abort reached the detached branch's leaf, under the pre-existing cause
+    // `operator`.
     const branchCancel = cancels.find((o) => o.node_name === "detached-work");
     expect(branchCancel).toMatchObject({ cause: "operator", cause_run_id: null });
     // No new cancel cause: every cancellation on this path is `operator` — do-not-wait added no
-    // sibling-driven path, so nothing here reads `sibling-failed`, `sibling-succeeded`, or anything else.
+    // sibling-driven path, so nothing here reads `sibling-failed`, `sibling-succeeded`, or anything
+    // else.
     const causes = cancels.map((o) => o.cause);
     expect(causes.length).toBeGreaterThan(0);
     expect(causes.every((c) => c === "operator")).toBe(true);
   });
 
   it("sums a failed detached branch's token usage into the roll-up, final before the run returns (§8)", async () => {
-    // The roll-up is status-blind: a detached branch that burned tokens and then `failed` still spent
-    // them. The enclosing-run barrier holds the run open until the branch is terminal, so its
+    // The roll-up is status-blind: a detached branch that burned tokens and then `failed` still
+    // spent them. The enclosing-run barrier holds the run open until the branch is terminal, so its
     // `step-usage` is emitted before the run finishes — the spend is final at roll-up time.
     const worker: WorkerDescriptor = {
       meters: true,
@@ -816,17 +828,18 @@ describe("runWorkflow — secret masking at the persistence boundary (ticket #20
     const result = await runWorkflow(stampNames(secretLeakFailingFile()), fixturesDir);
 
     expect(result.status).toBe("failed");
-    // The caller's copy is masked too, not only the persisted one: `cli.ts` prints `runResult.error`
-    // on its own stderr, which in CI is a retained build log — an audit surface nobody chose.
+    // The caller's copy is masked too, not only the persisted one: `cli.ts` prints
+    // `runResult.error` on its own stderr, which in CI is a retained build log — an audit surface
+    // nobody chose.
     expect(result.error).toContain("[secret:apiKey]");
     expect(result.error).not.toContain(SECRET);
   });
 
   it("masks `output` on a run that did not succeed — there is no product to be owed (#123)", async () => {
-    // A run that fails carries its *input* back as `output` (there is no output contract on a failed
-    // run), so this is what a caller handing the engine a value that is also a declared secret gets
-    // back. Real on success, masked otherwise: the rule is about the product, and a failed run has
-    // none.
+    // A run that fails carries its *input* back as `output` (there is no output contract on a
+    // failed run), so this is what a caller handing the engine a value that is also a declared
+    // secret gets back. Real on success, masked otherwise: the rule is about the product, and a
+    // failed run has none.
     const result = await runWorkflow(stampNames(secretLeakFailingFile()), fixturesDir, {
       input: { carried: SECRET },
     });
@@ -961,8 +974,8 @@ describe("runWorkflow — $env resolution at run start (ticket #116)", () => {
 
   it("masks the resolved value of a composed wrapper, never the variable name", async () => {
     // The ordering this ticket exists for: masking is by value (§8.3), so the masker must collect
-    // what `$env` resolved to. Collecting first would scrub the string "PATH_TEST_TOKEN" and let the
-    // credential itself through to disk.
+    // what `$env` resolved to. Collecting first would scrub the string "PATH_TEST_TOKEN" and let
+    // the credential itself through to disk.
     vi.stubEnv("PATH_TEST_TOKEN", VALUE);
     const observer = fakeObserver();
     const file = envEchoFile({ token: { $secret: { $env: "PATH_TEST_TOKEN" } } });
@@ -1009,8 +1022,9 @@ describe("runWorkflow — $env resolution at run start (ticket #116)", () => {
   });
 
   it("still cancels a run whose signal was already aborted, unset variables notwithstanding", async () => {
-    // Spec §5.6: a signal already aborted when the run is launched cancels it before its first step.
-    // A config failure the operator has already walked away from does not turn that into a failure.
+    // Spec §5.6: a signal already aborted when the run is launched cancels it before its first
+    // step. A config failure the operator has already walked away from does not turn that into a
+    // failure.
     vi.stubEnv("PATH_TEST_MISSING_A", undefined);
     const controller = new AbortController();
     controller.abort();
@@ -1890,8 +1904,9 @@ describe("runWorkflow — external abort of a root run (ticket #52)", () => {
   it("cancels a prompt step in flight through the worker seam", async () => {
     const observer = fakeObserver();
     const controller = abortWhenStarted(observer, "ask");
-    // Holds the processor open until the abort reaches it — what the Agent SDK worker does for real.
-    // It returns `failed` on the abort; the engine relabels it `cancelled` from the signal (sub-7).
+    // Holds the processor open until the abort reaches it — what the Agent SDK worker does for
+    // real. It returns `failed` on the abort; the engine relabels it `cancelled` from the signal
+    // (sub-7).
     const worker: WorkerDescriptor = {
       meters: false,
       needsProcessorSlot: true,
@@ -1967,7 +1982,8 @@ describe("runWorkflow — external abort of a root run (ticket #52)", () => {
     });
 
     expect(result.status).toBe("cancelled");
-    // The run row still exists and lands cancelled: an already-aborted signal is not a special case.
+    // The run row still exists and lands cancelled: an already-aborted signal is not a special
+    // case.
     expect(observer.runStarts()).toHaveLength(1);
     const root = observer.runStarts()[0]!;
     expect(observer.runFinishes().map((e) => e.event)).toEqual([
@@ -2034,8 +2050,9 @@ describe("runWorkflow — external abort of a root run (ticket #52)", () => {
   });
 
   it("still calls a cancellation sibling-failed when the failing branch encloses a nested parallel", async () => {
-    // The cause must be read when the kill happens, not at block entry: the inner block starts before
-    // the outer sibling fails, so a cause snapshotted at entry would be null — and null means operator.
+    // The cause must be read when the kill happens, not at block entry: the inner block starts
+    // before the outer sibling fails, so a cause snapshotted at entry would be null — and null
+    // means operator.
     const observer = fakeObserver();
     const file: WorkflowFile = {
       format: "path/workflow@5",
@@ -2243,7 +2260,8 @@ describe("runWorkflow — a thrown worker exception is masked on the way out (AD
       body: [{ type: "prompt", id: "ask", name: "ask", prompt: "Hi." }],
     };
 
-    // A worker that crashes (a bug, not a `failed` result), leaking the run's secret into its message.
+    // A worker that crashes (a bug, not a `failed` result), leaking the run's secret into its
+    // message.
     const boom: WorkerDescriptor = {
       meters: false,
       needsProcessorSlot: true,

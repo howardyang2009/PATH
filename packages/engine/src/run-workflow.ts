@@ -22,7 +22,8 @@ export type {
   WorkerOverrides,
 } from "./run-options.js";
 
-/** **The Run executor**: `runWorkflow` roots a run tree — one workflow-run per file, one node at a time in order. */
+/** **The Run executor**: `runWorkflow` roots a run tree — one workflow-run per file, one node at a
+ * time in order. */
 
 /** Runs the top-level workflow as the root of a run tree (mvp spec §2, invariant 2). */
 export async function runWorkflow(
@@ -33,21 +34,25 @@ export async function runWorkflow(
   // A Complete keeps the tree's own root id; a launch or Resume mints a fresh one.
   const runId = options.continue?.rootRunId ?? randomUUID();
 
-  // One snapshot for the whole run, read here and nowhere else, so a mid-run env change cannot desync the masker.
+  // One snapshot for the whole run, read here and nowhere else, so a mid-run env change cannot
+  // desync the masker.
   const env: EnvSource = { ...process.env };
 
-  // The load's scanned registry, or a folder scan for a caller with no load; `workerOverrides` merge replace-only.
+  // The load's scanned registry, or a folder scan for a caller with no load; `workerOverrides`
+  // merge replace-only.
   const registry = await resolveExecutorRegistry(
     options.registry,
     options.workerOverrides,
     options.stepPluginsDir,
   );
 
-  // The whole run-start config read behind one seam: collect, resolve `$env`, collect `$secret`, gate (ADR 0022 sub-3).
+  // The whole run-start config read behind one seam: collect, resolve `$env`, collect `$secret`,
+  // gate (ADR 0022 sub-3).
   const { masker, runStartFailure } = analyzeRunStart(file, fileDir, options, env, registry);
   for (const warning of masker.warnings) options.warn?.(warning);
 
-  // Assembled once from the same options the run executes with, so recorded facts and executed config cannot drift.
+  // Assembled once from the same options the run executes with, so recorded facts and executed
+  // config cannot drift.
   const launchFacts = buildLaunchFacts(
     {
       input: options.operatorInput,
@@ -68,7 +73,8 @@ export async function runWorkflow(
       }
     : async () => {};
 
-  // The tree's one masking sink becomes the root emitter; descendants get their own via `emitter.child`.
+  // The tree's one masking sink becomes the root emitter; descendants get their own via
+  // `emitter.child`.
   const rootIdentity: RunIdentity = {
     runId,
     rootRunId: runId,
@@ -76,7 +82,8 @@ export async function runWorkflow(
     nodeId: null,
     nodeName: null,
   };
-  // The tree's root cancellation authority: the operator's signal is its only outside cause (`cancellation.ts`).
+  // The tree's root cancellation authority: the operator's signal is its only outside cause
+  // (`cancellation.ts`).
   const rootAuthority = rootCancellation(options.signal);
   let result: RunResult;
   try {
@@ -93,7 +100,8 @@ export async function runWorkflow(
       launchFacts,
       signal: rootAuthority.signal,
       cancellation: rootAuthority,
-      // One registry and one semaphore for the whole run tree — the cap is engine-wide (mvp spec §5.5).
+      // One registry and one semaphore for the whole run tree — the cap is engine-wide (mvp spec
+      // §5.5).
       runtime: {
         registry,
         semaphore: createProcessorSemaphore(
@@ -102,9 +110,11 @@ export async function runWorkflow(
         // The launch worker-default table is shared by the whole tree (ADR 0044).
         launchWorkerDefaults: options.launchWorkerDefaults,
       },
-      // Root Resume: the counterpart is the original tree's root; an empty rerun path is plain Resume (ADR 0036).
+      // Root Resume: the counterpart is the original tree's root; an empty rerun path is plain
+      // Resume (ADR 0036).
       resume: options.resume ? rootResumeEntry(options.resume) : undefined,
-      // Complete-continue: the root re-enters in place, skipping its start (ADR 0041). Exclusive with `resume`.
+      // Complete-continue: the root re-enters in place, skipping its start (ADR 0041). Exclusive
+      // with `resume`.
       continue: options.continue
         ? {
             state: {
@@ -132,7 +142,8 @@ export async function runWorkflow(
     });
   } catch (err) {
     // A worker that threw rather than returning `failed` (ADR 0020 sub-5): it is not caught into a
-    // failed step, but its message may carry a config secret, so the masker scrubs it on the way out.
+    // failed step, but its message may carry a config secret, so the masker scrubs it on the way
+    // out.
     if (!masker.isEmpty && err instanceof Error) {
       err.message = masker.maskString(err.message);
     }
@@ -141,7 +152,8 @@ export async function runWorkflow(
 
   // What the caller gets back is masked too — everything except a *succeeded* run's `output`, which
   // is the run's product and prints as the pipeline's answer. `error` always: it carries text the
-  // engine did not compose, and the CLI prints it into a CI log. A thrown bug escapes unscrubbed (§8.3).
+  // engine did not compose, and the CLI prints it into a CI log. A thrown bug escapes unscrubbed
+  // (§8.3).
   if (masker.isEmpty) return result;
   return {
     ...result,

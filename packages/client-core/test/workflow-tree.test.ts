@@ -11,7 +11,8 @@ import {
   workflowBaseName,
 } from "../src/workflow-tree.js";
 
-/** A discovery row where only `relative_path` steers the tree; the rest is filled to a valid shape. */
+/** A discovery row where only `relative_path` steers the tree; the rest is filled to a valid
+ * shape. */
 function wf(relativePath: string): WorkflowSummary {
   return {
     relative_path: relativePath,

@@ -10,7 +10,7 @@ import { ConfigEditor } from "./config-region.js";
 import { JsonDraftField, KeyedRowField, PaneSection } from "./fields.js";
 import { ReferenceList } from "./node-properties.js";
 
-// ── The file's own properties ──────────────────────────────────────────────────────────────────────
+// ── The file's own properties ────────────────────────────────────────────────────────────────────
 
 export function FileProperties({
   file,
@@ -28,7 +28,8 @@ export function FileProperties({
         The workflow file — its identity and the body authored on the canvas.
       </p>
       <hr className="pane-divider" />
-      {/* A keystroke run in one field folds to one undo entry; a different field's identity breaks the run. */}
+      {/* A keystroke run in one field folds to one undo entry; a different field's identity breaks
+        the run. */}
       <TextField
         label="name"
         value={file.name}
@@ -59,10 +60,10 @@ export function FileProperties({
 }
 
 /**
- * The file-level **Reference** list, the counterpart of a node's `ReferenceSection`. The file's only
- * interpolable field is its own `output` map, whose values read `config.` / `context.` (`STEP_ROOTS`
- * cannot read `output`), so the list gathers those paths; `STEP_ROOTS` always contributes bare
- * prefixes, so it is never empty.
+ * The file-level **Reference** list, the counterpart of a node's `ReferenceSection`. The file's
+ * only interpolable field is its own `output` map, whose values read `config.` / `context.`
+ * (`STEP_ROOTS` cannot read `output`), so the list gathers those paths; `STEP_ROOTS` always
+ * contributes bare prefixes, so it is never empty.
  */
 export function FileReferenceSection({ file }: { file: WorkflowFile }): JSX.Element | null {
   return <ReferenceList ownerId={file.id} paths={referenceablePaths(file, [...STEP_ROOTS])} />;
@@ -70,10 +71,10 @@ export function FileReferenceSection({ file }: { file: WorkflowFile }): JSX.Elem
 
 /**
  * The **file worker-default** editor: the shared `WorkerDefaultsEditor` bound to the file's
- * `worker_defaults`, a plain `{ <type>: <name> }` map read and written by constrained dropdowns, so an
- * invalid pair (the hard load error ADR 0044 defines) cannot be authored here. An empty map drops the
- * key. The launch tier has no editor — it is supplied at launch (ADR 0044) — and a registry of
- * single-worker types renders no section at all.
+ * `worker_defaults`, a plain `{ <type>: <name> }` map read and written by constrained dropdowns, so
+ * an invalid pair (the hard load error ADR 0044 defines) cannot be authored here. An empty map
+ * drops the key. The launch tier has no editor — it is supplied at launch (ADR 0044) — and a
+ * registry of single-worker types renders no section at all.
  */
 export function FileWorkerDefaultsRegion({
   file,
@@ -107,8 +108,8 @@ export function FileWorkerDefaultsRegion({
 }
 
 /**
- * A `key → value` map (a file's `output`, a step's `publish`) read back as editor rows, each value in its string
- * form.
+ * A `key → value` map (a file's `output`, a step's `publish`) read back as editor rows, each value
+ * in its string form.
  */
 export function keyedRowsOf(map: unknown): KeyedRow[] {
   if (map === null || typeof map !== "object" || Array.isArray(map)) return [];
@@ -119,10 +120,10 @@ export function keyedRowsOf(map: unknown): KeyedRow[] {
 }
 
 /**
- * The workflow's own **output** object (docs/format/workflow-format.md §6.4): a `key → ${…}` map evaluated at
- * success into the value a parent's `publish` reads back across a `workflow`-ref. Values interpolate
- * `config.`/`context.` only and are held as a draft committed only when valid, so an ill-typed `${…}`
- * never reaches the file; non-string values are shown JSON-stringified.
+ * The workflow's own **output** object (docs/format/workflow-format.md §6.4): a `key → ${…}` map
+ * evaluated at success into the value a parent's `publish` reads back across a `workflow`-ref.
+ * Values interpolate `config.`/`context.` only and are held as a draft committed only when valid,
+ * so an ill-typed `${…}` never reaches the file; non-string values are shown JSON-stringified.
  */
 export function FileOutputRegion({
   file,
@@ -163,7 +164,8 @@ export function FileOutputRegion({
               valueLabel="Output value"
               removeLabel="Remove output"
               keyPlaceholder="output key"
-              // Mirrors the key typed — `${context.<key>}` — landing the step context value of that name.
+              // Mirrors the key typed — `${context.<key>}` — landing the step context value of that
+              // name.
               valuePlaceholder={(r) => `\${context.${r.key === "" ? "key" : r.key}}`}
               onChange={(r) => setRow(index, r)}
               onRemove={() => removeRow(index)}
@@ -180,8 +182,8 @@ export function FileOutputRegion({
 
 /**
  * The file's own **config**: the workflow-level defaults every step inherits. There is no parent to
- * inherit from — the file's config *is* the root — so every key renders local. A cleared config drops
- * the whole `config` field.
+ * inherit from — the file's config *is* the root — so every key renders local. A cleared config
+ * drops the whole `config` field.
  */
 export function FileConfigRegion({
   file,

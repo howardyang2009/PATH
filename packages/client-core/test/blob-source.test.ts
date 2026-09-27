@@ -3,10 +3,11 @@ import { describe, expect, it } from "vitest";
 import { runBlobSource } from "../src/blob-source.js";
 
 /**
- * The one owner of "which run holds this blob, and where does it live on disk" (#architecture-deepening):
- * the Viewer used to swap a filename on a sibling ref, hand-build `runs/<root>/<run>/context.json`, and
- * spell the predecessor's path for a successor root. These pin the three answers a surface needs — the
- * addressing, the gate, and the provenance line — over the layouts `@path/engine` writes.
+ * The one owner of "which run holds this blob, and where does it live on disk"
+ * (#architecture-deepening): the Viewer used to swap a filename on a sibling ref, hand-build
+ * `runs/<root>/<run>/context.json`, and spell the predecessor's path for a successor root. These
+ * pin the three answers a surface needs — the addressing, the gate, and the provenance line — over
+ * the layouts `@path/engine` writes.
  */
 
 function run(overrides: Partial<RunRecord> = {}): RunRecord {
@@ -37,7 +38,8 @@ describe("runBlobSource — input", () => {
   });
 
   it("keeps a nested run's own input even when the tree was resumed", () => {
-    // Only the successor *root* reaches back; a nested row's predecessor is its tree's, not its own.
+    // Only the successor *root* reaches back; a nested row's predecessor is its tree's, not its
+    // own.
     const nested = run({ parentRunId: "root-1", resumedFromRootRunId: "root-0" });
 
     expect(runBlobSource(nested, "input")).toMatchObject({

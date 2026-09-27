@@ -11,8 +11,8 @@ import {
 import { z } from "zod";
 
 /**
- * The Designer's open pipeline: raw on-disk text (`GET /v0/workflows/file`, kept raw so an id-less or
- * unknown-field file survives) plus the received step-plugin registry in, either a parsed
+ * The Designer's open pipeline: raw on-disk text (`GET /v0/workflows/file`, kept raw so an id-less
+ * or unknown-field file survives) plus the received step-plugin registry in, either a parsed
  * `WorkflowFile` or one of four legible refusals out. Pass order is deliberate — absent-type gate
  * (ADR 0026), then identity (ADR 0015), then the strict registry-relative schema parse.
  */
@@ -50,8 +50,9 @@ interface RawNodeRef {
 /**
  * The child node objects of one raw node, descending by the one shape table `@path/schema` exposes
  * (`CONTROL_CHILD_SLOTS`). Runs before the schema parse (an id-less or unregistered-type file must
- * survive it), so it cannot take typed `WorkflowNode`s; a new control block lands in that table and is
- * scanned here automatically. A branch arm's occupant is unwrapped from its `{ when, node }` shape.
+ * survive it), so it cannot take typed `WorkflowNode`s; a new control block lands in that table and
+ * is scanned here automatically. A branch arm's occupant is unwrapped from its `{ when, node }`
+ * shape.
  */
 function rawChildNodes(node: Record<string, unknown>, base: (string | number)[]): RawNodeRef[] {
   const type = typeof node.type === "string" ? node.type : "";
@@ -95,8 +96,8 @@ function nodeLabel(ref: RawNodeRef): string {
   return typeof ref.obj.name === "string" ? `"${ref.obj.name}"` : `at ${ref.path.join(".")}`;
 }
 
-/** The aggregate refusal for a file naming types absent from the registry: every absent type, the folder
- * that resolves each, and the refresh-and-retry the stale-snapshot case needs. */
+/** The aggregate refusal for a file naming types absent from the registry: every absent type, the
+ * folder that resolves each, and the refresh-and-retry the stale-snapshot case needs. */
 function unregisteredTypesMessage(absent: AbsentStepType[]): string {
   const lines = absent.map((a) => `  • "${a.type}" — add ${a.folder} to this PATH tree`);
   return [
@@ -107,10 +108,11 @@ function unregisteredTypesMessage(absent: AbsentStepType[]): string {
 }
 
 /**
- * Reconstruct a parse-time `StepPluginRegistry` from the wire snapshot: each registered leaf `type` by
- * name, its declared fields left open (`z.unknown()`), since the wire carries field descriptors, not
- * plugin zod schemas. Each field is `.optional()`: zod v4 no longer makes an `unknown` object key
- * implicitly optional, so without it a valid file omitting one (`binary` with no `args`) would not open.
+ * Reconstruct a parse-time `StepPluginRegistry` from the wire snapshot: each registered leaf `type`
+ * by name, its declared fields left open (`z.unknown()`), since the wire carries field descriptors,
+ * not plugin zod schemas. Each field is `.optional()`: zod v4 no longer makes an `unknown` object
+ * key implicitly optional, so without it a valid file omitting one (`binary` with no `args`) would
+ * not open.
  */
 export function wireToRegistry(plugins: WireStepPlugin[]): StepPluginRegistry {
   const registry: StepPluginRegistry = {};
@@ -150,18 +152,18 @@ function findAbsentTypes(nodes: RawNodeRef[], plugins: WireStepPlugin[]): Absent
 }
 
 /**
- * Is a value a present (non-absent) `id`? A missing key is absent; `null`/a number/a non-UUID string is
- * present-but-invalid.
+ * Is a value a present (non-absent) `id`? A missing key is absent; `null`/a number/a non-UUID
+ * string is present-but-invalid.
  */
 function isPresent(id: unknown): boolean {
   return id !== undefined;
 }
 
 /**
- * The identity gate (ADR 0015), over the workflow's own `id` and every node's. `root` and `nodes` are
- * the same object graph `safeParseWorkflowFile` then reads, so a stamp lands in the parsed model. The
- * **rule** is `@path/schema`'s (`identityIssues`), the same one the load refinement and write route
- * apply; only the refusal's presentation — human node labels — is the Designer's.
+ * The identity gate (ADR 0015), over the workflow's own `id` and every node's. `root` and `nodes`
+ * are the same object graph `safeParseWorkflowFile` then reads, so a stamp lands in the parsed
+ * model. The **rule** is `@path/schema`'s (`identityIssues`), the same one the load refinement and
+ * write route apply; only the refusal's presentation — human node labels — is the Designer's.
  */
 function resolveIdentity(
   root: Record<string, unknown>,
@@ -170,7 +172,8 @@ function resolveIdentity(
   const rootRef: RawNodeRef = { obj: root, path: ["(workflow)"] };
   const labelFor = (ref: RawNodeRef): string => (ref === rootRef ? "the workflow" : nodeLabel(ref));
   const all = [rootRef, ...nodes];
-  // Paths are the caller's own spelling, so an issue path maps back to the ref whose label is printed.
+  // Paths are the caller's own spelling, so an issue path maps back to the ref whose label is
+  // printed.
   const refByPath = new Map(all.map((ref) => [JSON.stringify(ref.path), ref]));
   const labelAt = (path: (string | number)[]): string => {
     const ref = refByPath.get(JSON.stringify(path));
@@ -182,8 +185,8 @@ function resolveIdentity(
     ["invalid-id", "duplicate-id"],
   );
 
-  // Present-but-invalid ids refuse: an author who hand-typed a non-UUID may be encoding meaning, which
-  // the Designer must not clobber.
+  // Present-but-invalid ids refuse: an author who hand-typed a non-UUID may be encoding meaning,
+  // which the Designer must not clobber.
   const invalid = issues.filter((issue) => issue.rule === "invalid-id");
   if (invalid.length > 0) {
     const lines = invalid.map(
@@ -199,8 +202,8 @@ function resolveIdentity(
     };
   }
 
-  // Duplicate ids refuse: silently re-minting one breaks resume (ADR 0015), so a human must choose which
-  // node keeps the id. One bullet per repeated id, naming every node that shares it.
+  // Duplicate ids refuse: silently re-minting one breaks resume (ADR 0015), so a human must choose
+  // which node keeps the id. One bullet per repeated id, naming every node that shares it.
   const shared = new Map<unknown, (string | number)[][]>();
   for (const issue of issues.filter((candidate) => candidate.rule === "duplicate-id")) {
     const paths = shared.get(issue.value) ?? [];
@@ -221,8 +224,8 @@ function resolveIdentity(
     };
   }
 
-  // Absent ids are stamped fresh. The buffer opens dirty: the Designer opened something the format did
-  // not accept and is proposing the repair, un-persisted until a save (ADR 0015).
+  // Absent ids are stamped fresh. The buffer opens dirty: the Designer opened something the format
+  // did not accept and is proposing the repair, un-persisted until a save (ADR 0015).
   let dirty = false;
   for (const ref of all) {
     if (!isPresent(ref.obj.id)) {
@@ -233,7 +236,8 @@ function resolveIdentity(
   return { dirty };
 }
 
-/** Open a raw workflow file against the received registry; see the module doc for the pass order. */
+/** Open a raw workflow file against the received registry; see the module doc for the pass
+ * order. */
 export function openWorkflowFile(rawText: string, plugins: WireStepPlugin[]): OpenResult {
   let json: unknown;
   try {
@@ -269,6 +273,7 @@ export function openWorkflowFile(rawText: string, plugins: WireStepPlugin[]): Op
     };
   }
   // `idsStamped` drives the open badge's wording, not the buffer's dirtiness: dirtiness is
-  // content-equality against the baseline (ADR 0030), computed by the session because a stamp changed bytes.
+  // content-equality against the baseline (ADR 0030), computed by the session because a stamp
+  // changed bytes.
   return { status: "opened", file: parsed.data, idsStamped };
 }

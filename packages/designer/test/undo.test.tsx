@@ -12,11 +12,11 @@ import {
 } from "../src/use-open-file.js";
 
 /**
- * #389 — the per-file undo/redo stack (designer-spec § Dirty-state, undo, and the save-point). These drive
- * the session hook directly — an undo/redo is a plain state transition on a frame, so the assertions read
- * `frameCanUndo` / `frameDirty` off the frame rather than round-tripping the UI. The stack rests on the
- * content-equality clean model (ADR 0030): the save advances the baseline, not the history, so an undo
- * past the save-point re-dirties for free.
+ * #389 — the per-file undo/redo stack (designer-spec § Dirty-state, undo, and the save-point).
+ * These drive the session hook directly — an undo/redo is a plain state transition on a frame, so
+ * the assertions read `frameCanUndo` / `frameDirty` off the frame rather than round-tripping the
+ * UI. The stack rests on the content-equality clean model (ADR 0030): the save advances the
+ * baseline, not the history, so an undo past the save-point re-dirties for free.
  */
 
 function uuid(n: number): string {
@@ -83,7 +83,8 @@ describe("undo/redo — one entry per structural edit, clean re-derived (ADR 003
     const hook = await openSession({ [PATH]: JSON.stringify(file("draft")) }, { calls });
     const original = buffer(hook);
 
-    // Edit, then save — the save advances the baseline to the edited bytes and re-cleans the buffer.
+    // Edit, then save — the save advances the baseline to the edited bytes and re-cleans the
+    // buffer.
     act(() => hook.result.current.applyEdit(rename(original, "renamed")));
     act(() => hook.result.current.save());
     await waitFor(() => expect(calls.put).toHaveLength(1));
@@ -96,7 +97,8 @@ describe("undo/redo — one entry per structural edit, clean re-derived (ADR 003
     expect(buffer(hook).body[0]!.name).toBe("draft");
     expect(frameDirty(hook.result.current.frames[0])).toBe(true);
 
-    // Redo forward to the save-point bytes → clean once more (content-equality, re-evaluated each time).
+    // Redo forward to the save-point bytes → clean once more (content-equality, re-evaluated each
+    // time).
     act(() => hook.result.current.redo());
     expect(buffer(hook).body[0]!.name).toBe("renamed");
     expect(frameDirty(hook.result.current.frames[0])).toBe(false);
@@ -120,7 +122,8 @@ describe("undo/redo — one entry per structural edit, clean re-derived (ADR 003
     const hook = await openSession({ [PATH]: JSON.stringify(file("draft")) });
     const original = buffer(hook);
 
-    // Three edits sharing one identity fold to one entry; a single undo jumps back to the run start.
+    // Three edits sharing one identity fold to one entry; a single undo jumps back to the run
+    // start.
     const name = { owner: "step", field: "name" };
     act(() => hook.result.current.applyEdit(rename(original, "d"), name));
     act(() => hook.result.current.applyEdit(rename(original, "dr"), name));

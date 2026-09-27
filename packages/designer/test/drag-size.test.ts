@@ -3,15 +3,17 @@ import { afterEach, describe, expect, it } from "vitest";
 import { type DragSizeOptions, useDragSize } from "../src/drag-size.js";
 
 /**
- * The one drag-set-dimension seam (`drag-size.ts`). These drive `useDragSize` head-on — the size, the
- * persistence round-trip, and the keyboard nudge with its clamp — without mounting the DOM-heavy run dock
- * it now backs. The pointer-drag transport (`beginDrag`) is exercised through the app/run-surface renders;
- * here the clamp and the arrow-key arithmetic are the pure surface under test.
+ * The one drag-set-dimension seam (`drag-size.ts`). These drive `useDragSize` head-on — the size,
+ * the persistence round-trip, and the keyboard nudge with its clamp — without mounting the
+ * DOM-heavy run dock it now backs. The pointer-drag transport (`beginDrag`) is exercised through
+ * the app/run-surface renders; here the clamp and the arrow-key arithmetic are the pure surface
+ * under test.
  */
 
 const KEY = "path.test.drag-size";
 
-/** The run dock's height case: a top-edge handle (drag/ArrowUp grows), min 160, max fixed at 400 for the test. */
+/** The run dock's height case: a top-edge handle (drag/ArrowUp grows), min 160, max fixed at 400
+ * for the test. */
 function heightOpts(over: Partial<DragSizeOptions> = {}): DragSizeOptions {
   return {
     storageKey: KEY,

@@ -5,8 +5,8 @@ import { LOG_BACKEND_IDS, type LogBackendId } from "../logging/backends.js";
 import { engineSettingsFilePath } from "../persistence/paths.js";
 
 /**
- * Flat keys spelled as the spec names the settings (`log.backends` §8.2, `processor.concurrency` §5.5) — a dot is
- * just a character.
+ * Flat keys spelled as the spec names the settings (`log.backends` §8.2, `processor.concurrency`
+ * §5.5) — a dot is just a character.
  */
 const EngineSettingsFileSchema = z
   .object({
@@ -43,7 +43,8 @@ export function loadEngineSettings(projectDir: string): LoadEngineSettingsResult
     };
   }
 
-  // Strict unknown fields, like the workflow format: a typo'd key fails loudly rather than being ignored.
+  // Strict unknown fields, like the workflow format: a typo'd key fails loudly rather than being
+  // ignored.
   const parsed = EngineSettingsFileSchema.safeParse(raw);
   if (!parsed.success) {
     const issues = formatIssues(parsed.error);

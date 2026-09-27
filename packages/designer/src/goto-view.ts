@@ -2,11 +2,12 @@ import { type WorkflowFile, walkNodes } from "@path/schema";
 import { findById } from "./edit-tree.js";
 
 /**
- * What the canvas and the pane show of a goto's jump (designer-spec § goto): every derivation is over **first-level**
- * nodes, the only legal targets (ADR 0056).
+ * What the canvas and the pane show of a goto's jump (designer-spec § goto): every derivation is
+ * over **first-level** nodes, the only legal targets (ADR 0056).
  */
 
-/** `backward` when the target sits at or before the goto's first-level position (a loop), else `forward`. */
+/** `backward` when the target sits at or before the goto's first-level position (a loop), else
+ * `forward`. */
 export type GotoDirection = "forward" | "backward";
 
 export interface GotoTargetOption {
@@ -14,7 +15,8 @@ export interface GotoTargetOption {
   direction: GotoDirection;
 }
 
-/** The index of the first-level node holding `id` (the node itself, or its first-level ancestor), or -1. */
+/** The index of the first-level node holding `id` (the node itself, or its first-level ancestor),
+ * or -1. */
 function firstLevelIndex(file: WorkflowFile, id: string): number {
   return file.body.findIndex((top) => [...walkNodes([top])].some((node) => node.id === id));
 }
@@ -24,8 +26,8 @@ function direction(from: number, to: number): GotoDirection {
 }
 
 /**
- * The target picker's entries: every first-level node but the goto itself; the `branch` holding the goto stays
- * eligible as a backward jump that re-runs it (ADR 0058 §3).
+ * The target picker's entries: every first-level node but the goto itself; the `branch` holding the
+ * goto stays eligible as a backward jump that re-runs it (ADR 0058 §3).
  */
 export function gotoTargetOptions(file: WorkflowFile, gotoId: string): GotoTargetOption[] {
   const from = firstLevelIndex(file, gotoId);

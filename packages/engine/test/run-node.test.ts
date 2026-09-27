@@ -47,14 +47,15 @@ afterEach(() => {
   rmSync(fileDir, { recursive: true, force: true });
 });
 
-// The real scanned registry (binary/prompt), loaded once. Leaf dispatch reads it; a prompt test swaps
-// in its own `prompt`/`anthropic` worker via `promptRuntime`.
+// The real scanned registry (binary/prompt), loaded once. Leaf dispatch reads it; a prompt test
+// swaps in its own `prompt`/`anthropic` worker via `promptRuntime`.
 let registry: LoadedStepPluginRegistry;
 beforeAll(async () => {
   registry = await scanStepPlugins();
 });
 
-/** A run runtime whose `prompt`/`anthropic` worker is the given descriptor — for the prompt-step tests. */
+/** A run runtime whose `prompt`/`anthropic` worker is the given descriptor — for the prompt-step
+ * tests. */
 function promptRuntime(
   worker: WorkerDescriptor,
   semaphore = createProcessorSemaphore(1),
@@ -154,7 +155,8 @@ function existingRow(
   };
 }
 
-/** A `prompt` node with a worker that would run if the node were not reused — the execution detector. */
+/** A `prompt` node with a worker that would run if the node were not reused — the execution
+ * detector. */
 function askNode(): Node {
   return { type: "prompt", id: "ask", name: "ask", prompt: "Hi." };
 }
@@ -171,9 +173,9 @@ function echo(id: string, text: string): Node {
 }
 
 /**
- * A step that appends to whatever arrived on stdin — its default input, so its predecessor's output.
- * Chained, these spell out the default-input chain in the block's output: the suffixes appear in
- * exactly the order the nodes ran.
+ * A step that appends to whatever arrived on stdin — its default input, so its predecessor's
+ * output. Chained, these spell out the default-input chain in the block's output: the suffixes
+ * appear in exactly the order the nodes ran.
  */
 function append(id: string, suffix: string): Node {
   const script = `let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>process.stdout.write(d+${JSON.stringify(suffix)}))`;
@@ -383,8 +385,9 @@ describe("runNode — while-do", () => {
   });
 
   // The cross-iteration chain over a `sequence` body (§5.4): iteration 1's node reads the block's
-  // predecessor's output; iteration N's node reads iteration N−1's node's output — the *last child's*
-  // when that node is a `sequence`. The suffixes spell the order out: "a" + ("*" then "!") twice.
+  // predecessor's output; iteration N's node reads iteration N−1's node's output — the *last
+  // child's* when that node is a `sequence`. The suffixes spell the order out: "a" + ("*" then "!")
+  // twice.
   it("chains across iterations through a sequence body, reading the previous iteration's last child (§5.4)", async () => {
     const { run, observed } = makeRun();
     const spin: WhileDoNode = {
@@ -439,10 +442,10 @@ describe("runNode — while-do", () => {
 });
 
 describe("runNode — sequence", () => {
-  // The `@2` controller for "this single-node slot needs several nodes in order" (format §4.4). It adds
-  // no execution rule: its output is its last child's, its first child is seeded by the `sequence`'s
-  // own predecessor, and it narrates nothing of its own — the block-slot rules of §5.4, restated over
-  // one node.
+  // The `@2` controller for "this single-node slot needs several nodes in order" (format §4.4). It
+  // adds no execution rule: its output is its last child's, its first child is seeded by the
+  // `sequence`'s own predecessor, and it narrates nothing of its own — the block-slot rules of
+  // §5.4, restated over one node.
   it("returns its last child's output, seeding its first child from its own predecessor (§5.4)", async () => {
     const { run, observed } = makeRun();
     const node: Node = {
@@ -484,8 +487,8 @@ describe("runNode — sequence", () => {
     });
   });
 
-  // Transparent on the context side too: a child's publish lands as that child succeeds, not buffered
-  // to some sequence-level join (there is none — only `parallel` buffers, §5.3).
+  // Transparent on the context side too: a child's publish lands as that child succeeds, not
+  // buffered to some sequence-level join (there is none — only `parallel` buffers, §5.3).
   it("lands a child's publish as the child succeeds, before the next child starts (§5.3)", async () => {
     const { run } = makeRun();
     const exec = makeExec();
@@ -653,8 +656,8 @@ describe("runNode — prompt step", () => {
 
     expect(outcome).toEqual({ status: "succeeded", output: "hello" });
     expect(prompts).toEqual(["say hi"]);
-    // The context snapshot closes the sequence: a succeeded leaf step snapshots its enclosing context under
-    // its own directory, after `step-finished`.
+    // The context snapshot closes the sequence: a succeeded leaf step snapshots its enclosing
+    // context under its own directory, after `step-finished`.
     expect(observed.map((o) => o.type)).toEqual([
       "step-started",
       "usage",
@@ -688,8 +691,8 @@ describe("runNode — prompt step", () => {
       input: { version: "1.2.0" },
       cwd: fileDir,
     });
-    // Config reaches the worker `$env`/`$secret`-resolved, carrying both the inherited `model` and the
-    // step's own `options` — no engine code interprets the options bag (§7).
+    // Config reaches the worker `$env`/`$secret`-resolved, carrying both the inherited `model` and
+    // the step's own `options` — no engine code interprets the options bag (§7).
     expect(requests[0]?.config.model).toBe("claude-opus-4-8");
     expect(requests[0]?.config.options).toEqual({ mcpServers: { docs: { type: "stdio" } } });
   });
@@ -929,7 +932,8 @@ describe("runNode — worker resolution (file worker_defaults, ADR 0044)", () =>
     });
 
     expect((await runNode(run, unpinned, "seed", makeExec())).status).toBe("succeeded");
-    expect(startedWorker(observed)).toBe("anthropic"); // prompt's own defaultWorker, untouched by an unrelated row
+    // prompt's own defaultWorker, untouched by an unrelated row
+    expect(startedWorker(observed)).toBe("anthropic");
   });
 
   it("resolves to the plugin defaultWorker when the file declares no worker_defaults", async () => {
@@ -945,8 +949,8 @@ describe("runNode — worker resolution (file worker_defaults, ADR 0044)", () =>
   it("does not let a parent file's worker_defaults cross into a nested workflow-ref file", async () => {
     // The child authors no `worker_defaults`, so its own un-pinned prompt step must resolve to the
     // plugin default (`anthropic`) — the parent's `{prompt: deepseek}` is file-scoped and stays in
-    // the parent (ADR 0044). `ctx.run.file` is the child's file inside the nested run, which is what
-    // keeps the table from crossing the ref boundary.
+    // the parent (ADR 0044). `ctx.run.file` is the child's file inside the nested run, which is
+    // what keeps the table from crossing the ref boundary.
     const childWithPrompt: WorkflowFile = {
       format: "path/workflow@5",
       id: "wf-child",
@@ -972,9 +976,9 @@ describe("runNode — worker resolution (file worker_defaults, ADR 0044)", () =>
 });
 
 describe("runNode — worker resolution (launch worker-default, ADR 0044)", () => {
-  // As in the file-tier block: prompt's `anthropic` and `deepseek` names both map to the same stub, so
-  // a test asserts which NAME dispatch chose without a real provider worker running. `launch` seeds the
-  // run-wide launch table on the shared runtime.
+  // As in the file-tier block: prompt's `anthropic` and `deepseek` names both map to the same stub,
+  // so a test asserts which NAME dispatch chose without a real provider worker running. `launch`
+  // seeds the run-wide launch table on the shared runtime.
   function promptWorkersWithLaunch(
     worker: WorkerDescriptor,
     launch?: { [type: string]: string },
@@ -1015,8 +1019,8 @@ describe("runNode — worker resolution (launch worker-default, ADR 0044)", () =
   };
 
   it("resolves an un-pinned step to the launch default over the file worker_defaults", async () => {
-    // The file names `anthropic`; the launch table names `deepseek`. The launch tier is above the file
-    // tier, so the launch default wins for this run.
+    // The file names `anthropic`; the launch table names `deepseek`. The launch tier is above the
+    // file tier, so the launch default wins for this run.
     const { run, observed } = makeRun({
       runtime: promptWorkersWithLaunch(answeringWorker("ok"), { prompt: "deepseek" }),
       file: fileWith({ prompt: "anthropic" }),
@@ -1027,9 +1031,9 @@ describe("runNode — worker resolution (launch worker-default, ADR 0044)", () =
   });
 
   it("resolves per type — a launch entry for one type leaves another type's file default alone", async () => {
-    // The launch table names only `binary`; the un-pinned prompt step still resolves through the file's
-    // own `prompt` entry (`deepseek`). The merge is shallow per type, so one type's launch entry never
-    // reaches another.
+    // The launch table names only `binary`; the un-pinned prompt step still resolves through the
+    // file's own `prompt` entry (`deepseek`). The merge is shallow per type, so one type's launch
+    // entry never reaches another.
     const { run, observed } = makeRun({
       runtime: promptWorkersWithLaunch(answeringWorker("ok"), { binary: "spawn" }),
       file: fileWith({ prompt: "deepseek" }),
@@ -1051,7 +1055,8 @@ describe("runNode — worker resolution (launch worker-default, ADR 0044)", () =
   });
 
   it("falls back to the file default, then the plugin default, for a type absent from the launch table", async () => {
-    // Launch table names an unrelated type; the un-pinned prompt step resolves through the file tier.
+    // Launch table names an unrelated type; the un-pinned prompt step resolves through the file
+    // tier.
     const withFile = makeRun({
       runtime: promptWorkersWithLaunch(answeringWorker("ok"), { binary: "spawn" }),
       file: fileWith({ prompt: "deepseek" }),
@@ -1069,10 +1074,11 @@ describe("runNode — worker resolution (launch worker-default, ADR 0044)", () =
   });
 
   it("reaches a nested workflow-ref child, beating the child's own file default", async () => {
-    // The launch table is run-wide: it lives on the shared runtime, which a nested run keeps while it
-    // swaps `file`. So the child's un-pinned prompt step resolves to the launch `deepseek` even though
-    // the child's own file default names `anthropic` — the operator's run-wide intent outranks an
-    // author's per-file default (ADR 0044). Only a `node.worker` pin sits above the launch tier.
+    // The launch table is run-wide: it lives on the shared runtime, which a nested run keeps while
+    // it swaps `file`. So the child's un-pinned prompt step resolves to the launch `deepseek` even
+    // though the child's own file default names `anthropic` — the operator's run-wide intent
+    // outranks an author's per-file default (ADR 0044). Only a `node.worker` pin sits above the
+    // launch tier.
     const childWithFileDefault: WorkflowFile = {
       format: "path/workflow@5",
       id: "wf-child",
@@ -1151,8 +1157,8 @@ describe("runNode — workflow step", () => {
     const { run, observed } = makeRun({
       files: new Map([[childPath(), child]]),
       continue: {
-        // The parked tree's nested run is still `running` (ADR 0038: awaiting does not propagate), so
-        // the replay re-drives it under the identity its parked descendants already carry.
+        // The parked tree's nested run is still `running` (ADR 0038: awaiting does not propagate),
+        // so the replay re-drives it under the identity its parked descendants already carry.
         existingRuns: [existingRow({ runId: "child-run", nodeId: "nested", status: "running" })],
         readBlob: (row, filename): JsonValue => {
           reads.push(`${row.runId}:${filename}`);
@@ -1278,8 +1284,9 @@ describe("runNode — a node type this engine does not walk", () => {
     );
 
     expect(outcome.status).toBe("failed");
-    // A `type` that is neither a control construct nor a registry leaf reaches the leaf dispatch and
-    // fails at the registry lookup, naming the node and the unknown type (ADR 0019 sub-5 wording).
+    // A `type` that is neither a control construct nor a registry leaf reaches the leaf dispatch
+    // and fails at the registry lookup, naming the node and the unknown type (ADR 0019 sub-5
+    // wording).
     expect(outcome.status === "failed" && outcome.error).toMatch(
       /step "m": unknown step type "mystery"/,
     );

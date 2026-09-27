@@ -7,20 +7,20 @@ import {
 import { builtinRegistry } from "./builtin-registry.js";
 
 // A Step-Template is validated against the open node grammar a registry builds, exactly like a file
-// (ADR 0048). These tests bind the built-in `binary`/`prompt` fixture once and reuse the schema, the
-// way the Server binds the run-wide registry once per freeze.
+// (ADR 0048). These tests bind the built-in `binary`/`prompt` fixture once and reuse the schema,
+// the way the Server binds the run-wide registry once per freeze.
 const StepTemplateSchema = makeStepTemplateSchema(builtinRegistry);
 
 function safeParseStepTemplate(json: unknown) {
   return safeParse(json, builtinRegistry);
 }
 
-// One valid UUIDv4. A template's `id` is its own identity; the inner nodes' `id`s are authoring ids,
-// unique by construction here, so a single GUID stands in for every `id` in these fixtures.
+// One valid UUIDv4. A template's `id` is its own identity; the inner nodes' `id`s are authoring
+// ids, unique by construction here, so a single GUID stands in for every `id` in these fixtures.
 const UUID = "11111111-1111-4111-8111-111111111111";
 
-// The ADR's acceptance fixture: a prompt node followed by a `branch` controller — a real fragment, a
-// step plus a top-level controller, carrying its default values inline.
+// The ADR's acceptance fixture: a prompt node followed by a `branch` controller — a real fragment,
+// a step plus a top-level controller, carrying its default values inline.
 const minimal = {
   format: "path/workflow@5",
   id: UUID,

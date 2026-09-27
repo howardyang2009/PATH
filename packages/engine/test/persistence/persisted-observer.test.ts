@@ -82,8 +82,8 @@ describe("createPersistedObserver", () => {
     expect(readJsonBlob(dir, "context.json")).toEqual({ seed: 1 });
   });
 
-  // The launch worker-default table is frozen on the root row (ADR 0044): the root start carries it,
-  // persistence records it, and a resume reads it back to re-resolve a re-run step.
+  // The launch worker-default table is frozen on the root row (ADR 0044): the root start carries
+  // it, persistence records it, and a resume reads it back to re-resolve a re-run step.
   it("records the launch worker-default table carried by a root start", async () => {
     await rootEmitter().runStarted({
       input: {},
@@ -249,9 +249,9 @@ describe("createPersistedObserver", () => {
   });
 
   /**
-   * The defect the write side exists to make unrepresentable: the blob's directory and the row's ref
-   * built separately could address different files with no error. Comparing the ref to a literal
-   * would not catch that; resolving it does.
+   * The defect the write side exists to make unrepresentable: the blob's directory and the row's
+   * ref built separately could address different files with no error. Comparing the ref to a
+   * literal would not catch that; resolving it does.
    */
   it("records an input ref that resolves to the file it just wrote", async () => {
     await rootEmitter().runStarted({ input: { seed: 1 } });

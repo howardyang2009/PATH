@@ -5,16 +5,17 @@ import { directionGlyph, gotoDirection, incomingGotos } from "./goto-view.js";
 import { useSelection } from "./selection-context.js";
 
 /**
- * The goto view (designer-spec § goto): a goto draws no edge, so its block, its target's block and the
- * target's incoming badge all read the jump off one shared value. The highlighted target is the hovered
- * goto's target, else the selected goto's.
+ * The goto view (designer-spec § goto): a goto draws no edge, so its block, its target's block and
+ * the target's incoming badge all read the jump off one shared value. The highlighted target is the
+ * hovered goto's target, else the selected goto's.
  */
 
 interface GotoView {
   file: WorkflowFile;
   /** First-level node name → the names of the gotos targeting it. */
   incoming: Map<string, string[]>;
-  /** The ids of the first-level nodes: only these can be a target, so only these highlight or badge. */
+  /** The ids of the first-level nodes: only these can be a target, so only these highlight or
+   * badge. */
   firstLevel: Set<string>;
   hoveredId: string | null;
   setHoveredId: (id: string | null) => void;
@@ -69,7 +70,8 @@ export function IncomingBadge({ node }: { node: WorkflowNode }): JSX.Element | n
   );
 }
 
-/** The `→ <target>` chip with its direction glyph, and the hover handlers that highlight the target. */
+/** The `→ <target>` chip with its direction glyph, and the hover handlers that highlight the
+ * target. */
 export function useGotoChip(node: Extract<WorkflowNode, { type: "goto" }>): {
   chip: JSX.Element;
   hover: { onMouseEnter?: () => void; onMouseLeave?: () => void };

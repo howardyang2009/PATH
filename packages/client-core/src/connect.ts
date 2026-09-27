@@ -2,8 +2,9 @@ import type { PathApiClient } from "./api-client.js";
 import { type RunEventSubscription, subscribeRunEvents } from "./sse-client.js";
 import { RunViewModel } from "./view-model.js";
 
-/** End-to-end wiring for one root run: hydrate the tree from `GET /v0/runs/:root_run_id`, then fold the live SSE
- * narrative into the same `RunViewModel`, resuming from the snapshot's seq high-water mark.
+/** End-to-end wiring for one root run: hydrate the tree from `GET /v0/runs/:root_run_id`, then fold
+ * the live SSE narrative into the same `RunViewModel`, resuming from the snapshot's seq high-water
+ * mark.
  */
 export interface ConnectedRun {
   model: RunViewModel;
@@ -15,7 +16,8 @@ export interface ConnectRunOptions {
   rootRunId: string;
   onError?: (error: unknown) => void;
   onClose?: () => void;
-  /** Poll cadence while the run is parked `awaiting` (forwarded to the SSE client; default 3000ms). */
+  /** Poll cadence while the run is parked `awaiting` (forwarded to the SSE client; default
+   * 3000ms). */
   idlePollMs?: number;
   /** Base reconnect backoff after a drop (forwarded to the SSE client; default 200ms). */
   reconnectDelayMs?: number;
@@ -33,8 +35,9 @@ export async function connectRunViewModel(options: ConnectRunOptions): Promise<C
   let closed = false;
   const rehydrate = createRehydrator(client, rootRunId, model, () => closed, options.onError);
 
-  // While the run is quiescent (`waiting`), each slow poll re-opens the stream for an instant; without
-  // this flag that `onOpen` would flip the indicator `waiting → live → waiting` on every poll.
+  // While the run is quiescent (`waiting`), each slow poll re-opens the stream for an instant;
+  // without this flag that `onOpen` would flip the indicator `waiting → live → waiting` on every
+  // poll.
   let quiescent = false;
 
   const subscription: RunEventSubscription = subscribeRunEvents({
@@ -44,8 +47,8 @@ export async function connectRunViewModel(options: ConnectRunOptions): Promise<C
     idlePollMs: options.idlePollMs,
     reconnectDelayMs: options.reconnectDelayMs,
     onEvent: (event) => {
-      // A log event carries no `parent_run_id` (mvp spec §8.1), so a child run started after the last
-      // tree read would stay parentless. Re-read the tree — the only source of run structure.
+      // A log event carries no `parent_run_id` (mvp spec §8.1), so a child run started after the
+      // last tree read would stay parentless. Re-read the tree — the only source of run structure.
       if (quiescent) {
         quiescent = false;
         model.setStreamPhase("live");
@@ -54,7 +57,8 @@ export async function connectRunViewModel(options: ConnectRunOptions): Promise<C
       model.applyEvent(event);
       if (isNewRun) rehydrate();
     },
-    // Stream liveness is state a viewer renders, so it lands in the view-model snapshot, not only here.
+    // Stream liveness is state a viewer renders, so it lands in the view-model snapshot, not only
+    // here.
     onOpen: () => {
       if (!quiescent) model.setStreamPhase("live");
     },
@@ -88,8 +92,8 @@ export async function connectRunViewModel(options: ConnectRunOptions): Promise<C
   };
 }
 
-/** A coalescing tree re-read: one request in flight at a time, calls made during it collapsing into a single
- * follow-up. A failed re-read is reported but never fatal.
+/** A coalescing tree re-read: one request in flight at a time, calls made during it collapsing into
+ * a single follow-up. A failed re-read is reported but never fatal.
  */
 function createRehydrator(
   client: PathApiClient,

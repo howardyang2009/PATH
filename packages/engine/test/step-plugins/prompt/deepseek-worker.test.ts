@@ -4,11 +4,12 @@ import { runDeepseekWorker } from "../../../plugin/step-plugin/prompt/deepseek-w
 import type { PromptConfig, PromptFields } from "../../../plugin/step-plugin/prompt/index.js";
 import type { StepRequest } from "../../../src/plugin-seam/seam.js";
 
-// The `deepseek` worker, tested at its own boundary: a stubbed `fetch` stands in for the API, so every
-// case asserts what PATH *sends* and how it reads what comes back. Nothing here touches the network.
+// The `deepseek` worker, tested at its own boundary: a stubbed `fetch` stands in for the API, so
+// every case asserts what PATH *sends* and how it reads what comes back. Nothing here touches the
+// network.
 //
-// The worker is reached exactly as the engine reaches it — the descriptor's `run` — so this file also
-// pins the fact that `deepseek` is an ordinary PATH worker, not a special mode of `anthropic`.
+// The worker is reached exactly as the engine reaches it — the descriptor's `run` — so this file
+// also pins the fact that `deepseek` is an ordinary PATH worker, not a special mode of `anthropic`.
 
 /** What the worker handed to `fetch`, as recorded by the stub's first call. */
 interface RecordedCall {

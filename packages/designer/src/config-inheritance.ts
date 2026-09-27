@@ -2,8 +2,9 @@ import type { ConfigObject, ConfigValue } from "@path/schema";
 import { withoutKey } from "./edit-target.js";
 
 /** The pure model behind the config-inheritance region: a step inherits config from the enclosing
- * workflow unless it overrides it, so the pane shows **mine vs inherited** from the file's and node's own
- * `config` alone (the wire registry carries no config fragment). `type` is author-fixed and never inherits. */
+ * workflow unless it overrides it, so the pane shows **mine vs inherited** from the file's and
+ * node's own `config` alone (the wire registry carries no config fragment). `type` is author-fixed
+ * and never inherits. */
 
 export type ConfigOrigin = "inherited" | "overridden" | "local";
 
@@ -13,8 +14,9 @@ export interface ConfigRow {
   origin: ConfigOrigin;
 }
 
-/** The config rows a node shows, merging the file's inheritable keys with the node's own; `hide` drops
- * keys a first-class editor already owns, so the two regions stay distinct. Rows are sorted by key. */
+/** The config rows a node shows, merging the file's inheritable keys with the node's own; `hide`
+ * drops keys a first-class editor already owns, so the two regions stay distinct. Rows are sorted
+ * by key. */
 export function configRows(
   fileConfig: ConfigObject | undefined,
   nodeConfig: ConfigObject | undefined,
@@ -46,7 +48,8 @@ export function setConfigKey(
   return { ...(config ?? {}), [key]: value };
 }
 
-/** Drop a local config key — `undefined` when that empties it, so no bare `config: {}` is ever written. */
+/** Drop a local config key — `undefined` when that empties it, so no bare `config: {}` is ever
+ * written. */
 export function dropConfigKey(
   config: ConfigObject | undefined,
   key: string,

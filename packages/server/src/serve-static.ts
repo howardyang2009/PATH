@@ -31,7 +31,8 @@ function contentTypeFor(filePath: string): string {
   return CONTENT_TYPES[ext] ?? "application/octet-stream";
 }
 
-/** Resolves `pathname` against `rootDir`, refusing anything that escapes the root (path traversal). */
+/** Resolves `pathname` against `rootDir`, refusing anything that escapes the root (path
+ * traversal). */
 function resolveWithin(rootDir: string, pathname: string): string | undefined {
   let decoded: string;
   try {
@@ -52,8 +53,8 @@ function sendFile(res: ServerResponse, filePath: string): void {
 
 /**
  * Serves one built bundle from `rootDir`; `suffix` is the request path **after the mount prefix is
- * stripped**, so a request naming an existing file gets that file with its correct `Content-Type`; the
- * mount root (`/`) and every other suffix get this mount's own `index.html` so its SPA routes
+ * stripped**, so a request naming an existing file gets that file with its correct `Content-Type`;
+ * the mount root (`/`) and every other suffix get this mount's own `index.html` so its SPA routes
  * deep-link. Returns `false` (the caller 404s) for an escaping path or a missing `index.html`.
  */
 export function serveStatic(rootDir: string, suffix: string, res: ServerResponse): boolean {

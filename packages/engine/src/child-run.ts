@@ -6,10 +6,12 @@ import type { RunOutcome } from "./run-observer.js";
 
 /**
  * Child runs a workflow-run opens beneath itself: a nested `workflow` step, a `while-do` iteration
- * container or a goto pass container, re-entered in place when a Complete replay finds a `running` row.
+ * container or a goto pass container, re-entered in place when a Complete replay finds a `running`
+ * row.
  */
 
-/** What identifies a child run beside its parent: the node that owns it, and its ordinal if it is a container. */
+/** What identifies a child run beside its parent: the node that owns it, and its ordinal if it is a
+ * container. */
 export interface ChildRunKey {
   /** The owning node, or `null` for goto pass 1. */
   owner: { id: string; name: string } | null;
@@ -17,7 +19,8 @@ export interface ChildRunKey {
   pass?: number;
 }
 
-/** The identity of a run opened under `parent`; `existingRunId` re-enters a recorded `running` row in place. */
+/** The identity of a run opened under `parent`; `existingRunId` re-enters a recorded `running` row
+ * in place. */
 export function childIdentity(
   parent: RunIdentity,
   key: ChildRunKey,
@@ -40,11 +43,13 @@ export interface ContainerRun {
   run: RunContext;
   /** `true` for a fresh container, `false` for a re-entered one (no start was emitted). */
   started: boolean;
-  /** Emit this container's `step-finished`. Not called for an `awaiting` outcome — the container stays `running`. */
+  /** Emit this container's `step-finished`. Not called for an `awaiting` outcome — the container
+   * stays `running`. */
   finish(outcome: RunOutcome): Promise<void>;
 }
 
-/** Open a container run under `parent`: a shared file/config/context, but a unique parent scope for its body. */
+/** Open a container run under `parent`: a shared file/config/context, but a unique parent scope for
+ * its body. */
 export async function openContainerRun(
   parent: RunContext,
   args: {

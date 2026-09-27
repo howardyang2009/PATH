@@ -14,22 +14,23 @@ import { composeObservers } from "../../src/run-observer.js";
 import { runWorkflow } from "../../src/run-workflow.js";
 
 /**
- * The acceptance test ADR 0020 sub-decision 10 declares part of the decision (ticket #338): a fixture
- * step-type plugin returns a config `$secret` in all three of its `StepResult` channels — `output`,
- * `stderr`, `usage` — and the end-to-end run masks every one of them on disk. It mirrors
+ * The acceptance test ADR 0020 sub-decision 10 declares part of the decision (ticket #338): a
+ * fixture step-type plugin returns a config `$secret` in all three of its `StepResult` channels —
+ * `output`, `stderr`, `usage` — and the end-to-end run masks every one of them on disk. It mirrors
  * `test/acceptance/env-secret.test.ts`: a real run, a whole-audit-surface sweep, and every masking
  * assertion paired with a receipt that says the real value actually travelled.
  *
  * What it proves that `env-secret` does not: masking is inherited *by a plugin*, not just by the
- * built-in `binary` type. The `echo-secret` fixture (`test/fixtures/masking-plugin/echo-secret/`) is a
- * plugin the engine never special-cased — a third-party-shaped folder — reached through the *scanned*
- * registry and real dispatch (`RunOptions.stepPluginsDir` points the folder scan at the fixture dir).
- * Its worker does nothing to mask its own return; masking is inherited by construction at the engine's
- * one emit choke point (sub-decision 1), so the leak surfaces here if that choke point ever misses a
- * plugin's `output`, `stderr`, or `usage`.
+ * built-in `binary` type. The `echo-secret` fixture (`test/fixtures/masking-plugin/echo-secret/`)
+ * is a plugin the engine never special-cased — a third-party-shaped folder — reached through the
+ * *scanned* registry and real dispatch (`RunOptions.stepPluginsDir` points the folder scan at the
+ * fixture dir). Its worker does nothing to mask its own return; masking is inherited by
+ * construction at the engine's one emit choke point (sub-decision 1), so the leak surfaces here if
+ * that choke point ever misses a plugin's `output`, `stderr`, or `usage`.
  *
  * Scope (from the issue): the sanctioned return path only. A runtime-minted secret and anything a
- * worker writes straight to a process stream are the two documented limits of ADR 0020, not covered.
+ * worker writes straight to a process stream are the two documented limits of ADR 0020, not
+ * covered.
  */
 
 /**
@@ -57,10 +58,11 @@ afterEach(() => {
 });
 
 /**
- * The workflow file: `config.secret` is a `$secret`, inherited to the single `echo-secret` leaf. The
- * `WorkflowFile` type is the *built-in* union, so a plugin `type` is not assignable at compile time —
- * a plugin folder contributes its own type only at run time (CONTEXT: validity is registry-relative).
- * The `unknown` cast is the same seam every plugin leaf crosses; the scan is what makes it valid.
+ * The workflow file: `config.secret` is a `$secret`, inherited to the single `echo-secret` leaf.
+ * The `WorkflowFile` type is the *built-in* union, so a plugin `type` is not assignable at compile
+ * time — a plugin folder contributes its own type only at run time (CONTEXT: validity is
+ * registry-relative). The `unknown` cast is the same seam every plugin leaf crosses; the scan is
+ * what makes it valid.
  */
 function workflowFile(): WorkflowFile {
   return {
@@ -80,7 +82,8 @@ function workflowFile(): WorkflowFile {
   } as unknown as WorkflowFile;
 }
 
-/** Both default backends of a real run (mvp spec §8.2): sqlite rows + blobs, and the db/ndjson log. */
+/** Both default backends of a real run (mvp spec §8.2): sqlite rows + blobs, and the db/ndjson
+ * log. */
 function persistingObserver() {
   const backends = createLogBackends(["db", "ndjson"], { db, projectDir });
   return composeObservers(createPersistedObserver(db, projectDir), createLoggingObserver(backends));
@@ -116,7 +119,8 @@ function blobPath(runId: string, name: string): string {
   return join(runBlobDir(projectDir, rootRunId(), runId), name);
 }
 
-/** Every file under `.path/`, so a leak can be looked for across the whole audit surface at once. */
+/** Every file under `.path/`, so a leak can be looked for across the whole audit surface at
+ * once. */
 function everyPersistedFile(): string[] {
   const found: string[] = [];
   const walk = (dir: string): void => {
@@ -134,9 +138,10 @@ describe("acceptance: a plugin inherits masking on its return path (ADR 0020 sub
   it("runs the fixture plugin through the scanned registry and returns the real product", async () => {
     const result = await run();
 
-    // The run reached the scanned `echo-secret` worker and ran it: a succeeded run's `output` is the
-    // *product*, returned real (mvp spec §8.3). So this is the receipt that the worker saw and echoed
-    // the real credential — without it, every "not.toContain" below would pass for a run that never ran.
+    // The run reached the scanned `echo-secret` worker and ran it: a succeeded run's `output` is
+    // the *product*, returned real (mvp spec §8.3). So this is the receipt that the worker saw and
+    // echoed the real credential — without it, every "not.toContain" below would pass for a run
+    // that never ran.
     expect(result.status).toBe("succeeded");
     expect(result.output).toEqual({ result: SECRET });
   });
@@ -145,20 +150,21 @@ describe("acceptance: a plugin inherits masking on its return path (ADR 0020 sub
     await run();
 
     // The whole audit surface in one sweep, `path.db` included — run rows (the `usage` column among
-    // them), blobs, and both log backends. Deliberately not a list of the artifacts this run happens
-    // to produce, so a new blob or column that forgets masking is caught here.
+    // them), blobs, and both log backends. Deliberately not a list of the artifacts this run
+    // happens to produce, so a new blob or column that forgets masking is caught here.
     const files = everyPersistedFile();
     for (const file of files) {
       expect(readFileSync(file, "utf8"), `secret leaked into ${file}`).not.toContain(SECRET);
     }
 
     // The sweep read real content and read the places the secret passed through — without this,
-    // emptying the workflow body would satisfy every `not.toContain` above. Named the artifacts that
-    // matter rather than a count: "some blob carries the mask" is met by any single file.
+    // emptying the workflow body would satisfy every `not.toContain` above. Named the artifacts
+    // that matter rather than a count: "some blob carries the mask" is met by any single file.
     const step = stepRun("echo");
     const masked = files.filter((file) => readFileSync(file, "utf8").includes(SECRET_MASK));
     for (const expected of [
-      join(projectDir, ".path", "path.db"), // run rows (incl. the usage column) and the db log backend
+      // run rows (incl. the usage column) and the db log backend
+      join(projectDir, ".path", "path.db"),
       blobPath(step.run_id, RUN_BLOB_FILE.output),
       blobPath(step.run_id, RUN_BLOB_FILE.stderr),
       blobPath(rootRunId(), RUN_BLOB_FILE.context),
@@ -179,7 +185,8 @@ describe("acceptance: a plugin inherits masking on its return path (ADR 0020 sub
     expect(readFileSync(blobPath(step.run_id, RUN_BLOB_FILE.stderr), "utf8")).toContain(
       SECRET_MASK,
     );
-    // step-usage → the run row's `usage` column: the worker's own report, masked (numbers untouched).
+    // step-usage → the run row's `usage` column: the worker's own report, masked (numbers
+    // untouched).
     expect(JSON.parse(step.usage!)).toEqual({ note: `spent on ${SECRET_MASK}`, tokens: 1 });
   });
 });

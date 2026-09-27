@@ -17,9 +17,10 @@ import { composeObservers, type RunObserver } from "../../src/run-observer.js";
 import { runWorkflow } from "../../src/run-workflow.js";
 import { stampNames } from "../stamp-names.js";
 
-// These drive `runWorkflow` end to end against a real sqlite db and blob tree; the cancellation cases
-// also wait on an abort to propagate. On a loaded CI runner that can exceed the default 5s vitest
-// `testTimeout`, tripping unrelated PRs (#220). 30s gives headroom without masking a real hang.
+// These drive `runWorkflow` end to end against a real sqlite db and blob tree; the cancellation
+// cases also wait on an abort to propagate. On a loaded CI runner that can exceed the default 5s
+// vitest `testTimeout`, tripping unrelated PRs (#220). 30s gives headroom without masking a real
+// hang.
 vi.setConfig({ testTimeout: 30_000 });
 
 let projectDir: string;
@@ -145,7 +146,8 @@ describe("logging — end to end through runWorkflow (ticket #19)", () => {
     const failing: LogBackend = {
       async open() {},
       async write(event) {
-        // Let the run open + start, then fail on the first inner step so the survivor keeps a record.
+        // Let the run open + start, then fail on the first inner step so the survivor keeps a
+        // record.
         if (event.type === "step-started" && event.node_id === "first")
           throw new Error("backend exploded");
       },
@@ -289,7 +291,8 @@ describe("logging — end to end through runWorkflow (ticket #19)", () => {
     const fileEvents = readNdjson(root).slice(1);
     expect(dbEvents).toEqual(fileEvents);
 
-    // The run-cancelled event points at the failing sibling; the sleeper's step-finished is cancelled.
+    // The run-cancelled event points at the failing sibling; the sleeper's step-finished is
+    // cancelled.
     const cancelled = dbEvents.find((e) => e.type === "run-cancelled");
     expect(cancelled).toMatchObject({ node_id: "sleeper", type: "run-cancelled" });
     expect(
@@ -365,7 +368,8 @@ describe("logging — end to end through runWorkflow (ticket #19)", () => {
     expect(rows.find((r) => r.runId === root)?.status).toBe("cancelled");
     expect(rows.find((r) => r.nodeId === "sleeper")?.status).toBe("cancelled");
 
-    // A cancelled step lands no publish, so the run's context.json still holds only its input (#24).
+    // A cancelled step lands no publish, so the run's context.json still holds only its input
+    // (#24).
     const context = JSON.parse(
       readFileSync(join(runBlobDir(projectDir, root, root), "context.json"), "utf8"),
     );

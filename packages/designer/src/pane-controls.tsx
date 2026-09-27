@@ -1,16 +1,17 @@
 import { type KeyboardEvent as ReactKeyboardEvent, useState } from "react";
 
 /**
- * The properties pane's generic, schema-blind field vocabulary: the label/input/select/textarea atoms,
- * the id row, and the Tab-fills-placeholder handler. A field that carries schema validation
+ * The properties pane's generic, schema-blind field vocabulary: the label/input/select/textarea
+ * atoms, the id row, and the Tab-fills-placeholder handler. A field that carries schema validation
  * (max-iterations, the raw-JSON floor, the keyed-row editors) stays in `pane/`.
  */
 
 /**
- * Tab in a pane field showing a placeholder fills the placeholder in instead of moving focus; a field
- * that already holds text shows none, so Tab keeps its normal focus-move there. Delegated from the pane
- * root so every input is covered. The value goes through the element's native setter plus an `input`
- * event, so React's controlled `onChange` runs (a plain `.value =` would not notify React).
+ * Tab in a pane field showing a placeholder fills the placeholder in instead of moving focus; a
+ * field that already holds text shows none, so Tab keeps its normal focus-move there. Delegated
+ * from the pane root so every input is covered. The value goes through the element's native setter
+ * plus an `input` event, so React's controlled `onChange` runs (a plain `.value =` would not notify
+ * React).
  */
 export function fillPlaceholderOnTab(e: ReactKeyboardEvent<HTMLElement>): void {
   if (e.key !== "Tab" || e.shiftKey || e.altKey || e.ctrlKey || e.metaKey) return;
@@ -167,9 +168,10 @@ export function StringListField({
   values: string[];
   onChange: (v: string[]) => void;
 }): JSX.Element {
-  // The textarea keeps its own raw text so a just-typed Enter (a trailing or blank line) survives the
-  // keystroke. The parent only sees non-empty lines, and the draft resyncs when the parent's canonical
-  // value diverges — not on the round-trip of our own emit, which would strip those lines.
+  // The textarea keeps its own raw text so a just-typed Enter (a trailing or blank line) survives
+  // the keystroke. The parent only sees non-empty lines, and the draft resyncs when the parent's
+  // canonical value diverges — not on the round-trip of our own emit, which would strip those
+  // lines.
   const joined = values.join("\n");
   const [text, setText] = useState(joined);
   const [prevJoined, setPrevJoined] = useState(joined);

@@ -3,11 +3,11 @@ import { validateLaunchWorkerDefaults } from "../src/worker-defaults.js";
 import { builtinRegistry } from "./builtin-registry.js";
 
 // The launch channel of ADR 0044's two-channel registry-relative validation (#518). The operator's
-// launch worker-default table (CLI `--worker-default`, server `worker_defaults`) is checked against the
-// run's one registry at the launch boundary — the same taxonomy as the file channel, a different site,
-// because the operator authored it in no file. The two launch surfaces prefix their own source onto
-// these bare messages; here the registry-relative core is pinned on its own, over the built-in
-// `binary` (ships `spawn`) / `prompt` (ships `anthropic`) registry fixture.
+// launch worker-default table (CLI `--worker-default`, server `worker_defaults`) is checked against
+// the run's one registry at the launch boundary — the same taxonomy as the file channel, a
+// different site, because the operator authored it in no file. The two launch surfaces prefix their
+// own source onto these bare messages; here the registry-relative core is pinned on its own, over
+// the built-in `binary` (ships `spawn`) / `prompt` (ships `anthropic`) registry fixture.
 describe("validateLaunchWorkerDefaults (ADR 0044, #518)", () => {
   it("returns no errors for an undefined table (a flagless launch)", () => {
     expect(validateLaunchWorkerDefaults(undefined, builtinRegistry)).toEqual([]);

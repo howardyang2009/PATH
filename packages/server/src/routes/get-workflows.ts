@@ -6,9 +6,10 @@ import { sendJson } from "../http-json.js";
 import type { ApiRequest } from "./route-context.js";
 
 /**
- * Every `*.workflow.json` under `root`, as absolute paths, sorted. Skips `.path/`, `node_modules`, and
- * any dot-directory. Symlinks are neither followed nor listed: the loader canonicalizes lexically
- * (`resolve`, not `realpath`), so following one would alias a nested file as a discovered root.
+ * Every `*.workflow.json` under `root`, as absolute paths, sorted. Skips `.path/`, `node_modules`,
+ * and any dot-directory. Symlinks are neither followed nor listed: the loader canonicalizes
+ * lexically (`resolve`, not `realpath`), so following one would alias a nested file as a discovered
+ * root.
  */
 function scanWorkflowFiles(root: string): string[] {
   const found: string[] = [];
@@ -30,8 +31,8 @@ function scanWorkflowFiles(root: string): string[] {
   return found.sort();
 }
 
-/** Best-effort top-level `id`/`name` so an invalid entry stays human-legible in the list; `null` when
- * the shallow parse cannot recover either field. */
+/** Best-effort top-level `id`/`name` so an invalid entry stays human-legible in the list; `null`
+ * when the shallow parse cannot recover either field. */
 function shallowIdentity(absPath: string): { id: string | null; name: string | null } {
   try {
     const raw = JSON.parse(readFileSync(absPath, "utf8")) as Record<string, unknown>;
@@ -46,12 +47,13 @@ function shallowIdentity(absPath: string): { id: string | null; name: string | n
 
 /**
  * `GET /v0/workflows` (server-api-v0.md §6): discover every workflow under the project root, each
- * flagged `is_root`. A file that loaded is `is_root: false` exactly when some valid root referenced it,
- * `true` otherwise; a file that failed to load carries `is_root: null` (no ref set) and its error.
+ * flagged `is_root`. A file that loaded is `is_root: false` exactly when some valid root referenced
+ * it, `true` otherwise; a file that failed to load carries `is_root: null` (no ref set) and its
+ * error.
  */
 export async function handleGetWorkflows({ res, ctx }: ApiRequest): Promise<void> {
-  // `resolve`d so scan paths (`join` off this root) match `loadWorkflowTree`'s keys exactly; the map
-  // lookups below assume that equality.
+  // `resolve`d so scan paths (`join` off this root) match `loadWorkflowTree`'s keys exactly; the
+  // map lookups below assume that equality.
   const projectDir = resolve(ctx.project.dir);
   const absPaths = scanWorkflowFiles(projectDir);
 

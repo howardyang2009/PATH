@@ -38,7 +38,8 @@ describe("person-activity plugin", () => {
     } as unknown as PersonRequest;
 
     const result = await stepPlugin.workers.person!.run(request);
-    // The interpolated assignee rides the park so the engine can put it on the `step-awaiting` record.
+    // The interpolated assignee rides the park so the engine can put it on the `step-awaiting`
+    // record.
     expect(result).toEqual({ status: "awaiting", assignee: "alex" });
   });
 

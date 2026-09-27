@@ -14,7 +14,8 @@ const ROOT_DIR = "/proj";
 const CHILD_REF = "sub/child.workflow.json";
 const CHILD_PATH = join(ROOT_DIR, "sub", "child.workflow.json");
 
-/** The nested file, with a `$env` value so the env the walk is handed — not `process.env` — is what it reads. */
+/** The nested file, with a `$env` value so the env the walk is handed — not `process.env` — is what
+ * it reads. */
 const child: WorkflowFile = {
   format: "path/workflow@5",
   id: "child-id",
@@ -74,8 +75,9 @@ describe("walkRefTree", () => {
       rootNode: "from-root-node",
     });
 
-    // The child step inherits the ref step's effective config, then its own file's and its own node's —
-    // and its `$env` resolves against the env the walk was handed, not the ambient process env.
+    // The child step inherits the ref step's effective config, then its own file's and its own
+    // node's — and its `$env` resolves against the env the walk was handed, not the ambient process
+    // env.
     expect(entries[2]!.stepConfig).toEqual({
       fromOperator: "operator",
       fileShared: "from-root-file",

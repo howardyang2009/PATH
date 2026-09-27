@@ -24,7 +24,8 @@ export type StreamPhase = "connecting" | "live" | "waiting" | "reconnecting" | "
 /** One run's live state: the domain `RunRecord`, event-updated; named for the client surface. */
 export type RunNodeState = RunRecord;
 
-/** `fromWireRunRecord` under a client-facing name — the inverse of the server's encode, so the field set cannot drift.
+/** `fromWireRunRecord` under a client-facing name — the inverse of the server's encode, so the
+ * field set cannot drift.
  */
 const nodeFromRecord = fromWireRunRecord;
 
@@ -34,8 +35,8 @@ export interface RunViewState {
   /** Mirrors the root run's status (the run whose id is `rootRunId`). */
   status: RunStatus;
   output: JsonValue | null;
-  /** What the tree was launched with (ADR 0046), decoded to the domain shape. A per-tree fact, so it
-   * sits on the snapshot; absent when the launch supplied nothing beyond the workflow file. */
+  /** What the tree was launched with (ADR 0046), decoded to the domain shape. A per-tree fact, so
+   * it sits on the snapshot; absent when the launch supplied nothing beyond the workflow file. */
   launchFacts?: LaunchFacts;
   /** Every run in the tree, keyed by `runId`. */
   runs: ReadonlyMap<string, RunNodeState>;
@@ -49,7 +50,8 @@ export interface RunViewState {
   /** The last failure message each run reached, keyed by run id. The error text rides the
    * `step-finished` event, not the run record (mvp spec §8.1), so it is folded here. */
   lastError: ReadonlyMap<string, string>;
-  /** The runs parked `awaiting` in this tree, for a surface that counts or badges them (ADR 0042). */
+  /** The runs parked `awaiting` in this tree, for a surface that counts or badges them (ADR
+   * 0042). */
   awaitingRunIds: ReadonlySet<string>;
 }
 
@@ -90,8 +92,8 @@ export class RunViewModel {
   hydrate(tree: RunTreeResponse): void {
     for (const row of tree.runs) {
       const node = nodeFromRecord(row);
-      // A tree read races the run it describes: rows win on structure (the only source of parentage),
-      // but never walk a finished run backwards.
+      // A tree read races the run it describes: rows win on structure (the only source of
+      // parentage), but never walk a finished run backwards.
       const existing = this.runs.get(row.run_id);
       if (existing && isTerminal(existing.status) && !isTerminal(node.status)) {
         node.status = existing.status;
@@ -100,7 +102,8 @@ export class RunViewModel {
       this.runs.set(row.run_id, node);
     }
     this.output = tree.output;
-    // Decoded through the shared inverse; left absent (not `{}`) when the response has no `launch_facts`.
+    // Decoded through the shared inverse; left absent (not `{}`) when the response has no
+    // `launch_facts`.
     this.launchFacts =
       tree.launch_facts !== undefined ? fromWireLaunchFacts(tree.launch_facts) : undefined;
     const root = this.runs.get(this.rootRunId);
@@ -108,7 +111,8 @@ export class RunViewModel {
     this.commit();
   }
 
-  /** Record the stream's liveness; a no-op when the phase is unchanged, so subscribers do not re-render. */
+  /** Record the stream's liveness; a no-op when the phase is unchanged, so subscribers do not
+   * re-render. */
   setStreamPhase(phase: StreamPhase): void {
     if (this.streamPhase === phase) return;
     this.streamPhase = phase;
@@ -125,8 +129,9 @@ export class RunViewModel {
     this.commit();
   }
 
-  /** Stamp a pass container's ordinal from the `pass-started` that follows it (ADR 0054): the newest
-   * un-numbered run under that workflow-run named by the same opener. A numbered tree row wins. */
+  /** Stamp a pass container's ordinal from the `pass-started` that follows it (ADR 0054): the
+   * newest un-numbered run under that workflow-run named by the same opener. A numbered tree row
+   * wins. */
   private numberPass(event: Extract<LogEvent, { type: "pass-started" }>): void {
     let container: RunNodeState | undefined;
     for (const run of this.runs.values()) {
@@ -140,7 +145,8 @@ export class RunViewModel {
 
   private applyToRun(event: LogEvent): void {
     const existing = this.runs.get(event.run_id);
-    // An event can name a run before its row arrives (parentage comes from the row): start it blank.
+    // An event can name a run before its row arrives (parentage comes from the row): start it
+    // blank.
     const node: RunNodeState =
       existing ??
       blankRunRecord({
@@ -157,7 +163,8 @@ export class RunViewModel {
       node.startedAt ??= event.ts;
     } else if (event.type === "step-finished") {
       node.finishedAt = event.ts;
-      // The error text rides the event, not the run row (mvp spec §8.1); the last one for a run wins.
+      // The error text rides the event, not the run row (mvp spec §8.1); the last one for a run
+      // wins.
       if (event.error !== undefined) this.lastErrorById.set(event.run_id, event.error);
     }
 

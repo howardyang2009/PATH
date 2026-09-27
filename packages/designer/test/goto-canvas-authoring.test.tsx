@@ -5,9 +5,10 @@ import { describe, expect, it } from "vitest";
 import { App } from "../src/app.js";
 
 /**
- * #619 — goto authoring on the canvas and in the pane (docs/spec/goto.md §9, designer-spec § goto): the
- * palette refuses a goto under a while-do or parallel, the block shows a chip instead of an edge, the
- * pane picks the target, and a rename of the target rewrites the goto in one undoable edit.
+ * #619 — goto authoring on the canvas and in the pane (docs/spec/goto.md §9, designer-spec § goto):
+ * the palette refuses a goto under a while-do or parallel, the block shows a chip instead of an
+ * edge, the pane picks the target, and a rename of the target rewrites the goto in one undoable
+ * edit.
  */
 
 function uuid(n: number): string {
@@ -16,7 +17,8 @@ function uuid(n: number): string {
 
 const PATH = "flows/main.workflow.json";
 
-/** alpha · loop (while-do) · fan (parallel) · hop (goto → alpha, backward) · skip (goto → tail, forward) · tail. */
+/** alpha · loop (while-do) · fan (parallel) · hop (goto → alpha, backward) · skip (goto → tail,
+ * forward) · tail. */
 function gotoFile(): Record<string, unknown> {
   return {
     format: FORMAT_VERSION,

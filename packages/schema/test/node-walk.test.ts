@@ -12,8 +12,9 @@ import {
 import { safeParseWorkflowFile } from "../src/workflow-file.js";
 import { builtinRegistry } from "./builtin-registry.js";
 
-// Structural tests (childBodies/walkNodes) never pass through the schema, so the human id doubles as
-// both `id` and `name` here — walkNodes maps `node.id` and childBodies exposes each slot's nodes.
+// Structural tests (childBodies/walkNodes) never pass through the schema, so the human id doubles
+// as both `id` and `name` here — walkNodes maps `node.id` and childBodies exposes each slot's
+// nodes.
 const step = (id: string, publish?: Record<string, string>): WorkflowNode => ({
   type: "binary",
   id,
@@ -98,9 +99,9 @@ describe("childBodies", () => {
   });
 
   it("reports no children for a node type it does not know", () => {
-    // A hand-constructed file can reach a walk without passing the schema, and a caller sweeping one
-    // (`collectRunConfigs` in @path/engine) must get a list rather than the node back. Rejecting the
-    // unknown type is the executor's job; the walk only says where children are.
+    // A hand-constructed file can reach a walk without passing the schema, and a caller sweeping
+    // one (`collectRunConfigs` in @path/engine) must get a list rather than the node back.
+    // Rejecting the unknown type is the executor's job; the walk only says where children are.
     const unknown = { type: "telepathy", id: "guess" } as unknown as WorkflowNode;
     expect(childBodies(unknown)).toEqual([]);
     expect([...walkNodes([unknown])].map((n) => n.id)).toEqual(["guess"]);
@@ -159,9 +160,10 @@ describe("walkNodes", () => {
 });
 
 /**
- * The property the four `default: break` recursions silently dropped (#70): every check that walks a
- * workflow body must reach a body nested inside *every* block kind. Before this, adding a block type
- * meant these checks quietly stopped covering it — validation passed and the workflow misbehaved.
+ * The property the four `default: break` recursions silently dropped (#70): every check that walks
+ * a workflow body must reach a body nested inside *every* block kind. Before this, adding a block
+ * type meant these checks quietly stopped covering it — validation passed and the workflow
+ * misbehaved.
  */
 describe("validation reaches deeply nested bodies", () => {
   // These tests go through the real schema, so every node needs a UUID `id`; the human labels above
@@ -172,7 +174,8 @@ describe("validation reaches deeply nested bodies", () => {
     if (typeof node !== "object" || node === null) return node;
     const n = { ...(node as Record<string, unknown>) };
     if ("id" in n) {
-      if (!("name" in n) && typeof n.id === "string") n.name = n.id; // keep the human label as `name`
+      // keep the human label as `name`
+      if (!("name" in n) && typeof n.id === "string") n.name = n.id;
       n.id = uuid();
     }
     // `body`/`branches` are node arrays; `node`/`else` are single nodes; `arms` carry a `node`.
@@ -306,7 +309,8 @@ describe("mapChildBodies", () => {
 describe("CONTROL_CHILD_SLOTS", () => {
   it("names the same slot keys childBodies descends into (one shape, two readers)", () => {
     const tree = deeplyNested(step("inner"));
-    // Every control node's childBodies paths must start with a key the table declares for that type.
+    // Every control node's childBodies paths must start with a key the table declares for that
+    // type.
     const check = (node: WorkflowNode): void => {
       const slots = (CONTROL_CHILD_SLOTS as Record<string, readonly { key: string }[]>)[node.type];
       for (const child of childBodies(node)) {

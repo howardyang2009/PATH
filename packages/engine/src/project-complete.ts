@@ -12,8 +12,8 @@ import type { ProjectCore, ProjectRunOptions } from "./project.js";
 import type { ContinueInput } from "./run-options.js";
 
 /**
- * The outcome of `Project.complete`: a Result because "no such leaf", "not awaiting" and "lease held" are ordinary
- * states the route maps to a status code.
+ * The outcome of `Project.complete`: a Result because "no such leaf", "not awaiting" and "lease
+ * held" are ordinary states the route maps to a status code.
  */
 export type CompleteResult =
   | {
@@ -30,7 +30,8 @@ export type CompleteResult =
       error?: string;
     };
 
-/** `Project.complete`: validate the output, take the per-root lease, then replay the tree to flip the parked leaf. */
+/** `Project.complete`: validate the output, take the per-root lease, then replay the tree to flip
+ * the parked leaf. */
 export async function completeProjectStep(
   { db, absDir, execute }: ProjectCore,
   rootFile: WorkflowFile,
@@ -39,8 +40,8 @@ export async function completeProjectStep(
   workflowDir: string,
   opts: ProjectRunOptions,
 ): Promise<CompleteResult> {
-  // An unknown id is `not-found` (404); a leaf not `awaiting` — already succeeded, or a double-submit — is
-  // `not-awaiting` (409).
+  // An unknown id is `not-found` (404); a leaf not `awaiting` — already succeeded, or a
+  // double-submit — is `not-awaiting` (409).
   const leaf = getRun(db, stepRunId);
   if (leaf === undefined) {
     return {
@@ -57,8 +58,8 @@ export async function completeProjectStep(
     };
   }
   const rootRunId = leaf.rootRunId;
-  // The appendable window closes when the tree reaches a terminal status: a leaf left `awaiting` under a tree
-  // settled by another path is never re-driven.
+  // The appendable window closes when the tree reaches a terminal status: a leaf left `awaiting`
+  // under a tree settled by another path is never re-driven.
   const rootRow = getRun(db, rootRunId);
   if (rootRow !== undefined && isTerminal(rootRow.status)) {
     return {
@@ -68,8 +69,8 @@ export async function completeProjectStep(
     };
   }
 
-  // Validation before the lease: it is per-leaf, the lease per-tree, so a bad submit never contends for the
-  // lease a valid sibling needs.
+  // Validation before the lease: it is per-leaf, the lease per-tree, so a bad submit never contends
+  // for the lease a valid sibling needs.
   const runOptions = continuationRunOptions(opts, getLaunchFacts(db, rootRunId));
   const check = checkCompletedOutput({
     rootFile,
@@ -103,8 +104,8 @@ export async function completeProjectStep(
       };
     }
 
-    // The continuation recipe `resume` uses: reuse rows swapped for their source record, so a reused
-    // `succeeded` row addresses its own output blob.
+    // The continuation recipe `resume` uses: reuse rows swapped for their source record, so a
+    // reused `succeeded` row addresses its own output blob.
     const directRuns = getRunsForRoot(db, rootRunId);
     const continueInput: ContinueInput = {
       rootRunId,
@@ -116,8 +117,8 @@ export async function completeProjectStep(
     const result = await execute(
       rootFile,
       workflowDir,
-      // A Complete replays the same tree, so it restores that tree's recorded launch facts: the launch config
-      // (with any supplied secret merged over it) and its worker defaults.
+      // A Complete replays the same tree, so it restores that tree's recorded launch facts: the
+      // launch config (with any supplied secret merged over it) and its worker defaults.
       runOptions,
       undefined,
       [],
@@ -141,8 +142,8 @@ export function cancelAwaitingRun({ db, absDir }: ProjectCore, rootRunId: string
   const root = findRootRun(rows);
   // Unknown or already-terminal trees are the route's to answer (404 / already-finished).
   if (!root || isTerminal(root.status)) return false;
-  // Only a *parked* tree is safe to cancel here: an `awaiting` leaf means the engine tore down; a non-terminal
-  // tree without one may be live elsewhere.
+  // Only a *parked* tree is safe to cancel here: an `awaiting` leaf means the engine tore down; a
+  // non-terminal tree without one may be live elsewhere.
   if (!rows.some((r) => r.status === "awaiting")) return false;
   // Take the Complete lease so this never races a Complete advancing the same tree.
   const lease = acquireCompleteLease(absDir, rootRunId);

@@ -7,12 +7,12 @@ import { builtinRegistry } from "./builtin-registry.js";
 import { runCodemod } from "./run-codemod.js";
 
 /**
- * The `@4` → `@5` codemod, black-box (#621, ADR 0058 §6). `@5` bumps for the `goto` controller, but a
- * goto-free `@4` file is already a valid `@5` file, so like the `@4` codemod this one only stamps the
- * version. Unlike it, it also carries Step-Templates and Workflow-Templates (they stamp the shared
- * `FORMAT_VERSION`, ADR 0048 §1) and discovers files under `.path/template/`, so the pins are: only
- * `format` moves, byte-for-byte (G-S-10); it refuses nothing; it is idempotent; discovery finds all
- * three suffixes.
+ * The `@4` → `@5` codemod, black-box (#621, ADR 0058 §6). `@5` bumps for the `goto` controller, but
+ * a goto-free `@4` file is already a valid `@5` file, so like the `@4` codemod this one only stamps
+ * the version. Unlike it, it also carries Step-Templates and Workflow-Templates (they stamp the
+ * shared `FORMAT_VERSION`, ADR 0048 §1) and discovers files under `.path/template/`, so the pins
+ * are: only `format` moves, byte-for-byte (G-S-10); it refuses nothing; it is idempotent; discovery
+ * finds all three suffixes.
  */
 const V5 = "migrate-workflow-format-v5.ts";
 
@@ -50,7 +50,8 @@ const workflow = {
 
 describe("migrate-workflow-format-v5 — the no-op format stamp", () => {
   it("G-S-10: a goto-free @4 workflow is byte-identical except `format`, and loads", () => {
-    // Hand-formatted on purpose — compact arrays, no trailing newline — so a re-serialize would show.
+    // Hand-formatted on purpose — compact arrays, no trailing newline — so a re-serialize would
+    // show.
     const text = `{"format": "path/workflow@4", "id": "${UUID}",\n  "name": "wf",\n  "body": [{"type": "binary", "id": "${UUID}", "name": "one", "command": "echo"}]}`;
     const file = writeRaw("plain.workflow.json", text);
 

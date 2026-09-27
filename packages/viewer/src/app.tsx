@@ -12,12 +12,12 @@ import { RunsList } from "./runs-list.js";
 import { useRunView } from "./use-run-view.js";
 
 /**
- * The viewer app: the pinned three-pane console with the runs list, run detail and node I/O panes. Both
- * selections are owned here, and so is the watched run's connection — the centre and right panes are two
- * views of one live snapshot, and a second connection would mean a second SSE stream.
+ * The viewer app: the pinned three-pane console with the runs list, run detail and node I/O panes.
+ * Both selections are owned here, and so is the watched run's connection — the centre and right
+ * panes are two views of one live snapshot, and a second connection would mean a second SSE stream.
  *
- * A status-filter change in the runs list does not clear the selection: what is selected is a root run
- * id, not a visible row, so narrowing the list is no reason to stop watching.
+ * A status-filter change in the runs list does not clear the selection: what is selected is a root
+ * run id, not a visible row, so narrowing the list is no reason to stop watching.
  */
 export function App({ client }: { client: PathApiClient }) {
   const [selectedRootRunId, setSelectedRootRunId] = useState<string | null>(null);
@@ -25,10 +25,11 @@ export function App({ client }: { client: PathApiClient }) {
   const [runsReloadNonce, setRunsReloadNonce] = useState(0);
   const load = useRunView(client, selectedRootRunId);
 
-  // The watched run's reachable workflow files (root + transitively-ref'd), read from disk (a GET, no
-  // lease — ADR 0017). The eager `Resume from …` legal-K check needs the root file (`files[0]`); the
-  // awaiting surface needs the whole set, since a `person-activity` leaf can live in a nested file. Empty
-  // while loading or on a failed read: the checks fall back to run-tree-derivable reasons.
+  // The watched run's reachable workflow files (root + transitively-ref'd), read from disk (a GET,
+  // no lease — ADR 0017). The eager `Resume from …` legal-K check needs the root file (`files[0]`);
+  // the awaiting surface needs the whole set, since a `person-activity` leaf can live in a nested
+  // file. Empty while loading or on a failed read: the checks fall back to run-tree-derivable
+  // reasons.
   const [workflowFiles, setWorkflowFiles] = useState<readonly WorkflowFile[]>([]);
   const rootFile = workflowFiles[0] ?? null;
   const rootWorkflowPath =
@@ -54,7 +55,8 @@ export function App({ client }: { client: PathApiClient }) {
     };
   }, [client, rootWorkflowPath]);
 
-  // Switching root run drops the node selection: a run id from the previous tree names nothing here.
+  // Switching root run drops the node selection: a run id from the previous tree names nothing
+  // here.
   const selectRootRun = (rootRunId: string): void => {
     setSelectedRootRunId(rootRunId);
     setSelectedRunId(null);
@@ -75,7 +77,8 @@ export function App({ client }: { client: PathApiClient }) {
     setRunsReloadNonce((nonce) => nonce + 1);
   };
 
-  // Taken from the same snapshot the tree renders, so refs and status stay current as the run executes.
+  // Taken from the same snapshot the tree renders, so refs and status stay current as the run
+  // executes.
   const selectedRun =
     load.phase === "ready" && selectedRunId !== null
       ? load.value.runs.get(selectedRunId)
@@ -92,15 +95,16 @@ export function App({ client }: { client: PathApiClient }) {
           onResumed={handleLaunched}
           onDeleted={handleDeleted}
           reloadNonce={runsReloadNonce}
-          // The `Resume from …` action lives in the selected row's action panel, below plain Resume. It
-          // reads the watched run's root file so the eager legal-K check greys the button like the
-          // Designer's; the Viewer never edits, so `dirty` stays false.
+          // The `Resume from …` action lives in the selected row's action panel, below plain
+          // Resume. It reads the watched run's root file so the eager legal-K check greys the
+          // button like the Designer's; the Viewer never edits, so `dirty` stays false.
           resumeFrom={
             load.phase === "ready"
               ? { runs: load.value.runs, selectedRunId, rootFile, dirty: false }
               : undefined
           }
-          // The watched run's display status, so its row reads `awaiting` while a leaf is parked (ADR 0038).
+          // The watched run's display status, so its row reads `awaiting` while a leaf is parked
+          // (ADR 0038).
           displayStatus={load.phase === "ready" ? load.value.displayStatus : undefined}
         />
       }
@@ -125,7 +129,8 @@ export function App({ client }: { client: PathApiClient }) {
           <NodeIo
             client={client}
             run={selectedRun}
-            // One snapshot feeds the pane: it reads this run's display status and error off the view (ADR 0025).
+            // One snapshot feeds the pane: it reads this run's display status and error off the
+            // view (ADR 0025).
             view={load.phase === "ready" ? load.value : undefined}
             workflowFiles={workflowFiles}
           />

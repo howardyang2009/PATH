@@ -4,7 +4,8 @@ import {
   type StepPluginRegistry,
 } from "./nodes.js";
 
-/** One registry-relative fault in a worker-default table (ADR 0044): the offending `type` key and its message. */
+/** One registry-relative fault in a worker-default table (ADR 0044): the offending `type` key and
+ * its message. */
 export interface WorkerDefaultIssue {
   /** The table key whose entry is invalid. */
   type: string;
@@ -12,7 +13,8 @@ export interface WorkerDefaultIssue {
   message: string;
 }
 
-/** The per-entry check both channels share (ADR 0044): the type key must be installed and ship that worker. */
+/** The per-entry check both channels share (ADR 0044): the type key must be installed and ship that
+ * worker. */
 export function collectWorkerDefaultIssues(
   table: { [stepType: string]: string },
   registry: StepPluginRegistry,
@@ -33,8 +35,8 @@ export function collectWorkerDefaultIssues(
 }
 
 /**
- * The launch channel (ADR 0044): operator input, so a bad entry is a bad request — CLI exits non-zero, server returns
- * 400.
+ * The launch channel (ADR 0044): operator input, so a bad entry is a bad request — CLI exits
+ * non-zero, server returns 400.
  */
 export function validateLaunchWorkerDefaults(
   table: { [stepType: string]: string } | undefined,

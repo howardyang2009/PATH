@@ -14,8 +14,9 @@ type ListRootsArgsResult =
   | { success: true; options: ListRootsOptions }
   | { success: false; error: string };
 
-// The bare `path runs` listing reuses `listRoots`' `--limit`/`--status` filters, `--status` validated
-// against the domain's own set so an unknown status is refused rather than silently matching nothing.
+// The bare `path runs` listing reuses `listRoots`' `--limit`/`--status` filters, `--status`
+// validated against the domain's own set so an unknown status is refused rather than silently
+// matching nothing.
 function parseRunsListArgs(args: string[]): ListRootsArgsResult {
   let limit: number | undefined;
   let status: RunStatus | undefined;
@@ -59,8 +60,9 @@ function parseRunsListArgs(args: string[]): ListRootsArgsResult {
   return { success: true, options: { limit, status, workflowName, workflowId } };
 }
 
-// `path runs` with no subcommand: the first listing surface, over the same query `rm`/`prune` operate
-// on. The `resumed-from` cell asks which predecessor ids still have rows, not which are on this page.
+// `path runs` with no subcommand: the first listing surface, over the same query `rm`/`prune`
+// operate on. The `resumed-from` cell asks which predecessor ids still have rows, not which are on
+// this page.
 async function runRunsListCommand(args: string[], dir: string, io: CliIo): Promise<number> {
   const parsed = parseRunsListArgs(args);
   if (!parsed.success) {
@@ -83,7 +85,8 @@ async function runRunsListCommand(args: string[], dir: string, io: CliIo): Promi
           : live.has(predecessor)
             ? predecessor
             : `${predecessor} (deleted)`;
-      // The human `name` is the display key; "-" is the defensive floor for a row with no recorded identity.
+      // The human `name` is the display key; "-" is the defensive floor for a row with no recorded
+      // identity.
       return [
         run.runId,
         run.workflowName ?? "-",
@@ -99,7 +102,8 @@ async function runRunsListCommand(args: string[], dir: string, io: CliIo): Promi
   });
 }
 
-/** Open the run archive under `dir`, hand it to `use`, and close it however `use` ends; a failed open exits 1. */
+/** Open the run archive under `dir`, hand it to `use`, and close it however `use` ends; a failed
+ * open exits 1. */
 async function withRunArchive(
   dir: string,
   io: CliIo,
@@ -117,8 +121,8 @@ async function withRunArchive(
   }
 }
 
-// `runs rm`/`runs prune` take no workflow-file argument: they operate on the `.path/` in the cwd, or on
-// `-C <dir>` when given one.
+// `runs rm`/`runs prune` take no workflow-file argument: they operate on the `.path/` in the cwd,
+// or on `-C <dir>` when given one.
 export async function runRunsCommand(args: string[], io: CliIo): Promise<number> {
   const dirFlag = extractDirFlag(args, RUNS_USAGE);
   if (!dirFlag.success) {
@@ -129,8 +133,8 @@ export async function runRunsCommand(args: string[], io: CliIo): Promise<number>
   const [subcommand, ...rest] = dirFlag.rest;
 
   if (subcommand === "rm") {
-    // `--force` overrides the live-reuse-marker block; splitting flags from operands keeps the "exactly
-    // one id" check counting ids, not the flag.
+    // `--force` overrides the live-reuse-marker block; splitting flags from operands keeps the
+    // "exactly one id" check counting ids, not the flag.
     const force = rest.includes("--force");
     const unknownFlag = rest.find((arg) => arg.startsWith("--") && arg !== "--force");
     if (unknownFlag !== undefined) {
@@ -150,8 +154,9 @@ export async function runRunsCommand(args: string[], io: CliIo): Promise<number>
     }
 
     return withRunArchive(dir, io, (archive) => {
-      // The guard reads before deleting: a live successor reusing this tree's data blocks the delete
-      // unless `--force`; a not-found id has no blockers and falls through to `remove`'s own error.
+      // The guard reads before deleting: a live successor reusing this tree's data blocks the
+      // delete unless `--force`; a not-found id has no blockers and falls through to `remove`'s own
+      // error.
       const blockers = archive.blockingSuccessors(rootRunId);
       if (blockers.length > 0 && !force) {
         io.error(
@@ -160,15 +165,16 @@ export async function runRunsCommand(args: string[], io: CliIo): Promise<number>
         );
         return 1;
       }
-      // "Found" means either store held something: an orphaned directory with no rows still counts, so
-      // `rm` finishes a half-done cleanup rather than reporting "not found" while deleting it anyway.
+      // "Found" means either store held something: an orphaned directory with no rows still counts,
+      // so `rm` finishes a half-done cleanup rather than reporting "not found" while deleting it
+      // anyway.
       if (!archive.remove(rootRunId)) {
         io.error(`no run found with id "${rootRunId}"`);
         return 1;
       }
       io.log(`removed run ${rootRunId}`);
-      // `--force` deletes exactly the named tree, no cascade, so the successors it orphaned are named
-      // here or the dangling reference stays invisible.
+      // `--force` deletes exactly the named tree, no cascade, so the successors it orphaned are
+      // named here or the dangling reference stays invisible.
       if (blockers.length > 0) {
         io.log(`orphaned successor run(s): ${blockers.join(", ")}`);
       }
@@ -177,8 +183,8 @@ export async function runRunsCommand(args: string[], io: CliIo): Promise<number>
   }
 
   if (subcommand === "prune") {
-    // `prune` takes no operands: a destructive verb must be at least as strict about its input as `run`
-    // is. `--yes`/`-y` skip the confirmation prompt for scripted use.
+    // `prune` takes no operands: a destructive verb must be at least as strict about its input as
+    // `run` is. `--yes`/`-y` skip the confirmation prompt for scripted use.
     const yes = rest.includes("--yes") || rest.includes("-y");
     const badArg = rest.find((arg) => arg !== "--yes" && arg !== "-y");
     if (badArg !== undefined) {
@@ -188,10 +194,12 @@ export async function runRunsCommand(args: string[], io: CliIo): Promise<number>
 
     return withRunArchive(dir, io, async (archive) => {
       // Confirm before deleting: a bare `prune` wipes every root. `--yes` skips the gate; an empty
-      // project prunes unprompted. `listRoots` defaults to a 50-row page, so pass an unbounded limit.
+      // project prunes unprompted. `listRoots` defaults to a 50-row page, so pass an unbounded
+      // limit.
       const roots = archive.listRoots({ limit: Number.MAX_SAFE_INTEGER });
       if (!yes && roots.length > 0) {
-        // Cap the printed ids so thousands of roots do not bury the prompt; the count is the true total.
+        // Cap the printed ids so thousands of roots do not bury the prompt; the count is the true
+        // total.
         const shown = roots.slice(0, PRUNE_ID_PREVIEW);
         const more = roots.length - shown.length;
         io.log(

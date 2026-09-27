@@ -3,8 +3,8 @@ import { useCallback, useMemo } from "react";
 import { useScanOnSave } from "./scan-on-save.js";
 import type { SaveState } from "./session-reducer.js";
 
-/** The Designer's workflow discovery: one `GET /v0/workflows` scan for the whole surface. `null` means
- * **not scanned yet** (or every scan failed); `[]` means **scanned, none exist**. */
+/** The Designer's workflow discovery: one `GET /v0/workflows` scan for the whole surface. `null`
+ * means **not scanned yet** (or every scan failed); `[]` means **scanned, none exist**. */
 export type DiscoveryLoad =
   | { phase: "loading" }
   /** A scan failed. `workflows` is the last successful one, or `null` if none ever landed. */
@@ -15,8 +15,9 @@ export function discoveredWorkflows(load: DiscoveryLoad): readonly WorkflowSumma
   return load.phase === "loading" ? null : load.workflows;
 }
 
-/** Load discovery once, and re-scan when a save **lands** (`savePhase` becomes `saved`). A failed scan is
- * best-effort: it keeps the last successful list rather than reading as "none discovered". */
+/** Load discovery once, and re-scan when a save **lands** (`savePhase` becomes `saved`). A failed
+ * scan is best-effort: it keeps the last successful list rather than reading as "none
+ * discovered". */
 export function useWorkflowDiscovery(
   client: PathApiClient,
   savePhase: SaveState["phase"],

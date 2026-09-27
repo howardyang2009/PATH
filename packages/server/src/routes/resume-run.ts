@@ -5,7 +5,8 @@ import { operatorConfigEnvError, prepareRunWorkflow } from "../launch.js";
 import { ResumeNotFound, ResumeRefused, type StartedRun } from "../live-runs.js";
 import type { ApiRequest } from "./route-context.js";
 
-/** Optional `config` override, and `rerun_from_run_id` — the rerun boundary K's source run id (ADR 0032). */
+/** Optional `config` override, and `rerun_from_run_id` — the rerun boundary K's source run id (ADR
+ * 0032). */
 const ResumeBodySchema = z
   .object({ config: ConfigObjectSchema.optional(), rerun_from_run_id: z.string().optional() })
   .strict();
@@ -48,15 +49,16 @@ export async function handleResumeRun({
     );
     return;
   }
-  // A Resume-from-K target is legitimately succeeded (ADR 0032), so the already-succeeded refusal is
-  // relaxed exactly when `rerun_from_run_id` is supplied; plain Resume's gate is unchanged.
+  // A Resume-from-K target is legitimately succeeded (ADR 0032), so the already-succeeded refusal
+  // is relaxed exactly when `rerun_from_run_id` is supplied; plain Resume's gate is unchanged.
   if (root.status === "succeeded" && rerunFromRunId === undefined) {
     sendError(res, 409, `run "${rootRunId}" already succeeded; there is nothing to resume`);
     return;
   }
 
-  // Recover and re-validate the workflow as it stands now: gone → `404`, now-invalid → `400`, no longer
-  // this run's workflow (id changed, ADR 0006) → `409`. No `escapesRoot`: the path came from our own row.
+  // Recover and re-validate the workflow as it stands now: gone → `404`, now-invalid → `400`, no
+  // longer this run's workflow (id changed, ADR 0006) → `409`. No `escapesRoot`: the path came from
+  // our own row.
   const prepared = await prepareRunWorkflow(ctx.project.dir, root, {
     notFound: () => `workflow file for run "${rootRunId}" not found at "${root.workflowPath}"`,
     noPath: () => `run "${rootRunId}" has no recorded workflow path and cannot be resumed`,
@@ -73,12 +75,15 @@ export async function handleResumeRun({
   try {
     ids = await ctx.live.resume(workflow.rootFile, rootRunId, workflow.workflowDir, {
       files: workflow.files,
-      // Dispatch reuses the registry the load validated the file against (ADR 0019 sub-15); no re-scan.
+      // Dispatch reuses the registry the load validated the file against (ADR 0019 sub-15); no
+      // re-scan.
       registry: workflow.registry,
-      // The operator's override — shadows the declared config key by key, for the steps that re-run.
+      // The operator's override — shadows the declared config key by key, for the steps that
+      // re-run.
       operatorConfig: config,
       sourceWorkflowPath: workflow.storeRelativePath(ctx.project.dir),
-      // The rerun boundary K, forwarded verbatim: the route does no K-logic; `Project.resume` validates.
+      // The rerun boundary K, forwarded verbatim: the route does no K-logic; `Project.resume`
+      // validates.
       rerunFromRunId,
     });
   } catch (err) {

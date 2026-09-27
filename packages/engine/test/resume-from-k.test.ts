@@ -8,12 +8,12 @@ import { stampNames } from "./stamp-names.js";
 
 /**
  * Resume-from-chosen-K, the engine mechanism (spec §4, ADR 0035): a rerun boundary K expressed as a
- * root-only suppression set on the two reuse producers. Nodes before K reuse bit-for-bit; K and every
- * serialized-later top-level node re-run, a ≥K `workflow` node's whole subtree entire. Plain Resume is
- * the K-omitted case of the one path — the superset invariant this suite anchors.
+ * root-only suppression set on the two reuse producers. Nodes before K reuse bit-for-bit; K and
+ * every serialized-later top-level node re-run, a ≥K `workflow` node's whole subtree entire. Plain
+ * Resume is the K-omitted case of the one path — the superset invariant this suite anchors.
  *
- * The harness mirrors resume.test.ts: an in-memory original tree of `RunRecord`s plus a blob reader,
- * with a scripted worker recording which nodes actually executed.
+ * The harness mirrors resume.test.ts: an in-memory original tree of `RunRecord`s plus a blob
+ * reader, with a scripted worker recording which nodes actually executed.
  */
 
 function run(
@@ -285,7 +285,8 @@ describe("Resume-from-K — the superset invariant (spec §4)", () => {
       return { ran, markers: markers(observer).map((m) => m.node_id), output: result.output };
     }
 
-    // K at the auto-boundary (first non-succeeded top-level node, c) ≡ plain Resume (undefined path).
+    // K at the auto-boundary (first non-succeeded top-level node, c) ≡ plain Resume (undefined
+    // path).
     const plain = await once(undefined);
     const kAtAuto = await once(["c"]);
     expect(kAtAuto).toEqual(plain);
@@ -365,15 +366,16 @@ describe("Resume-from-K — nested boundary (ADR 0036)", () => {
           },
           reads,
         ),
-        // K = k inside sub: a reuses (<sub at root); sub descends; p reuses (<k inside sub); k and q
-        // re-run (k == K, q after K); d re-runs (after sub at root, cascade-up).
+        // K = k inside sub: a reuses (<sub at root); sub descends; p reuses (<k inside sub); k and
+        // q re-run (k == K, q after K); d re-runs (after sub at root, cascade-up).
         rerunFromNodePath: ["sub", "k"],
       },
     });
 
     expect(result.status).toBe("succeeded");
     expect(ran).toEqual(["k", "q", "d"]);
-    // Partial reuse inside the descended child: the inner prefix p reused, one marker per reused node.
+    // Partial reuse inside the descended child: the inner prefix p reused, one marker per reused
+    // node.
     expect(markers(observer).map((m) => m.node_id)).toEqual(["a", "p"]);
     // The inner prefix's blob was read (it reused); K's and Q's originals were not (they re-ran).
     expect(reads).toContain("p-run/output.json");
@@ -385,8 +387,8 @@ describe("Resume-from-K — nested boundary (ADR 0036)", () => {
     const reads: string[] = [];
     const observer = fakeObserver();
     const sub2Path = join("/tmp", "sub2.workflow.json");
-    // Root [sub→[p,k], sub2→[p2]]; K = k inside sub. sub descends (reuses p); sub2 is after sub, so it
-    // re-runs entire — its own succeeded prefix p2 is *not* reused.
+    // Root [sub→[p,k], sub2→[p2]]; K = k inside sub. sub descends (reuses p); sub2 is after sub, so
+    // it re-runs entire — its own succeeded prefix p2 is *not* reused.
     const nestedPk = tree([
       { type: "prompt", id: "p", name: "p", prompt: "p", publish: { fromP: "${output}" } },
       { type: "prompt", id: "k", name: "k", prompt: "k", publish: { fromK: "${output}" } },
@@ -460,7 +462,8 @@ describe("Resume-from-K — nested boundary (ADR 0036)", () => {
     });
 
     expect(result.status).toBe("succeeded");
-    // sub descended → p reused, k re-ran; sub2 re-ran entire → p2 re-ran fresh (no reuse inside it).
+    // sub descended → p reused, k re-ran; sub2 re-ran entire → p2 re-ran fresh (no reuse inside
+    // it).
     expect(ran).toEqual(["k", "p2"]);
     expect(markers(observer).map((m) => m.node_id)).toEqual(["p"]);
     // The after-B subtree was forced fresh: its collapsed original blob was never read.

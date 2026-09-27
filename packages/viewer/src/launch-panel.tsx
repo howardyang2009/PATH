@@ -19,24 +19,27 @@ import { PaneError, PaneLoading } from "./pane-note.js";
 
 export interface LaunchPanelProps {
   client: PathApiClient;
-  /** Called with the new run's `root_run_id` once a launch is accepted (202) — the app selects it. */
+  /** Called with the new run's `root_run_id` once a launch is accepted (202) — the app selects
+   * it. */
   onLaunched: (rootRunId: string) => void;
 }
 
 /**
- * The launch surface: a workflow list above the runs list, launching **inline** — a valid workflow row
- * expands a raw-JSON launch form under itself. Discovery is `GET /v0/workflows` (§6): every discovered
- * file, roots flagged, invalid ones shown but not launchable. A launch is `POST /v0/runs` (§2); its
- * `202 {root_run_id}` is lifted to the app, which selects the run.
+ * The launch surface: a workflow list above the runs list, launching **inline** — a valid workflow
+ * row expands a raw-JSON launch form under itself. Discovery is `GET /v0/workflows` (§6): every
+ * discovered file, roots flagged, invalid ones shown but not launchable. A launch is `POST
+ * /v0/runs` (§2); its `202 {root_run_id}` is lifted to the app, which selects the run.
  *
- * One-shot read, not a refresh loop like the runs list: discovery is a fresh filesystem scan with no live
- * feed behind it, and files change on an author's timescale — a reload re-scans. It also makes one
- * `GET /v0/step-plugins` read, for the launch form's worker-default editor.
+ * One-shot read, not a refresh loop like the runs list: discovery is a fresh filesystem scan with
+ * no live feed behind it, and files change on an author's timescale — a reload re-scans. It also
+ * makes one `GET /v0/step-plugins` read, for the launch form's worker-default editor.
  */
-/** The panel's kind filter: the three `WorkflowSummary` shapes (root / nested / invalid), or all. */
+/** The panel's kind filter: the three `WorkflowSummary` shapes (root / nested / invalid), or
+ * all. */
 type WorkflowFilter = "all" | "root" | "nested" | "invalid";
 
-/** The filter options in display order — value drives {@link matchesFilter}, label is the visible text. */
+/** The filter options in display order — value drives {@link matchesFilter}, label is the visible
+ * text. */
 const WORKFLOW_FILTERS: readonly { value: WorkflowFilter; label: string }[] = [
   { value: "all", label: "all" },
   { value: "root", label: "root" },
@@ -156,14 +159,16 @@ export function LaunchPanel({ client, onLaunched }: LaunchPanelProps) {
   );
 }
 
-/** The left indent of one tree row at `depth`, in px — a folder step per level, over the row's base pad. */
+/** The left indent of one tree row at `depth`, in px — a folder step per level, over the row's base
+ * pad. */
 function indent(depth: number): React.CSSProperties {
   return { paddingLeft: 8 + depth * 14 };
 }
 
 /**
  * One level of the folder tree: its folders first (each expands the next level below it), then its
- * workflow files (each a launch trigger that expands its form). Recurses into an open folder's children.
+ * workflow files (each a launch trigger that expands its form). Recurses into an open folder's
+ * children.
  */
 function WorkflowTree({
   nodes,
@@ -252,7 +257,8 @@ function WorkflowTree({
   );
 }
 
-/** One folder in the tree: a navigation step. Clicking it walks in (expands its level) or back out. */
+/** One folder in the tree: a navigation step. Clicking it walks in (expands its level) or back
+ * out. */
 function FolderRow({
   folder,
   depth,
@@ -282,7 +288,8 @@ function FolderRow({
   );
 }
 
-/** One workflow in the tree: a launch trigger when valid, a labelled dead row (with its load error) when not. */
+/** One workflow in the tree: a launch trigger when valid, a labelled dead row (with its load error)
+ * when not. */
 function WorkflowRow({
   workflow,
   depth,
@@ -294,14 +301,15 @@ function WorkflowRow({
   expanded: boolean;
   onToggle: () => void;
 }) {
-  // The row shows only the file name — the folders already sit above it, and the workflow's own `name`
-  // shows on the Launch button and in the run detail.
+  // The row shows only the file name — the folders already sit above it, and the workflow's own
+  // `name` shows on the Launch button and in the run detail.
   const label = (
     <span className="workflow-file-name">{workflowBaseName(workflow.relative_path)}</span>
   );
 
-  // An invalid file cannot be launched (§6: `valid` is a load result, and a launch would 400 on the same
-  // load), so it opens no launch form — but it is still a toggle, expanding its load error below the row.
+  // An invalid file cannot be launched (§6: `valid` is a load result, and a launch would 400 on the
+  // same load), so it opens no launch form — but it is still a toggle, expanding its load error
+  // below the row.
   if (!workflow.valid) {
     return (
       <button

@@ -7,7 +7,8 @@ import { stampNames } from "./stamp-names.js";
 /**
  * The run-start analysis on its own seam: the staging that gates a run before its first node —
  * collect config, resolve `$env`, collect `$secret`, then validate — and the load-bearing order
- * between them. Its edges used to be reachable only by starting a whole run; here they are one call.
+ * between them. Its edges used to be reachable only by starting a whole run; here they are one
+ * call.
  */
 
 let registry: LoadedStepPluginRegistry;
@@ -15,8 +16,8 @@ beforeAll(async () => {
   registry = await scanStepPlugins();
 });
 
-// A single binary step, whose empty config fragment always validates — so a binary-only file isolates
-// the `$env`/`$secret` passes from the config-fragment check.
+// A single binary step, whose empty config fragment always validates — so a binary-only file
+// isolates the `$env`/`$secret` passes from the config-fragment check.
 function binaryFile(config?: ConfigObject): WorkflowFile {
   return stampNames({
     format: "path/workflow@5",

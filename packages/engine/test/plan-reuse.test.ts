@@ -317,9 +317,9 @@ describe("planReuse (#170)", () => {
   });
 
   it("reuses a succeeded leaf of any plugin type, not only the built-ins (ADR 0019/0021)", () => {
-    // The same shape as `person`, one folder over: a plugin type the schema never names. It mints one
-    // run per node id like any step, so a Resume must reuse it; only an allowlist of built-in names
-    // would skip it.
+    // The same shape as `person`, one folder over: a plugin type the schema never names. It mints
+    // one run per node id like any step, so a Resume must reuse it; only an allowlist of built-in
+    // names would skip it.
     const apiCall = {
       type: "api-call",
       id: "fetch",
@@ -406,8 +406,8 @@ describe("pickReusedWaitOneWinner — replaying a decided wait-one race (§7)", 
 
   it("reproduces the seq-first winner from completion time when a photo-finish reused two branches, not declaration order", () => {
     // Both branches recorded `succeeded` (async cancellation lost the race); `a` is declared first
-    // but finished later (t2), so the recorded winner is `b` (finished t1) — the branch a lower `seq`
-    // would have named. Declaration order must not override that.
+    // but finished later (t2), so the recorded winner is `b` (finished t1) — the branch a lower
+    // `seq` would have named. Declaration order must not override that.
     const node = waitOne([branch("a", [prompt("a-node")]), branch("b", [prompt("b-node")])]);
     const plan: ReusePlan = new Map([reused("a-node", "t2"), reused("b-node", "t1")]);
 

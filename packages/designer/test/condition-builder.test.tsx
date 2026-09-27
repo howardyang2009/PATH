@@ -5,9 +5,9 @@ import { describe, expect, it } from "vitest";
 import { App } from "../src/app.js";
 
 /**
- * #370 — the properties-pane surfaces for conditions, config inheritance, input wiring, and a publish
- * conflict: the typed condition builder, the inherited/overridden config rows, the live-checked input
- * draft, and the same-key publish race marker.
+ * #370 — the properties-pane surfaces for conditions, config inheritance, input wiring, and a
+ * publish conflict: the typed condition builder, the inherited/overridden config rows, the
+ * live-checked input draft, and the same-key publish race marker.
  */
 
 /** A distinct valid UUIDv4 per seed. */
@@ -17,7 +17,8 @@ function uuid(n: number): string {
 
 const PATH = "flows/main.workflow.json";
 
-/** A file exercising every #370 surface: config inheritance, conditions, an input, and a near-race publish. */
+/** A file exercising every #370 surface: config inheritance, conditions, an input, and a near-race
+ * publish. */
 function paneFile(): Record<string, unknown> {
   return {
     format: FORMAT_VERSION,
@@ -116,7 +117,8 @@ describe("the typed condition builder", () => {
     const { canvas, pane } = await openPane();
     selectNode(canvas, "gate");
     const path = within(pane).getByLabelText("path") as HTMLInputElement;
-    // `config` is not a legal condition root; the draft is rejected and the canvas summary does not move.
+    // `config` is not a legal condition root; the draft is rejected and the canvas summary does not
+    // move.
     fireEvent.change(path, { target: { value: "config.x" } });
     expect(within(pane).getByRole("alert")).toBeInTheDocument();
     expect(within(canvas).getByText(/assert exists context\.x/)).toBeInTheDocument();
@@ -149,7 +151,8 @@ describe("the typed condition builder", () => {
 
     // A checkpoint reads only the condition roots (context / output) — no config in its list.
     selectNode(canvas, "gate");
-    // The section starts collapsed and re-collapses on a new selection, so each node unfolds its own.
+    // The section starts collapsed and re-collapses on a new selection, so each node unfolds its
+    // own.
     openSection(pane, "reference");
     expect(referenceText()).toMatch(/context\.x/);
     expect(referenceText()).toMatch(/output\./);
@@ -183,9 +186,9 @@ describe("config inheritance display", () => {
     const { canvas, pane } = await openPane();
     selectNode(canvas, "alpha");
     openSection(pane, "config");
-    // `timeout` is inherited from the file (ghosted value + Override); `region` is overridden by the step
-    // (Revert); `model` is a first-class field, not here. The inheritance shows as the ghost + Override
-    // affordance, not a caption.
+    // `timeout` is inherited from the file (ghosted value + Override); `region` is overridden by
+    // the step (Revert); `model` is a first-class field, not here. The inheritance shows as the
+    // ghost + Override affordance, not a caption.
     const timeoutRow = within(pane).getByText("timeout").closest(".pane-config-row") as HTMLElement;
     expect(within(timeoutRow).getByText("30")).toHaveClass("pane-ghost");
     expect(within(pane).getByRole("button", { name: "Override" })).toBeInTheDocument();

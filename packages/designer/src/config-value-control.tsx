@@ -11,11 +11,13 @@ import {
 
 /**
  * The properties pane's **UI adapter** over the config-value algebra. `config-value.ts` owns the
- * value-shape reads and the mode transitions; this module renders the controls that drive them — the mode
- * selector and the three mode-specific sub-controls — so the pane calls one control, not the whole tree.
+ * value-shape reads and the mode transitions; this module renders the controls that drive them —
+ * the mode selector and the three mode-specific sub-controls — so the pane calls one control, not
+ * the whole tree.
  */
 
-/** The props the config-value control and its three mode sub-controls share (§ `$env` / `$secret` authoring). */
+/** The props the config-value control and its three mode sub-controls share (§ `$env` / `$secret`
+ * authoring). */
 interface ConfigControlProps {
   value: ConfigValue;
   onChange: (v: ConfigValue) => void;
@@ -23,9 +25,10 @@ interface ConfigControlProps {
 }
 
 /**
- * A typed control for a config value with its `Literal` / `$env` / `$secret` mode selector (map decision 9).
- * The composed `{"$secret": {"$env": …}}` is expressible through the `$secret` source sub-selector. A nested
- * array/object that is not a wrapper stays read-only — that authoring is out of this affordance's scope.
+ * A typed control for a config value with its `Literal` / `$env` / `$secret` mode selector (map
+ * decision 9). The composed `{"$secret": {"$env": …}}` is expressible through the `$secret` source
+ * sub-selector. A nested array/object that is not a wrapper stays read-only — that authoring is out
+ * of this affordance's scope.
  */
 export function ConfigValueControl({ value, onChange, label }: ConfigControlProps): JSX.Element {
   if (!isEditableScalar(value) && referenceLabel(value) === null) {
@@ -57,7 +60,8 @@ export function ConfigValueControl({ value, onChange, label }: ConfigControlProp
   );
 }
 
-/** The literal-mode control: a typed input matching the scalar's own type (boolean / number / string). */
+/** The literal-mode control: a typed input matching the scalar's own type (boolean / number /
+ * string). */
 function LiteralControl({ value, onChange, label }: ConfigControlProps): JSX.Element {
   if (typeof value === "boolean") {
     return (
@@ -112,9 +116,10 @@ function EnvControl({ value, onChange, label }: ConfigControlProps): JSX.Element
 }
 
 /**
- * The `$secret`-mode control: a source sub-selector (a literal secret, or one sourced from `$env`) and the
- * matching input, plus the masked, named token. A literal secret edits through a password field so the
- * pane never renders the value; the composed `{"$secret": {"$env": …}}` is the env-sourced source.
+ * The `$secret`-mode control: a source sub-selector (a literal secret, or one sourced from `$env`)
+ * and the matching input, plus the masked, named token. A literal secret edits through a password
+ * field so the pane never renders the value; the composed `{"$secret": {"$env": …}}` is the
+ * env-sourced source.
  */
 function SecretControl({ value, onChange, label }: ConfigControlProps): JSX.Element {
   const inner: string | EnvWrapper = isSecretWrapper(value) ? value.$secret : "";

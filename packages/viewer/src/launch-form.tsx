@@ -14,7 +14,8 @@ export interface LaunchFormProps {
   submitLabel: string;
   /** Base for the field `id`s (label `htmlFor` targets), unique per mounted form. */
   idBase: string;
-  /** Prefix for the form's `data-testid`s: `${prefix}-input`, `-config`, `-submit`, `-error`, etc. */
+  /** Prefix for the form's `data-testid`s: `${prefix}-input`, `-config`, `-submit`, `-error`,
+   * etc. */
   testIdPrefix: string;
   /** The outer container's `data-testid` (the Viewer keys it on the workflow path). */
   containerTestId: string;
@@ -34,10 +35,11 @@ export interface LaunchFormProps {
 type Submit = { phase: "idle" } | { phase: "sending" } | { phase: "error"; message: string };
 
 /**
- * The inline launch form: optional raw-JSON `input` and `config` overrides, each behind its own collapsed
- * disclosure, plus the launch worker-default table when a plugin registry offers a multi-worker type
- * (ADR 0044). Client-side JSON is gated by {@link parseJsonField}; the server is still the validator, and
- * its `400` lands back here as an alert **without collapsing the form**, so the operator can retry.
+ * The inline launch form: optional raw-JSON `input` and `config` overrides, each behind its own
+ * collapsed disclosure, plus the launch worker-default table when a plugin registry offers a
+ * multi-worker type (ADR 0044). Client-side JSON is gated by {@link parseJsonField}; the server is
+ * still the validator, and its `400` lands back here as an alert **without collapsing the form**,
+ * so the operator can retry.
  */
 export function LaunchForm({
   client,
@@ -54,21 +56,22 @@ export function LaunchForm({
 }: LaunchFormProps): JSX.Element {
   const [input, setInput] = useState("{}");
   const [config, setConfig] = useState("");
-  // The launch worker-default table: a `{ <type>: <worker-name> }` map, empty until the operator adds a
-  // row. Its rows are constrained dropdowns, so nothing invalid can be authored and there is nothing to
-  // force open — the disclosure is the only state.
+  // The launch worker-default table: a `{ <type>: <worker-name> }` map, empty until the operator
+  // adds a row. Its rows are constrained dropdowns, so nothing invalid can be authored and there is
+  // nothing to force open — the disclosure is the only state.
   const [workerDefaults, setWorkerDefaults] = useState<{ [type: string]: string }>({});
   const [showInput, setShowInput] = useState(false);
   const [showConfig, setShowConfig] = useState(false);
   const [showWorkerDefaults, setShowWorkerDefaults] = useState(false);
   const [submit, setSubmit] = useState<Submit>({ phase: "idle" });
 
-  // Both fields always parse from their own text, not gated on their disclosure being open: a value the
-  // operator typed is a value they meant to send, and gating on visibility would silently drop it.
+  // Both fields always parse from their own text, not gated on their disclosure being open: a value
+  // the operator typed is a value they meant to send, and gating on visibility would silently drop
+  // it.
   const inputResult = parseJsonField(input, { allowEmpty: true });
   const configResult = parseJsonField(config, { allowEmpty: true });
-  // An override needs at least one top-level key: a blank field or a literal `{}` is "no override", so
-  // the server falls back to the workflow file's own `input` seed (else `{}`).
+  // An override needs at least one top-level key: a blank field or a literal `{}` is "no override",
+  // so the server falls back to the workflow file's own `input` seed (else `{}`).
   const inputOverride =
     inputResult.ok && inputResult.value !== undefined && Object.keys(inputResult.value).length > 0
       ? inputResult.value
@@ -96,7 +99,8 @@ export function LaunchForm({
         // workflow file's own `input`.
         input: inputOverride,
         config: configResult.value,
-        // An unset table is omitted, never sent as `{}`, matching the file channel's `worker_defaults`.
+        // An unset table is omitted, never sent as `{}`, matching the file channel's
+        // `worker_defaults`.
         workerDefaults: workerDefaultCount > 0 ? workerDefaults : undefined,
       })
       .then((res) => {
@@ -156,8 +160,9 @@ export function LaunchForm({
         />
       )}
 
-      {/* The launch worker-default (ADR 0044) sits above every file's own `worker_defaults` and below a
-          step's own `worker` pin. The disclosure names the section, so the editor prints no title. */}
+      {/* The launch worker-default (ADR 0044) sits above every file's own `worker_defaults` and
+          below a step's own `worker` pin. The disclosure names the section, so the editor prints no
+          title. */}
       {hasWorkerChoices && (
         <>
           <button

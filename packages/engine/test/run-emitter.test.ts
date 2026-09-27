@@ -6,9 +6,9 @@ import { createEmitter } from "../src/run-emitter.js";
 import type { RunEvent } from "../src/run-observer.js";
 
 /**
- * The envelope logic this seam concentrates (CONTEXT, Audit — "Emitter"): the `isRoot` gating of the
- * root-only start payload, the `node`→`node_id`/`node_name` pull, the single minted step run id shared
- * across a leaf step's events, and the payload each lifecycle event carries on the side.
+ * The envelope logic this seam concentrates (CONTEXT, Audit — "Emitter"): the `isRoot` gating of
+ * the root-only start payload, the `node`→`node_id`/`node_name` pull, the single minted step run id
+ * shared across a leaf step's events, and the payload each lifecycle event carries on the side.
  */
 
 const ROOT: RunIdentity = {

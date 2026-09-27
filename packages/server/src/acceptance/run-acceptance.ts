@@ -6,7 +6,8 @@ import { createEventFrameDecoder, eventStreamHeaders, type LogEvent } from "@pat
 /**
  * §5 acceptance harness (server-api-spec.md §5): drives the four criteria through a *running*
  * `@path/server` over HTTP, cross-checking the streamed narrative against the `run.log` the engine
- * actually recorded on disk. Token-free against a binary fixture; point it at a real workflow for the run.
+ * actually recorded on disk. Token-free against a binary fixture; point it at a real workflow for
+ * the run.
  */
 
 export interface CriterionResult {
@@ -37,17 +38,17 @@ export interface AcceptanceOptions {
   input?: { [key: string]: JsonValue };
   config?: { [key: string]: JsonValue };
   /**
-   * How many SSE frames connection A reads before disconnecting mid-run (§5.4). Default 1: one frame
-   * proves the client saw live output, then it drops — genuinely mid-run on a real pipeline, still
-   * exercising the reconnect path on a sub-second fixture.
+   * How many SSE frames connection A reads before disconnecting mid-run (§5.4). Default 1: one
+   * frame proves the client saw live output, then it drops — genuinely mid-run on a real pipeline,
+   * still exercising the reconnect path on a sub-second fixture.
    */
   disconnectAfterFrames?: number;
 }
 
 /**
- * Reads a response's events until `until` is satisfied (then aborts `controller` to disconnect) or the
- * stream ends. The frame grammar is `@path/schema`'s own decoder — an acceptance run that decoded the
- * wire its own way could pass while a real client could read none of it.
+ * Reads a response's events until `until` is satisfied (then aborts `controller` to disconnect) or
+ * the stream ends. The frame grammar is `@path/schema`'s own decoder — an acceptance run that
+ * decoded the wire its own way could pass while a real client could read none of it.
  */
 async function readFrames(
   res: Response,
@@ -146,8 +147,8 @@ export async function runAcceptance(opts: AcceptanceOptions): Promise<Acceptance
   }
 
   // ── §5.4: connect, disconnect mid-run, reconnect with Last-Event-ID, no gap ────────────────────
-  // Connection A drops after `disconnectAfter` frames; B then replays everything after lastSeqA out of
-  // `run.log`, so A ∪ B is the whole narrative iff the reconnect left no gap.
+  // Connection A drops after `disconnectAfter` frames; B then replays everything after lastSeqA out
+  // of `run.log`, so A ∪ B is the whole narrative iff the reconnect left no gap.
   const controllerA = new AbortController();
   const streamA = await openEventStream(opts.url, rootRunId, undefined, controllerA.signal);
   const { frames: framesA, ended: endedA } = await readFrames(
@@ -180,7 +181,7 @@ export async function runAcceptance(opts: AcceptanceOptions): Promise<Acceptance
     detail: `connection A read ${framesA.length} frame(s) (last seq ${lastSeqA}${endedA ? ", stream ended before disconnect" : ", disconnected mid-run"}); reconnect Last-Event-ID:${lastSeqA} replayed ${framesB.length} of ${expectedTail} tail event(s) from seq ${firstBSeq ?? "—"}; merged narrative ${narrativeSeqs.length} events, ${contiguous ? `contiguous 1..${narrativeSeqs.length}` : "NOT contiguous"}`,
   });
 
-  // ── §5.3: GET /v0/runs/:id reports succeeded with the same run tree on disk ─────────────────────
+  // ── §5.3: GET /v0/runs/:id reports succeeded with the same run tree on disk ────────────────────
   // Beyond the API's own consistency, cross-check the tree against the on-disk narrative: every run
   // that emitted events in run.log must appear as a row in the tree GET returns.
   const rootRow = tree.runs.find((r) => r.parent_run_id === null);
@@ -199,7 +200,7 @@ export async function runAcceptance(opts: AcceptanceOptions): Promise<Acceptance
     detail: `status=${tree.status}, ${tree.runs.length} run row(s); ${diskRunIds.length} run(s) in run.log ${treeCoversDisk ? "all present in tree" : "MISSING from tree"}${succeeded ? "" : " (expected succeeded)"}`,
   });
 
-  // ── §5.2: streamed narrative matches what run.log records on disk ───────────────────────────────
+  // ── §5.2: streamed narrative matches what run.log records on disk ──────────────────────────────
   // Full-event equality, not just seq: type, run_id, node_id and payload must all agree.
   const matchesDisk =
     diskEvents.length === narrative.length &&

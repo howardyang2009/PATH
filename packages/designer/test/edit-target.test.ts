@@ -3,9 +3,9 @@ import { describe, expect, it } from "vitest";
 import { replaceNode, withOptionalKey, withoutKey } from "../src/edit-target.js";
 
 /**
- * The pane's one write door into the Buffer (#architecture-deepening): the node splice the field commits
- * and the ref-authoring flow share, and the "an empty field omits the key" policy the file regions, the
- * config helpers and the node helpers all read.
+ * The pane's one write door into the Buffer (#architecture-deepening): the node splice the field
+ * commits and the ref-authoring flow share, and the "an empty field omits the key" policy the file
+ * regions, the config helpers and the node helpers all read.
  */
 
 const UUID = "aaaaaaaa-1111-4111-8111-111111111111";

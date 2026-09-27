@@ -111,8 +111,8 @@ describe("RunTree", () => {
   });
 
   it("paints a running ancestor of an awaiting leaf as awaiting in the rail (view-only)", () => {
-    // root (running) → mid (running) → leaf (awaiting). The two ancestors show `awaiting`; the record
-    // status stays running (ADR 0038) — the pill is the only place this derivation lands.
+    // root (running) → mid (running) → leaf (awaiting). The two ancestors show `awaiting`; the
+    // record status stays running (ADR 0038) — the pill is the only place this derivation lands.
     tree(
       ROOT_RUN,
       run({

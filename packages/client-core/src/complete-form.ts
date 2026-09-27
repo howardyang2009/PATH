@@ -1,10 +1,12 @@
 import { isPlainObject, type JsonValue, validateOutputSchema } from "@path/schema";
 
-/** The Complete form model (ADR 0040, CONTEXT.md § Person-activity): the field list, value coercion, client pre-check,
- * and the mapping of the server's ajv `400` onto fields, shared by the Viewer and the Designer.
+/** The Complete form model (ADR 0040, CONTEXT.md § Person-activity): the field list, value
+ * coercion, client pre-check, and the mapping of the server's ajv `400` onto fields, shared by the
+ * Viewer and the Designer.
  */
 
-/** How one property is drawn and typed. `enum` collapses any typed enum to a select of its labels. */
+/** How one property is drawn and typed. `enum` collapses any typed enum to a select of its
+ * labels. */
 export type CompleteFieldKind = "boolean" | "enum" | "number" | "integer" | "string";
 
 export interface CompleteField {
@@ -21,7 +23,8 @@ export interface CompleteField {
   multiline: boolean;
 }
 
-/** The value a form control holds before coercion: a checkbox's boolean, or any other control's text. */
+/** The value a form control holds before coercion: a checkbox's boolean, or any other control's
+ * text. */
 export type CompleteFieldValue = string | boolean;
 
 function fieldKind(prop: { [key: string]: JsonValue }): {
@@ -37,8 +40,8 @@ function fieldKind(prop: { [key: string]: JsonValue }): {
   return { kind: "string", enumValues: null };
 }
 
-/** The fields to draw for an `outputSchema`, in the schema's property order; a `null` or property-less schema yields
- * none.
+/** The fields to draw for an `outputSchema`, in the schema's property order; a `null` or
+ * property-less schema yields none.
  */
 export function buildCompleteFields(outputSchema: JsonValue | null): CompleteField[] {
   if (!isPlainObject(outputSchema) || !isPlainObject(outputSchema.properties)) return [];
@@ -62,8 +65,9 @@ export function buildCompleteFields(outputSchema: JsonValue | null): CompleteFie
   return fields;
 }
 
-/** The output a schema-less node's raw control makes (ADR 0040: no `outputSchema` ⇒ any JSON accepted), never
- * rejecting: blank ⇒ `{}`, text parsing as JSON ⇒ that value, anything else ⇒ the text as a JSON string.
+/** The output a schema-less node's raw control makes (ADR 0040: no `outputSchema` ⇒ any JSON
+ * accepted), never rejecting: blank ⇒ `{}`, text parsing as JSON ⇒ that value, anything else ⇒ the
+ * text as a JSON string.
  */
 export function coerceRawCompleteOutput(text: string): JsonValue {
   const trimmed = text.trim();
@@ -75,8 +79,9 @@ export function coerceRawCompleteOutput(text: string): JsonValue {
   }
 }
 
-/** The output object a set of control values makes: booleans verbatim, numbers parsed, other fields trimmed; a blank
- * field is omitted rather than sent as `null`/`""`, so a `required` check matches the server's.
+/** The output object a set of control values makes: booleans verbatim, numbers parsed, other fields
+ * trimmed; a blank field is omitted rather than sent as `null`/`""`, so a `required` check matches
+ * the server's.
  */
 export function coerceCompleteOutput(
   fields: CompleteField[],
@@ -100,16 +105,17 @@ export function coerceCompleteOutput(
   return output;
 }
 
-/** The client pre-check, run with the very validator the Complete route runs (ADR 0040). The server is always the
- * authority; a passing pre-check is a courtesy, never a promise.
+/** The client pre-check, run with the very validator the Complete route runs (ADR 0040). The server
+ * is always the authority; a passing pre-check is a courtesy, never a promise.
  */
 export function validateCompleteDraft(
   outputSchema: JsonValue | null,
   output: JsonValue,
 ): MappedCompleteErrors {
   if (outputSchema === null) return { fieldErrors: {}, formErrors: [] };
-  // Validate the bytes the route will see, not the in-memory value: serializing turns a `NaN` (a number
-  // field the person typed text into) into `null`, so the pre-check reaches the route's verdict.
+  // Validate the bytes the route will see, not the in-memory value: serializing turns a `NaN` (a
+  // number field the person typed text into) into `null`, so the pre-check reaches the route's
+  // verdict.
   const wire = JSON.parse(JSON.stringify(output)) as JsonValue;
   const validation = validateOutputSchema(outputSchema, wire);
   return validation.ok
@@ -117,15 +123,16 @@ export function validateCompleteDraft(
     : mapCompleteErrors(validation.issues as unknown as JsonValue);
 }
 
-/** The Complete route's `400` decoded onto the form: per-field messages plus any form-level ones. */
+/** The Complete route's `400` decoded onto the form: per-field messages plus any form-level
+ * ones. */
 export interface MappedCompleteErrors {
   fieldErrors: Record<string, string>;
   formErrors: string[];
 }
 
-/** Map the route's ajv issues onto the form: a `required` issue names its field in `params.missingProperty`, every
- * other in `instancePath`; one naming no field lands at the form level. Messages are shown **verbatim** — the server
- * owns the wording.
+/** Map the route's ajv issues onto the form: a `required` issue names its field in
+ * `params.missingProperty`, every other in `instancePath`; one naming no field lands at the form
+ * level. Messages are shown **verbatim** — the server owns the wording.
  */
 export function mapCompleteErrors(details: JsonValue | undefined): MappedCompleteErrors {
   const fieldErrors: Record<string, string> = {};

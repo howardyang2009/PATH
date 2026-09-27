@@ -10,9 +10,9 @@ import {
 } from "../src/run-report.js";
 
 /**
- * The pure CLI outcome renderers (#architecture-deepening candidate 2). These pin the exit code, the
- * stdout lines and the stderr narration each outcome produces, asserted on the returned `RunReport`
- * value with no fake `io` — the split `emit` in `cli.ts` only writes what these decide.
+ * The pure CLI outcome renderers (#architecture-deepening candidate 2). These pin the exit code,
+ * the stdout lines and the stderr narration each outcome produces, asserted on the returned
+ * `RunReport` value with no fake `io` — the split `emit` in `cli.ts` only writes what these decide.
  */
 
 describe("renderRunOutcome", () => {

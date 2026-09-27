@@ -3,8 +3,9 @@ import type { WorkflowNode } from "../src/node-type.js";
 import { rerunBoundaryIndex, rerunDisposition } from "../src/rerun-disposition.js";
 
 /**
- * The per-node Resume-from-K verdict (ADR 0036). The descent site and the `while-do` loop used to each
- * re-derive it — from overlapping sets, and from raw index math. This is its own test surface now.
+ * The per-node Resume-from-K verdict (ADR 0036). The descent site and the `while-do` loop used to
+ * each re-derive it — from overlapping sets, and from raw index math. This is its own test surface
+ * now.
  */
 
 const step = (id: string): WorkflowNode => ({

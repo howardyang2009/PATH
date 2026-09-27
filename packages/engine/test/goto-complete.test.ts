@@ -9,9 +9,10 @@ import type { RunEvent, RunObserver } from "../src/run-observer.js";
 import { stampNames } from "./stamp-names.js";
 
 /**
- * Complete across goto passes (docs/spec/goto.md §8.2, ADR 0060; §11 rows G-E-12 and G-E-13), driven
- * through `Project.complete` over a real store: a `person-activity` leaf parks the run inside a pass,
- * and each Complete re-enters the one `running` pass in place without re-walking the closed ones.
+ * Complete across goto passes (docs/spec/goto.md §8.2, ADR 0060; §11 rows G-E-12 and G-E-13),
+ * driven through `Project.complete` over a real store: a `person-activity` leaf parks the run
+ * inside a pass, and each Complete re-enters the one `running` pass in place without re-walking the
+ * closed ones.
  */
 
 let dir: string;
@@ -52,9 +53,9 @@ function step(name: string) {
 }
 
 /**
- * `[a, review, guard]`: `review` is a person-activity leaf publishing its output as `last`; the guard
- * jumps back to `target` while `last` is `"again"`, else runs `done`. `wrapReview` nests `review` in a
- * `stage` sequence.
+ * `[a, review, guard]`: `review` is a person-activity leaf publishing its output as `last`; the
+ * guard jumps back to `target` while `last` is `"again"`, else runs `done`. `wrapReview` nests
+ * `review` in a `stage` sequence.
  */
 function loop(
   opts: { target?: string; maxJumps?: number; wrapReview?: boolean } = {},
@@ -279,7 +280,8 @@ describe("goto — Complete follows the record across passes (spec §8.2)", () =
         [2, "failed"],
       ]);
 
-      // A Resume over the edited file pairs pass 2 (same opening goto) and reuses the committed review.
+      // A Resume over the edited file pairs pass 2 (same opening goto) and reuses the committed
+      // review.
       const ran: string[] = [];
       const resumed = await project.resume(edited, rootRunId, dir, {
         workerOverrides: scripted(ran),

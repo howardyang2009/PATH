@@ -4,12 +4,14 @@ import type { JsonValue } from "./json-value.js";
 
 /**
  * The per-predicate evaluation record a condition produces (CONTEXT.md "Trace"; mvp spec §8.1): the
- * condition tree annotated per node with its dot-path, outcome, and value. It lives here rather than
- * beside the evaluator because the log-event stream carries it. A leaf's `value` is post-masking.
+ * condition tree annotated per node with its dot-path, outcome, and value. It lives here rather
+ * than beside the evaluator because the log-event stream carries it. A leaf's `value` is
+ * post-masking.
  */
 export type ConditionOutcome = "true" | "false" | "error";
 
-/** A leaf predicate's record: dot-path, outcome, the value read, and a message on a non-true outcome. */
+/** A leaf predicate's record: dot-path, outcome, the value read, and a message on a non-true
+ * outcome. */
 export interface LeafTrace {
   type: LeafConditionType;
   path: string;
@@ -41,7 +43,8 @@ const LeafTraceSchema = z
     type: z.enum(LEAF_CONDITION_TYPES),
     path: z.string(),
     outcome: OutcomeSchema,
-    // Already a validated JsonValue; typed as such so TraceSchema is assignable to z.ZodType<Trace>.
+    // Already a validated JsonValue; typed as such so TraceSchema is assignable to
+    // z.ZodType<Trace>.
     value: z.custom<JsonValue>().optional(),
     message: z.string().optional(),
   })

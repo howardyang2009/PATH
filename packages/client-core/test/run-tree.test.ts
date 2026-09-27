@@ -168,7 +168,8 @@ describe("displayStatusByRun", () => {
   });
 
   it("derives only from the given map, so a map without descendants leaves the status unchanged", () => {
-    // The runs list holds only summaries for the runs it is not watching: no descendants, no repaint.
+    // The runs list holds only summaries for the runs it is not watching: no descendants, no
+    // repaint.
     expect(displayStatusByRun(mapOf(run("root", null))).get("root")).toBe("running");
   });
 

@@ -22,17 +22,18 @@ import { useKeyedRows, validateInputDraft } from "../validated-draft.js";
 import { JsonDraftField, KeyedRowField, PaneSection } from "./fields.js";
 import { keyedRowsOf } from "./file-properties.js";
 
-// ── The step envelope: config inheritance, input wiring, and context writes ────────────────────────
+// ── The step envelope: config inheritance, input wiring, and context writes ──────────────────────
 
-/** Config keys a first-class editor already owns, so the inheritance region does not double them. */
+/** Config keys a first-class editor already owns, so the inheritance region does not double
+ * them. */
 export function firstClassConfigKeys(type: string): ReadonlySet<string> {
   return type === "prompt" ? new Set(["model"]) : new Set();
 }
 
 /**
  * The shared envelope every leaf step carries: the inheritance-aware **config** region, the
- * interpolable **input** object, and the **publish** / **parse** context-write fields. Control blocks
- * carry none of these (`carriesEnvelope`).
+ * interpolable **input** object, and the **publish** / **parse** context-write fields. Control
+ * blocks carry none of these (`carriesEnvelope`).
  */
 export function StepEnvelopeFields({
   file,
@@ -84,9 +85,9 @@ export function ConfigRegion({
 }
 
 /**
- * The shared config editor behind both the step region and the file's own config: `parentConfig` is the
- * inheritance source (`undefined` for the file, whose config *is* the root), and `scopeId` scopes each
- * value's identity so two owners' same-named keys never fold their undo runs together.
+ * The shared config editor behind both the step region and the file's own config: `parentConfig` is
+ * the inheritance source (`undefined` for the file, whose config *is* the root), and `scopeId`
+ * scopes each value's identity so two owners' same-named keys never fold their undo runs together.
  */
 export function ConfigEditor({
   parentConfig,
@@ -145,7 +146,8 @@ export function ConfigEditor({
   );
 }
 
-/** One config row, rendered by origin: inherited (ghosted + Override), overridden (revert), or local. */
+/** One config row, rendered by origin: inherited (ghosted + Override), overridden (revert), or
+ * local. */
 export function ConfigRowField({
   row,
   config,
@@ -154,7 +156,8 @@ export function ConfigRowField({
 }: {
   row: ConfigRow;
   config: ConfigObject | undefined;
-  /** The owning node's id — scopes the value's identity so two nodes' same-named keys never fold. */
+  /** The owning node's id — scopes the value's identity so two nodes' same-named keys never
+   * fold. */
   nodeId: string;
   write: EditCommit<ConfigObject | undefined>;
 }): JSX.Element {
@@ -216,9 +219,10 @@ export function ConfigRowField({
 }
 
 /**
- * The interpolable **input** object: a live-validated JSON textarea whose `${…}` placeholders reference
- * `config.` / `context.` dot-paths — the roots a step may read before it runs (`STEP_ROOTS`; its own
- * `output` does not exist yet). An unclosed or ill-typed placeholder is reported and never committed.
+ * The interpolable **input** object: a live-validated JSON textarea whose `${…}` placeholders
+ * reference `config.` / `context.` dot-paths — the roots a step may read before it runs
+ * (`STEP_ROOTS`; its own `output` does not exist yet). An unclosed or ill-typed placeholder is
+ * reported and never committed.
  */
 export function InputEditor({
   node,
@@ -246,9 +250,9 @@ export function InputEditor({
 }
 
 /**
- * The context-**write** fields: `publish` (a `key → ${…}` map over `config.`/`context.`/`output.`) and
- * `parse`, both pane fields on the step. A publish conflict surfaces separately, as a canvas node marker
- * (projected by `problems.ts`).
+ * The context-**write** fields: `publish` (a `key → ${…}` map over `config.`/`context.`/`output.`)
+ * and `parse`, both pane fields on the step. A publish conflict surfaces separately, as a canvas
+ * node marker (projected by `problems.ts`).
  */
 export function PublishParseFields({
   node,
@@ -277,7 +281,8 @@ export function PublishParseFields({
   return (
     <PaneSection key={node.id} title="context writes">
       {rows.length > 0 ? (
-        // One shared grid so every row's `=` sits in the same column, aligned down the list (§ Config).
+        // One shared grid so every row's `=` sits in the same column, aligned down the list (§
+        // Config).
         <div className="pane-publish-grid">
           {rows.map((row, index) => (
             <KeyedRowField

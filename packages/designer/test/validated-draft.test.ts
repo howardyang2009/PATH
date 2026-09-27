@@ -10,9 +10,9 @@ import {
 } from "../src/validated-draft.js";
 
 /**
- * The draft → validate → commit rule, tested at the pure validators — the invariant is "an invalid draft
- * is never committed", once, off the pane's render path (before, it was reachable only through a render
- * of five separate field components).
+ * The draft → validate → commit rule, tested at the pure validators — the invariant is "an invalid
+ * draft is never committed", once, off the pane's render path (before, it was reachable only
+ * through a render of five separate field components).
  */
 
 const UUID = "aaaaaaaa-1111-4111-8111-111111111111";
@@ -160,7 +160,8 @@ describe("validRowsToMap", () => {
   });
 });
 
-/** Unwrap an ok result's value for a terser assertion; throws (failing the test) if it was not ok. */
+/** Unwrap an ok result's value for a terser assertion; throws (failing the test) if it was not
+ * ok. */
 function pickValue(result: ReturnType<typeof validateInputDraft>): WorkflowNode {
   if (!result.ok) throw new Error(`expected ok, got error: ${result.error}`);
   return result.value;

@@ -4,23 +4,24 @@ import { runDeepseekWorker } from "./deepseek-worker.js";
 import { renderPromptMessage } from "./render-prompt-message.js";
 
 /**
- * PATH's built-in `prompt` leaf step type, shipped as a plugin folder under `plugin/step-plugin/` and
- * written against the public `@path/engine/plugin` subpath exactly as a third-party plugin is (ADR
- * 0019 sub-10, #336).
+ * PATH's built-in `prompt` leaf step type, shipped as a plugin folder under `plugin/step-plugin/`
+ * and written against the public `@path/engine/plugin` subpath exactly as a third-party plugin is
+ * (ADR 0019 sub-10, #336).
  *
- * The type ships **two workers, one per model provider**: `anthropic` (the default) runs an Agent SDK
- * session against Anthropic, and `deepseek` makes one OpenAI-compatible Chat Completions request.
- * Selecting one is the ordinary PATH gesture — an optional `worker` name on the step
- * (workflow-format-v3.md §4) — so a workflow author picks the model provider with the same field that
- * picks any other method, and `prompt` needs no vendor-specific node field. A step that names no
- * worker gets `anthropic`, which is what every `prompt` step written before the second worker existed means.
+ * The type ships **two workers, one per model provider**: `anthropic` (the default) runs an Agent
+ * SDK session against Anthropic, and `deepseek` makes one OpenAI-compatible Chat Completions
+ * request. Selecting one is the ordinary PATH gesture — an optional `worker` name on the step
+ * (workflow-format-v3.md §4) — so a workflow author picks the model provider with the same field
+ * that picks any other method, and `prompt` needs no vendor-specific node field. A step that names
+ * no worker gets `anthropic`, which is what every `prompt` step written before the second worker
+ * existed means.
  *
  * Each worker owns one processor per step-run and tears it down when `run` returns, so no
  * conversational state leaks between steps (mvp spec §5.5). The two transports are deliberately not
  * unified behind a shared abstraction: they ask the same question through protocols that share no
- * vocabulary (an SDK message stream; an HTTP request/response), and a step names one of them outright,
- * so there is nothing for an indirection layer to decide. `anthropic` lives here and `deepseek` in
- * `deepseek-worker.ts`, each reading only what its own transport needs.
+ * vocabulary (an SDK message stream; an HTTP request/response), and a step names one of them
+ * outright, so there is nothing for an indirection layer to decide. `anthropic` lives here and
+ * `deepseek` in `deepseek-worker.ts`, each reading only what its own transport needs.
  *
  * The folder name *is* the type name. Since the cutover (#337) this folder is the *only* `prompt`
  * implementation — the old `src/llm/agent-sdk-worker.ts` is gone, and the engine dispatches every
@@ -33,10 +34,10 @@ const fields = {
   prompt: z.string(),
 };
 
-// The `prompt` type's injected, inheritable config (ADR 0022 sub-4): the required `model`, an opaque
-// worker-side `options` bag (MCP servers, skills, system prompt) no engine code interprets, and the
-// `deepseek` worker's credential key (ADR 0045), which `anthropic` ignores — its credential is the
-// Agent SDK's own environment/subscription path.
+// The `prompt` type's injected, inheritable config (ADR 0022 sub-4): the required `model`, an
+// opaque worker-side `options` bag (MCP servers, skills, system prompt) no engine code interprets,
+// and the `deepseek` worker's credential key (ADR 0045), which `anthropic` ignores — its credential
+// is the Agent SDK's own environment/subscription path.
 const config = {
   model: z.string(),
   options: z.record(z.string(), z.unknown()).optional(),
@@ -45,13 +46,14 @@ const config = {
 
 /**
  * The two fragments as `ZodRawShape`s, shared with the worker in the sibling file so it types its
- * `request` from the very shapes this plugin declares rather than restating them. A `type` export is
- * erased at run time, so this does not make the two modules circular.
+ * `request` from the very shapes this plugin declares rather than restating them. A `type` export
+ * is erased at run time, so this does not make the two modules circular.
  */
 export type PromptFields = typeof fields;
 export type PromptConfig = typeof config;
 
-/** The pinned Agent SDK's entry point, imported for its type only so nothing loads the ~250 MB package until a `prompt` step runs (mvp spec §7). */
+/** The pinned Agent SDK's entry point, imported for its type only so nothing loads the ~250 MB
+ * package until a `prompt` step runs (mvp spec §7). */
 type SdkQuery = typeof import("@anthropic-ai/claude-agent-sdk").query;
 
 // The SDK's terminal `result` message, narrowed to the fields the run row needs (spec §5.7). Typed
@@ -83,7 +85,8 @@ function asUsage(usage: unknown): JsonValue | undefined {
   return usage === undefined ? undefined : (usage as JsonValue);
 }
 
-// Names no step: the engine owns the node's name and prefixes it when it surfaces the result (ADR 0021 sub-6).
+// Names no step: the engine owns the node's name and prefixes it when it surfaces the result (ADR
+// 0021 sub-6).
 function describeSdkFailure(message: SdkResultMessage): string {
   // A `success` subtype flagged `is_error` (e.g. an auth failure) carries its text in `result`,
   // not `errors`; a genuine error subtype carries it in `errors`. Prefer whichever is present.
@@ -109,8 +112,8 @@ function loadQuery(): Promise<SdkQuery> {
  * processor-concurrency slot and holds it for this call (ADR 0021 sub-5, #331) — and it `meters`,
  * reporting real `usage` and the SDK's cost estimate on its result.
  *
- * Auth is left to the SDK: it reads the subscription credential when `ANTHROPIC_API_KEY` is unset and
- * the API key when it is set, so neither path needs engine code (mvp spec §7).
+ * Auth is left to the SDK: it reads the subscription credential when `ANTHROPIC_API_KEY` is unset
+ * and the API key when it is set, so neither path needs engine code (mvp spec §7).
  */
 async function runSdk(request: StepRequest<typeof fields, typeof config>): Promise<StepResult> {
   const { prompt } = request.fields;
@@ -119,8 +122,8 @@ async function runSdk(request: StepRequest<typeof fields, typeof config>): Promi
 
   if (signal.aborted) return { status: "failed", error: "cancelled" };
 
-  // The SDK takes its own controller; chaining the step's signal onto it is what kills the processor
-  // when a sibling parallel branch fails (mvp spec §5.6).
+  // The SDK takes its own controller; chaining the step's signal onto it is what kills the
+  // processor when a sibling parallel branch fails (mvp spec §5.6).
   const controller = new AbortController();
   const onAbort = () => controller.abort();
   signal.addEventListener("abort", onAbort, { once: true });
@@ -136,7 +139,8 @@ async function runSdk(request: StepRequest<typeof fields, typeof config>): Promi
         settingSources: [],
         ...options,
         // Engine-owned, applied last so the options bag cannot override them: the required `model`,
-        // and the abort controller that tears the processor down on a sibling failure (mvp spec §5.6).
+        // and the abort controller that tears the processor down on a sibling failure (mvp spec
+        // §5.6).
         model,
         abortController: controller,
       },
@@ -162,7 +166,8 @@ async function runSdk(request: StepRequest<typeof fields, typeof config>): Promi
 
     return { status: "failed", error: "the processor ended with no result message" };
   } catch (err) {
-    // An abort surfaces as a thrown error from the SDK; the engine relabels it cancelled from the signal.
+    // An abort surfaces as a thrown error from the SDK; the engine relabels it cancelled from the
+    // signal.
     return { status: "failed", error: err instanceof Error ? err.message : String(err) };
   } finally {
     signal.removeEventListener("abort", onAbort);
@@ -173,7 +178,8 @@ export const stepPlugin = defineStepPlugin({
   fields,
   config,
   workers: {
-    // `anthropic` first: `defaultWorker` names it, and the wire response keeps this declaration order.
+    // `anthropic` first: `defaultWorker` names it, and the wire response keeps this declaration
+    // order.
     anthropic: { meters: true, needsProcessorSlot: true, run: runSdk },
     deepseek: { meters: true, needsProcessorSlot: true, run: runDeepseekWorker },
   },

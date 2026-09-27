@@ -16,9 +16,10 @@ import type { NodeExecContext, RunContext, SeqOutcome } from "./run-context.js";
 
 /**
  * A workflow-run's **top-level walk** and its **goto passes** (ADR 0053/0054/0060, spec
- * docs/spec/goto.md §3, §8). A file holding a goto walks in **passes**: each forward stretch from the
- * start, or from a jump target, to the next jump taken or the end of the body. Both Continuation modes
- * answer here, so the rules for a pass's first recorded node and its Resume pairing have one home.
+ * docs/spec/goto.md §3, §8). A file holding a goto walks in **passes**: each forward stretch from
+ * the start, or from a jump target, to the next jump taken or the end of the body. Both
+ * Continuation modes answer here, so the rules for a pass's first recorded node and its Resume
+ * pairing have one home.
  */
 
 type WorkflowNode = WorkflowFile["body"][number];
@@ -49,7 +50,8 @@ export function passFirstNode(target: WorkflowNode): WorkflowNode | undefined {
   return serialOrder([target])[0];
 }
 
-/** The goto pass rows recorded under one workflow-run, in ordinal order; also its per-goto jump counts. */
+/** The goto pass rows recorded under one workflow-run, in ordinal order; also its per-goto jump
+ * counts. */
 export function recordedPasses(rows: readonly RunRecord[], parentRunId: string): RunRecord[] {
   return rows
     .filter((r) => r.parentRunId === parentRunId && isPassRun(r))
@@ -57,8 +59,8 @@ export function recordedPasses(rows: readonly RunRecord[], parentRunId: string):
 }
 
 /**
- * The start of one workflow-run's top-level walk over a file holding gotos, and the divergence check
- * a Complete's reloaded file must pass (ADR 0060).
+ * The start of one workflow-run's top-level walk over a file holding gotos, and the divergence
+ * check a Complete's reloaded file must pass (ADR 0060).
  */
 export function passWalkStart(
   run: Pick<RunContext, "file" | "identity" | "resume" | "continue">,
@@ -111,8 +113,8 @@ export function passWalkStart(
 }
 
 /**
- * One workflow-run's **top-level walk** (ADR 0053/0054, spec docs/spec/goto.md §3): its file's first
- * level walked as an index loop with a jump register. Each pass is a container run under this
+ * One workflow-run's **top-level walk** (ADR 0053/0054, spec docs/spec/goto.md §3): its file's
+ * first level walked as an index loop with a jump register. Each pass is a container run under this
  * workflow-run sharing its context, so context is one last-writer-wins blackboard across passes
  * (ADR 0059). A jump is counted per goto; the jump after the last one `max_jumps` allows fails the
  * pass and, with it, the workflow-run. The target's incoming output is the goto's passed-through
@@ -197,9 +199,9 @@ export async function runTopLevelWalk(
 }
 
 /**
- * A Complete whose running pass no longer matches the reloaded file (ADR 0060 §2): the pass and, with
- * it, the workflow-run fail. A parked leaf in this pass is committed first with the supplied output,
- * so a later Resume reuses it instead of asking for it again.
+ * A Complete whose running pass no longer matches the reloaded file (ADR 0060 §2): the pass and,
+ * with it, the workflow-run fail. A parked leaf in this pass is committed first with the supplied
+ * output, so a later Resume reuses it instead of asking for it again.
  */
 async function failDivergedPass(
   run: RunContext,

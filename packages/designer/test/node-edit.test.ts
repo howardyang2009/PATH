@@ -15,11 +15,12 @@ import {
 
 /**
  * The pure node-content algebra behind the properties pane (#369). These tests hit the bug-prone
- * invariants directly — dropping an emptied `config`, the envelope/payload split — where before they
- * were reachable only through a JSDOM render of the pane.
+ * invariants directly — dropping an emptied `config`, the envelope/payload split — where before
+ * they were reachable only through a JSDOM render of the pane.
  */
 
-/** A minimal `binary` leaf for the transforms to act on (cast once; the union carries no index signature). */
+/** A minimal `binary` leaf for the transforms to act on (cast once; the union carries no index
+ * signature). */
 function binaryNode(extra: Record<string, unknown> = {}): WorkflowNode {
   return {
     id: "n1",
@@ -30,7 +31,8 @@ function binaryNode(extra: Record<string, unknown> = {}): WorkflowNode {
   } as unknown as WorkflowNode;
 }
 
-/** Read a result node as an open record — the union has no index signature, so a test read casts through `unknown`. */
+/** Read a result node as an open record — the union has no index signature, so a test read casts
+ * through `unknown`. */
 function asRec(node: WorkflowNode): Record<string, unknown> {
   return node as unknown as Record<string, unknown>;
 }

@@ -35,8 +35,9 @@ export type {
   SessionState,
   TemplateSource,
 } from "./session-reducer.js";
-// The session state and its transitions live in `session-reducer.ts` — a pure `(state, action) => state`
-// testable with no React. This hook is the thin adapter around it; the re-exports keep the split invisible.
+// The session state and its transitions live in `session-reducer.ts` — a pure `(state, action) =>
+// state` testable with no React. This hook is the thin adapter around it; the re-exports keep the
+// split invisible.
 export {
   frameCanRedo,
   frameCanUndo,
@@ -47,24 +48,25 @@ export {
 } from "./session-reducer.js";
 
 /**
- * The Designer's open-and-navigate session: fetch the step-plugin registry once, open files against it,
- * and track a navigation stack of frames as a `workflow`-ref descent crosses each boundary. The stack is
- * a trail, not a tree parent — a ref'd file can have several parents. Rich state (trail, undo history,
- * save-point advance) is the reducer's; a stale completion is dropped by a monotonic token before it
- * dispatches, and by the reducer's own depth+path re-check after.
+ * The Designer's open-and-navigate session: fetch the step-plugin registry once, open files against
+ * it, and track a navigation stack of frames as a `workflow`-ref descent crosses each boundary. The
+ * stack is a trail, not a tree parent — a ref'd file can have several parents. Rich state (trail,
+ * undo history, save-point advance) is the reducer's; a stale completion is dropped by a monotonic
+ * token before it dispatches, and by the reducer's own depth+path re-check after.
  */
 
-/** The registry fetch state — the received `GET /v0/step-plugins` snapshot the open passes are relative to. */
+/** The registry fetch state — the received `GET /v0/step-plugins` snapshot the open passes are
+ * relative to. */
 export type RegistryLoad =
   | { phase: "loading" }
   | { phase: "error"; message: string }
   | { phase: "ready"; plugins: WireStepPlugin[] };
 
 /**
- * One **Save as…** of the active buffer — every door that writes it to a document it does not yet have.
- * A workflow copy mints fresh workflow and node ids via Instantiation (ADR 0006); a new template is a
- * new identity (ADR 0049 decision 8) with only its `id` minted, since Instantiation re-stamps node ids;
- * `workflow-as-template` (ADR 0063) leaves the workflow open and unchanged.
+ * One **Save as…** of the active buffer — every door that writes it to a document it does not yet
+ * have. A workflow copy mints fresh workflow and node ids via Instantiation (ADR 0006); a new
+ * template is a new identity (ADR 0049 decision 8) with only its `id` minted, since Instantiation
+ * re-stamps node ids; `workflow-as-template` (ADR 0063) leaves the workflow open and unchanged.
  */
 export type SaveAsIntent =
   | { kind: "new-file"; path: string }
@@ -84,13 +86,16 @@ export type SaveAsResult =
 
 export interface OpenSession {
   registry: RegistryLoad;
-  /** The navigation trail, root first; the active frame is `frames[activeIndex]`, **not** the tip. */
+  /** The navigation trail, root first; the active frame is `frames[activeIndex]`, **not** the
+   * tip. */
   frames: Frame[];
-  /** The index of the active frame in `frames` — what the canvas renders and every edit/save op targets. */
+  /** The index of the active frame in `frames` — what the canvas renders and every edit/save op
+   * targets. */
   activeIndex: number;
   /** Open `path` as a fresh root, discarding any current stack. */
   open: (path: string) => void;
-  /** Open a `*.step-template.json` in **author mode** as a fresh root; the frame's Save writes back to it. */
+  /** Open a `*.step-template.json` in **author mode** as a fresh root; the frame's Save writes back
+   * to it. */
   openTemplate: (template: TemplateSource) => void;
   /** Start a **from-scratch** buffer as a fresh root: no path, no lease, dirty from open. */
   newFile: () => void;
@@ -99,33 +104,39 @@ export interface OpenSession {
   switchMode: (mode: EditMode) => void;
   /** Start a new, unsaved template in template mode, discarding any current stack. */
   newTemplate: () => void;
-  /** Descend across the active file's `workflow`-ref; a frame ahead already holding that target is reused. */
+  /** Descend across the active file's `workflow`-ref; a frame ahead already holding that target is
+   * reused. */
   descend: (ref: string, nodeId: string) => void;
   /**
-   * Descend into a fresh, unwritten, path-less child linked to `parentNodeId`; its first save back-fills the parent's
-   * `ref`.
+   * Descend into a fresh, unwritten, path-less child linked to `parentNodeId`; its first save
+   * back-fills the parent's `ref`.
    */
   descendNewUnbound: (parentNodeId: string) => void;
-  /** Make the breadcrumb entry at `index` active — an ascend or a forward re-entry; no frame is discarded. */
+  /** Make the breadcrumb entry at `index` active — an ascend or a forward re-entry; no frame is
+   * discarded. */
   goTo: (index: number) => void;
   /**
-   * Commit an edit, re-deriving dirtiness; a field edit's `EditKey` folds a keystroke run to one entry. Any edit
-   * clears redo.
+   * Commit an edit, re-deriving dirtiness; a field edit's `EditKey` folds a keystroke run to one
+   * entry. Any edit clears redo.
    */
   applyEdit: EditCommit<WorkflowFile>;
   /** Undo the active frame's last edit, re-deriving clean. A no-op when its past stack is empty. */
   undo: () => void;
-  /** Redo the active frame's last undo, re-deriving clean. A no-op when its future stack is empty. */
+  /** Redo the active frame's last undo, re-deriving clean. A no-op when its future stack is
+   * empty. */
   redo: () => void;
-  /** Save the active buffer under its `If-Match` ETag (ADR 0016); a `412` becomes a `conflict` to resolve. */
+  /** Save the active buffer under its `If-Match` ETag (ADR 0016); a `412` becomes a `conflict` to
+   * resolve. */
   save: () => void;
-  /** Write the active buffer to a document it does not yet have; `workflow-as-template` leaves the workflow open. */
+  /** Write the active buffer to a document it does not yet have; `workflow-as-template` leaves the
+   * workflow open. */
   saveAs: (intent: SaveAsIntent) => Promise<SaveAsResult>;
-  /** Re-fetch the active frame from disk, discarding its unsaved buffer — the stale-write recovery. */
+  /** Re-fetch the active frame from disk, discarding its unsaved buffer — the stale-write
+   * recovery. */
   reloadActive: () => void;
   /**
-   * Delete the root file (`planDelete`): a workflow under its read's `If-Match` with this session's lease, or a
-   * template by id.
+   * Delete the root file (`planDelete`): a workflow under its read's `If-Match` with this session's
+   * lease, or a template by id.
    */
   deleteActive: (sessionId: string) => void;
   /** The active frame's save state — drives the save button and the stale-write conflict banner. */
@@ -133,9 +144,10 @@ export interface OpenSession {
 }
 
 /**
- * The frame a just-applied loading action put in flight, when it is the one this request is for: the
- * reducer's verdict read back as I/O intent. A `descend` that re-entered the frame ahead leaves no frame
- * awaiting `seq`, so there is nothing to fetch. Module scope, so naming it never invalidates a caller.
+ * The frame a just-applied loading action put in flight, when it is the one this request is for:
+ * the reducer's verdict read back as I/O intent. A `descend` that re-entered the frame ahead leaves
+ * no frame awaiting `seq`, so there is nothing to fetch. Module scope, so naming it never
+ * invalidates a caller.
  */
 function pendingFetch(state: SessionState, seq: number): { frame: Frame; depth: number } | null {
   const depth = state.activeIndex;
@@ -148,13 +160,15 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
   const [session, setSession] = useState<SessionState>(initialSessionState);
   const { frames, activeIndex, saveState } = session;
 
-  // The current session state, readable synchronously by `apply` and by the I/O callbacks. It advances
-  // with the dispatch rather than a render later, so two actions in one tick cannot read a stale trail.
+  // The current session state, readable synchronously by `apply` and by the I/O callbacks. It
+  // advances with the dispatch rather than a render later, so two actions in one tick cannot read a
+  // stale trail.
   const sessionRef = useRef(session);
   // The registry plugins, so an open callback reads them without waiting on a state read.
   const pluginsRef = useRef<WireStepPlugin[] | null>(null);
 
-  /** Apply one session action and return the state it produced, so the hook reads the reducer's verdict directly. */
+  /** Apply one session action and return the state it produced, so the hook reads the reducer's
+   * verdict directly. */
   const apply = useCallback((action: SessionAction): SessionState => {
     const next = reduceSession(sessionRef.current, action);
     sessionRef.current = next;
@@ -162,8 +176,9 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
     return next;
   }, []);
 
-  // The number each fetch carries. Minted here because only the hook knows a request was made; what the
-  // number *means* — a landing is stale unless the frame still awaits it — is the reducer's (`Frame.loadSeq`).
+  // The number each fetch carries. Minted here because only the hook knows a request was made; what
+  // the number *means* — a landing is stale unless the frame still awaits it — is the reducer's
+  // (`Frame.loadSeq`).
   const loadSeq = useRef(0);
 
   useEffect(() => {
@@ -252,7 +267,8 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
 
   const goTo = useCallback(
     (index: number): void => {
-      // Only the active index moves; no frame is discarded, so a dirty child keeps its buffer and lease.
+      // Only the active index moves; no frame is discarded, so a dirty child keeps its buffer and
+      // lease.
       apply({ type: "goTo", index });
     },
     [apply],
@@ -265,7 +281,8 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
     [apply],
   );
 
-  // A no-op undo/redo is the reducer's to swallow, so a standing "Saved"/conflict phase survives it.
+  // A no-op undo/redo is the reducer's to swallow, so a standing "Saved"/conflict phase survives
+  // it.
   const undo = useCallback((): void => {
     apply({ type: "undo" });
   }, [apply]);
@@ -299,14 +316,16 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
     if (!pluginsRef.current) return;
     const seq = ++loadSeq.current;
     const next = apply({ type: "reload", loadSeq: seq });
-    // An unwritten buffer leaves no frame awaiting this fetch, so it is never thrown away for a 404.
+    // An unwritten buffer leaves no frame awaiting this fetch, so it is never thrown away for a
+    // 404.
     const pending = pendingFetch(next, seq);
     if (pending) fetchFrame(pending.frame, pending.depth, seq);
   }, [apply, fetchFrame]);
 
   /**
-   * The persist-and-advance-the-save-point spine behind `save` and `saveAs`: set `saving`, write, and dispatch the
-   * caller's success action, so the save-point advance and the `saved` phase never tear (ADR 0016, ADR 0030).
+   * The persist-and-advance-the-save-point spine behind `save` and `saveAs`: set `saving`, write,
+   * and dispatch the caller's success action, so the save-point advance and the `saved` phase never
+   * tear (ADR 0016, ADR 0030).
    */
   const commitSave = useCallback(
     async (
@@ -318,8 +337,9 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
     ) => {
       apply({ type: "saveStarted" });
       const outcome = await writeDocument(client, write);
-      // `savedBytes` is the canonical serialization of the exact buffer written; the buffer is clean iff it
-      // still equals it, so an edit during the in-flight save stays dirty against the new baseline.
+      // `savedBytes` is the canonical serialization of the exact buffer written; the buffer is
+      // clean iff it still equals it, so an edit during the in-flight save stays dirty against the
+      // new baseline.
       if (outcome.ok) apply(successAction(outcome, canonicalSerialize(write.file)));
       return outcome;
     },
@@ -328,8 +348,8 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
 
   const save = useCallback((): void => {
     // The door is the reducer's choice (`planSave`): `null` for a from-scratch root, otherwise an
-    // overwrite under the frame's `If-Match` ETag, an exclusive create at a create-new child's path,
-    // or author mode's write-back.
+    // overwrite under the frame's `If-Match` ETag, an exclusive create at a create-new child's
+    // path, or author mode's write-back.
     const plan = planSave(sessionRef.current);
     if (!plan) return;
     const write: DocumentWrite =
@@ -348,8 +368,8 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
         : { type: "saved", depth: plan.depth, path: plan.path, etag: result.etag, savedBytes },
     ).then((outcome) => {
       if (outcome.ok) return;
-      // A refused overwrite is the stale-write conflict the author reloads from; a create-new child's
-      // refusal is a collision resolved by retargeting the reference.
+      // A refused overwrite is the stale-write conflict the author reloads from; a create-new
+      // child's refusal is a collision resolved by retargeting the reference.
       const saveState: SaveState =
         outcome.conflict === null
           ? { phase: "error", message: outcome.message }

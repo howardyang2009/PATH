@@ -1,6 +1,7 @@
-// @path/client-core — the pure-TS, zero-framework core every viewer/designer/mobile surface consumes:
-// a typed client over the @path/server v0 API, an SSE client with Last-Event-ID replay, and a
-// framework-agnostic run view-model. Contract: docs/api/server-api-v0.md; vocabulary: CONTEXT.md.
+// @path/client-core — the pure-TS, zero-framework core every viewer/designer/mobile surface
+// consumes: a typed client over the @path/server v0 API, an SSE client with Last-Event-ID replay,
+// and a framework-agnostic run view-model. Contract: docs/api/server-api-v0.md; vocabulary:
+// CONTEXT.md.
 
 // Surfaces name the domain through this one seam; everything below originates in `@path/schema`, so
 // this package depends on no engine and a browser never sits one import from SQLite.
@@ -56,8 +57,8 @@ export {
   type WorkflowFileRaw,
   type WorkflowLease,
 } from "./api-client.js";
-// The awaiting surface (ADR 0040): the `person-activity` node read from the workflow file by id, and
-// the framework-free Complete-form model both surfaces draw.
+// The awaiting surface (ADR 0040): the `person-activity` node read from the workflow file by id,
+// and the framework-free Complete-form model both surfaces draw.
 export {
   AWAITING_STEP_TYPE,
   type AwaitingNode,
@@ -84,11 +85,11 @@ export {
 } from "./complete-form.js";
 export { type ConnectedRun, type ConnectRunOptions, connectRunViewModel } from "./connect.js";
 export { eventMessage } from "./event-message.js";
-// What a run's events and rows *mean*, as against how a surface draws them: one right answer each, so a
-// second surface reaching a different answer would be showing a different run.
+// What a run's events and rows *mean*, as against how a surface draws them: one right answer each,
+// so a second surface reaching a different answer would be showing a different run.
 export { eventOutcome, isRootRunFinished, runStatusAfter } from "./event-outcome.js";
-// The framework-free run-logic seam the Viewer and the Designer both read: how a launch field is gated,
-// how one node is named, what one log event says, and what a missing blob means.
+// The framework-free run-logic seam the Viewer and the Designer both read: how a launch field is
+// gated, how one node is named, what one log event says, and what a missing blob means.
 export { type JsonFieldResult, type ParseJsonFieldOptions, parseJsonField } from "./launch-json.js";
 // The launch-facts secret-restore contract shared by Resume and Complete (ADR 0046): the config
 // field's show/skeleton state and the one submit-gate verdict.
@@ -104,8 +105,8 @@ export {
 } from "./launch-secret-resupply.js";
 export { nodeEventLabel, nodeLabel } from "./node-label.js";
 export { loadReachableWorkflowFiles } from "./reachable-workflow-files.js";
-// The Designer's eager legal-K check (ADR 0033): the client mirror of the engine's one legal-K rule; the
-// engine's `refusal` stays the authority for a race.
+// The Designer's eager legal-K check (ADR 0033): the client mirror of the engine's one legal-K
+// rule; the engine's `refusal` stays the authority for a race.
 export {
   type ResumeFromContainer,
   type ResumeFromEligibility,

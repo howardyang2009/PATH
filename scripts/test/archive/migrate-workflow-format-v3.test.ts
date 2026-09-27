@@ -10,11 +10,11 @@ import { runCodemod } from "../run-codemod.js";
  * The `@2` → `@3` codemod, black-box (ADR 0021, #332) — the worker-name migration.
  *
  * The two behaviours the ADR argues for by name go unexercised by the repo's own files (none hits a
- * refusal, and every file reaches its type default), so they are pinned here: the **rewrite** (delete
- * an `engine` worker; hoist an `llm` worker's `model`/`options` into config; delete a `workflow`
- * step's worker) and the two **refusals** (an interpolated `model`/`options`, and a `prompt` step
- * whose effective worker is `engine`), each proven to name the file and the JSON pointer and to exit
- * non-zero leaving the file byte-unchanged.
+ * refusal, and every file reaches its type default), so they are pinned here: the **rewrite**
+ * (delete an `engine` worker; hoist an `llm` worker's `model`/`options` into config; delete a
+ * `workflow` step's worker) and the two **refusals** (an interpolated `model`/`options`, and a
+ * `prompt` step whose effective worker is `engine`), each proven to name the file and the JSON
+ * pointer and to exit non-zero leaving the file byte-unchanged.
  *
  * Driven through the process, not the module: the subprocess reaches the `process.exitCode = 1` and
  * the stderr report a unit test of `migrateDocument` cannot.
@@ -43,9 +43,10 @@ const read = (file: string): Record<string, unknown> => JSON.parse(readFileSync(
 const bytes = (file: string): string => readFileSync(file, "utf8");
 
 /**
- * The migrated document must be a *loadable* file, not merely a reshaped one. `@3` is superseded now
- * (the schema reads `@5`), so lift a copy the rest of the way with the `@4` and `@5` codemods first — the check
- * stays "the migrated file loads" without disturbing the `@3` file the test's other assertions read.
+ * The migrated document must be a *loadable* file, not merely a reshaped one. `@3` is superseded
+ * now (the schema reads `@5`), so lift a copy the rest of the way with the `@4` and `@5` codemods
+ * first — the check stays "the migrated file loads" without disturbing the `@3` file the test's
+ * other assertions read.
  */
 function expectSchemaValid(file: string): void {
   const copy = `${file}.lifted.json`;
@@ -175,7 +176,8 @@ describe("migrate-workflow-format-v3 — the rewrite", () => {
 
     const step = (read(file).body as Record<string, unknown>[])[0]!;
     expect(step).not.toHaveProperty("worker");
-    // No inert `model: "${config.model}"` written into the step — the file's config.model still drives it.
+    // No inert `model: "${config.model}"` written into the step — the file's config.model still
+    // drives it.
     expect(step).not.toHaveProperty("config");
     expectSchemaValid(file);
   });

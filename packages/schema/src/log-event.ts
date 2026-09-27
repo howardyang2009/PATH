@@ -2,11 +2,12 @@ import { z } from "zod";
 import { TerminalRunStatusSchema } from "./run-status.js";
 import { TraceSchema } from "./trace.js";
 
-/** The typed log-event stream (mvp spec §8.1): a flat discriminated union sharing an envelope — `seq`
- * (monotonic per **root run**, the ordering truth since timestamps collide under parallelism), `ts`,
- * `type`, `run_id`, `node_id` (GUID) and `node_name` (label, ADR 0007) — plus a per-type payload.
- * Control events are attributed to the enclosing workflow-run + the control node's id; the implicit root
- * step (invariant 2) has no node, so its lifecycle events carry null ids. */
+/** The typed log-event stream (mvp spec §8.1): a flat discriminated union sharing an envelope —
+ * `seq` (monotonic per **root run**, the ordering truth since timestamps collide under
+ * parallelism), `ts`, `type`, `run_id`, `node_id` (GUID) and `node_name` (label, ADR 0007) — plus a
+ * per-type payload. Control events are attributed to the enclosing workflow-run + the control
+ * node's id; the implicit root step (invariant 2) has no node, so its lifecycle events carry null
+ * ids. */
 const envelope = {
   seq: z.number().int().nonnegative(),
   ts: z.string(),
@@ -31,12 +32,14 @@ const StepFinishedSchema = z
     type: z.literal("step-finished"),
     ...envelope,
     status: TerminalRunStatusSchema,
-    // Present only on a non-success outcome; a binary step's carries the exit code and a stderr tail (§8.1).
+    // Present only on a non-success outcome; a binary step's carries the exit code and a stderr
+    // tail (§8.1).
     error: z.string().optional(),
   })
   .strict();
 
-// Checkpoint asserts (spec §5.2): the trace is the whole record — `checkpoint-failed` covers false and error.
+// Checkpoint asserts (spec §5.2): the trace is the whole record — `checkpoint-failed` covers false
+// and error.
 const CheckpointPassedSchema = z
   .object({ type: z.literal("checkpoint-passed"), ...envelope, trace: TraceSchema })
   .strict();
@@ -45,7 +48,8 @@ const CheckpointFailedSchema = z
   .strict();
 
 // Branch routes (§5.2, §5.4): `branch-taken` names the winning arm (its index, or `"else"`, whose
-// trace is null); `branch-no-match` carries every arm's trace since none matched and there was no else.
+// trace is null); `branch-no-match` carries every arm's trace since none matched and there was no
+// else.
 const BranchTakenSchema = z
   .object({
     type: z.literal("branch-taken"),
@@ -58,8 +62,9 @@ const BranchNoMatchSchema = z
   .object({ type: z.literal("branch-no-match"), ...envelope, traces: z.array(TraceSchema) })
   .strict();
 
-// A `parallel` collect join applied at block end (§5.2–5.4): branch names in apply order, the context
-// keys they published (names, not GUIDs — ADR 0007), and `winner` only for a `wait-one` join.
+// A `parallel` collect join applied at block end (§5.2–5.4): branch names in apply order, the
+// context keys they published (names, not GUIDs — ADR 0007), and `winner` only for a `wait-one`
+// join.
 const JoinAppliedSchema = z
   .object({
     type: z.literal("join-applied"),
@@ -82,8 +87,9 @@ const RunCancelledSchema = z
   })
   .strict();
 
-// While-do loops (§5.2–5.4): `iteration-started` fires before each body with a 1-based `iteration` and
-// the passing trace; `loop-exited` fires once with the exit `reason`, `iterations` count and final trace.
+// While-do loops (§5.2–5.4): `iteration-started` fires before each body with a 1-based `iteration`
+// and the passing trace; `loop-exited` fires once with the exit `reason`, `iterations` count and
+// final trace.
 const IterationStartedSchema = z
   .object({
     type: z.literal("iteration-started"),
@@ -103,8 +109,9 @@ const LoopExitedSchema = z
   .strict();
 
 // Goto passes and jumps (docs/spec/goto.md §7, ADR 0054/0061): `pass-started` opens a pass (pass 1
-// included, its envelope naming the opening goto, both ids null); `goto-taken` records a jump's 1-based
-// count, resolved bound and pass; `goto-exhausted` records a goto reached with its jumps spent.
+// included, its envelope naming the opening goto, both ids null); `goto-taken` records a jump's
+// 1-based count, resolved bound and pass; `goto-exhausted` records a goto reached with its jumps
+// spent.
 const PassStartedSchema = z
   .object({ type: z.literal("pass-started"), ...envelope, pass: z.number().int().positive() })
   .strict();
@@ -130,16 +137,18 @@ const GotoExhaustedSchema = z
   })
   .strict();
 
-// A resumed tree reused one node's recorded work instead of re-running it (resume-restore-semantics.md
-// §6): no step events fire, so this marker is the log's only record of the reuse. Fires once per reuse
-// decision; `original_run_id` back-references the run in the *original* tree that holds the real data.
+// A resumed tree reused one node's recorded work instead of re-running it
+// (resume-restore-semantics.md §6): no step events fire, so this marker is the log's only record of
+// the reuse. Fires once per reuse decision; `original_run_id` back-references the run in the
+// *original* tree that holds the real data.
 const ReuseMarkerSchema = z
   .object({ type: z.literal("reuse-marker"), ...envelope, original_run_id: z.string() })
   .strict();
 
-// A leaf step entered `awaiting`: the worker returned `{ status: "awaiting" }` and the engine suspended
-// it until an external `complete` call — still live, so distinct from `step-finished`. `assignee` names
-// who the offline activity is for, `.default(null)` so pre-field persisted lines keep parsing on read.
+// A leaf step entered `awaiting`: the worker returned `{ status: "awaiting" }` and the engine
+// suspended it until an external `complete` call — still live, so distinct from `step-finished`.
+// `assignee` names who the offline activity is for, `.default(null)` so pre-field persisted lines
+// keep parsing on read.
 const StepAwaitingSchema = z
   .object({
     type: z.literal("step-awaiting"),

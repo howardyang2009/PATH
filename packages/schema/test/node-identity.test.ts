@@ -11,17 +11,18 @@ import type { WorkflowFile } from "../src/workflow-file-type.js";
 import { builtinRegistry } from "./builtin-registry.js";
 
 /**
- * Node identity's one rule (#architecture-deepening): `identityIssues` is what the load refinement's
- * name check, the write route's duplicate-`id` check and the Designer's pre-parse open gate now share.
- * These tests pin the rule itself, the walk's paths, and the door split ADR 0015 draws — the load
- * checks `name`s, the write door and the Designer check `id`s.
+ * Node identity's one rule (#architecture-deepening): `identityIssues` is what the load
+ * refinement's name check, the write route's duplicate-`id` check and the Designer's pre-parse open
+ * gate now share. These tests pin the rule itself, the walk's paths, and the door split ADR 0015
+ * draws — the load checks `name`s, the write door and the Designer check `id`s.
  */
 
 const WORKFLOW_ID = "11111111-1111-4111-8111-111111111111";
 const NODE_ID = "22222222-2222-4222-8222-222222222222";
 const OTHER_ID = "33333333-3333-4333-8333-333333333333";
 
-/** A body exercising every nesting shape: a step, a branch with an arm and an `else`, and a loop body. */
+/** A body exercising every nesting shape: a step, a branch with an arm and an `else`, and a loop
+ * body. */
 const nested: WorkflowFile = {
   format: "path/workflow@5",
   id: WORKFLOW_ID,
@@ -53,8 +54,8 @@ const nested: WorkflowFile = {
 
 describe("nodeIdentityOccurrences", () => {
   it("walks the block grammar depth-first, with the JSON paths the load refinement reports against", () => {
-    // Each path is the node's real JSON path (`childNodePath`): a single-node slot lands on the node
-    // itself (`body.1.arms.0.node`), so a load error points at a field that exists.
+    // Each path is the node's real JSON path (`childNodePath`): a single-node slot lands on the
+    // node itself (`body.1.arms.0.node`), so a load error points at a field that exists.
     expect(nodeIdentityOccurrences(nested).map((occurrence) => occurrence.path)).toEqual([
       ["body", 0],
       ["body", 1],

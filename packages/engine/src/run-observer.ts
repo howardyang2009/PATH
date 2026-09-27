@@ -1,14 +1,15 @@
 import type { JsonValue, LaunchFacts, LogEvent, RerunFromNodePathEntry } from "@path/schema";
 
 /**
- * Thrown by `observe` to fail the run rather than crash — the audit-first policy for a log-backend write failure (mvp
- * spec §8.2); any other throw is a bug and propagates.
+ * Thrown by `observe` to fail the run rather than crash — the audit-first policy for a log-backend
+ * write failure (mvp spec §8.2); any other throw is a bug and propagates.
  */
 export class ObserverError extends Error {}
 
 /**
- * How a run/step ended. A failure carries its `error` (a binary step's embeds the exit code and stderr tail);
- * `cancelled` has neither, its cause being narrated by `run-cancelled` (mvp spec §5.6).
+ * How a run/step ended. A failure carries its `error` (a binary step's embeds the exit code and
+ * stderr tail); `cancelled` has neither, its cause being narrated by `run-cancelled` (mvp spec
+ * §5.6).
  */
 export type RunOutcome =
   | { status: "succeeded"; output: JsonValue }
@@ -24,8 +25,9 @@ export const WORKFLOW_STEP_TYPE = "workflow";
 export type UnsequencedLogEvent = DistributiveOmit<LogEvent, "seq">;
 
 /**
- * What persistence records and the log never carries (mvp spec §6): the blobs and the row facts beyond the event.
- * `started` rides a `step-started`, `output` a succeeded `step-finished`; the other three stand alone.
+ * What persistence records and the log never carries (mvp spec §6): the blobs and the row facts
+ * beyond the event. `started` rides a `step-started`, `output` a succeeded `step-finished`; the
+ * other three stand alone.
  */
 export type RunPayload =
   | {
@@ -56,8 +58,9 @@ export type RunPayload =
   | { kind: "context"; context: JsonValue };
 
 /**
- * One fact a run reports: the log event it narrates (`null` when only persistence records it) plus the payload the
- * log must not carry. `runId` is the run the fact is about; every fact is already secret-masked (mvp spec §8.3).
+ * One fact a run reports: the log event it narrates (`null` when only persistence records it) plus
+ * the payload the log must not carry. `runId` is the run the fact is about; every fact is already
+ * secret-masked (mvp spec §8.3).
  */
 export interface RunEvent {
   runId: string;
@@ -67,18 +70,19 @@ export interface RunEvent {
 }
 
 /**
- * The engine's audit seam: one method, called wherever persistence and logging need to observe; the engine never
- * touches fs/db. A sink may ignore events, but a decorator that dropped them would silently delete them.
+ * The engine's audit seam: one method, called wherever persistence and logging need to observe; the
+ * engine never touches fs/db. A sink may ignore events, but a decorator that dropped them would
+ * silently delete them.
  */
 export interface RunObserver {
   observe(e: RunEvent): void | Promise<void>;
 }
 
 /**
- * Fans one event out to several observers in argument order, awaiting each; a throw (e.g. `ObserverError`)
- * propagates, so observers after the thrower do not run. `Project.execute` orders the pipeline persistence →
- * logging → appended observers, so a failed audit still leaves the run row and the server's capture observer cannot
- * race the row or hub channel it reads.
+ * Fans one event out to several observers in argument order, awaiting each; a throw (e.g.
+ * `ObserverError`) propagates, so observers after the thrower do not run. `Project.execute` orders
+ * the pipeline persistence → logging → appended observers, so a failed audit still leaves the run
+ * row and the server's capture observer cannot race the row or hub channel it reads.
  */
 export function composeObservers(...observers: RunObserver[]): RunObserver {
   return {

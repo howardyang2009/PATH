@@ -3,9 +3,9 @@ import { parseJsonField } from "../src/launch-json.js";
 
 /**
  * The launch form's client-side JSON gate (issue #233, variant A). Pure and exhaustive here so the
- * component test can stay about wiring, not about every empty/parse/shape case. The server stays the
- * real validator (a rejected `$env` config is left to it, ADR 0012); this only catches what is not
- * even valid JSON, or not the object the wire declares (`input` is `record`, `config` is
+ * component test can stay about wiring, not about every empty/parse/shape case. The server stays
+ * the real validator (a rejected `$env` config is left to it, ADR 0012); this only catches what is
+ * not even valid JSON, or not the object the wire declares (`input` is `record`, `config` is
  * `ConfigObject`), before a request is spent.
  */
 describe("parseJsonField", () => {

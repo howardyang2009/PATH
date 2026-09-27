@@ -1,7 +1,7 @@
 import { isRootRun } from "./run-kind.js";
 
-/** The run tree as a shared primitive (CONTEXT.md, *run tree*): the runs of one root, keyed by `parentRunId`.
- * Deliberately low — adjacency and a descendant walk, not a nested render model. */
+/** The run tree as a shared primitive (CONTEXT.md, *run tree*): the runs of one root, keyed by
+ * `parentRunId`. Deliberately low — adjacency and a descendant walk, not a nested render model. */
 
 /** The two fields the tree shape is read from — a `RunRecord` or a client `RunNodeState` fits. */
 export interface RunTreeFields {
@@ -9,8 +9,9 @@ export interface RunTreeFields {
   parentRunId: string | null;
 }
 
-/** Group non-root rows by their `parentRunId`. `orphanTo` handles a live, incomplete stream: a row whose
- * parent has not arrived is filed there instead of a key nothing walks, so a root-down walk still reaches it. */
+/** Group non-root rows by their `parentRunId`. `orphanTo` handles a live, incomplete stream: a row
+ * whose parent has not arrived is filed there instead of a key nothing walks, so a root-down walk
+ * still reaches it. */
 export function childrenByParent<T extends RunTreeFields>(
   rows: Iterable<T>,
   options: { orphanTo?: string } = {},
@@ -31,8 +32,8 @@ export function childrenByParent<T extends RunTreeFields>(
 }
 
 /**
- * The rows of the subtree rooted at `startId`, flat; `[]` when no row has it. Every row has one parent, so the walk
- * terminates — a parent cycle is unreachable from `startId`.
+ * The rows of the subtree rooted at `startId`, flat; `[]` when no row has it. Every row has one
+ * parent, so the walk terminates — a parent cycle is unreachable from `startId`.
  */
 export function subtree<T extends RunTreeFields>(rows: Iterable<T>, startId: string): T[] {
   const rowArray = [...rows];
@@ -49,7 +50,8 @@ export function subtree<T extends RunTreeFields>(rows: Iterable<T>, startId: str
   return out;
 }
 
-/** The tree's root row — the one with no parent (invariant 2) — or `undefined` when it is absent. */
+/** The tree's root row — the one with no parent (invariant 2) — or `undefined` when it is
+ * absent. */
 export function findRootRun<T extends { parentRunId: string | null }>(
   rows: Iterable<T>,
 ): T | undefined {
@@ -59,8 +61,9 @@ export function findRootRun<T extends { parentRunId: string | null }>(
   return undefined;
 }
 
-/** The ancestor path root→…→`startId`, top-down and inclusive, walking `parentRunId` up — the complement
- * of `subtree`; `[]` when absent, and an incomplete stream stops at the highest reachable ancestor. */
+/** The ancestor path root→…→`startId`, top-down and inclusive, walking `parentRunId` up — the
+ * complement of `subtree`; `[]` when absent, and an incomplete stream stops at the highest
+ * reachable ancestor. */
 export function pathToRoot<T extends RunTreeFields>(rows: Iterable<T>, startId: string): T[] {
   const byId = new Map([...rows].map((row) => [row.runId, row] as const));
   const start = byId.get(startId);

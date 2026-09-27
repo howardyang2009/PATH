@@ -17,12 +17,12 @@ import {
 } from "../src/session-reducer.js";
 
 /**
- * The pure session state machine (`session-reducer.ts`). These tests reach every transition the Designer's
- * open-and-navigate session makes — the trail, the per-frame undo history, the coalesced-edit fold, the
- * save-point advance, the two async-result staleness guards, and the create-new ref back-fill — with no
- * React and no stub server. Before the extraction the same behavior was reachable only by mounting the App
- * (`undo.test.tsx`, `save-point.test.tsx`, `new-file-first-save.test.tsx`,
- * `nested-ref-authoring.test.tsx`, `problems-panel.test.tsx`).
+ * The pure session state machine (`session-reducer.ts`). These tests reach every transition the
+ * Designer's open-and-navigate session makes — the trail, the per-frame undo history, the
+ * coalesced-edit fold, the save-point advance, the two async-result staleness guards, and the
+ * create-new ref back-fill — with no React and no stub server. Before the extraction the same
+ * behavior was reachable only by mounting the App (`undo.test.tsx`, `save-point.test.tsx`,
+ * `new-file-first-save.test.tsx`, `nested-ref-authoring.test.tsx`, `problems-panel.test.tsx`).
  */
 
 function uuid(n: number): string {
@@ -39,7 +39,8 @@ function file(name: string, prompt = ""): WorkflowFile {
   };
 }
 
-/** An opened, written frame at `path`, whose baseline is its own canonical bytes (so it opens clean). */
+/** An opened, written frame at `path`, whose baseline is its own canonical bytes (so it opens
+ * clean). */
 function openFrame(f: WorkflowFile, overrides: Partial<Frame> = {}): Frame {
   const bytes = canonicalSerialize(f);
   return {
@@ -157,7 +158,8 @@ describe("session-reducer — loadLanded staleness guard", () => {
     baseline: canonicalSerialize(file("landed")),
     openedBytes: canonicalSerialize(file("landed")),
   };
-  /** A frame at depth 0 awaiting fetch `seq` — what the reducer puts there when the hook starts one. */
+  /** A frame at depth 0 awaiting fetch `seq` — what the reducer puts there when the hook starts
+   * one. */
   const loading = (seq: number, over: Partial<Frame> = {}): Frame => ({
     ...openFrame(file("flow")),
     state: { phase: "loading" },
@@ -174,8 +176,8 @@ describe("session-reducer — loadLanded staleness guard", () => {
   });
 
   it("drops a result the frame no longer awaits — the author left and came back to the same path", () => {
-    // Same depth, same path, but a *newer* fetch owns the frame. The seq is the whole verdict; a bare
-    // path comparison would have patched this stale result over the newer one.
+    // Same depth, same path, but a *newer* fetch owns the frame. The seq is the whole verdict; a
+    // bare path comparison would have patched this stale result over the newer one.
     const start = sessionOn(loading(9));
     expect(reduceSession(start, landed)).toBe(start); // no-op — same reference
   });
@@ -298,8 +300,10 @@ describe("session-reducer — the navigation trail (#367, #391)", () => {
     expect(s.frames).toHaveLength(2); // the stale forward frame is dropped
     expect(s.activeIndex).toBe(1);
     expect(s.frames[1]!.state.phase).toBe("loading");
-    expect(s.frames[1]!.path).toBe("child.workflow.json"); // resolved against the active frame's own directory
-    expect(s.frames[1]!.descendedVia).toBe("wf-1"); // the descent remembers the workflow node it crossed
+    // resolved against the active frame's own directory
+    expect(s.frames[1]!.path).toBe("child.workflow.json");
+    // the descent remembers the workflow node it crossed
+    expect(s.frames[1]!.descendedVia).toBe("wf-1");
     expect(s.frames[1]!.loadSeq).toBe(3); // and the fetch it awaits
   });
 
@@ -321,7 +325,8 @@ describe("session-reducer — the navigation trail (#367, #391)", () => {
     });
 
     expect(s.activeIndex).toBe(1);
-    expect(s.frames[1]).toBe(child); // the live buffer is untouched, not reloaded out from under the author
+    // the live buffer is untouched, not reloaded out from under the author
+    expect(s.frames[1]).toBe(child);
     expect(s.frames).toHaveLength(2);
   });
 
@@ -455,7 +460,8 @@ describe("session-reducer — author mode on a *.step-template.json (#580)", () 
     readOnly: false,
   };
 
-  /** The session after opening the template source and its read landing, clean at the read's ETag. */
+  /** The session after opening the template source and its read landing, clean at the read's
+   * ETag. */
   function authoring(f: WorkflowFile = file("nightly")): SessionState {
     const loading = reduceSession(initialSessionState, {
       type: "openTemplateLoading",

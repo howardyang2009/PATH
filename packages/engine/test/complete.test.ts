@@ -10,10 +10,10 @@ import { stampNames } from "./stamp-names.js";
 
 /**
  * Complete as a replay-from-root engine invocation over the appendable tree (#484, ADR 0039/0041).
- * These drive a **real** `Project` — the tree must actually exist as rows and blobs for the replay to
- * re-enter it — through the person-activity plugin scanned from `plugin/step-plugin/`, which returns
- * `{ status: "awaiting" }`. Each test launches a workflow that parks at a person-activity leaf, then
- * Completes the leaf and asserts on the persisted tree.
+ * These drive a **real** `Project` — the tree must actually exist as rows and blobs for the replay
+ * to re-enter it — through the person-activity plugin scanned from `plugin/step-plugin/`, which
+ * returns `{ status: "awaiting" }`. Each test launches a workflow that parks at a person-activity
+ * leaf, then Completes the leaf and asserts on the persisted tree.
  */
 
 let dir: string;
@@ -32,7 +32,8 @@ function open(): Project {
   return opened.project;
 }
 
-/** A person-activity leaf: parks the run until Completed. `publish` exposes its output downstream. */
+/** A person-activity leaf: parks the run until Completed. `publish` exposes its output
+ * downstream. */
 function person(
   id: string,
   opts?: { publish?: { [k: string]: string }; assignee?: string },
@@ -47,7 +48,8 @@ function person(
   } as unknown as WorkflowFile["body"][number];
 }
 
-/** A trivial binary step that succeeds, so a tail after the parked leaf is observable as a real run. */
+/** A trivial binary step that succeeds, so a tail after the parked leaf is observable as a real
+ * run. */
 function marker(id: string): WorkflowFile["body"][number] {
   return {
     type: "binary",
@@ -155,7 +157,8 @@ describe("Complete replays from the root, resolves the leaf, and continues forwa
       const events = project.archive.tree(rootRunId)!.events();
       const seqs = events.map((e) => e.seq);
       // Strictly increasing and unique across launch + Complete — the re-invocation resumed the seq
-      // rather than restarting it (which would collide on the (root, seq) key / duplicate run.log lines).
+      // rather than restarting it (which would collide on the (root, seq) key / duplicate run.log
+      // lines).
       expect(new Set(seqs).size).toBe(seqs.length);
       expect([...seqs].sort((a, b) => a - b)).toEqual(seqs);
       // The Complete appended events past where the launch stopped, and the tail is narrated.
@@ -185,10 +188,11 @@ describe("Complete replays from the root, resolves the leaf, and continues forwa
 
       await project.complete(wf, leaf.runId, { ok: true }, dir);
 
-      // The whole cycle for the leaf reads off the stream by its run id: started -> awaiting(assignee)
-      // -> finished. The Complete re-invocation's step-finished carries a null node_id (no fresh
-      // step-started re-seeds the per-invocation node map), so the run id is the reconstruction key
-      // and the `step-awaiting` event is what bridges it to the node id + assignee.
+      // The whole cycle for the leaf reads off the stream by its run id: started ->
+      // awaiting(assignee) -> finished. The Complete re-invocation's step-finished carries a null
+      // node_id (no fresh step-started re-seeds the per-invocation node map), so the run id is the
+      // reconstruction key and the `step-awaiting` event is what bridges it to the node id +
+      // assignee.
       const forLeaf = project.archive
         .tree(rootRunId)!
         .events()
@@ -285,8 +289,8 @@ describe("park-at-join: parallel awaiting leaves run the tail exactly once (ADR 
       await project.run(wf, dir);
       const rootRunId = project.archive.listRoots()[0]!.runId;
 
-      // Two awaiting leaves coexist. Complete the first: the join is not satisfied, so the walk parks
-      // again and the tail does not run.
+      // Two awaiting leaves coexist. Complete the first: the join is not satisfied, so the walk
+      // parks again and the tail does not run.
       const leaves = project.archive.tree(rootRunId)!.runs.filter((r) => r.status === "awaiting");
       expect(leaves).toHaveLength(2);
 
@@ -297,7 +301,8 @@ describe("park-at-join: parallel awaiting leaves run the tail exactly once (ADR 
       expect(rowByNode(project, rootRunId, "tail")).toBeUndefined();
       expect(project.archive.tree(rootRunId)!.root!.status).toBe("running");
 
-      // Complete the second: the join is now satisfied, the tail runs, and the root succeeds — once.
+      // Complete the second: the join is now satisfied, the tail runs, and the root succeeds —
+      // once.
       const second = await project.complete(wf, leaves[1]!.runId, { b: 2 }, dir);
       expect(second.ok).toBe(true);
       if (!second.ok) throw new Error("expected ok");
@@ -348,8 +353,8 @@ describe("Cancel works on a parked awaiting run (ADR 0041)", () => {
 });
 
 describe("Complete replays the tail from the frozen launch default (ADR 0044, #519)", () => {
-  // Two `prompt` worker names, each stubbed to a distinguishable output, so the worker the tail step
-  // resolved to is readable off its recorded `worker_name`.
+  // Two `prompt` worker names, each stubbed to a distinguishable output, so the worker the tail
+  // step resolved to is readable off its recorded `worker_name`.
   function stubs(): { overrides: { prompt: { [name: string]: WorkerDescriptor } }; ran: string[] } {
     const ran: string[] = [];
     const make = (workerName: string): WorkerDescriptor => ({
@@ -389,8 +394,9 @@ describe("Complete replays the tail from the frozen launch default (ADR 0044, #5
       const rootRunId = project.archive.listRoots()[0]!.runId;
       const leaf = awaitingLeaf(project, rootRunId);
 
-      // The file handed to Complete carries a *different* live file default; the frozen launch default
-      // must still win for the tail, reconstructing the same worker set the launch resolved (ADR 0044).
+      // The file handed to Complete carries a *different* live file default; the frozen launch
+      // default must still win for the tail, reconstructing the same worker set the launch resolved
+      // (ADR 0044).
       const changed = { ...launched, worker_defaults: { prompt: "anthropic" } };
       const done = await project.complete(changed, leaf.runId, { approved: true }, dir, {
         workerOverrides: overrides,
@@ -408,7 +414,8 @@ describe("Complete replays the tail from the frozen launch default (ADR 0044, #5
 });
 
 describe("Complete — the frozen launch config (ADR 0046)", () => {
-  /** A tail step whose output is the config key it was handed, so a test reads what Complete ran with. */
+  /** A tail step whose output is the config key it was handed, so a test reads what Complete ran
+   * with. */
   const configEcho: WorkflowFile["body"][number] = {
     type: "binary",
     id: "echo",
@@ -437,8 +444,8 @@ describe("Complete — the frozen launch config (ADR 0046)", () => {
       expect(done.ok).toBe(true);
       if (!done.ok) throw new Error("expected ok");
       expect(done.status).toBe("succeeded");
-      // The tail ran for the first time here, and read the config the launch recorded — not the file
-      // default, and not nothing.
+      // The tail ran for the first time here, and read the config the launch recorded — not the
+      // file default, and not nothing.
       expect(project.archive.tree(rootRunId)!.output()).toEqual({ seen: "launched-with-this" });
     } finally {
       project.close();
@@ -446,8 +453,8 @@ describe("Complete — the frozen launch config (ADR 0046)", () => {
   });
 
   it("fails on a named key when the frozen secret is not supplied again, and runs when it is", async () => {
-    // Two launches, because a Complete consumes its leaf: the first continues without the secret and
-    // ends before the tail, the second re-enters it and reaches the tail.
+    // Two launches, because a Complete consumes its leaf: the first continues without the secret
+    // and ends before the tail, the second re-enters it and reaches the tail.
     const project = open();
     try {
       const wf = workflow([person("approve"), configEcho], { seen: "${context.seen}" });
@@ -481,7 +488,8 @@ describe("Complete — the frozen launch config (ADR 0046)", () => {
       if (!supplied.ok) throw new Error("expected ok");
       expect(supplied.status).toBe("succeeded");
       expect(project.archive.tree(secondRoot)!.output()).toEqual({ seen: "hi" });
-      // The re-entered plain value was re-marked before use, so the tree's frozen copy holds a token.
+      // The re-entered plain value was re-marked before use, so the tree's frozen copy holds a
+      // token.
       expect(project.archive.launchFacts(secondRoot)?.secretKeys).toEqual(["apiKey"]);
       expect(JSON.stringify(project.archive.launchFacts(secondRoot))).not.toContain("sk-2");
     } finally {

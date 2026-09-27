@@ -2,31 +2,32 @@ import { type JsonValue, valueAtConfigPath } from "@path/schema";
 import { type JsonFieldResult, parseJsonField } from "./launch-json.js";
 
 /** The client half of the launch-facts secret-restore rule (ADR 0046): a continuation recovers the
- * launch's frozen config, but a `$secret` value was frozen only as its `[secret:<key>]` token, so the
- * operator must enter it again. The engine remains the authority; this only keeps a doomed request
- * from being spent. The dot-paths read the same nesting `secretSkeletonJson` writes.
+ * launch's frozen config, but a `$secret` value was frozen only as its `[secret:<key>]` token, so
+ * the operator must enter it again. The engine remains the authority; this only keeps a doomed
+ * request from being spent. The dot-paths read the same nesting `secretSkeletonJson` writes.
  */
 
 export type ContinuationVerb = "resuming" | "completing";
 
-/** The config field's initial state for a continuation: `required` when the launch recorded `$secret` config, with the
- * masked paths' skeleton as the prefill.
+/** The config field's initial state for a continuation: `required` when the launch recorded
+ * `$secret` config, with the masked paths' skeleton as the prefill.
  */
 export interface LaunchSecretResupply {
   required: boolean;
   skeleton: string;
 }
 
-/** Resolve the config field's initial show/skeleton state from the tree's recorded secret dot-paths. */
+/** Resolve the config field's initial show/skeleton state from the tree's recorded secret
+ * dot-paths. */
 export function launchSecretResupply(keys: readonly string[]): LaunchSecretResupply {
   return keys.length > 0
     ? { required: true, skeleton: secretSkeletonJson(keys) }
     : { required: false, skeleton: "" };
 }
 
-/** The one verdict a continuation surface gates its submit on: `configResult` is the JSON parse (an invalid draft is
- * the field's own lint, so `blockMessage` stays `null` for it), `blankPaths` the recorded secret paths still blank,
- * and `ok` true only when the draft parses with no blank secret.
+/** The one verdict a continuation surface gates its submit on: `configResult` is the JSON parse (an
+ * invalid draft is the field's own lint, so `blockMessage` stays `null` for it), `blankPaths` the
+ * recorded secret paths still blank, and `ok` true only when the draft parses with no blank secret.
  */
 export interface ResupplyGate {
   configResult: JsonFieldResult;
@@ -35,7 +36,8 @@ export interface ResupplyGate {
   blockMessage: string | null;
 }
 
-/** Compute the {@link ResupplyGate} for one continuation's config draft against its recorded secrets. */
+/** Compute the {@link ResupplyGate} for one continuation's config draft against its recorded
+ * secrets. */
 export function resupplyGate(
   keys: readonly string[],
   configText: string,
@@ -51,9 +53,9 @@ export function resupplyGate(
   };
 }
 
-/** The config-field prefill when the launch recorded `$secret` config (ADR 0046): the skeleton nests each dot-path to
- * an empty string — `["a.b"]` becomes `{"a":{"b":""}}` — so the field arrives as the shape to fill, the same nesting
- * the engine's config lookup reads.
+/** The config-field prefill when the launch recorded `$secret` config (ADR 0046): the skeleton
+ * nests each dot-path to an empty string — `["a.b"]` becomes `{"a":{"b":""}}` — so the field
+ * arrives as the shape to fill, the same nesting the engine's config lookup reads.
  */
 export function secretSkeletonJson(keys: readonly string[]): string {
   const skeleton: { [key: string]: JsonValue } = {};
@@ -77,9 +79,9 @@ export function secretSkeletonJson(keys: readonly string[]): string {
   return JSON.stringify(skeleton, null, 2);
 }
 
-/** The recorded secret dot-paths a supplied config leaves unusable — absent, not a string, or blank after trimming.
- * The masked token is no credential, so asking before the request is spent is the client-side half of the rule; the
- * server owns the outcome.
+/** The recorded secret dot-paths a supplied config leaves unusable — absent, not a string, or blank
+ * after trimming. The masked token is no credential, so asking before the request is spent is the
+ * client-side half of the rule; the server owns the outcome.
  */
 export function blankSecretPaths(
   keys: readonly string[],
@@ -91,8 +93,8 @@ export function blankSecretPaths(
   });
 }
 
-/** The operator-facing reason a continuation waits while a recorded secret path is blank: names each one, singular or
- * plural, with the verb making the sentence read in place.
+/** The operator-facing reason a continuation waits while a recorded secret path is blank: names
+ * each one, singular or plural, with the verb making the sentence read in place.
  */
 export function blankSecretMessage(paths: readonly string[], verb: ContinuationVerb): string {
   const names = paths.map((path) => `"${path}"`).join(", ");

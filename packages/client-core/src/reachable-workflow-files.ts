@@ -1,8 +1,9 @@
 import { type WorkflowFile, walkNodes } from "@path/schema";
 import type { PathApiClient } from "./api-client.js";
 
-/** Client-side mirror of the engine's `resolve(dirname(parentPath), ref)`: `.`/`..` collapsed, a `..`
- * past the root clamped — matching the server's refusal to serve a path that escapes the project. */
+/** Client-side mirror of the engine's `resolve(dirname(parentPath), ref)`: `.`/`..` collapsed, a
+ * `..` past the root clamped — matching the server's refusal to serve a path that escapes the
+ * project. */
 function resolveRef(parentPath: string, ref: string): string {
   const out = parentPath.split("/").slice(0, -1); // the parent file's directory
   for (const segment of ref.split("/")) {
@@ -35,7 +36,8 @@ export async function loadReachableWorkflowFiles(
       const raw = await client.getWorkflowFile(path);
       file = JSON.parse(raw.text) as WorkflowFile;
     } catch {
-      // A gone/moved ref or an unreadable file drops out of the set; the surface degrades, never fails.
+      // A gone/moved ref or an unreadable file drops out of the set; the surface degrades, never
+      // fails.
       continue;
     }
     files.push(file);

@@ -13,10 +13,11 @@ import type { ApiRequest } from "./route-context.js";
 /**
  * `PUT /v0/templates/:id` (server-api-v0.md §10.4, ADR 0050 decision 7): **update-only** and
  * **precondition-gated**. The request body is the full template object; its `id` must equal `:id`.
- * Origin-gated centrally. Unlike `PUT /v0/workflows` it is not an upsert — an unknown id is a `404`,
- * not a create (creation is §10.3). It **cannot rename**: the write lands on the resolved entry's own
- * `absPath`, so the file stem (hence `name`) is immutable through this door. A shipped id is a `403`.
- * The server serializes the raw request object (author key order preserved), as `put-workflow` does.
+ * Origin-gated centrally. Unlike `PUT /v0/workflows` it is not an upsert — an unknown id is a
+ * `404`, not a create (creation is §10.3). It **cannot rename**: the write lands on the resolved
+ * entry's own `absPath`, so the file stem (hence `name`) is immutable through this door. A shipped
+ * id is a `403`. The server serializes the raw request object (author key order preserved), as
+ * `put-workflow` does.
  */
 export async function handlePutTemplate({
   req,
@@ -38,8 +39,8 @@ export async function handlePutTemplate({
   const { entry } = found;
 
   // Precondition (ADR 0016): `If-Match` carrying the §10.2 etag is required. Absent or stale is a
-  // `412`. The etag check through the write below is a single synchronous block — no `await` between
-  // them — so only an *external* writer can invalidate the token, which is what it guards.
+  // `412`. The etag check through the write below is a single synchronous block — no `await`
+  // between them — so only an *external* writer can invalidate the token, which is what it guards.
   const precondition = checkPrecondition(
     entry.bytes,
     firstHeader(req.headers["if-match"]),

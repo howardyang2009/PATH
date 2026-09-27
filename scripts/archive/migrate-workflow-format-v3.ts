@@ -9,13 +9,14 @@
  *   - **deletes a `worker: {type:"engine"}`** wherever it appears (file level or a step) — the step
  *     reaches its type's default worker, which is what `engine` selected;
  *   - **rewrites a `worker: {type:"llm", model, options?}`** by deleting the key and writing its
- *     `model` / `options` into that same object's *own* `config` — the file's config for a file-level
- *     worker, the step's config for a step-level one;
+ *     `model` / `options` into that same object's *own* `config` — the file's config for a
+ *     file-level worker, the step's config for a step-level one;
  *   - **deletes `worker` on a `workflow` step** outright — a workflow step runs a nested run, not a
  *     worker (`@3` §4).
  *
  * It **never writes a `worker` name string**: every `@2` file reaches its type's default worker,
- * because `@2` shipped one reachable implementation per type. The name field is only ever *deleted*.
+ * because `@2` shipped one reachable implementation per type. The name field is only ever
+ * *deleted*.
  *
  * **Refuses rather than guessing.** It hard-fails, naming the file and the JSON pointer, on two
  * classes it cannot rewrite honestly (ADR 0021 sub-12):
@@ -23,11 +24,11 @@
  *   - **An interpolated `model` or `options`.** Config is literal (`@3` §8), so hoisting a `${…}`
  *     expression into config writes an inert string that no longer resolves — a silent behaviour
  *     change. The one benign sub-case is a `model` that is *exactly* `"${config.model}"` where
- *     `config.model` already resolves in scope: the hoist is then a no-op (the effective `config.model`
- *     already drives the step) and the key is simply deleted.
- *   - **A `prompt` step whose effective worker is `engine`.** It load-passes and run-fails today; after
- *     migration it would silently run on `sdk`, spending money the author never authorised. The codemod
- *     stops rather than migrate it.
+ *     `config.model` already resolves in scope: the hoist is then a no-op (the effective
+ *     `config.model` already drives the step) and the key is simply deleted.
+ *   - **A `prompt` step whose effective worker is `engine`.** It load-passes and run-fails today;
+ *     after migration it would silently run on `sdk`, spending money the author never authorised.
+ *     The codemod stops rather than migrate it.
  *
  * A refusal leaves the file byte-unchanged and exits 1. Across this repo's files none fires, so the
  * strict rule costs nothing today and closes both silent-change classes forever.
@@ -44,13 +45,14 @@ import { fileURLToPath } from "node:url";
 const LEGACY_FORMAT = "path/workflow@2";
 const NEXT_FORMAT = "path/workflow@3";
 
-// A `model` that is exactly this, with `config.model` resolving in scope, is the benign no-op hoist:
-// the effective `config.model` already drives the step, so the worker key is simply deleted.
+// A `model` that is exactly this, with `config.model` resolving in scope, is the benign no-op
+// hoist: the effective `config.model` already drives the step, so the worker key is simply deleted.
 const BENIGN_MODEL = "${config.model}";
 
 type JsonObject = { [key: string]: unknown };
 
-/** Thrown when a file cannot be migrated without guessing — reported, and the file is left as-is. */
+/** Thrown when a file cannot be migrated without guessing — reported, and the file is left
+ * as-is. */
 class MigrationRefused extends Error {}
 
 function isObject(value: unknown): value is JsonObject {
@@ -73,17 +75,18 @@ function writeConfig(obj: JsonObject, key: string, value: unknown): void {
 }
 
 interface Ctx {
-  /** The file-level worker's `type`, read before it is deleted — a step with no own worker inherits it. */
+  /** The file-level worker's `type`, read before it is deleted — a step with no own worker inherits
+   * it. */
   fileWorkerType: string | undefined;
   /** Whether `config.model` resolves at the file level (after the file worker's own hoist). */
   fileConfigHasModel: boolean;
 }
 
 /**
- * Rewrite one worker-bearing object (the file, or a `binary`/`prompt` step) in place. `pointer` is the
- * JSON pointer of its `worker` key. `effectiveConfigHasModel` is whether `config.model` resolves in
- * this object's scope (file config merged with the object's own). `isPromptStep` gates the
- * engine-worker refusal — only a `prompt` step run on `engine` is a silent paid-worker change.
+ * Rewrite one worker-bearing object (the file, or a `binary`/`prompt` step) in place. `pointer` is
+ * the JSON pointer of its `worker` key. `effectiveConfigHasModel` is whether `config.model`
+ * resolves in this object's scope (file config merged with the object's own). `isPromptStep` gates
+ * the engine-worker refusal — only a `prompt` step run on `engine` is a silent paid-worker change.
  */
 function rewriteWorker(
   obj: JsonObject,
@@ -104,7 +107,8 @@ function rewriteWorker(
     }
     return;
   }
-  if (!isObject(worker) || typeof worker.type !== "string") return; // already a name, or hand-broken — leave it
+  // already a name, or hand-broken — leave it
+  if (!isObject(worker) || typeof worker.type !== "string") return;
 
   if (worker.type === "engine") {
     if (isPromptStep) {
@@ -144,16 +148,17 @@ function rewriteWorker(
     return;
   }
 
-  // An unrecognised worker type (not `engine`/`llm`) is a hand-broken `@2` file — leave it and let the
-  // `@3` schema reject the load, rather than guess a rewrite.
+  // An unrecognised worker type (not `engine`/`llm`) is a hand-broken `@2` file — leave it and let
+  // the `@3` schema reject the load, rather than guess a rewrite.
 }
 
 function walkNode(node: unknown, pointer: string, ctx: Ctx): void {
   if (!isObject(node)) return;
 
   if (node.type === "workflow") {
-    // A workflow step runs a nested run, not a worker (`@3` §4): its `worker` is deleted outright, with
-    // no hoist — a workflow step's worker never crossed the file boundary, so it drove nothing.
+    // A workflow step runs a nested run, not a worker (`@3` §4): its `worker` is deleted outright,
+    // with no hoist — a workflow step's worker never crossed the file boundary, so it drove
+    // nothing.
     if (node.worker !== undefined) delete node.worker;
   } else if (node.type === "binary" || node.type === "prompt") {
     const isPrompt = node.type === "prompt";
@@ -185,15 +190,16 @@ function walkNodeArray(nodes: unknown[], pointer: string, ctx: Ctx): void {
   });
 }
 
-/** @returns the migrated document, or null when the file is not a `@2` workflow (already `@3`, or `@0`/`@1`). */
+/** @returns the migrated document, or null when the file is not a `@2` workflow (already `@3`, or
+ * `@0`/`@1`). */
 function migrateDocument(doc: unknown): JsonObject | null {
   if (!isObject(doc) || doc.format !== LEGACY_FORMAT) return null;
 
   const migrated: JsonObject = { ...doc, format: NEXT_FORMAT };
 
   // The file worker is read (its `type`) then rewritten first, so a file-level llm `model` lands in
-  // `config` before the benign step check reads `config.model`, and a step's inherited worker type is
-  // known when the step carries no `worker` of its own.
+  // `config` before the benign step check reads `config.model`, and a step's inherited worker type
+  // is known when the step carries no `worker` of its own.
   const fileWorkerType =
     isObject(migrated.worker) && typeof migrated.worker.type === "string"
       ? migrated.worker.type
@@ -258,8 +264,9 @@ function main(): void {
   }
 }
 
-// Import-safe: run only when invoked directly, so the codemod's unit test can import `migrateDocument`
-// without the discovery/main side effects (its `@2`/`@3` predecessors run on import; this one guards).
+// Import-safe: run only when invoked directly, so the codemod's unit test can import
+// `migrateDocument` without the discovery/main side effects (its `@2`/`@3` predecessors run on
+// import; this one guards).
 if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))) {
   main();
 }

@@ -1,7 +1,8 @@
 import type { RunStatus } from "@path/schema";
 import type { EligibilityVerdict, ListEligibleResult, ResumeResult } from "./project.js";
 
-/** How a `path run` / `path runs` outcome reads to an operator: exit code, stdout lines, stderr narration. */
+/** How a `path run` / `path runs` outcome reads to an operator: exit code, stdout lines, stderr
+ * narration. */
 
 /** The exit code for a run the operator stopped with `^C` (git's 128 + SIGINT). */
 export const SIGINT_EXIT_CODE = 130;
@@ -14,8 +15,8 @@ export interface RunReport {
 }
 
 /** Maps a settled run's terminal status to its stderr narration and exit code, shared by fresh and
- * resumed runs so the two cannot drift. `awaiting` is neither done nor broken: it exits 0 with a note
- * (ADR 0038) because the parked leaf is resolved later through the server's Complete. */
+ * resumed runs so the two cannot drift. `awaiting` is neither done nor broken: it exits 0 with a
+ * note (ADR 0038) because the parked leaf is resolved later through the server's Complete. */
 export function renderRunOutcome(status: RunStatus, error: string | undefined): RunReport {
   if (status === "cancelled")
     return { stdout: [], stderr: ["run cancelled"], exitCode: SIGINT_EXIT_CODE };
@@ -34,8 +35,8 @@ export function renderRunOutcome(status: RunStatus, error: string | undefined): 
  * chain a further `--resume`. */
 export function renderResume(result: ResumeResult): RunReport {
   if (!result.found) {
-    // A Resume-from-K refusal and an unknown root run both exit 1; the CLI prints the engine's message
-    // verbatim, so route and CLI share one wording authority.
+    // A Resume-from-K refusal and an unknown root run both exit 1; the CLI prints the engine's
+    // message verbatim, so route and CLI share one wording authority.
     return {
       stdout: [],
       stderr: ["refusal" in result ? result.refusal.message : result.error],
@@ -48,8 +49,9 @@ export function renderResume(result: ResumeResult): RunReport {
 
 const ELIGIBLE_TABLE_HEADERS = ["run-id", "node-name", "status", "eligible?"] as const;
 
-// The `eligible?` cell: `yes` for a legal K, otherwise one reason per the engine verdict's §5 taxonomy —
-// the one place those codes become operator wording. The locus reason names the innermost controller.
+// The `eligible?` cell: `yes` for a legal K, otherwise one reason per the engine verdict's §5
+// taxonomy — the one place those codes become operator wording. The locus reason names the
+// innermost controller.
 function eligibilityCell(verdict: EligibilityVerdict): string {
   if (verdict.eligible) return "yes";
   switch (verdict.reason) {
@@ -71,8 +73,9 @@ function eligibilityCell(verdict: EligibilityVerdict): string {
   }
 }
 
-/** `--list-eligible`'s outcome: an unknown root run or a non-terminal source refuses the whole command
- * with the engine's own message and exits 1; otherwise the four-column listing prints, never empty. */
+/** `--list-eligible`'s outcome: an unknown root run or a non-terminal source refuses the whole
+ * command with the engine's own message and exits 1; otherwise the four-column listing prints,
+ * never empty. */
 export function renderListEligible(result: ListEligibleResult): RunReport {
   if (!result.found) return { stdout: [], stderr: [result.error], exitCode: 1 };
   const rows = result.rows.map((row): readonly string[] => [

@@ -69,7 +69,8 @@ describe("blockCancellation", () => {
       causeRunId: "outer-villain",
     });
 
-    // Once it has its own cause, that one wins — an outer failure does not overwrite a local verdict.
+    // Once it has its own cause, that one wins — an outer failure does not overwrite a local
+    // verdict.
     inner.cancellation.triggerWin();
     expect(stopCause(inner.cancellation)).toEqual({ cause: "sibling-succeeded", causeRunId: null });
   });

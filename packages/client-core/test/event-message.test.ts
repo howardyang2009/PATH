@@ -3,9 +3,9 @@ import { describe, expect, it } from "vitest";
 import { eventMessage } from "../src/event-message.js";
 
 /**
- * The shared envelope every log event carries (mvp spec §8.1); each case spreads its own payload on.
- * `node_id` is the GUID and `node_name` the human label — a narrative row shows both, so the two are
- * given distinct values here rather than the same string.
+ * The shared envelope every log event carries (mvp spec §8.1); each case spreads its own payload
+ * on. `node_id` is the GUID and `node_name` the human label — a narrative row shows both, so the
+ * two are given distinct values here rather than the same string.
  */
 const ENVELOPE = {
   seq: 1,
@@ -15,7 +15,8 @@ const ENVELOPE = {
   node_name: "step-a",
 } as const;
 
-/** The trace type as it rides the event stream; derived rather than re-declared so it cannot drift. */
+/** The trace type as it rides the event stream; derived rather than re-declared so it cannot
+ * drift. */
 type Trace = Extract<LogEvent, { type: "checkpoint-passed" }>["trace"];
 
 /** A condition trace stands in for the real one — neither the row nor the outcome renders it. */

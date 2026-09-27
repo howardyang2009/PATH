@@ -216,8 +216,8 @@ describe("RunViewModel", () => {
 
     model.applyEvent(stepAwaiting(1, CHILD, "check-git-result", "alice"));
     const parked = model.getState();
-    // The child's record is awaiting; its parent's record stays running (ADR 0038) while the display
-    // status flips, and the parked leaf is published for a surface that counts them.
+    // The child's record is awaiting; its parent's record stays running (ADR 0038) while the
+    // display status flips, and the parked leaf is published for a surface that counts them.
     expect(parked.runs.get(ROOT)?.status).toBe("running");
     expect(parked.displayStatus.get(ROOT)).toBe("awaiting");
     expect(parked.displayStatus.get(CHILD)).toBe("awaiting");
@@ -228,7 +228,8 @@ describe("RunViewModel", () => {
       error: "review rejected",
     } as LogEvent);
     const failed = model.getState();
-    // The park is over: the root reads `running` again, no leaf awaits, and the failure is published.
+    // The park is over: the root reads `running` again, no leaf awaits, and the failure is
+    // published.
     expect(failed.displayStatus.get(ROOT)).toBe("running");
     expect(failed.awaitingRunIds.size).toBe(0);
     expect(failed.lastError.get(CHILD)).toBe("review rejected");
@@ -342,8 +343,8 @@ describe("RunViewModel", () => {
   });
 
   describe("goto passes seen live, before a tree read (ADR 0054)", () => {
-    // The engine starts a pass container (its `step-started`, on the pass's own run id, named by the
-    // opening goto) and then emits `pass-started` on the workflow-run with the pass ordinal.
+    // The engine starts a pass container (its `step-started`, on the pass's own run id, named by
+    // the opening goto) and then emits `pass-started` on the workflow-run with the pass ordinal.
     it("numbers a live-created pass container from the pass-started that follows it", () => {
       const model = new RunViewModel(ROOT);
       model.applyEvent(stepStarted(1, ROOT, null));

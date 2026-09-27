@@ -77,7 +77,8 @@ describe("resolveEffectiveConfig", () => {
   });
 
   it("leaves a config object's own $secret-named field alone", () => {
-    // Same rule as `$env`: a config object's own keys are field names, not wrapper positions (§8.3).
+    // Same rule as `$env`: a config object's own keys are field names, not wrapper positions
+    // (§8.3).
     expect(resolveEffectiveConfig({ $secret: "literal" }, {})).toEqual({ $secret: "literal" });
   });
 

@@ -191,7 +191,8 @@ describe("Project.run — observer assembly", () => {
 
       await project.run(oneStep, dir, { extraObservers: [spy] });
 
-      // By the time the extra observer sees the root's start, persistence has already inserted the row.
+      // By the time the extra observer sees the root's start, persistence has already inserted the
+      // row.
       expect(rowsWhenSeen).toEqual([1]);
     } finally {
       project.close();
@@ -220,15 +221,17 @@ describe("Project.run — observer assembly", () => {
   });
 
   // The other half of the pair order (execute()'s "Persistence first, deliberately"): a log backend
-  // that throws fails the run audit-first, but the persisted observer runs *before* the logging one,
-  // so it has already written the root row by the time the throw aborts the rest. The row is what
-  // survives a failed audit. Swap the two tiers and the throw lands before persistence — no row.
+  // that throws fails the run audit-first, but the persisted observer runs *before* the logging
+  // one, so it has already written the root row by the time the throw aborts the rest. The row is
+  // what survives a failed audit. Swap the two tiers and the throw lands before persistence — no
+  // row.
   it("keeps the run row when a log backend throws — persistence before logging", async () => {
     const project = open();
     try {
-      // Throw on the root run's own first log event (its implicit step's start, node_id null), so the
-      // failing observation is the very first one — the point where persistence-vs-logging order is
-      // observable: persistence-first has inserted the root row; logging-first would not have.
+      // Throw on the root run's own first log event (its implicit step's start, node_id null), so
+      // the failing observation is the very first one — the point where persistence-vs-logging
+      // order is observable: persistence-first has inserted the root row; logging-first would not
+      // have.
       let thrown = false;
       const failing: LogBackend = {
         async open() {},
@@ -289,7 +292,8 @@ describe("Project.resume (#173)", () => {
       const first = await project.run(v1, dir);
       expect(first.status).toBe("failed");
       const rootId = project.archive.listRoots()[0]!.runId;
-      // `b`'s own run id is a child of the tree, never a root — resuming from it must not resume the tree.
+      // `b`'s own run id is a child of the tree, never a root — resuming from it must not resume
+      // the tree.
       const childId = project.archive.tree(rootId)!.runs.find((r) => r.nodeId === "b")!.runId;
 
       const result = await project.resume(v2, childId, dir);
@@ -314,7 +318,8 @@ describe("Project.resume (#173)", () => {
       expect(result.status).toBe("succeeded");
       expect(result.output).toEqual({ a: "A_OUT", b: "B_OUT" });
 
-      // The successor is its own root run — a fresh id, distinct from the predecessor, with its own tree.
+      // The successor is its own root run — a fresh id, distinct from the predecessor, with its own
+      // tree.
       expect(result.rootRunId).not.toBe(originalRootId);
       expect(existsSync(rootRunTreeDir(dir, result.rootRunId))).toBe(true);
       const successor = project.archive.tree(result.rootRunId)!;
@@ -330,17 +335,19 @@ describe("Project.resume (#173)", () => {
         .runs.find((r) => r.nodeId === "a")!.runId;
       expect(aRow.status).toBe("succeeded");
       expect(aRow.reusedFromRunId).toBe(originalARun);
-      // The archive resolves the source's tree root too (#257), the other half of the provenance pair,
-      // and synthesizes the input/output refs that address the source's blobs — so the reuse row is
-      // honest about having I/O rather than shipping null refs a reader could mistake for "none".
+      // The archive resolves the source's tree root too (#257), the other half of the provenance
+      // pair, and synthesizes the input/output refs that address the source's blobs — so the reuse
+      // row is honest about having I/O rather than shipping null refs a reader could mistake for
+      // "none".
       expect(aRow.reusedFromRootRunId).toBe(originalRootId);
       expect(aRow.inputRef).toBe(blobRef(originalRootId, originalARun, "input.json"));
       expect(aRow.outputRef).toBe(blobRef(originalRootId, originalARun, "output.json"));
       expect(aRow.estimatedCostUsd).toBeNull();
       expect(bRow.reusedFromRunId).toBeNull();
-      // The reuse row holds no blobs of its own, but reading its I/O through the archive follows the
-      // reuse pointer to the source run's tree (#257) — so the viewer's I/O panel shows the reused
-      // values rather than "no input object recorded". They match the original `a` run byte-for-byte.
+      // The reuse row holds no blobs of its own, but reading its I/O through the archive follows
+      // the reuse pointer to the source run's tree (#257) — so the viewer's I/O panel shows the
+      // reused values rather than "no input object recorded". They match the original `a` run
+      // byte-for-byte.
       const original = project.archive.tree(originalRootId)!;
       expect(successor.blob(aRow.runId, "input")).toEqual(original.blob(originalARun, "input"));
       expect(successor.blob(aRow.runId, "output")).toEqual(original.blob(originalARun, "output"));
@@ -361,10 +368,10 @@ describe("Project.resume (#173)", () => {
   });
 
   it("keeps reuse direct-to-source across a resume chain: a node reused one hop back stays reused (#257)", async () => {
-    // Three-deep chain over [a, b, c]. R1 stops at b (a done); R2 resumes and stops at c (a *reused*
-    // from R1, b re-run); R3 resumes R2. In R2, `a` lives only as a reuse row pointing at R1 — it has
-    // no output blob of its own. R3 must reuse `a` straight from that pointer (never re-execute it),
-    // and its marker must reach past R2 to R1 (direct-to-source, ADR 0001).
+    // Three-deep chain over [a, b, c]. R1 stops at b (a done); R2 resumes and stops at c (a
+    // *reused* from R1, b re-run); R3 resumes R2. In R2, `a` lives only as a reuse row pointing at
+    // R1 — it has no output blob of its own. R3 must reuse `a` straight from that pointer (never
+    // re-execute it), and its marker must reach past R2 to R1 (direct-to-source, ADR 0001).
     const c1: WorkflowFile = {
       format: "path/workflow@5",
       id: "wf-id",
@@ -388,7 +395,8 @@ describe("Project.resume (#173)", () => {
       const r2 = await project.resume(c2, root1, dir);
       if (!r2.found) throw new Error("expected R2 found");
       expect(r2.status).toBe("failed");
-      // In R2, `a` is a reuse row pointing straight at R1's run (direct-to-source); `b` re-ran real.
+      // In R2, `a` is a reuse row pointing straight at R1's run (direct-to-source); `b` re-ran
+      // real.
       const aRowIn2 = project.archive.tree(r2.rootRunId)!.runs.find((r) => r.nodeId === "a")!;
       expect(aRowIn2.reusedFromRunId).toBe(aRunIn1);
       const bRunIn2 = project.archive.tree(r2.rootRunId)!.runs.find((r) => r.nodeId === "b")!.runId;
@@ -472,7 +480,8 @@ describe("Project.resume — Resume-from-K (#444)", () => {
       expect(successor.runs.find((r) => r.nodeId === "b")!.reusedFromRunId).toBeNull();
       expect(successor.runs.find((r) => r.nodeId === "c")!.reusedFromRunId).toBeNull();
 
-      // The boundary is persisted root-only as {nodeId, nodeName}[], and rides the read wire (#418).
+      // The boundary is persisted root-only as {nodeId, nodeName}[], and rides the read wire
+      // (#418).
       expect(successor.root!.rerunFromNodePath).toEqual([{ nodeId: "b", nodeName: "b" }]);
       expect(toWireRunRecord(successor.root!).rerun_from_node_path).toEqual([
         { nodeId: "b", nodeName: "b" },
@@ -492,7 +501,8 @@ describe("Project.resume — Resume-from-K (#444)", () => {
       await project.run(failing, dir);
       const originalRootId = project.archive.listRoots()[0]!.runId;
 
-      const result = await project.resume(fixed, originalRootId, dir); // no rerunFromRunId = plain Resume
+      // no rerunFromRunId = plain Resume
+      const result = await project.resume(fixed, originalRootId, dir);
       if (!result.found) throw new Error("expected found:true");
       expect(project.archive.tree(result.rootRunId)!.root!.rerunFromNodePath).toBeNull();
     } finally {
@@ -565,8 +575,9 @@ describe("Project.resume — nested Resume-from-K (#445)", () => {
       const first = await project.run(rootFile, workflowDir, { files });
       expect(first.status).toBe("succeeded");
       const originalRootId = project.archive.listRoots()[0]!.runId;
-      // The disk fixture's ids are real GUIDs (name holds the human label), so nodes are found by name.
-      // K = k, named by its own nested run id — the one handle that tells the nested ref apart (ADR 0032).
+      // The disk fixture's ids are real GUIDs (name holds the human label), so nodes are found by
+      // name. K = k, named by its own nested run id — the one handle that tells the nested ref
+      // apart (ADR 0032).
       const kRunId = project.archive
         .tree(originalRootId)!
         .runs.find((r) => r.nodeName === "k")!.runId;
@@ -580,16 +591,19 @@ describe("Project.resume — nested Resume-from-K (#445)", () => {
 
       const successor = project.archive.tree(result.rootRunId)!;
       const row = (nodeName: string) => successor.runs.find((r) => r.nodeName === nodeName)!;
-      // a is <sub at the root → reuse row; sub is the descended path-node → an executed workflow row.
+      // a is <sub at the root → reuse row; sub is the descended path-node → an executed workflow
+      // row.
       expect(row("a").reusedFromRunId).not.toBeNull();
       expect(row("sub").reusedFromRunId).toBeNull();
-      // Inside sub: p is <K → reuse row; k and q are ≥K → executed; d is after sub → executed (cascade-up).
+      // Inside sub: p is <K → reuse row; k and q are ≥K → executed; d is after sub → executed
+      // (cascade-up).
       expect(row("p").reusedFromRunId).not.toBeNull();
       expect(row("k").reusedFromRunId).toBeNull();
       expect(row("q").reusedFromRunId).toBeNull();
       expect(row("d").reusedFromRunId).toBeNull();
 
-      // The descent path is persisted root-only as {nodeId, nodeName}[], both levels (nodeId a GUID here).
+      // The descent path is persisted root-only as {nodeId, nodeName}[], both levels (nodeId a GUID
+      // here).
       expect(successor.root!.rerunFromNodePath!.map((e) => e.nodeName)).toEqual(["sub", "k"]);
     } finally {
       project.close();
@@ -614,8 +628,8 @@ describe("Project.resume — nested Resume-from-K (#445)", () => {
       const p2 = project.archive.tree(r2.rootRunId)!.runs.find((r) => r.nodeName === "p")!;
       expect(p2.reusedFromRunId).not.toBeNull(); // p is a reuse row in the second tree
 
-      // Now resume the second tree from K = that reuse row p: a reuse row is a legal K, and K re-runs
-      // fresh — the successor's own p is an executed row, not a reuse row.
+      // Now resume the second tree from K = that reuse row p: a reuse row is a legal K, and K
+      // re-runs fresh — the successor's own p is an executed row, not a reuse row.
       const r3 = await project.resume(rootFile, r2.rootRunId, workflowDir, {
         files,
         rerunFromRunId: p2.runId,
@@ -632,9 +646,9 @@ describe("Project.resume — nested Resume-from-K (#445)", () => {
 });
 
 describe("Project.resume — launch worker-default determinism (ADR 0044, #519)", () => {
-  // Two `prompt` worker names, each stubbed to a distinguishable output, so the worker a step resolved
-  // to is readable off its recorded `worker_name` and its output. `failing` names a node whose stub
-  // fails, so a run can be stopped and resumed past it.
+  // Two `prompt` worker names, each stubbed to a distinguishable output, so the worker a step
+  // resolved to is readable off its recorded `worker_name` and its output. `failing` names a node
+  // whose stub fails, so a run can be stopped and resumed past it.
   function stubs(ran: string[], failing?: string) {
     const make = (workerName: string): WorkerDescriptor => ({
       meters: false,
@@ -683,8 +697,9 @@ describe("Project.resume — launch worker-default determinism (ADR 0044, #519)"
         project.archive.tree(originalRootId)!.runs.find((r) => r.nodeId === "a")!.workerName,
       ).toBe("deepseek");
 
-      // Resume against a v2 whose *file* default names the other worker. The launch default is frozen
-      // with the run, so it outranks the live file default for the re-run step — exactly as at launch.
+      // Resume against a v2 whose *file* default names the other worker. The launch default is
+      // frozen with the run, so it outranks the live file default for the re-run step — exactly as
+      // at launch.
       ran.length = 0;
       const v2 = launchFile([promptStep("a"), promptStep("b")], { prompt: "anthropic" });
       const result = await project.resume(v2, originalRootId, dir, { workerOverrides: stubs(ran) });
@@ -694,7 +709,8 @@ describe("Project.resume — launch worker-default determinism (ADR 0044, #519)"
       const successor = project.archive.tree(result.rootRunId)!;
       // `a` is below K: reused read-only, so the live file's new default never re-resolves it.
       expect(successor.runs.find((r) => r.nodeId === "a")!.reusedFromRunId).not.toBeNull();
-      // `b` re-ran at/after K: resolved from the frozen launch table (`deepseek`), not the file's `anthropic`.
+      // `b` re-ran at/after K: resolved from the frozen launch table (`deepseek`), not the file's
+      // `anthropic`.
       expect(successor.runs.find((r) => r.nodeId === "b")!.workerName).toBe("deepseek");
       expect(ran).toEqual(["deepseek:b"]);
 
@@ -719,8 +735,8 @@ describe("Project.resume — launch worker-default determinism (ADR 0044, #519)"
       expect(first.status).toBe("failed");
       const originalRootId = project.archive.listRoots()[0]!.runId;
 
-      // The file default is live: the author's edit reaches the re-run step, because no frozen launch
-      // tier sits above it for this run.
+      // The file default is live: the author's edit reaches the re-run step, because no frozen
+      // launch tier sits above it for this run.
       const v2 = launchFile([promptStep("a"), promptStep("b")], { prompt: "deepseek" });
       const result = await project.resume(v2, originalRootId, dir, { workerOverrides: stubs([]) });
       if (!result.found) throw new Error("expected found:true");
@@ -735,8 +751,9 @@ describe("Project.resume — launch worker-default determinism (ADR 0044, #519)"
 });
 
 describe("Project — frozen launch facts across Resume (ADR 0046)", () => {
-  // As in the block above: prompt workers stubbed to distinguishable outputs, and here also capturing
-  // the *config* each step received, so a test can read what the run actually handed a worker.
+  // As in the block above: prompt workers stubbed to distinguishable outputs, and here also
+  // capturing the *config* each step received, so a test can read what the run actually handed a
+  // worker.
   function capturingStubs(
     seen: { label: string; config: Record<string, unknown> }[],
     failing?: string,
@@ -780,8 +797,8 @@ describe("Project — frozen launch facts across Resume (ADR 0046)", () => {
       expect(result.status).toBe("succeeded");
 
       const rootId = project.archive.listRoots()[0]!.runId;
-      // The input override and the worker table are recorded verbatim; the config is stored resolved,
-      // with the secret value replaced by its token and its path named in `secretKeys`.
+      // The input override and the worker table are recorded verbatim; the config is stored
+      // resolved, with the secret value replaced by its token and its path named in `secretKeys`.
       expect(project.archive.launchFacts(rootId)).toEqual({
         input: { topic: "release" },
         config: { model: "m", greeting: "hi", apiKey: "[secret:apiKey]" },
@@ -806,7 +823,8 @@ describe("Project — frozen launch facts across Resume (ADR 0046)", () => {
       const originalRootId = project.archive.listRoots()[0]!.runId;
 
       seen.length = 0;
-      // The caller supplies the secret again as a *plain* value, the way a surface that types it does.
+      // The caller supplies the secret again as a *plain* value, the way a surface that types it
+      // does.
       const resumed = await project.resume(wf, originalRootId, dir, {
         operatorConfig: { apiKey: "sk-2" },
         workerOverrides: capturingStubs(seen),
@@ -851,8 +869,8 @@ describe("Project — frozen launch facts across Resume (ADR 0046)", () => {
       });
       if (!resumed.found) throw new Error("expected found:true");
 
-      // The frozen copy holds a token where the credential was, so the run ends on a named key rather
-      // than handing `[secret:apiKey]` to a provider as a bearer token.
+      // The frozen copy holds a token where the credential was, so the run ends on a named key
+      // rather than handing `[secret:apiKey]` to a provider as a bearer token.
       expect(resumed.status).toBe("failed");
       expect(resumed.error).toContain('launch config secret "apiKey" was not supplied again');
       expect(seen).toEqual([]);

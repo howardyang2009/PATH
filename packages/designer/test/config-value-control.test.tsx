@@ -4,9 +4,9 @@ import { describe, expect, it, vi } from "vitest";
 import { ConfigValueControl } from "../src/config-value-control.js";
 
 /**
- * The config-value control is the pane's UI adapter over the `config-value.ts` algebra. These tests hit
- * it directly — the seam the extraction bought (#370, § `$env` / `$secret` authoring) — asserting each
- * mode transition and edit lands the exact `ConfigValue` shape the algebra produces.
+ * The config-value control is the pane's UI adapter over the `config-value.ts` algebra. These tests
+ * hit it directly — the seam the extraction bought (#370, § `$env` / `$secret` authoring) —
+ * asserting each mode transition and edit lands the exact `ConfigValue` shape the algebra produces.
  */
 describe("ConfigValueControl", () => {
   const renderControl = (value: ConfigValue) => {

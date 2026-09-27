@@ -11,7 +11,8 @@ export async function main(
 ): Promise<number> {
   const [command, ...rest] = argv;
 
-  // Help is answered before dispatch, so it can never reach a subcommand and be mistaken for an operand.
+  // Help is answered before dispatch, so it can never reach a subcommand and be mistaken for an
+  // operand.
   if (command === "--help" || command === "-h" || rest.includes("--help") || rest.includes("-h")) {
     io.log(`${RUN_USAGE}\n${RUNS_USAGE}`);
     return 0;

@@ -19,11 +19,11 @@ import { stampGuids } from "./stamp-names.js";
 
 // Every test here spawns one or more *cold* `tsx` subprocesses (see `runCli`), and some spawn three
 // (two `run`s + a `prune`/`rm`). On a loaded CI runner that cold start alone can exceed the default
-// 5s vitest `testTimeout`, tripping unrelated PRs (#220). A timeout here is not a harmless slow test
-// either: vitest rejects the test promise but does not kill the child, so a lingering `runs prune`
-// can wipe `.path/runs/` out from under the *next* test in the shared-`projectDir` block — which is
-// how the timeout surfaced as a bogus "no run found" on the orphan-`rm` case. 30s gives real headroom
-// over cold start; these are the slowest, most I/O-bound tests in the repo.
+// 5s vitest `testTimeout`, tripping unrelated PRs (#220). A timeout here is not a harmless slow
+// test either: vitest rejects the test promise but does not kill the child, so a lingering `runs
+// prune` can wipe `.path/runs/` out from under the *next* test in the shared-`projectDir` block —
+// which is how the timeout surfaced as a bogus "no run found" on the orphan-`rm` case. 30s gives
+// real headroom over cold start; these are the slowest, most I/O-bound tests in the repo.
 vi.setConfig({ testTimeout: 30_000 });
 
 const execFileAsync = promisify(execFile);
@@ -44,11 +44,12 @@ afterAll(() => {
   rmSync(fixtures, { recursive: true, force: true });
 });
 
-// Invoke tsx by its absolute bin path, never `npx tsx`. `npx` resolves `tsx` relative to the child's
-// `cwd`; the persistence block runs with `cwd` set to a throwaway tmpdir that has no repo
+// Invoke tsx by its absolute bin path, never `npx tsx`. `npx` resolves `tsx` relative to the
+// child's `cwd`; the persistence block runs with `cwd` set to a throwaway tmpdir that has no repo
 // `node_modules` above it, so `npx` there fell through to a **network install** of tsx — which on a
 // loaded CI runner hung past even a 90s test timeout, failing the first test of that block (#220).
-// `tsx` is a direct devDependency of this package, so its `.bin` shim is always present after install.
+// `tsx` is a direct devDependency of this package, so its `.bin` shim is always present after
+// install.
 const tsxBin = join(packageRoot, "node_modules", ".bin", "tsx");
 
 function runCli(args: string[], cwd: string = packageRoot) {
@@ -264,7 +265,8 @@ describe("path run --resume (ticket #177, real dev-mode process)", () => {
       expect(successorRootRow.status).toBe("succeeded");
       expect(successorRootRow.resumed_from_root_run_id).toBe(originalRoot);
 
-      // The original tree is untouched by the resume: its rows still read as the failed run left them.
+      // The original tree is untouched by the resume: its rows still read as the failed run left
+      // them.
       const originalRows = db
         .prepare("SELECT node_name, status FROM runs WHERE root_run_id = ?")
         .all(originalRoot) as { node_name: string | null; status: string }[];
@@ -395,7 +397,8 @@ describe("path run with a nested workflow step (ticket #22, real dev-mode proces
 
     expect(rows.every((r) => r.status === "succeeded")).toBe(true);
 
-    // The run tree: root workflow-run -> child workflow-run ("child-step") -> leaf binary ("shout").
+    // The run tree: root workflow-run -> child workflow-run ("child-step") -> leaf binary
+    // ("shout").
     const root = rows.find((r) => r.parent_run_id === null);
     expect(root).toBeTruthy();
     expect(root!.node_id).toBeNull();

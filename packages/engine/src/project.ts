@@ -37,19 +37,22 @@ export type {
 } from "./project-resume.js";
 
 /**
- * A project directory, opened: the `.path/` beside a workflow, its db, settings and the one way to run
- * a workflow against it. A `Project` owns all `.path/` knowledge; the CLI and server keep the rest.
+ * A project directory, opened: the `.path/` beside a workflow, its db, settings and the one way to
+ * run a workflow against it. A `Project` owns all `.path/` knowledge; the CLI and server keep the
+ * rest.
  */
 export interface Project {
-  /** The absolute project directory: where `.path/` is read and written. Never a workflow's own directory. */
+  /** The absolute project directory: where `.path/` is read and written. Never a workflow's own
+   * directory. */
   readonly dir: string;
-  /** This project's runs read back: rows, blobs and narratives over the same open db `run` writes to. */
+  /** This project's runs read back: rows, blobs and narratives over the same open db `run` writes
+   * to. */
   readonly archive: RunArchive;
   /** `.path/settings.json` as loaded at open time (mvp spec §9) — `{}` when the file is absent. */
   readonly settings: EngineSettings;
   /**
-   * Run one workflow against this project. `workflowDir` is the root workflow file's own directory, which nested
-   * `workflow` refs and binary `cwd`s resolve against — not `dir`.
+   * Run one workflow against this project. `workflowDir` is the root workflow file's own directory,
+   * which nested `workflow` refs and binary `cwd`s resolve against — not `dir`.
    */
   run(rootFile: WorkflowFile, workflowDir: string, opts?: ProjectRunOptions): Promise<RunResult>;
   /**
@@ -64,8 +67,9 @@ export interface Project {
     opts?: ProjectRunOptions,
   ): Promise<ResumeResult>;
   /**
-   * Dry-run of resume: compute but launch nothing — DFS pre-order runs, each with the verdict the same
-   * `resolveLegalK` authority gives `--from`. An unknown or non-terminal source refuses the command.
+   * Dry-run of resume: compute but launch nothing — DFS pre-order runs, each with the verdict the
+   * same `resolveLegalK` authority gives `--from`. An unknown or non-terminal source refuses the
+   * command.
    */
   listEligible(
     rootFile: WorkflowFile,
@@ -74,10 +78,11 @@ export interface Project {
     files?: Map<string, WorkflowFile>,
   ): ListEligibleResult;
   /**
-   * Complete a parked `awaiting` leaf: replay its tree from the root, reusing `succeeded` rows, then
-   * flip the leaf `awaiting → succeeded` and append forward in the same tree. A per-root-run expiring
-   * lease admits one Complete at a time (`lease-held`) and a leaf compare-and-swap rejects a
-   * non-`awaiting` leaf (`not-awaiting`); output is validated first (`node-gone`, `output-invalid`).
+   * Complete a parked `awaiting` leaf: replay its tree from the root, reusing `succeeded` rows,
+   * then flip the leaf `awaiting → succeeded` and append forward in the same tree. A per-root-run
+   * expiring lease admits one Complete at a time (`lease-held`) and a leaf compare-and-swap rejects
+   * a non-`awaiting` leaf (`not-awaiting`); output is validated first (`node-gone`,
+   * `output-invalid`).
    */
   complete(
     rootFile: WorkflowFile,
@@ -87,31 +92,34 @@ export interface Project {
     opts?: ProjectRunOptions,
   ): Promise<CompleteResult>;
   /**
-   * Cancel a parked `awaiting` tree at the store (`awaiting → cancelled`, ancestors too): a park tears
-   * the engine down, so there is no live process to abort. `false` when the tree is unknown, terminal,
-   * not parked, or lease-held.
+   * Cancel a parked `awaiting` tree at the store (`awaiting → cancelled`, ancestors too): a park
+   * tears the engine down, so there is no live process to abort. `false` when the tree is unknown,
+   * terminal, not parked, or lease-held.
    */
   cancel(rootRunId: string): boolean;
   close(): void;
 }
 
-/** `RunOptions` minus the audit seam (the `Project` composes it), plus setting overrides and seams. */
+/** `RunOptions` minus the audit seam (the `Project` composes it), plus setting overrides and
+ * seams. */
 export interface ProjectRunOptions extends Omit<RunOptions, "observer"> {
   /** Overrides `.path/settings.json`, which overrides the built-in default. */
   logBackends?: LogBackendId[];
   processorConcurrency?: number;
   /** Backends alongside the configured ones — the server's live SSE forwarding. */
   extraBackends?: LogBackend[];
-  /** Resume-only: the operator's source run id naming the rerun boundary K. Absent = plain Resume. */
+  /** Resume-only: the operator's source run id naming the rerun boundary K. Absent = plain
+   * Resume. */
   rerunFromRunId?: string;
   /**
-   * Appended after the built-in pair, always: the capture observer must run after persistence wrote the row and
-   * logging opened its channel.
+   * Appended after the built-in pair, always: the capture observer must run after persistence wrote
+   * the row and logging opened its channel.
    */
   extraObservers?: RunObserver[];
 }
 
-/** What the resume and complete paths share with `openProject`: the open db, the project dir, and the run assembly. */
+/** What the resume and complete paths share with `openProject`: the open db, the project dir, and
+ * the run assembly. */
 export interface ProjectCore {
   db: Database.Database;
   absDir: string;
@@ -125,17 +133,20 @@ export interface ProjectCore {
   ): Promise<RunResult>;
 }
 
-/** `kind` survives the return so the CLI can exit 2 for a bad settings file, 1 for an unopenable db. */
+/** `kind` survives the return so the CLI can exit 2 for a bad settings file, 1 for an unopenable
+ * db. */
 export type OpenProjectResult =
   | { success: true; project: Project }
   | { success: false; kind: "settings" | "db"; error: string };
 
-/** Opens a project directory. Ordering matters: the gitignore call creates `.path/` before `openDb`. */
+/** Opens a project directory. Ordering matters: the gitignore call creates `.path/` before
+ * `openDb`. */
 export function openProject(dir: string): OpenProjectResult {
   const absDir = resolve(dir);
   ensurePathDirGitignore(pathDir(absDir));
 
-  // Engine settings, strictly apart from workflow Config: read by the engine, never merged into `${config.x}`.
+  // Engine settings, strictly apart from workflow Config: read by the engine, never merged into
+  // `${config.x}`.
   const loaded = loadEngineSettings(absDir);
   if (!loaded.success) return { success: false, kind: "settings", error: loaded.error };
 
@@ -151,8 +162,8 @@ export function openProject(dir: string): OpenProjectResult {
   const settings = loaded.settings;
 
   /**
-   * The assembly `run` and `resume` share: backend selection, the persistence-before-logging observer pair,
-   * settings precedence and the `runWorkflow` call.
+   * The assembly `run` and `resume` share: backend selection, the persistence-before-logging
+   * observer pair, settings precedence and the `runWorkflow` call.
    */
   function execute(
     rootFile: WorkflowFile,
@@ -170,18 +181,19 @@ export function openProject(dir: string): OpenProjectResult {
       ...runOptions
     } = opts;
 
-    // Nearest wins: an explicit override beats `.path/settings.json`, which beats the built-in default.
+    // Nearest wins: an explicit override beats `.path/settings.json`, which beats the built-in
+    // default.
     const backendIds = logBackends ?? settings.logBackends ?? DEFAULT_LOG_BACKENDS;
     const backends = createLogBackends(backendIds, { db, projectDir: absDir });
 
-    // A Complete continues the existing per-root log stream: seq picks up from `RunLog.lastSeq()` and events append
-    // to `run.log` rather than truncating it.
+    // A Complete continues the existing per-root log stream: seq picks up from `RunLog.lastSeq()`
+    // and events append to `run.log` rather than truncating it.
     const loggingOptions = continueInput
       ? { startSeq: openRunLog(absDir, db, continueInput.rootRunId).lastSeq(), append: true }
       : {};
 
-    // Persistence first, deliberately: a log write failure aborts the remaining observers, so logging first would
-    // leave a failed audit with no run row.
+    // Persistence first, deliberately: a log write failure aborts the remaining observers, so
+    // logging first would leave a failed audit with no run row.
     const observer = composeObservers(
       createPersistedObserver(db, absDir),
       createLoggingObserver([...backends, ...extraBackends], loggingOptions),

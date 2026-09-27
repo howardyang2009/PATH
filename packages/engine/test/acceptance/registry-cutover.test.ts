@@ -8,16 +8,17 @@ import { runWorkflow } from "../../src/run-workflow.js";
 import { fakeObserver } from "../fake-observer.js";
 
 /**
- * The required acceptance test of the step-plugin exec cutover (#337, ADR 0021): a `@3` file carrying
- * **no `worker` key anywhere** runs a `binary` step and a `prompt` step end to end through the
- * *scanned* registry — the real `plugin/step-plugin/binary` and `plugin/step-plugin/prompt` folders, discovered by
- * the same scan a live run uses — with `prompt` overridden to a scripted worker. It covers the four
- * things the migration could break: the folder scan, the default-worker path for both built-in types,
- * `(type, worker-name)` dispatch, and the `workerOverrides` seam.
+ * The required acceptance test of the step-plugin exec cutover (#337, ADR 0021): a `@3` file
+ * carrying **no `worker` key anywhere** runs a `binary` step and a `prompt` step end to end through
+ * the *scanned* registry — the real `plugin/step-plugin/binary` and `plugin/step-plugin/prompt`
+ * folders, discovered by the same scan a live run uses — with `prompt` overridden to a scripted
+ * worker. It covers the four things the migration could break: the folder scan, the default-worker
+ * path for both built-in types, `(type, worker-name)` dispatch, and the `workerOverrides` seam.
  */
 
-// A scripted stand-in for `prompt`'s `anthropic` worker: it records the request and answers a fixed string,
-// so the run stays deterministic and free without the Agent SDK. It is plugged in as `prompt.anthropic`.
+// A scripted stand-in for `prompt`'s `anthropic` worker: it records the request and answers a fixed
+// string, so the run stays deterministic and free without the Agent SDK. It is plugged in as
+// `prompt.anthropic`.
 function scriptedAnthropic(calls: StepRequest[]): WorkerDescriptor {
   return {
     meters: true,
@@ -77,8 +78,9 @@ describe("acceptance: registry-driven load + dispatch (#337)", () => {
       workerOverrides: { prompt: { anthropic: scriptedAnthropic(calls) } },
     });
 
-    // End to end: the binary ran on the real `spawn` worker and its output threaded into the prompt,
-    // which ran on the overridden `anthropic` worker; the workflow output is the prompt's result.
+    // End to end: the binary ran on the real `spawn` worker and its output threaded into the
+    // prompt, which ran on the overridden `anthropic` worker; the workflow output is the prompt's
+    // result.
     expect(result.status).toBe("succeeded");
     expect(result.output).toEqual({ notes: "SUMMARY of: CHANGES" });
 
@@ -86,8 +88,8 @@ describe("acceptance: registry-driven load + dispatch (#337)", () => {
     expect(calls).toHaveLength(1);
     expect(calls[0]?.input).toBe("CHANGES");
 
-    // Each leaf dispatched to its type's default worker — one `(type, worker-name)` lookup, no worker
-    // key in the file. The audit records the resolved worker name for each.
+    // Each leaf dispatched to its type's default worker — one `(type, worker-name)` lookup, no
+    // worker key in the file. The audit records the resolved worker name for each.
     const started = observer.stepStarts().map((s) => s.event);
     const gather = started.find((s) => s.node_name === "gather")!;
     const summarize = started.find((s) => s.node_name === "summarize")!;

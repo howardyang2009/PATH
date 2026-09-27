@@ -14,20 +14,20 @@ const TABS: readonly { key: PaletteTab; label: string }[] = [
 /**
  * The palette rail: a **Nodes** | **Templates** tab pair. Nodes holds the
  * primitives the author places from — Step + Controller; Controller splits into a
- * **Structure** | **Graph** sub-tab pair, with `goto` on Graph. A click **arms** an entry's kind; the canvas
- * then opens every socket the grammar admits it into (§ Adding — an illegal socket never opens, so an
- * illegal drop is unreachable). A second click on the armed card disarms it.
+ * **Structure** | **Graph** sub-tab pair, with `goto` on Graph. A click **arms** an entry's kind;
+ * the canvas then opens every socket the grammar admits it into (§ Adding — an illegal socket never
+ * opens, so an illegal drop is unreachable). A second click on the armed card disarms it.
  *
  * The Step group is registry-driven (`paletteGroups`): one card per leaf type the received registry
- * describes, plus the `workflow` ref. Until the registry lands the Step list is just `workflow`; the
- * Controller group is fixed by the grammar and always shown.
+ * describes, plus the `workflow` ref. Until the registry lands the Step list is just `workflow`;
+ * the Controller group is fixed by the grammar and always shown.
  *
  * Templates holds the Template category from `GET /v0/templates` (the only kind, ADR 0063). A
  * Template card arms like a Nodes card: the click reads the template's body, and the canvas
- * then opens the sockets the grammar admits that body into. In template mode, a double-click on a card
- * opens the template file itself in author mode; in workflow
- * mode the Templates tab only inserts, so a double-click never leaves the open workflow. A failed read says why
- * instead, and an invalid template is shown disabled with its error.
+ * then opens the sockets the grammar admits that body into. In template mode, a double-click on a
+ * card opens the template file itself in author mode; in workflow
+ * mode the Templates tab only inserts, so a double-click never leaves the open workflow. A failed
+ * read says why instead, and an invalid template is shown disabled with its error.
  */
 export function Palette({
   plugins,
@@ -144,7 +144,8 @@ function PaletteCardList({
   );
 }
 
-/** A group's sub-tabs (the Controller group: Structure | Graph). The first tab is selected by default. */
+/** A group's sub-tabs (the Controller group: Structure | Graph). The first tab is selected by
+ * default. */
 function PaletteSubTabs({
   group,
   tabs,
@@ -215,8 +216,9 @@ function TemplatesTab({
           {arming.templateError}
         </p>
       ) : null}
-      {/* One kind only (ADR 0063), so the tab lists the templates with no group heading, in server order
-          (shipped before user). Invalid rows stay in, shown unselectable with their error (ADR 0050 decision 4). */}
+      {/* One kind only (ADR 0063), so the tab lists the templates with no group heading, in server
+          order (shipped before user). Invalid rows stay in, shown unselectable with their error
+          (ADR 0050 decision 4). */}
       {templateList.templates.length === 0 ? (
         <p className="palette-note">No templates</p>
       ) : (
@@ -238,7 +240,8 @@ function TemplatesTab({
   );
 }
 
-/** One palette card — a toggle button that arms its kind. The hue swatch names the kind by colour. */
+/** One palette card — a toggle button that arms its kind. The hue swatch names the kind by
+ * colour. */
 function PaletteCard({
   entry,
   armed,
@@ -273,11 +276,12 @@ function PaletteCard({
 }
 
 /**
- * One template card: the file-stem name, the blurb, a `shipped` tag for a read-only shipped row, and —
- * for an invalid row — the server's error, with the card disabled so it cannot be selected. A
- * Template card is an arm toggle like a Nodes card. In template mode (`canEdit`), a double-click on a
- * card opens its template file in author mode. The card is only `aria-disabled`, so the double-click still reaches a
- * disabled card: an author can open a broken template to repair it (ADR 0050 decision 5).
+ * One template card: the file-stem name, the blurb, a `shipped` tag for a read-only shipped row,
+ * and — for an invalid row — the server's error, with the card disabled so it cannot be selected. A
+ * Template card is an arm toggle like a Nodes card. In template mode (`canEdit`), a double-click on
+ * a card opens its template file in author mode. The card is only `aria-disabled`, so the
+ * double-click still reaches a disabled card: an author can open a broken template to repair it
+ * (ADR 0050 decision 5).
  */
 function TemplateCard({
   template,

@@ -1,4 +1,5 @@
-/** The shared loading/failure notes; `what` names the thing read, lower-case ("runs", "run", "input"). */
+/** The shared loading/failure notes; `what` names the thing read, lower-case ("runs", "run",
+ * "input"). */
 export function PaneLoading({ what }: { what: string }) {
   return <p className="pane-note">Loading {what}…</p>;
 }

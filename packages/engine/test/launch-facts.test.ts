@@ -7,9 +7,9 @@ import {
   wrapSecretsAtPaths,
 } from "../src/launch-facts.js";
 
-// The launch-facts helpers, at their own boundary (ADR 0046): which config paths are secrets, what a
-// launch freezes, what a continuation recovers, and how a missing secret is worded. The end-to-end
-// behaviour they serve is pinned in `project.test.ts` and `complete.test.ts`.
+// The launch-facts helpers, at their own boundary (ADR 0046): which config paths are secrets, what
+// a launch freezes, what a continuation recovers, and how a missing secret is worded. The
+// end-to-end behaviour they serve is pinned in `project.test.ts` and `complete.test.ts`.
 
 describe("secretPathsOf", () => {
   it("names every dot-path holding a $secret, including nested and array positions", () => {
@@ -106,8 +106,8 @@ describe("wrapSecretsAtPaths", () => {
     expect(wrapSecretsAtPaths({ a: 1 }, ["missing.key"])).toEqual({ a: 1 });
   });
 
-  // `secretPathsOf` names a secret inside a list by its index (`list.0`); a value supplied again there
-  // must be re-marked too, or the successor records it in the clear.
+  // `secretPathsOf` names a secret inside a list by its index (`list.0`); a value supplied again
+  // there must be re-marked too, or the successor records it in the clear.
   it("re-marks a supplied value inside an array, at the index secretPathsOf recorded", () => {
     const paths = secretPathsOf({ list: [{ $secret: "old" }, "plain"] });
     expect(paths).toEqual(["list.0"]);

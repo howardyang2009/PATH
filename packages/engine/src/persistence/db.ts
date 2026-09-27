@@ -3,8 +3,9 @@ import { dirname } from "node:path";
 import Database from "better-sqlite3";
 
 /**
- * Bumping this requires a fresh `.path/path.db`: no migration framework pre-1.0 (mvp spec §6). An older
- * or newer db refuses to open with a clear message rather than hitting a missing column or table.
+ * Bumping this requires a fresh `.path/path.db`: no migration framework pre-1.0 (mvp spec §6). An
+ * older or newer db refuses to open with a clear message rather than hitting a missing column or
+ * table.
  */
 export const SCHEMA_VERSION = 13;
 
@@ -38,8 +39,9 @@ const RUNS_TABLE_DDL = `
   CREATE INDEX IF NOT EXISTS runs_root_run_id_idx ON runs (root_run_id);
 `;
 
-// The db log backend (mvp spec §8.2): envelope fields are columns for queryability, the full event rides
-// along as JSON so a row round-trips through LogEventSchema, and `(root_run_id, seq)` is the ordering truth.
+// The db log backend (mvp spec §8.2): envelope fields are columns for queryability, the full event
+// rides along as JSON so a row round-trips through LogEventSchema, and `(root_run_id, seq)` is the
+// ordering truth.
 const LOG_EVENTS_TABLE_DDL = `
   CREATE TABLE IF NOT EXISTS log_events (
     root_run_id TEXT NOT NULL,
@@ -55,8 +57,9 @@ const LOG_EVENTS_TABLE_DDL = `
 `;
 
 /**
- * Opens (creating if absent) the per-project SQLite store. `PRAGMA user_version` distinguishes a fresh
- * db (stamped here) from a mismatched one, which refuses to open rather than migrating (mvp spec §6).
+ * Opens (creating if absent) the per-project SQLite store. `PRAGMA user_version` distinguishes a
+ * fresh db (stamped here) from a mismatched one, which refuses to open rather than migrating (mvp
+ * spec §6).
  */
 export function openDb(dbFile: string): Database.Database {
   mkdirSync(dirname(dbFile), { recursive: true });

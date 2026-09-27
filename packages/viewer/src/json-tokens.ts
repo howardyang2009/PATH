@@ -10,8 +10,8 @@ export interface JsonToken {
 
 /**
  * Strings first: a colon inside a value (`"[secret:github_token]"`, the masked form) is not a key
- * separator. The trailing `\s*:` group promotes a string to a key; it is emitted as plain text so the
- * join stays lossless.
+ * separator. The trailing `\s*:` group promotes a string to a key; it is emitted as plain text so
+ * the join stays lossless.
  */
 const TOKEN_PATTERN =
   /("(?:[^"\\]|\\.)*")(\s*:)?|(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)|\b(true|false|null)\b/g;

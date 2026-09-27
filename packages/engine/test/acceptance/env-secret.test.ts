@@ -64,7 +64,8 @@ interface Harness {
 let harness: Harness;
 let savedEnv: Record<string, string | undefined>;
 
-/** A throwaway project directory holding just the probe workflow — `.path/` is created beside it. */
+/** A throwaway project directory holding just the probe workflow — `.path/` is created beside
+ * it. */
 function createProject(): string {
   const dir = mkdtempSync(join(tmpdir(), "path-env-acceptance-"));
   cpSync(
@@ -117,7 +118,8 @@ function runProbe(extraArgs: string[] = []): Promise<number> {
   );
 }
 
-/** Where the probe writes what it received — outside `.path/`, so the masking sweep never sees it. */
+/** Where the probe writes what it received — outside `.path/`, so the masking sweep never sees
+ * it. */
 function receiptPath(): string {
   return join(harness.projectDir, RECEIPT_FILE);
 }
@@ -187,7 +189,8 @@ function stepRunId(nodeName: string): string {
   return readRuns().find((row) => row.node_name === nodeName)!.run_id;
 }
 
-/** Every file under `.path/`, so a leak can be looked for across the whole audit surface at once. */
+/** Every file under `.path/`, so a leak can be looked for across the whole audit surface at
+ * once. */
 function everyPersistedFile(): string[] {
   const found: string[] = [];
   const walk = (dir: string): void => {
@@ -208,10 +211,11 @@ describe("acceptance: $env + $secret composed (map #113 reached-when, ticket #11
     expect(harness.stderr).toEqual([]);
     expect(code).toBe(0);
     // The probe writes its **argv** to the receipt, never `process.env.PATH_ACCEPTANCE_TOKEN` —
-    // the child inherits the whole process environment (`plugin/step-plugin/binary`), so reading the
-    // variable there would prove nothing about `$env`. Reaching argv means the wrapper resolved,
-    // rode inheritance into the step's effective config, and `${config.token}` interpolated to the
-    // real credential (mvp spec §8.3: workers get real values; masking is an audit concern).
+    // the child inherits the whole process environment (`plugin/step-plugin/binary`), so reading
+    // the variable there would prove nothing about `$env`. Reaching argv means the wrapper
+    // resolved, rode inheritance into the step's effective config, and `${config.token}`
+    // interpolated to the real credential (mvp spec §8.3: workers get real values; masking is an
+    // audit concern).
     expect(readReceipt()).toBe(TOKEN);
   });
 
@@ -267,9 +271,9 @@ describe("acceptance: $env + $secret composed (map #113 reached-when, ticket #11
   it("masks the condition trace, which reads the secret out of context", async () => {
     await expect(runProbe()).resolves.toBe(0);
 
-    // A checkpoint's trace records the value each leaf actually read (mvp spec §8.1, "post-masking").
-    // `token-round-tripped` reads `context.echoed`, so this is the log-event path that carries a
-    // secret payload — the ordinary lifecycle events have theirs stripped.
+    // A checkpoint's trace records the value each leaf actually read (mvp spec §8.1,
+    // "post-masking"). `token-round-tripped` reads `context.echoed`, so this is the log-event path
+    // that carries a secret payload — the ordinary lifecycle events have theirs stripped.
     for (const events of [readLogEvents(), readNdjsonLogEvents()]) {
       const checkpoint = events.find((event) => event.type === "checkpoint-passed");
       expect(checkpoint).toBeDefined();

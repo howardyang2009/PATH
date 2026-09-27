@@ -10,8 +10,8 @@ import {
 } from "@path/schema";
 
 // The Template store (ADR 0050): Server-owned, engine-blind discovery of shipped∪user authoring
-// templates. A template is typed by its file **suffix**, never its bytes, so the two maps below are the
-// whole classification. The Step-Template is the only kind.
+// templates. A template is typed by its file **suffix**, never its bytes, so the two maps below are
+// the whole classification. The Step-Template is the only kind.
 
 export type TemplateKind = "step";
 export type TemplateOrigin = "shipped" | "user";
@@ -32,13 +32,15 @@ export function kindDirFor(kind: TemplateKind): string {
   return KIND_DIR[kind];
 }
 
-/** The `.path/template/<kind-dir>/` root under a project, where every writable (user) template lives. */
+/** The `.path/template/<kind-dir>/` root under a project, where every writable (user) template
+ * lives. */
 export function userTemplateRoot(projectDir: string): string {
   return join(projectDir, ".path", "template");
 }
 
-/** The shipped (read-only) template root: `packages/server/template`. A missing directory scans as an
- * empty contribution, never a Server-start failure; a caller (a test) may inject a different root. */
+/** The shipped (read-only) template root: `packages/server/template`. A missing directory scans as
+ * an empty contribution, never a Server-start failure; a caller (a test) may inject a different
+ * root. */
 export const DEFAULT_SHIPPED_TEMPLATE_DIR = fileURLToPath(new URL("../template", import.meta.url));
 
 /** The shipped root the union scans: the context override, or the package-relative default. */
@@ -47,13 +49,14 @@ export function shippedTemplateDir(ctx: { shippedTemplateDir?: string }): string
 }
 
 /**
- * One discovered template. `id`/`description`/`format`/`body` are best-effort even when the entry is
- * invalid, so an author can open a broken template to repair it; `id` is `null` only when even a
+ * One discovered template. `id`/`description`/`format`/`body` are best-effort even when the entry
+ * is invalid, so an author can open a broken template to repair it; `id` is `null` only when even a
  * shallow parse cannot recover it, which makes such an entry unaddressable by the by-id routes.
  */
 export interface TemplateEntry {
   id: string | null;
-  /** The file stem — the template's `name` and palette label, derived from the filename, not the bytes. */
+  /** The file stem — the template's `name` and palette label, derived from the filename, not the
+   * bytes. */
   name: string;
   kind: TemplateKind;
   origin: TemplateOrigin;
@@ -78,7 +81,8 @@ export interface TemplateStore {
   byId: Map<string, TemplateEntry>;
 }
 
-/** The names of files directly under `dir` that end with `suffix`, sorted; `[]` when `dir` is absent. */
+/** The names of files directly under `dir` that end with `suffix`, sorted; `[]` when `dir` is
+ * absent. */
 function templateFiles(dir: string, suffix: string): string[] {
   let names: string[];
   try {
@@ -91,7 +95,8 @@ function templateFiles(dir: string, suffix: string): string[] {
   return names.sort();
 }
 
-/** The validity/identity facts of one step-template file's bytes. Never throws — malformed JSON is invalid. */
+/** The validity/identity facts of one step-template file's bytes. Never throws — malformed JSON is
+ * invalid. */
 function classify(
   bytes: Buffer,
   stepSchema: ReturnType<typeof makeStepTemplateSchema>,
@@ -126,9 +131,10 @@ function classify(
 }
 
 /**
- * Discover the shipped∪user template union, fresh (no cache). Scans the two roots, types each file by
- * its suffix, validates its body registry-relative, and builds the `id → entry` index. A duplicate id
- * across origins invalidates the later (user) entry, never the earlier one and never the scan.
+ * Discover the shipped∪user template union, fresh (no cache). Scans the two roots, types each file
+ * by its suffix, validates its body registry-relative, and builds the `id → entry` index. A
+ * duplicate id across origins invalidates the later (user) entry, never the earlier one and never
+ * the scan.
  */
 export function discoverTemplates(
   projectDir: string,
@@ -190,7 +196,8 @@ export function isTemplatePath(projectDir: string, workflowPath: string): boolea
   return relFromRoot === templateDir || relFromRoot.startsWith(`${templateDir}${sep}`);
 }
 
-/** What the template doors read the store through: the project, its frozen registry, and the shipped root. */
+/** What the template doors read the store through: the project, its frozen registry, and the
+ * shipped root. */
 export interface TemplateStoreContext {
   project: { dir: string };
   stepPlugins: StepPluginRegistry;

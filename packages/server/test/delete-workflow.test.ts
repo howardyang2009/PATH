@@ -24,7 +24,8 @@ function strongEtag(bytes: string): string {
   return `"${createHash("sha256").update(bytes).digest("hex")}"`;
 }
 
-/** Write an edit-lease marker beside `draft.workflow.json`, held by `sessionId` for `ttlMs` from now. */
+/** Write an edit-lease marker beside `draft.workflow.json`, held by `sessionId` for `ttlMs` from
+ * now. */
 function writeLease(sessionId: string, ttlMs: number): void {
   const now = Date.now();
   const lease = {

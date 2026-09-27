@@ -8,7 +8,8 @@ function uuid(n: number): string {
   return `${n.toString(16).padStart(8, "0")}-1111-4111-8111-111111111111`;
 }
 
-/** A whole valid `@3` file exercising every block shape, each node with a valid id and a unique name. */
+/** A whole valid `@3` file exercising every block shape, each node with a valid id and a unique
+ * name. */
 function validFile(): Record<string, unknown> {
   return {
     format: FORMAT_VERSION,
@@ -145,7 +146,8 @@ describe("openWorkflowFile", () => {
   it("checks portability before identity: an unregistered type wins over a duplicate id", () => {
     const file = validFile();
     (file.body as Record<string, unknown>[])[1]!.id = uuid(2); // a duplicate id …
-    (file.body as unknown[]).push({ type: "api-call", id: uuid(30), name: "call-a" }); // … and an absent type
+    // … and an absent type
+    (file.body as unknown[]).push({ type: "api-call", id: uuid(30), name: "call-a" });
     const result = openWorkflowFile(JSON.stringify(file), DEFAULT_PLUGINS);
     expect(result.status).toBe("unregistered-types");
   });

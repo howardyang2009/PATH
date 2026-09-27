@@ -42,9 +42,9 @@ function loadWidths(): RailWidths {
 }
 
 /**
- * The pinned app frame: **Variant A, the three-pane console** — `runs list │ run detail │ node I/O`.
- * The panes are co-visible by design: a read-only monitor watches a run live while inspecting a node, so
- * no tab switch may drop the live narrative.
+ * The pinned app frame: **Variant A, the three-pane console** —
+ * `runs list │ run detail │ node I/O`. The panes are co-visible by design: a read-only monitor
+ * watches a run live while inspecting a node, so no tab switch may drop the live narrative.
  *
  * The two rails are drag-resizable. Widths clamp to `[MIN_RAIL, MAX_RAIL]` and persist in
  * `localStorage`, so the fluid centre never starves.
@@ -158,9 +158,10 @@ function loadWorkflowsHeight(): number {
 }
 
 /**
- * The left rail, split top/bottom: **Workflows** above (discovery + inline launch), **Runs** below. One
- * drag-resizable divider between them, the vertical mirror of the column resizers. The workflows panel's
- * height is persisted; the runs list takes what is left, since it is the surface that keeps growing.
+ * The left rail, split top/bottom: **Workflows** above (discovery + inline launch), **Runs** below.
+ * One drag-resizable divider between them, the vertical mirror of the column resizers. The
+ * workflows panel's height is persisted; the runs list takes what is left, since it is the surface
+ * that keeps growing.
  */
 function LeftRail({ workflows, runs }: { workflows: ReactNode; runs: ReactNode }) {
   const railRef = useRef<HTMLDivElement>(null);
@@ -248,7 +249,8 @@ function LeftRail({ workflows, runs }: { workflows: ReactNode; runs: ReactNode }
   );
 }
 
-/** A drag handle between two panes. Exposed as a `separator` so screen readers can resize it too. */
+/** A drag handle between two panes. Exposed as a `separator` so screen readers can resize it
+ * too. */
 function Resizer({
   rail,
   width,

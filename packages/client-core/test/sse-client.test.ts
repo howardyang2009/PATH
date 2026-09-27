@@ -49,7 +49,8 @@ function frame(event: LogEvent): string {
   return `id: ${event.seq}\ndata: ${JSON.stringify(event)}\n\n`;
 }
 
-/** A stub SSE server; `onRequest` decides which frames to write (and whether to drop) per request. */
+/** A stub SSE server; `onRequest` decides which frames to write (and whether to drop) per
+ * request. */
 function startStub(
   onRequest: (req: IncomingMessage, res: ServerResponse) => void,
 ): Promise<{ server: Server; url: string }> {

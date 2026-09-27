@@ -9,12 +9,14 @@ export interface AwaitingActionsProps {
   run: RunNodeState;
   /**
    * The step's `person-activity` node, read by id; `null` when the file cannot resolve it (a nested
-   * file, a retyped node) — the surface then degrades to a schema-less submit rather than inventing a form.
+   * file, a retyped node) — the surface then degrades to a schema-less submit rather than inventing
+   * a form.
    */
   awaitingNode: AwaitingNode | null;
   /**
-   * The launch config paths the tree recorded as `$secret`-masked (ADR 0046). Non-empty, the Complete
-   * form asks for them again: a frozen `[secret:<key>]` token cannot run, so the engine refuses.
+   * The launch config paths the tree recorded as `$secret`-masked (ADR 0046). Non-empty, the
+   * Complete form asks for them again: a frozen `[secret:<key>]` token cannot run, so the engine
+   * refuses.
    */
   launchSecretKeys?: readonly string[];
 }
@@ -22,7 +24,8 @@ export interface AwaitingActionsProps {
 /** The schema-less fallback when the node cannot be read. */
 const FALLBACK_NODE: AwaitingNode = { description: null, assignee: null, outputSchema: null };
 
-/** The awaiting step's Complete surface, inline in the node I/O panel: description, assignee, output
+/** The awaiting step's Complete surface, inline in the node I/O panel: description, assignee,
+ * output
  *  schema and form. Completion folds into the live snapshot; nothing is torn down here. */
 export function AwaitingActions({
   client,
@@ -59,7 +62,8 @@ export function AwaitingActions({
         <h3 className="io-title" id="awaiting-output-schema-title">
           Output schema
         </h3>
-        {/* Shown even when empty: `{}` reads as "any JSON accepted" and keeps the block a fixed slot. */}
+        {/* Shown even when empty: `{}` reads as "any JSON accepted" and keeps the block a fixed
+          slot. */}
         <JsonView value={node.outputSchema ?? {}} />
         {node.outputSchema === null && (
           <p className="pane-note" data-testid="awaiting-output-schema-empty">

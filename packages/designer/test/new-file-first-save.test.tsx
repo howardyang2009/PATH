@@ -4,11 +4,11 @@ import { describe, expect, it } from "vitest";
 import { App } from "../src/app.js";
 
 /**
- * #390 — new-file placement + naming. An author starts a workflow from scratch (no path, no lease until
- * the first save), builds a body on the empty canvas, and the first Save opens the placement dialog: a
- * directory picker confined to the project root, a suffix-enforced filename, and an exclusive create that
- * refuses an existing path rather than overwriting it. On success the path exists, the lease is acquired,
- * and launch enables.
+ * #390 — new-file placement + naming. An author starts a workflow from scratch (no path, no lease
+ * until the first save), builds a body on the empty canvas, and the first Save opens the placement
+ * dialog: a directory picker confined to the project root, a suffix-enforced filename, and an
+ * exclusive create that refuses an existing path rather than overwriting it. On success the path
+ * exists, the lease is acquired, and launch enables.
  */
 
 /** Discovery body giving the picker a real subdirectory beside the always-present project root. */
@@ -25,7 +25,8 @@ const DISCOVERY = {
   ],
 };
 
-/** Arm a palette entry, then place it into the empty body's tail socket — the smallest built body. */
+/** Arm a palette entry, then place it into the empty body's tail socket — the smallest built
+ * body. */
 function buildAPromptBody(): void {
   fireEvent.click(screen.getByText("Prompt"));
   const canvas = screen.getByRole("region", { name: "Workflow canvas" });
@@ -39,7 +40,8 @@ describe("from-scratch buffer — no path, no lease until first save", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "New workflow" }));
 
-    // The empty-body affordance is on the canvas, and the buffer is dirty from open, so Save is live.
+    // The empty-body affordance is on the canvas, and the buffer is dirty from open, so Save is
+    // live.
     await screen.findByRole("region", { name: "Start a body" });
     expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
     // No lease is taken for a never-saved buffer (it has no path to lock).
@@ -65,7 +67,8 @@ describe("first-save placement dialog", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     const dialog = await screen.findByRole("dialog", { name: "Save new workflow" });
-    // Filename is prefilled from the workflow's name; the suffix is a fixed adornment, not editable text.
+    // Filename is prefilled from the workflow's name; the suffix is a fixed adornment, not editable
+    // text.
     expect(within(dialog).getByLabelText("Filename")).toHaveValue("untitled");
     expect(within(dialog).getByText(".workflow.json")).toBeInTheDocument();
     // The directory picker defaults to the project root and offers the discovered subdirectory.
@@ -116,7 +119,8 @@ describe("first-save placement dialog", () => {
     fireEvent.change(within(dialog).getByLabelText("Filename"), { target: { value: "my-flow" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "Create" }));
 
-    // The write is a create-only PUT: no If-Match precondition (ADR 0016), path composed under the root.
+    // The write is a create-only PUT: no If-Match precondition (ADR 0016), path composed under the
+    // root.
     await waitFor(() => expect(calls.put).toHaveLength(1));
     expect(calls.put[0]!.body.workflow_path).toBe("flows/my-flow.workflow.json");
     expect(calls.put[0]!.ifMatch).toBeNull();
@@ -157,7 +161,8 @@ describe("first-save placement dialog", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "Create" }));
 
     expect(await within(dialog).findByText(/already exists at that path/i)).toBeInTheDocument();
-    // The dialog stays open, no save-point was reached, and the write carried no If-Match — never an overwrite.
+    // The dialog stays open, no save-point was reached, and the write carried no If-Match — never
+    // an overwrite.
     expect(screen.getByRole("dialog", { name: "Save new workflow" })).toBeInTheDocument();
     expect(screen.queryByText("Saved")).not.toBeInTheDocument();
     expect(calls.put.every((p) => p.ifMatch === null)).toBe(true);

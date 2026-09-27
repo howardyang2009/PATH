@@ -26,7 +26,8 @@ function strongEtag(bytes: string): string {
   return `"${createHash("sha256").update(bytes).digest("hex")}"`;
 }
 
-/** A valid step-template envelope (ADR 0048): `{ format, id, description, body }`, one `binary` node. */
+/** A valid step-template envelope (ADR 0048): `{ format, id, description, body }`, one `binary`
+ * node. */
 function stepTemplate(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     format: "path/workflow@5",

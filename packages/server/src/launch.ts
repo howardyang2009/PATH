@@ -5,8 +5,9 @@ import { type ConfigObject, type JsonValue, mapEnv, type RunRecord } from "@path
 import { confineToProjectRoot } from "./confine.js";
 
 /**
- * Turning a workflow path into a launchable workflow, once, for every launch surface: reject operator
- * config sourcing `$env`, reject an escaping path, 404 a missing file, 400 a file that no longer validates.
+ * Turning a workflow path into a launchable workflow, once, for every launch surface: reject
+ * operator config sourcing `$env`, reject an escaping path, 404 a missing file, 400 a file that no
+ * longer validates.
  */
 
 export interface WorkflowRefusal {
@@ -19,8 +20,9 @@ export type PreparedWorkflow =
   | { ok: true; workflow: LoadedWorkflow }
   | { ok: false; refusal: WorkflowRefusal };
 
-/** ADR 0012: operator config may name a literal `$secret` but not `$env`, which would source from the
- * server process environment; `ConfigObjectSchema` is shared with workflow config, where `$env` is legal. */
+/** ADR 0012: operator config may name a literal `$secret` but not `$env`, which would source from
+ * the server process environment; `ConfigObjectSchema` is shared with workflow config, where `$env`
+ * is legal. */
 export function operatorConfigEnvError(config: ConfigObject): string | undefined {
   const paths: string[] = [];
   mapEnv(config as JsonValue, (_name, path) => {
@@ -31,14 +33,16 @@ export function operatorConfigEnvError(config: ConfigObject): string | undefined
   return `operator config may not source from the server environment: $env at ${paths.map((p) => `"${p}"`).join(", ")}`;
 }
 
-/** How a route words its two 404s — the only wording that legitimately differs between the surfaces. */
+/** How a route words its two 404s — the only wording that legitimately differs between the
+ * surfaces. */
 export interface NotFoundMessages {
   notFound(workflowPath: string): string;
   escapesRoot?(workflowPath: string): string;
 }
 
-/** Resolve a path within the project root, confirm it exists, then load and validate it. 404 when it
- * escapes or is missing, 400 when it fails to load; a missing tail reads as `notFound`, not an escape. */
+/** Resolve a path within the project root, confirm it exists, then load and validate it. 404 when
+ * it escapes or is missing, 400 when it fails to load; a missing tail reads as `notFound`, not an
+ * escape. */
 export async function prepareWorkflow(
   projectDir: string,
   workflowPath: string,
@@ -71,9 +75,10 @@ export interface RunWorkflowMessages extends NotFoundMessages {
   swapped(workflowPath: string): string;
 }
 
-/** The **current authoring** of the workflow an existing run was launched from: recover the store-relative
- * path from the run's root row, run the same escape/not-found/invalid gate, and confirm it is still the
- * same workflow by id (ADR 0006); a predecessor with no recorded id skips that check. */
+/** The **current authoring** of the workflow an existing run was launched from: recover the
+ * store-relative path from the run's root row, run the same escape/not-found/invalid gate, and
+ * confirm it is still the same workflow by id (ADR 0006); a predecessor with no recorded id skips
+ * that check. */
 export async function prepareRunWorkflow(
   projectDir: string,
   root: Pick<RunRecord, "workflowId" | "workflowPath">,

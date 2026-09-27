@@ -2,10 +2,10 @@ import { useState } from "react";
 import { type DiscoveryLoad, discoveredWorkflows } from "./discovery.js";
 
 /**
- * The target chooser for a new `workflow`-ref. Because a ref stores a **path**, adding one either points
- * at a discovered workflow or creates a new one: the child descends at once as an unwritten, path-less
- * buffer, and its first save picks the path and back-fills the parent ref. The dialog owns only its mode;
- * the App wires what each choice does.
+ * The target chooser for a new `workflow`-ref. Because a ref stores a **path**, adding one either
+ * points at a discovered workflow or creates a new one: the child descends at once as an unwritten,
+ * path-less buffer, and its first save picks the path and back-fills the parent ref. The dialog
+ * owns only its mode; the App wires what each choice does.
  */
 export function RefTargetDialog({
   discovery,
@@ -15,11 +15,13 @@ export function RefTargetDialog({
   onCancel,
 }: {
   discovery: DiscoveryLoad;
-  /** The referring file's own path, dropped from the existing-picker so it cannot reference itself. */
+  /** The referring file's own path, dropped from the existing-picker so it cannot reference
+   * itself. */
   excludePath: string;
   /** Point the ref at an already-discovered workflow at this project-relative path. */
   onPickExisting: (targetPath: string) => void;
-  /** Descend into a fresh, unwritten child now; its first save picks the path and back-fills the ref. */
+  /** Descend into a fresh, unwritten child now; its first save picks the path and back-fills the
+   * ref. */
   onCreateNew: () => void;
   /** Dismiss without setting the ref; the empty `workflow` node stays as it was. */
   onCancel: () => void;
@@ -68,7 +70,8 @@ export function RefTargetDialog({
   );
 }
 
-/** The reference-existing branch: a picker over the project's discovered workflows (`GET /v0/workflows`). */
+/** The reference-existing branch: a picker over the project's discovered workflows (`GET
+ * /v0/workflows`). */
 function ExistingPicker({
   discovery,
   excludePath,
@@ -82,8 +85,8 @@ function ExistingPicker({
   onBack: () => void;
   onCancel: () => void;
 }): JSX.Element {
-  // `null` until a scan lands: still discovering. A failed scan with nothing behind it reads as empty, so
-  // the picker shows its "no workflows" note rather than an indefinite spinner.
+  // `null` until a scan lands: still discovering. A failed scan with nothing behind it reads as
+  // empty, so the picker shows its "no workflows" note rather than an indefinite spinner.
   const discovered = discoveredWorkflows(discovery);
   const paths =
     discovered === null

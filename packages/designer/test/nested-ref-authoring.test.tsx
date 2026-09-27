@@ -5,12 +5,13 @@ import { describe, expect, it } from "vitest";
 import { App } from "../src/app.js";
 
 /**
- * #391 — nested `workflow`-ref creation (Model B). Adding a `workflow`-ref offers **reference-existing**
- * (a picker over discovered workflows) or **create-new**, which descends **at once** into a fresh,
- * unwritten, path-less child — no path is chosen up front. The child follows the from-scratch rule (no stub
- * written, no lease, no launch, until its first save), and ascending a dirty child never force-saves it.
- * The child's **first save** picks the path (the same new-file dialog a root takes) and **back-fills the
- * parent ref** from that path — so the ref is filled by the save, never chosen before authoring.
+ * #391 — nested `workflow`-ref creation (Model B). Adding a `workflow`-ref offers
+ * **reference-existing** (a picker over discovered workflows) or **create-new**, which descends
+ * **at once** into a fresh, unwritten, path-less child — no path is chosen up front. The child
+ * follows the from-scratch rule (no stub written, no lease, no launch, until its first save), and
+ * ascending a dirty child never force-saves it. The child's **first save** picks the path (the same
+ * new-file dialog a root takes) and **back-fills the parent ref** from that path — so the ref is
+ * filled by the save, never chosen before authoring.
  */
 
 function uuid(n: number): string {
@@ -19,7 +20,8 @@ function uuid(n: number): string {
 
 const PARENT_PATH = "flows/parent.workflow.json";
 
-/** A saved parent file with a seed step, so the palette can place a fresh (empty-ref) `workflow` node into it. */
+/** A saved parent file with a seed step, so the palette can place a fresh (empty-ref) `workflow`
+ * node into it. */
 function parentFile(): Record<string, unknown> {
   return {
     format: FORMAT_VERSION,
@@ -29,7 +31,8 @@ function parentFile(): Record<string, unknown> {
   };
 }
 
-/** Discovery giving the picker two existing workflows beside the parent, and the dialog its `flows` directory. */
+/** Discovery giving the picker two existing workflows beside the parent, and the dialog its `flows`
+ * directory. */
 const DISCOVERY = {
   workflows: [
     {
@@ -60,7 +63,8 @@ async function openParentAndSelectRef(
 ): Promise<void> {
   render(<App client={client} initialPath={PARENT_PATH} />);
   await screen.findByText("seed");
-  // Arm the Workflow palette entry and drop it into the parent body's tail socket — a fresh, empty ref.
+  // Arm the Workflow palette entry and drop it into the parent body's tail socket — a fresh, empty
+  // ref.
   fireEvent.click(within(screen.getByRole("region", { name: "Palette" })).getByText("Workflow"));
   const canvas = screen.getByRole("region", { name: "Workflow canvas" });
   fireEvent.click(within(canvas).getByRole("button", { name: /add workflow here/ }));
@@ -69,14 +73,16 @@ async function openParentAndSelectRef(
   );
 }
 
-/** Create-new from a selected empty ref node: descend at once into the fresh, path-less child's blank body. */
+/** Create-new from a selected empty ref node: descend at once into the fresh, path-less child's
+ * blank body. */
 async function createNewChild(): Promise<void> {
   fireEvent.click(await screen.findByRole("button", { name: "Choose a reference target…" }));
   fireEvent.click(await screen.findByRole("button", { name: "Create a new workflow" }));
   await screen.findByRole("region", { name: "Start a body" });
 }
 
-/** Save the active path-less child: click Save, then in the first-save dialog build `flows/child.workflow.json`. */
+/** Save the active path-less child: click Save, then in the first-save dialog build
+ * `flows/child.workflow.json`. */
 async function saveChildAs(): Promise<void> {
   fireEvent.click(screen.getByRole("button", { name: "Save" }));
   const dialog = await screen.findByRole("dialog", { name: "Save new workflow" });
@@ -108,8 +114,8 @@ describe("adding a workflow-ref offers reference-existing or create-new", () => 
 
   it("double-clicking an unset workflow block opens the same chooser", async () => {
     await openParentAndSelectRef();
-    // A fresh (empty-ref) block has nowhere to descend, so a double-click authors its target instead —
-    // the same chooser the pane's "Choose a reference target…" opens.
+    // A fresh (empty-ref) block has nowhere to descend, so a double-click authors its target
+    // instead — the same chooser the pane's "Choose a reference target…" opens.
     const canvas = screen.getByRole("region", { name: "Workflow canvas" });
     const refChip = (await within(canvas).findByText("workflow")).closest(
       ".node-block",
@@ -157,8 +163,8 @@ describe("create-new descends into a fresh, unwritten child", () => {
 
     await createNewChild();
 
-    // The breadcrumb crossed into the child at once; no path was chosen, so it reads "untitled", and no
-    // stub file was written for it (no PUT).
+    // The breadcrumb crossed into the child at once; no path was chosen, so it reads "untitled",
+    // and no stub file was written for it (no PUT).
     const crumbs = screen.getByRole("navigation", { name: "File breadcrumb" });
     expect(within(crumbs).getByText("parent-flow")).toBeInTheDocument();
     expect(within(crumbs).getByText("untitled")).toBeInTheDocument();
@@ -168,7 +174,8 @@ describe("create-new descends into a fresh, unwritten child", () => {
     expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
     expect(calls.lock.map((c) => c.workflow_path)).toEqual([PARENT_PATH]);
 
-    // Launch is gated until the child's first save — an unwritten child reads as a new, unsaved workflow.
+    // Launch is gated until the child's first save — an unwritten child reads as a new, unsaved
+    // workflow.
     fireEvent.click(screen.getByTestId("run-dock-toggle"));
     expect(screen.getByTestId("run-launch-gate")).toHaveTextContent(
       "Save this new workflow before you can run it.",
@@ -214,18 +221,21 @@ describe("end-to-end — the child's save picks the path and back-fills the pare
     await createNewChild();
     buildAPromptBody();
 
-    // Save the child: the path is chosen now, and the save is an exclusive create (no If-Match, ADR 0016).
+    // Save the child: the path is chosen now, and the save is an exclusive create (no If-Match, ADR
+    // 0016).
     await saveChildAs();
     await waitFor(() => expect(calls.put).toHaveLength(1));
     expect(calls.put[0]!.body.workflow_path).toBe("flows/child.workflow.json");
     expect(calls.put[0]!.ifMatch).toBeNull();
     expect(await screen.findByText("Saved")).toBeInTheDocument();
-    // The lease is acquired for the freshly written child — the from-scratch rule lifts at the first save.
+    // The lease is acquired for the freshly written child — the from-scratch rule lifts at the
+    // first save.
     await waitFor(() =>
       expect(calls.lock.map((c) => c.workflow_path)).toContain("flows/child.workflow.json"),
     );
 
-    // Ascend and save the parent; its `workflow`-ref was back-filled by the child's save, relative to the parent.
+    // Ascend and save the parent; its `workflow`-ref was back-filled by the child's save, relative
+    // to the parent.
     const crumbs = screen.getByRole("navigation", { name: "File breadcrumb" });
     fireEvent.click(within(crumbs).getByRole("button", { name: "parent-flow" }));
     fireEvent.click(await screen.findByRole("button", { name: "Save" }));

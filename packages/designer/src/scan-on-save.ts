@@ -2,15 +2,16 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { SaveState } from "./session-reducer.js";
 
 /**
- * A scan's load state. On failure the last successful value is kept beside the message, so a caller that
- * must not empty itself on a read blip can keep showing it.
+ * A scan's load state. On failure the last successful value is kept beside the message, so a caller
+ * that must not empty itself on a read blip can keep showing it.
  */
 export type ScanLoad<T> =
   | { phase: "loading" }
   | { phase: "error"; message: string; lastGood: T | null }
   | { phase: "ready"; value: T };
 
-/** Scan with `fetch` now and after each save phase in `rescanOn`; both should be stable (a new identity re-scans). */
+/** Scan with `fetch` now and after each save phase in `rescanOn`; both should be stable (a new
+ * identity re-scans). */
 export function useScanOnSave<T>(
   fetch: () => Promise<T>,
   savePhase: SaveState["phase"],

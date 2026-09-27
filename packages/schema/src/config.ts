@@ -10,18 +10,21 @@ const EnvWrapperSchema = z
   })
   .strict();
 
-// `$env` sources a value, `$secret` marks one; a value that is both nests the marking over the source.
+// `$env` sources a value, `$secret` marks one; a value that is both nests the marking over the
+// source.
 const SecretWrapperSchema = z
   .object({
     $secret: z.union([z.string(), EnvWrapperSchema]),
   })
   .strict();
 
-// Known wrapper keys are read off these schemas, so the reserved-key list cannot drift from the union.
+// Known wrapper keys are read off these schemas, so the reserved-key list cannot drift from the
+// union.
 const WrapperSchemas = [SecretWrapperSchema, EnvWrapperSchema] as const;
 const knownWrapperKeys = WrapperSchemas.flatMap((schema) => Object.keys(schema.shape));
 
-/** Reported as a reserved key, not an unknown wrapper: a literal `$`-prefixed key is unexpressible. */
+/** Reported as a reserved key, not an unknown wrapper: a literal `$`-prefixed key is
+ * unexpressible. */
 function reservedKeyMessage(key: string): string {
   return (
     `"${key}" is a reserved key — a sole "$"-prefixed key names a config wrapper ` +
@@ -29,9 +32,10 @@ function reservedKeyMessage(key: string): string {
   );
 }
 
-/** A sole `$`-prefixed key is a wrapper or a load error, never literal data. Config is `z.record`, so
- * §10's unknown-field rejection does not reach inside it: without this gate `{"$evn": "TOKEN"}` would
- * validate as an ordinary object and the worker would receive the wrapper. Multi-key objects are data. */
+/** A sole `$`-prefixed key is a wrapper or a load error, never literal data. Config is `z.record`,
+ * so §10's unknown-field rejection does not reach inside it: without this gate `{"$evn": "TOKEN"}`
+ * would validate as an ordinary object and the worker would receive the wrapper. Multi-key objects
+ * are data. */
 const PlainConfigObjectSchema = z.lazy(() =>
   z
     .record(z.string(), ConfigValueSchema)
@@ -48,8 +52,9 @@ const PlainConfigObjectSchema = z.lazy(() =>
     }),
 );
 
-/** Literal JSON, never interpolated (docs/format/workflow-format.md §7), except two wrappers: `{"$secret": ...}`
- * marks a value for redaction (mvp-spec.md §8.3) and `{"$env": "NAME"}` sources one at run start. */
+/** Literal JSON, never interpolated (docs/format/workflow-format.md §7), except two wrappers:
+ * `{"$secret": ...}` marks a value for redaction (mvp-spec.md §8.3) and `{"$env": "NAME"}` sources
+ * one at run start. */
 export const ConfigValueSchema: z.ZodType<ConfigValue> = z.lazy(() =>
   z.union([
     z.string(),

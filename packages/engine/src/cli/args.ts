@@ -1,7 +1,7 @@
 type TakeValueResult = { success: true; value: string } | { success: false; error: string };
 
-// The argument after a value-flag at `args[i]`, or a usage error naming the flag. The caller advances
-// `i`; `noun` is the flag's own wording ("a path", "a guid").
+// The argument after a value-flag at `args[i]`, or a usage error naming the flag. The caller
+// advances `i`; `noun` is the flag's own wording ("a path", "a guid").
 export function takeValue(
   args: string[],
   i: number,
@@ -16,8 +16,8 @@ export function takeValue(
 
 type TakePairResult = { success: true; pair: [string, string] } | { success: false; error: string };
 
-// The `<key>=<value>` argument after a pair-flag, split at the first `=`; the key must be non-empty and
-// `valueRequired` also refuses an empty value (unlike an empty config string).
+// The `<key>=<value>` argument after a pair-flag, split at the first `=`; the key must be non-empty
+// and `valueRequired` also refuses an empty value (unlike an empty config string).
 export function takePair(
   args: string[],
   i: number,
@@ -52,8 +52,8 @@ export function parsePositiveInt(
   return { success: true, value: parsed };
 }
 
-// `-C <dir>` can appear anywhere in a `runs` invocation, ahead of or behind the subcommand, so it is
-// stripped before the rest of parsing sees it rather than pinned to one position.
+// `-C <dir>` can appear anywhere in a `runs` invocation, ahead of or behind the subcommand, so it
+// is stripped before the rest of parsing sees it rather than pinned to one position.
 type ExtractDirFlagResult =
   | { success: true; dir: string | undefined; rest: string[] }
   | { success: false; error: string };

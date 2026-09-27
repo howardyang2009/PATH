@@ -4,12 +4,14 @@
 
 import type { WorkflowSummary } from "@path/schema";
 
-/** A folder node: a navigation step that groups the workflows (and folders) under one path prefix. */
+/** A folder node: a navigation step that groups the workflows (and folders) under one path
+ * prefix. */
 export interface WorkflowTreeFolder {
   kind: "folder";
   /** The last path segment — the visible folder name. */
   name: string;
-  /** The full path prefix from the root, e.g. `lib/drafts` — the folder's identity and open-state key. */
+  /** The full path prefix from the root, e.g. `lib/drafts` — the folder's identity and open-state
+   * key. */
   path: string;
   children: WorkflowTreeNode[];
 }
@@ -22,7 +24,8 @@ export interface WorkflowTreeLeaf {
 
 export type WorkflowTreeNode = WorkflowTreeFolder | WorkflowTreeLeaf;
 
-/** The file name of a workflow path — the leaf's own line, since its folders already sit above it. */
+/** The file name of a workflow path — the leaf's own line, since its folders already sit above
+ * it. */
 export function workflowBaseName(relativePath: string): string {
   const slash = relativePath.lastIndexOf("/");
   return slash === -1 ? relativePath : relativePath.slice(slash + 1);
@@ -78,9 +81,9 @@ export function countWorkflowLeaves(folder: WorkflowTreeFolder): number {
   );
 }
 
-/** Accordion open-state: a folder is expanded when `openFolder` is it or a prefix of it, so one folder
- * stays open per level. {@link nextOpenFolder} toggles: a click on the open chain walks back to its
- * parent, any other opens the clicked folder. */
+/** Accordion open-state: a folder is expanded when `openFolder` is it or a prefix of it, so one
+ * folder stays open per level. {@link nextOpenFolder} toggles: a click on the open chain walks back
+ * to its parent, any other opens the clicked folder. */
 export function isFolderOnOpenChain(openFolder: string | null, folderPath: string): boolean {
   return openFolder === folderPath || (openFolder?.startsWith(`${folderPath}/`) ?? false);
 }

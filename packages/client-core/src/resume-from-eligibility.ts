@@ -8,17 +8,20 @@ import {
   type WorkflowFile,
 } from "@path/schema";
 
-/** Client half of the engine's one legal-K rule (`resume-legal-k.ts`): the button computes eligibility
- * eagerly from the run tree + open root file so an illegal pick greys it before a round-trip. A nested
- * K's since-deleted/in-body/prefix reasons are left to the engine's `refusal` on click.
+/** Client half of the engine's one legal-K rule (`resume-legal-k.ts`): the button computes
+ * eligibility eagerly from the run tree + open root file so an illegal pick greys it before a
+ * round-trip. A nested K's since-deleted/in-body/prefix reasons are left to the engine's `refusal`
+ * on click.
  */
 export type ResumeFromReasonCode =
   | "no-selection" // spec rule 1 — nothing selected, or the root row (never a K)
   | "pass-run" // a goto pass container row (ADR 0054 §3); K is a node inside it
-  | LegalKLevelReason // engine rules 2–5, the per-level taxonomy shared with the engine (`classifyLevelK`)
+  // engine rules 2–5, the per-level taxonomy shared with the engine (`classifyLevelK`)
+  | LegalKLevelReason
   | "dirty-buffer"; // spec rule 3 — a legal K, but the open file is not saved
 
-/** The innermost enclosing controller named in an `in-body` reason (`loop` is `while-do`), as the engine. */
+/** The innermost enclosing controller named in an `in-body` reason (`loop` is `while-do`), as the
+ * engine. */
 export type ResumeFromContainer = ControlBlockKind;
 
 export type ResumeFromEligibility =
@@ -37,7 +40,8 @@ export interface ResumeFromEligibilityArgs {
   dirty: boolean;
 }
 
-/** The short run id shown in the button label; the full id is the wire value and the hover title. */
+/** The short run id shown in the button label; the full id is the wire value and the hover
+ * title. */
 export function shortRunId(runId: string): string {
   return runId.slice(0, 8);
 }
@@ -47,7 +51,8 @@ export function shortRunId(runId: string): string {
 export function resumeFromEligibility(args: ResumeFromEligibilityArgs): ResumeFromEligibility {
   const { rootRunId, runs, rootFile, selectedRunId, dirty } = args;
 
-  // (1) Nothing selected — the button's rest state. The root row folds in here: it owns no node, so it is never a K.
+  // (1) Nothing selected — the button's rest state. The root row folds in here: it owns no node, so
+  // it is never a K.
   if (selectedRunId === null) return noSelection();
   const selection = selectBoundary(runs.values(), selectedRunId);
   if (selection.kind === "not-in-tree" || selection.kind === "root-run") return noSelection();
@@ -60,8 +65,8 @@ export function resumeFromEligibility(args: ResumeFromEligibilityArgs): ResumeFr
   }
   const { run: selected, levels } = selection;
 
-  // (2) An illegal K. A root-level K is located in the open file's body — the exact engine mirror. A
-  // nested K sits in a file the Designer does not hold, so only its own success is checked here.
+  // (2) An illegal K. A root-level K is located in the open file's body — the exact engine mirror.
+  // A nested K sits in a file the Designer does not hold, so only its own success is checked here.
   const nodeName = selected.nodeName ?? selected.nodeId;
   const topLevel =
     levels.length === 1 && (levels[0]!.passRun ?? levels[0]!.run).parentRunId === rootRunId;
@@ -86,7 +91,8 @@ function noSelection(): ResumeFromEligibility {
 }
 
 /** The shared `classifyLevelK` predicate (`@path/schema`) run over the open root file at the root
- * scope (K's pass run under a goto, earlier passes as prefix), returning the first illegal reason. */
+ * scope (K's pass run under a goto, earlier passes as prefix), returning the first illegal
+ * reason. */
 function classifyTopLevel(
   rootFile: WorkflowFile,
   runs: ReadonlyMap<string, RunRecord>,

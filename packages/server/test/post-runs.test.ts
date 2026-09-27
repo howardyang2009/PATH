@@ -9,19 +9,20 @@ import { handlePostRuns as handlePostRunsWithRequest } from "../src/routes/post-
 import type { RouteContext } from "../src/routes/route-context.js";
 
 /**
- * `POST /v0/runs` carries the operator's **launch worker-default** table (ADR 0044, #517): a top-level
- * `worker_defaults` field, a peer of `input`/`config`, that feeds the same engine launch table the CLI
- * `--worker-default` fills. The route's one new job is to fold that field into `StartRunOptions
- * .launchWorkerDefaults` verbatim — the engine's own tests own that the table then reaches un-pinned
- * steps. So this drives the handler against a recording `LiveRuns` and asserts the field that lands on
- * `start`, which is deterministic and needs no worker to run.
+ * `POST /v0/runs` carries the operator's **launch worker-default** table (ADR 0044, #517): a
+ * top-level `worker_defaults` field, a peer of `input`/`config`, that feeds the same engine launch
+ * table the CLI `--worker-default` fills. The route's one new job is to fold that field into
+ * `StartRunOptions .launchWorkerDefaults` verbatim — the engine's own tests own that the table then
+ * reaches un-pinned steps. So this drives the handler against a recording `LiveRuns` and asserts
+ * the field that lands on `start`, which is deterministic and needs no worker to run.
  */
 
 const fixturesDir = join(dirname(fileURLToPath(import.meta.url)), "fixtures");
 
 /**
- * The route table hands every handler one `ApiRequest`; this test drives `POST /v0/runs` directly, so
- * this adapter supplies the matched-request envelope. The route reads neither `params` nor `query`.
+ * The route table hands every handler one `ApiRequest`; this test drives `POST /v0/runs` directly,
+ * so this adapter supplies the matched-request envelope. The route reads neither `params` nor
+ * `query`.
  */
 function handlePostRuns(
   req: IncomingMessage,
@@ -75,8 +76,9 @@ function context(live: LiveRuns): RouteContext {
 const WORKFLOW = "two-binary-steps.workflow.json";
 
 // The file-level input seed (a workflow file's own top-level `input`): `POST /v0/runs` resolves the
-// effective root input here — a non-empty operator override wins, else the file's seed, else `{}` — so
-// every launch door that reaches this route (the Viewer panel, the Designer's run dock) shares one rule.
+// effective root input here — a non-empty operator override wins, else the file's seed, else `{}` —
+// so every launch door that reaches this route (the Viewer panel, the Designer's run dock) shares
+// one rule.
 describe("POST /v0/runs input resolution", () => {
   const WITH_INPUT = "file-input.workflow.json";
   const FILE_SEED = { ticket: 7, labels: ["from-file"] };
@@ -118,9 +120,9 @@ describe("POST /v0/runs input resolution", () => {
   });
 });
 
-// The *override* is recorded beside the effective seed (ADR 0046): `input` is what the run seeds from,
-// `operatorInput` is what a reader is shown as the launch's own input. The same "empty is no override"
-// rule applies, so a `{}` body never records a launch fact that did not exist.
+// The *override* is recorded beside the effective seed (ADR 0046): `input` is what the run seeds
+// from, `operatorInput` is what a reader is shown as the launch's own input. The same "empty is no
+// override" rule applies, so a `{}` body never records a launch fact that did not exist.
 describe("POST /v0/runs operatorInput (ADR 0046)", () => {
   it("forwards a non-empty input override as the recorded launch input", async () => {
     const { live, started } = recordingLive();
@@ -171,8 +173,8 @@ describe("POST /v0/runs worker_defaults (ADR 0044, #517)", () => {
     const { live, started } = recordingLive();
     const { res } = fakeRes();
 
-    // Dispatch never reads `config` for worker selection, so a table smuggled inside it is inert. The
-    // launch table must come from the top-level field alone.
+    // Dispatch never reads `config` for worker selection, so a table smuggled inside it is inert.
+    // The launch table must come from the top-level field alone.
     await handlePostRuns(
       fakeReq({ workflow_path: WORKFLOW, config: { worker_defaults: { binary: "spawn" } } }),
       res,
@@ -211,7 +213,8 @@ describe("POST /v0/runs worker_defaults (ADR 0044, #517)", () => {
 // The launch channel of ADR 0044's registry-relative validation (#518): a launch `worker_defaults`
 // naming an absent type, or a worker a type does not ship, is a bad request — `400` before the run
 // starts, checked against the workflow's real registry (the built-in `binary`/`prompt` types the
-// fixtures scan). Same taxonomy as the CLI `--worker-default` boundary, prefixed `worker_defaults:`.
+// fixtures scan). Same taxonomy as the CLI `--worker-default` boundary, prefixed
+// `worker_defaults:`.
 describe("POST /v0/runs worker_defaults registry validation (ADR 0044, #518)", () => {
   function detailsOf(result: { body?: unknown }): string {
     const body = result.body as { error?: { message?: string; details?: unknown } } | undefined;

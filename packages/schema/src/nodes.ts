@@ -6,9 +6,9 @@ import { interpolableString, interpolatedJsonValue } from "./interpolation.js";
 import type { WorkflowNode } from "./node-type.js";
 import { PUBLISH_ROOTS, STEP_ROOTS } from "./roots.js";
 
-// The envelope fields every step node carries, shared by `buildPluginMember`. `worker` is a worker-*name*
-// string, not a tagged object: each step type's `worker` is a `z.enum` of its own registry worker names,
-// optional so an omitted one resolves to the type's default.
+// The envelope fields every step node carries, shared by `buildPluginMember`. `worker` is a
+// worker-*name* string, not a tagged object: each step type's `worker` is a `z.enum` of its own
+// registry worker names, optional so an omitted one resolves to the type's default.
 export const commonStepFields = {
   id: IdSchema,
   name: NameSchema,
@@ -18,7 +18,8 @@ export const commonStepFields = {
   publish: z.record(z.string(), interpolatedJsonValue(PUBLISH_ROOTS)).optional(),
 };
 
-// `ref` is a relative path to another workflow file — not an interpolated position (docs/format/workflow-format.md §4).
+// `ref` is a relative path to another workflow file — not an interpolated position
+// (docs/format/workflow-format.md §4).
 const RefSchema = z
   .string()
   .min(1)
@@ -29,8 +30,9 @@ const RefSchema = z
 const MaxIterationsSchema = z.union([z.number().int().positive(), interpolableString(STEP_ROOTS)]);
 
 /**
- * The recursion pair a member set closes over: the node-array slot and the single-node slot, injected so the plugin
- * factory builds the control members against its own opened union (ADR 0018).
+ * The recursion pair a member set closes over: the node-array slot and the single-node slot,
+ * injected so the plugin factory builds the control members against its own opened union (ADR
+ * 0018).
  */
 export interface NodeRecursion {
   NodeArraySchema: z.ZodType<WorkflowNode[]>;
@@ -38,9 +40,10 @@ export interface NodeRecursion {
 }
 
 /**
- * The seven control-construct members — `workflow`, `parallel`, `branch`, `while-do`, `sequence`, `checkpoint`,
- * `goto` — built against a given recursion pair; `workflow` sits here because its `ref` runs a nested workflow-run,
- * not a worker. Returned as a plain array for a `z.discriminatedUnion` (ADR 0018).
+ * The seven control-construct members — `workflow`, `parallel`, `branch`, `while-do`, `sequence`,
+ * `checkpoint`, `goto` — built against a given recursion pair; `workflow` sits here because its
+ * `ref` runs a nested workflow-run, not a worker. Returned as a plain array for a
+ * `z.discriminatedUnion` (ADR 0018).
  */
 export function buildCoreMembers({
   NodeArraySchema,
@@ -59,10 +62,12 @@ export function buildCoreMembers({
       type: z.literal("parallel"),
       id: IdSchema,
       name: NameSchema,
-      // `collect` waits for every branch and lands them all; `wait-one` races and keeps the first success,
-      // cancelling the rest (wait-one-join.md §2); `do-not-wait` launches and waits for none (§2).
+      // `collect` waits for every branch and lands them all; `wait-one` races and keeps the first
+      // success, cancelling the rest (wait-one-join.md §2); `do-not-wait` launches and waits for
+      // none (§2).
       join: z.enum(["collect", "wait-one", "do-not-wait"]),
-      // Each branch *is* a node carrying its own `id` + `name` — the `collect`/`wait-one` output key.
+      // Each branch *is* a node carrying its own `id` + `name` — the `collect`/`wait-one` output
+      // key.
       branches: NodeArraySchema,
     })
     .strict();
@@ -96,8 +101,8 @@ export function buildCoreMembers({
     })
     .strict();
 
-  // `sequence` is the single-node grammar's answer to "this slot needs several nodes in order": a controller
-  // whose `body` runs in order, and whose output is its last child's.
+  // `sequence` is the single-node grammar's answer to "this slot needs several nodes in order": a
+  // controller whose `body` runs in order, and whose output is its last child's.
   const SequenceNodeSchema = z
     .object({
       type: z.literal("sequence"),
@@ -116,8 +121,9 @@ export function buildCoreMembers({
     })
     .strict();
 
-  // `goto` is the one Graph Controller (ADR 0057): no child body and no step envelope. `target` is the
-  // target's *name*, never its id (ADR 0056); `max_jumps` has no default, and file-scoped rules live in `goto.ts`.
+  // `goto` is the one Graph Controller (ADR 0057): no child body and no step envelope. `target` is
+  // the target's *name*, never its id (ADR 0056); `max_jumps` has no default, and file-scoped rules
+  // live in `goto.ts`.
   const GotoNodeSchema = z
     .object({
       type: z.literal("goto"),
@@ -139,12 +145,12 @@ export function buildCoreMembers({
   ];
 }
 
-// ── The open node union: a pure, registry-driven factory; the engine owns discovery ────────────────
+// ── The open node union: a pure, registry-driven factory; the engine owns discovery ──────────────
 
 /**
  *
- * The slice of a step-type plugin `@path/schema` reads: the two zod fragments and the worker names. `workers` values
- * are `unknown` on purpose — the schema never calls `run`, so it stays pure.
+ * The slice of a step-type plugin `@path/schema` reads: the two zod fragments and the worker names.
+ * `workers` values are `unknown` on purpose — the schema never calls `run`, so it stays pure.
  *
  */
 export interface RegistryStepType {
@@ -158,8 +164,9 @@ export interface RegistryStepType {
 export type StepPluginRegistry = Record<string, RegistryStepType>;
 
 /**
- * The seven reserved control-construct names; a plugin key equal to one is rejected before the union is built, so
- * the shadow message is PATH's own. `prompt`/`binary` are leaf types arriving through the registry (ADR 0018).
+ * The seven reserved control-construct names; a plugin key equal to one is rejected before the
+ * union is built, so the shadow message is PATH's own. `prompt`/`binary` are leaf types arriving
+ * through the registry (ADR 0018).
  */
 export const RESERVED_TYPE_NAMES = [
   "workflow",
@@ -172,9 +179,9 @@ export const RESERVED_TYPE_NAMES = [
 ] as const;
 
 /**
- * The identity/control envelope keys a step node carries: `commonStepFields` plus `type` and `worker`. Derived from
- * `commonStepFields`, so a new envelope field lands here; the plugin factory rejects a `fields` key colliding with
- * it.
+ * The identity/control envelope keys a step node carries: `commonStepFields` plus `type` and
+ * `worker`. Derived from `commonStepFields`, so a new envelope field lands here; the plugin factory
+ * rejects a `fields` key colliding with it.
  */
 export const ENVELOPE_KEYS: ReadonlySet<string> = new Set([
   ...Object.keys(commonStepFields),
@@ -183,9 +190,9 @@ export const ENVELOPE_KEYS: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * One plugin-contributed leaf member, composed so a plugin author cannot declare the envelope wrong (ADR 0018): the
- * `type` literal, the shared envelope, the plugin's `fields` under `.strict()`, its `config` fragment, and a `worker`
- * enum. Throws at freeze on a collision or no worker.
+ * One plugin-contributed leaf member, composed so a plugin author cannot declare the envelope wrong
+ * (ADR 0018): the `type` literal, the shared envelope, the plugin's `fields` under `.strict()`, its
+ * `config` fragment, and a `worker` enum. Throws at freeze on a collision or no worker.
  */
 function buildPluginMember(typeName: string, entry: RegistryStepType): z.ZodObject {
   for (const fieldName of Object.keys(entry.fields)) {
@@ -207,11 +214,13 @@ function buildPluginMember(typeName: string, entry: RegistryStepType): z.ZodObje
       ...commonStepFields,
       ...entry.fields,
       type: z.literal(typeName),
-      // `config` is open (passthrough): a step's config also carries keys an ancestor or a sibling leaf type
-      // declared, resolved at run start (ADR 0022). The plugin's fragment names this type's own keys.
+      // `config` is open (passthrough): a step's config also carries keys an ancestor or a sibling
+      // leaf type declared, resolved at run start (ADR 0022). The plugin's fragment names this
+      // type's own keys.
       config: z.object(entry.config).passthrough().optional(),
-      // `worker` is a type-scoped name: an optional enum of this type's worker names, so an omitted one
-      // resolves to the default at run start. zod v4 drops the received value, so the custom error restores it.
+      // `worker` is a type-scoped name: an optional enum of this type's worker names, so an omitted
+      // one resolves to the default at run start. zod v4 drops the received value, so the custom
+      // error restores it.
       worker: z
         .enum(workerNames as [string, ...string[]], {
           error: (issue) =>
@@ -222,8 +231,9 @@ function buildPluginMember(typeName: string, entry: RegistryStepType): z.ZodObje
     .strict();
 }
 
-// The load error for a `worker` a step type does not ship: echoes the offending value and lists the shipped
-// names. Shared by the node `worker` enum and the file `worker_defaults` check, so both report one wording.
+// The load error for a `worker` a step type does not ship: echoes the offending value and lists the
+// shipped names. Shared by the node `worker` enum and the file `worker_defaults` check, so both
+// report one wording.
 export function describeUnknownWorker(
   typeName: string,
   workerNames: string[],
@@ -232,8 +242,9 @@ export function describeUnknownWorker(
   return `unknown worker "${String(received)}" — "${typeName}" ships ${workerNames.map((w) => `"${w}"`).join(" | ")}`;
 }
 
-// The load error for a `type` no registry entry holds: echoes the received value, lists every known type, and
-// names the remedy. Each unknown node yields one issue, so a single parse names every missing type at once.
+// The load error for a `type` no registry entry holds: echoes the received value, lists every known
+// type, and names the remedy. Each unknown node yields one issue, so a single parse names every
+// missing type at once.
 export function describeUnknownStepType(received: unknown, known: (string | number)[]): string {
   const badType =
     typeof received === "string"
@@ -249,8 +260,9 @@ export function describeUnknownStepType(received: unknown, known: (string | numb
   return `unknown step type ${badType} — no plugin contributes it. Known types: ${knownList}. To add it, ${remedy}`;
 }
 
-// Wraps only the discriminator miss; every other issue keeps zod's own message. zod v4 folds that miss into
-// `invalid_union` and carries the parsed value on `issue.input`, which the default message never echoes.
+// Wraps only the discriminator miss; every other issue keeps zod's own message. zod v4 folds that
+// miss into `invalid_union` and carries the parsed value on `issue.input`, which the default
+// message never echoes.
 const unknownStepTypeErrorMap: z.ZodErrorMap = (issue) => {
   if (issue.code === "invalid_union") {
     const received = (issue.input as { type?: unknown } | undefined)?.type;
@@ -261,9 +273,9 @@ const unknownStepTypeErrorMap: z.ZodErrorMap = (issue) => {
 };
 
 /**
- * The open node union for a registry (ADR 0018): reserved-name pre-check first, then the control members and the
- * registry's leaf members in one `z.discriminatedUnion` whose `z.lazy` recursion closes over this union. Built once
- * per freeze.
+ * The open node union for a registry (ADR 0018): reserved-name pre-check first, then the control
+ * members and the registry's leaf members in one `z.discriminatedUnion` whose `z.lazy` recursion
+ * closes over this union. Built once per freeze.
  */
 export function makeNodeSchema(registry: StepPluginRegistry): z.ZodType<WorkflowNode> {
   for (const typeName of Object.keys(registry)) {
@@ -275,7 +287,8 @@ export function makeNodeSchema(registry: StepPluginRegistry): z.ZodType<Workflow
     }
   }
 
-  // `let`, not `const`: the two `z.lazy` slots below close over `NodeSchema` and read it only when the union parses.
+  // `let`, not `const`: the two `z.lazy` slots below close over `NodeSchema` and read it only when
+  // the union parses.
   let NodeSchema: z.ZodType<WorkflowNode>;
   const NodeArraySchema: z.ZodType<WorkflowNode[]> = z.lazy(() => z.array(NodeSchema).min(1));
   const SingleNodeSchema: z.ZodType<WorkflowNode> = z.lazy(() => NodeSchema);

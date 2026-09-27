@@ -26,8 +26,9 @@ import { parseRunInvocation } from "./parse-run.js";
 
 type ConfigResult = { success: true; config: ConfigObject } | { success: false; error: string };
 
-// Shared by `--config`/`--set` and `--context`/`--set-context`: a whole-object file loads first, then
-// repeatable `key=value` pairs override top-level keys, each JSON.parse-or-raw-string, nearest-wins.
+// Shared by `--config`/`--set` and `--context`/`--set-context`: a whole-object file loads first,
+// then repeatable `key=value` pairs override top-level keys, each JSON.parse-or-raw-string,
+// nearest-wins.
 function buildKeyedConfig(
   fileFlag: string,
   file: string | undefined,
@@ -101,8 +102,8 @@ function buildContextSeed(args: {
   );
   if (!result.success) return result;
 
-  // A context seed is plain JSON, never `$secret`/`$env` wrappers, which are a `config`-only concept;
-  // so this narrowing is exact, not a runtime assumption.
+  // A context seed is plain JSON, never `$secret`/`$env` wrappers, which are a `config`-only
+  // concept; so this narrowing is exact, not a runtime assumption.
   return { success: true, context: result.config as { [key: string]: JsonValue } };
 }
 
@@ -115,8 +116,8 @@ interface SigintCancellation {
 
 /**
  * Makes `^C` truthful: the first press cancels the run so it unwinds the engine's normal way (leaf
- * killed, `run-cancelled` with `cause: "operator"`, row `cancelled`); cancellation holds no deadline, so
- * a second press exits immediately — the only path where the CLI exits by itself.
+ * killed, `run-cancelled` with `cause: "operator"`, row `cancelled`); cancellation holds no
+ * deadline, so a second press exits immediately — the only path where the CLI exits by itself.
  */
 function cancelOnSigint(io: CliIo, forceExit: (code: number) => void): SigintCancellation {
   const controller = new AbortController();
@@ -125,7 +126,8 @@ function cancelOnSigint(io: CliIo, forceExit: (code: number) => void): SigintCan
       forceExit(SIGINT_EXIT_CODE);
       return;
     }
-    // Forcing abandons the unwind, so the rows keep whatever status they held; `path runs rm` is the remedy.
+    // Forcing abandons the unwind, so the rows keep whatever status they held; `path runs rm` is
+    // the remedy.
     io.error(
       "cancelling… (Ctrl-C again to force — leaves the run's rows `running`; clear with `path runs rm`)",
     );
@@ -171,12 +173,13 @@ export async function runRunCommand(
     return 1;
   }
 
-  // Whole-tree validation happened above; execution follows `workflow` step refs via `runWorkflow`'s `files`.
+  // Whole-tree validation happened above; execution follows `workflow` step refs via
+  // `runWorkflow`'s `files`.
   const { workflow } = loadResult;
 
   // The launch worker-default table is operator input authored in no file, so a bad entry is a bad
-  // request, not an engine fault: refuse it here, exit 2, against the registry the load validated the
-  // file with. Every bad entry is reported in one pass, each prefixed `--worker-default:`.
+  // request, not an engine fault: refuse it here, exit 2, against the registry the load validated
+  // the file with. Every bad entry is reported in one pass, each prefixed `--worker-default:`.
   const launchWorkerDefaults = buildLaunchWorkerDefaults(invocation);
   const workerDefaultErrors = validateLaunchWorkerDefaults(launchWorkerDefaults, workflow.registry);
   if (workerDefaultErrors.length > 0) {
@@ -184,20 +187,22 @@ export async function runRunCommand(
     return 2;
   }
 
-  // `-C <dir>` overrides only where the `.path/` store lives: the store opens at `projectDir`, while
-  // `workflow.workflowDir` — what nested `workflow` refs and binary `cwd`s resolve against — stays the
-  // workflow file's own directory.
+  // `-C <dir>` overrides only where the `.path/` store lives: the store opens at `projectDir`,
+  // while `workflow.workflowDir` — what nested `workflow` refs and binary `cwd`s resolve against —
+  // stays the workflow file's own directory.
   const projectDir = invocation.storeDir ?? workflow.workflowDir;
   const opened = openProject(projectDir);
   if (!opened.success) {
     io.error(opened.error);
-    // A malformed engine-settings file is an operator mistake, like a bad flag; an unopenable db is not.
+    // A malformed engine-settings file is an operator mistake, like a bad flag; an unopenable db is
+    // not.
     return opened.kind === "settings" ? 2 : 1;
   }
   const project = opened.project;
 
   // `--list-eligible` reads the source tree and prints per-node eligibility, launching nothing; the
-  // `files` tree lets the shared legal-K predicate descend a nested K's refs, exactly as `resume` passes it.
+  // `files` tree lets the shared legal-K predicate descend a nested K's refs, exactly as `resume`
+  // passes it.
   if (invocation.kind === "list-eligible") {
     let listResult: ListEligibleResult;
     try {
@@ -216,23 +221,26 @@ export async function runRunCommand(
   // Installed only for the run itself, and removed the moment it settles.
   const sigint = cancelOnSigint(io, overrides.forceExit ?? ((code) => process.exit(code)));
 
-  // Backends, observer order and settings precedence belong to the project; here the CLI owns only the
-  // parsed flags, the signal, and where warnings go. `input` is the fresh-run context seed only.
+  // Backends, observer order and settings precedence belong to the project; here the CLI owns only
+  // the parsed flags, the signal, and where warnings go. `input` is the fresh-run context seed
+  // only.
   const projectOptions: ProjectRunOptions = {
     operatorConfig: operatorConfig.config,
-    // The validated launch worker-default table; `undefined` when none was passed, so a flagless run
-    // resolves through the file tier unchanged.
+    // The validated launch worker-default table; `undefined` when none was passed, so a flagless
+    // run resolves through the file tier unchanged.
     launchWorkerDefaults,
     files: workflow.files,
-    // The registry this file was validated against: dispatch reuses it and never re-scans the folder.
+    // The registry this file was validated against: dispatch reuses it and never re-scans the
+    // folder.
     registry: workflow.registry,
     logBackends: invocation.logBackends,
     processorConcurrency: invocation.processorConcurrency,
     workerOverrides: overrides.workerOverrides,
     warn: (message) => io.error(`warning: ${message}`),
     signal: sigint.signal,
-    // Source-workflow provenance for the root row: the workflow file's path relative to the store dir,
-    // so a central `-C` store distinguishes two same-named workflows. Recorded on fresh runs and resumes.
+    // Source-workflow provenance for the root row: the workflow file's path relative to the store
+    // dir, so a central `-C` store distinguishes two same-named workflows. Recorded on fresh runs
+    // and resumes.
     sourceWorkflowPath: workflow.storeRelativePath(projectDir),
   };
 
@@ -243,7 +251,8 @@ export async function runRunCommand(
         workflow.rootFile,
         invocation.resumeRootRunId,
         workflow.workflowDir,
-        // `--from` forwarded verbatim: the CLI does zero K-logic, `Project.resume` is the one authority.
+        // `--from` forwarded verbatim: the CLI does zero K-logic, `Project.resume` is the one
+        // authority.
         { ...projectOptions, rerunFromRunId: invocation.rerunFromRunId },
       );
     } finally {
@@ -258,8 +267,8 @@ export async function runRunCommand(
   try {
     runResult = await project.run(workflow.rootFile, workflow.workflowDir, {
       ...projectOptions,
-      // A non-empty context seed wins over the file's top-level `input`, the one rule every launch door
-      // shares, so a file declaring `input` runs the same way wherever it is launched.
+      // A non-empty context seed wins over the file's top-level `input`, the one rule every launch
+      // door shares, so a file declaring `input` runs the same way wherever it is launched.
       ...launchInput(contextSeed.context, workflow.rootFile.input),
     });
   } finally {
@@ -277,8 +286,8 @@ export async function runRunCommand(
   return emit(renderRunOutcome(runResult.status, runResult.error), io);
 }
 
-// The one shell turning a pure {@link RunReport} into effects: stdout lines, then stderr lines, then
-// the exit code. `run-report.ts` owns what an outcome says; this owns that it is written.
+// The one shell turning a pure {@link RunReport} into effects: stdout lines, then stderr lines,
+// then the exit code. `run-report.ts` owns what an outcome says; this owns that it is written.
 function emit(report: RunReport, io: CliIo): number {
   for (const line of report.stdout) io.log(line);
   for (const line of report.stderr) io.error(line);

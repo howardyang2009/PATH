@@ -4,9 +4,10 @@ import type { SaveAsResult } from "./use-open-file.js";
 
 /**
  * The first-save dialog for a from-scratch buffer (designer-spec § New-file placement and naming):
- * placement is decided here, at the first save, as an exclusive create — an existing path is refused,
- * never overwritten (ADR 0016). The author picks an in-root directory and a stem; the `.workflow.json`
- * suffix is enforced because discovery lists only that suffix, and only a `created` closes the dialog.
+ * placement is decided here, at the first save, as an exclusive create — an existing path is
+ * refused, never overwritten (ADR 0016). The author picks an in-root directory and a stem; the
+ * `.workflow.json` suffix is enforced because discovery lists only that suffix, and only a
+ * `created` closes the dialog.
  */
 export function NewFileDialog({
   discovery,
@@ -18,7 +19,8 @@ export function NewFileDialog({
   onCancel,
 }: {
   discovery: DiscoveryLoad;
-  /** The buffer's own `name` — the prefilled filename stem (it slugs cleanly, `^[a-z][a-z0-9-]*$`). */
+  /** The buffer's own `name` — the prefilled filename stem (it slugs cleanly,
+   * `^[a-z][a-z0-9-]*$`). */
   workflowName: string;
   /** The dialog title; workflow-mode Save as… passes "Save workflow as". */
   title?: string;
@@ -36,8 +38,8 @@ export function NewFileDialog({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // The project's directories for the picker — the parent of every discovered workflow, plus the root.
-  // A failed scan is not fatal: the root is always offered, so a save can still proceed.
+  // The project's directories for the picker — the parent of every discovered workflow, plus the
+  // root. A failed scan is not fatal: the root is always offered, so a save can still proceed.
   const directories = useMemo(() => {
     const dirs = new Set<string>(["", initialDirectory]);
     for (const wf of discoveredWorkflows(discovery) ?? []) dirs.add(dirnameOf(wf.relative_path));
@@ -130,7 +132,8 @@ export function NewFileDialog({
 
 /**
  * The filename **stem**, cleaned so the dialog's controls are the sole placement: a trailing
- * `.workflow.json` is stripped and path separators dropped, so a stem cannot escape the picked directory.
+ * `.workflow.json` is stripped and path separators dropped, so a stem cannot escape the picked
+ * directory.
  */
 function normalizeStem(stem: string): string {
   return stem
@@ -140,13 +143,15 @@ function normalizeStem(stem: string): string {
     .replace(/^\.+/, "");
 }
 
-/** The `.workflow.json` filename for `stem`, appended to `directory` (root when empty) — the save target. */
+/** The `.workflow.json` filename for `stem`, appended to `directory` (root when empty) — the save
+ * target. */
 function composePath(directory: string, stem: string): string {
   const filename = `${stem}.workflow.json`;
   return directory === "" ? filename : `${directory}/${filename}`;
 }
 
-/** The parent directory of a project-relative path, or `""` (the project root) for a top-level file. */
+/** The parent directory of a project-relative path, or `""` (the project root) for a top-level
+ * file. */
 export function dirnameOf(path: string): string {
   const cut = path.lastIndexOf("/");
   return cut === -1 ? "" : path.slice(0, cut);

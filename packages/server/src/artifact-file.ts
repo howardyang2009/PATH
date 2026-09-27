@@ -2,10 +2,12 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { strongEtag } from "./etag.js";
 
-/** One versioned JSON artifact file on disk as the write doors see it (server-api-v0.md §7, §10): read,
- * check `If-Match` against the strong ETag, then write create-only (`wx`) or overwrite — synchronously. */
+/** One versioned JSON artifact file on disk as the write doors see it (server-api-v0.md §7, §10):
+ * read, check `If-Match` against the strong ETag, then write create-only (`wx`) or overwrite —
+ * synchronously. */
 
-/** The `412` wording per precondition conflict, at every artifact door; `required` arises only under `overwrite`. */
+/** The `412` wording per precondition conflict, at every artifact door; `required` arises only
+ * under `overwrite`. */
 export const PRECONDITION_FAILED: Record<ArtifactConflict, string> = {
   missing: "precondition failed: the file no longer exists",
   changed: "precondition failed: the file changed since it was read",
@@ -21,8 +23,9 @@ export type ArtifactConflict =
   /** An overwrite or delete sent no `If-Match`. */
   | "required";
 
-/** What a door lets `If-Match` mean: `create-or-overwrite` — present overwrites a matching file, absent
- * creates (the workflow upsert); `overwrite` — required and must match (template update, any delete). */
+/** What a door lets `If-Match` mean: `create-or-overwrite` — present overwrites a matching file,
+ * absent creates (the workflow upsert); `overwrite` — required and must match (template update, any
+ * delete). */
 export type PreconditionRule = "create-or-overwrite" | "overwrite";
 
 /** The current bytes of an artifact file, or `undefined` when it does not exist. */
@@ -50,8 +53,9 @@ export function checkPrecondition(
   return { ok: true, create: false };
 }
 
-/** Serialize `raw` deterministically (`JSON.stringify(raw, null, 2)` + newline, the client's key order
- * kept) and write it. A create uses `wx`, so a file that raced into existence fails `exists`. */
+/** Serialize `raw` deterministically (`JSON.stringify(raw, null, 2)` + newline, the client's key
+ * order kept) and write it. A create uses `wx`, so a file that raced into existence fails
+ * `exists`. */
 export function writeArtifact(
   absPath: string,
   raw: unknown,

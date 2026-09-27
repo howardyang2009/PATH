@@ -20,9 +20,9 @@ import {
 import type { ResumeInput } from "../src/run-workflow.js";
 
 /**
- * The Resume plan module (`resume-plan.ts`) through its own interface: in-memory predecessor rows and
- * a file, no store. Every scope kind — root, nested `workflow`, `while-do` iteration, goto pass — is
- * one `enter…` operation over the same counterpart lookup and boundary path.
+ * The Resume plan module (`resume-plan.ts`) through its own interface: in-memory predecessor rows
+ * and a file, no store. Every scope kind — root, nested `workflow`, `while-do` iteration, goto pass
+ * — is one `enter…` operation over the same counterpart lookup and boundary path.
  */
 
 function run(

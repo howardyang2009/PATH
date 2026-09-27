@@ -7,9 +7,9 @@ import { openWorkflowFile } from "../src/open-workflow.js";
 import { canonicalSerialize } from "../src/serialize.js";
 
 /**
- * #620 — a watched run with goto passes (docs/spec/goto.md §9, designer-spec § goto, G-D-08): the goto block
- * takes no status tint, it shows its jumps spent as `<spent>/<max_jumps>`, and a node revisited in several
- * passes shows its latest run. A goto-free run renders as before.
+ * #620 — a watched run with goto passes (docs/spec/goto.md §9, designer-spec § goto, G-D-08): the
+ * goto block takes no status tint, it shows its jumps spent as `<spent>/<max_jumps>`, and a node
+ * revisited in several passes shows its latest run. A goto-free run renders as before.
  */
 
 function uuid(n: number): string {
@@ -42,7 +42,8 @@ function canonicalBytes(file: Record<string, unknown>): string {
   return canonicalSerialize(result.file);
 }
 
-/** A wire run row under the watched root `root-1`; the fields the projection does not read are inert nulls. */
+/** A wire run row under the watched root `root-1`; the fields the projection does not read are
+ * inert nulls. */
 function wireRun(partial: {
   run_id: string;
   status: string;
@@ -114,7 +115,8 @@ function block(canvas: HTMLElement, id: string): HTMLElement {
 
 describe("G-D-08 watched run with passes", () => {
   it("leaves the goto untinted, badges its jumps spent, and shows a revisited node's latest run", async () => {
-    // Pass 1 ran alpha (failed), hop jumped back twice: pass 2 re-ran alpha (succeeded), pass 3 is running tail.
+    // Pass 1 ran alpha (failed), hop jumped back twice: pass 2 re-ran alpha (succeeded), pass 3 is
+    // running tail.
     const canvas = await watch([
       wireRun({ run_id: "root-1", status: "running" }),
       wireRun({ run_id: "p1", pass: 1, status: "succeeded", started_at: "2026-01-01T00:00:01Z" }),

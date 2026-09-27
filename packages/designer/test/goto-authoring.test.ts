@@ -17,9 +17,9 @@ import { fileProblems } from "../src/problems.js";
 import { canonicalSerialize } from "../src/serialize.js";
 
 /**
- * #619 — goto authoring in the Designer (docs/spec/goto.md §9, designer-spec § goto): the pure seams —
- * the ancestor-aware grammar, the mint, the edit door's placement refusal and rename rewrite, the goto
- * markers, and the chip / picker / badge derivations the canvas and pane read.
+ * #619 — goto authoring in the Designer (docs/spec/goto.md §9, designer-spec § goto): the pure
+ * seams — the ancestor-aware grammar, the mint, the edit door's placement refusal and rename
+ * rewrite, the goto markers, and the chip / picker / badge derivations the canvas and pane read.
  */
 
 function uuid(n: number): string {
@@ -35,7 +35,8 @@ function wrap(body: WorkflowNode[]): WorkflowFile {
   return { format: FORMAT_VERSION, id: uuid(1), name: "flow", body };
 }
 
-/** start · loop (while-do over a sequence) · fan (parallel) · gate (branch holding a goto) · done. */
+/** start · loop (while-do over a sequence) · fan (parallel) · gate (branch holding a goto) ·
+ * done. */
 function fixture(): WorkflowFile {
   return wrap([
     leaf(2, "start"),
@@ -196,7 +197,8 @@ describe("edit door (G-D-02, G-D-04, G-D-05)", () => {
     const targets = done.body
       .slice(2)
       .map((node) => (node as Extract<WorkflowNode, { type: "goto" }>).target);
-    expect(targets).toEqual(["a", "ab"]); // to-a still names the real "a"; to-ab is left dangling, and marked
+    // to-a still names the real "a"; to-ab is left dangling, and marked
+    expect(targets).toEqual(["a", "ab"]);
   });
 
   it("renaming a nested node rewrites nothing: only a first-level node is a target", () => {

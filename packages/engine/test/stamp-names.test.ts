@@ -8,9 +8,9 @@ import { stampGuids, stampNames, stampNodes } from "./stamp-names.js";
  * built through these stampers are the only ones **nothing** type-checks: the stampers take
  * `unknown` and cast their way to a `WorkflowFile`, so `tsc` never sees the literal and the schema
  * never parses it. A slot written in the deleted `@1` shape would therefore be handed to the engine
- * as a tree it cannot run — an arm with no `node`, a `while-do` with no body, a branch that is not a
- * node — and the failure would surface as a confusing runtime error inside the executor rather than
- * as "this fixture is still `@1`". The stampers refuse it instead.
+ * as a tree it cannot run — an arm with no `node`, a `while-do` with no body, a branch that is not
+ * a node — and the failure would surface as a confusing runtime error inside the executor rather
+ * than as "this fixture is still `@1`". The stampers refuse it instead.
  */
 const step = (id: string) => ({ type: "binary", id, command: "echo" });
 

@@ -1,7 +1,7 @@
 import { isTerminal, type LogEvent, type RunStatus } from "@path/schema";
 
-/** The status a run moves to when one of its own events arrives. `step-started` and `step-awaiting` never reopen a
- * terminal run, so a full replay on reload cannot walk a finished run backward.
+/** The status a run moves to when one of its own events arrives. `step-started` and `step-awaiting`
+ * never reopen a terminal run, so a full replay on reload cannot walk a finished run backward.
  */
 export function runStatusAfter(prior: RunStatus, event: LogEvent): RunStatus {
   if (event.type === "step-started") return isTerminal(prior) ? prior : "running";
@@ -10,15 +10,15 @@ export function runStatusAfter(prior: RunStatus, event: LogEvent): RunStatus {
   return prior;
 }
 
-/** Whether this event is the tree's own **root run** finishing (server-api-v0.md §5): the implicit root step carries
- * no node id.
+/** Whether this event is the tree's own **root run** finishing (server-api-v0.md §5): the implicit
+ * root step carries no node id.
  */
 export function isRootRunFinished(event: LogEvent, rootRunId: string): boolean {
   return event.type === "step-finished" && event.run_id === rootRunId && event.node_id === null;
 }
 
-/** The run status a log event implies, or `null` for pure control flow. Engine semantics, not a rendering choice:
- * every surface must reach the same verdicts.
+/** The run status a log event implies, or `null` for pure control flow. Engine semantics, not a
+ * rendering choice: every surface must reach the same verdicts.
  */
 export function eventOutcome(event: LogEvent): RunStatus | null {
   switch (event.type) {

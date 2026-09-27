@@ -6,19 +6,21 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { entryImportUrl, STEP_PLUGINS_DIR, scanStepPlugins } from "../src/plugin-seam/scan.js";
 
-// The engine-side plugin discovery scanner (#335, ADR 0019 sub-decisions 7–17). These tests drive it
-// against fixture directories built at run time under `test/`, so a fixture plugin's `index.ts` resolves
-// the `@path/engine/plugin` subpath the same way a real plugin folder would. The scanner is additive and
-// unwired — nothing on the load path calls it yet — so its whole contract is proven here.
+// The engine-side plugin discovery scanner (#335, ADR 0019 sub-decisions 7–17). These tests drive
+// it against fixture directories built at run time under `test/`, so a fixture plugin's `index.ts`
+// resolves the `@path/engine/plugin` subpath the same way a real plugin folder would. The scanner
+// is additive and unwired — nothing on the load path calls it yet — so its whole contract is proven
+// here.
 
-// A well-formed entry module. The scanner only shallow-checks the four seam keys, so a plain object is a
-// valid plugin for the scan; the deeper zod invariants belong to the schema factory.
+// A well-formed entry module. The scanner only shallow-checks the four seam keys, so a plain object
+// is a valid plugin for the scan; the deeper zod invariants belong to the schema factory.
 function validEntry(marker = "default"): string {
   return `export const stepPlugin = { fields: {}, config: {}, workers: { run: { meters: false, needsProcessorSlot: false, run: async () => ({ status: "succeeded", output: null }) } }, defaultWorker: "run", marker: ${JSON.stringify(marker)} };\n`;
 }
 
 // An entry module with a real zod `fields` fragment, imported from the public subpath exactly as a
-// third-party plugin does. `fieldKey` names the single field, so a colliding `publish` can be produced.
+// third-party plugin does. `fieldKey` names the single field, so a colliding `publish` can be
+// produced.
 function zodEntry(fieldKey: string): string {
   return (
     `import { z } from "@path/engine/plugin";\n` +
@@ -44,8 +46,8 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true });
 });
 
-// Write one plugin folder `<root>/<name>/index.ts` with the given entry source. Pass `entry: null` for a
-// folder with no entry file at all.
+// Write one plugin folder `<root>/<name>/index.ts` with the given entry source. Pass `entry: null`
+// for a folder with no entry file at all.
 async function writePlugin(name: string, entry: string | null): Promise<string> {
   const folder = join(root, name);
   await mkdir(folder, { recursive: true });
@@ -81,7 +83,8 @@ describe("scanStepPlugins — the scan rules", () => {
   it("skips non-directory entries and dot-prefixed directories", async () => {
     await writePlugin("alpha", validEntry());
     await writeFile(join(root, "README.md"), "not a plugin\n");
-    // A dot-prefixed directory that would throw *if* it were scanned — proof it is skipped, not loaded.
+    // A dot-prefixed directory that would throw *if* it were scanned — proof it is skipped, not
+    // loaded.
     await writePlugin(".hidden", "throw new Error('should never import');\n");
 
     const registry = await scanStepPlugins(root);
@@ -106,8 +109,8 @@ describe("scanStepPlugins — the scan rules", () => {
 
 describe("scanStepPlugins — reserved names, checked before import", () => {
   it("rejects a reserved-name folder before importing its index.ts", async () => {
-    // The `index.ts` also throws; the verdict must be the reserved name (the actionable truth), not the
-    // incidental import failure (ADR 0019 sub-14).
+    // The `index.ts` also throws; the verdict must be the reserved name (the actionable truth), not
+    // the incidental import failure (ADR 0019 sub-14).
     await writePlugin("while-do", "throw new Error('index also throws');\n");
 
     const scan = scanStepPlugins(root);
@@ -172,10 +175,10 @@ describe("scanStepPlugins — broken plugins are hard failures", () => {
 });
 
 describe("entryImportUrl — the freshness token", () => {
-  // These assertions cover the mechanism the freshness contract rests on: an unchanged folder yields the
-  // same `?v=` token, an edited one yields a new token. Whether a new token *re-executes* is Node's own
-  // ESM-cache behavior — the test runner's transform cache does not model it, so we assert the token, not
-  // a re-execution.
+  // These assertions cover the mechanism the freshness contract rests on: an unchanged folder
+  // yields the same `?v=` token, an edited one yields a new token. Whether a new token
+  // *re-executes* is Node's own ESM-cache behavior — the test runner's transform cache does not
+  // model it, so we assert the token, not a re-execution.
   it("yields the same token for an unchanged folder", async () => {
     const folder = await writePlugin("stable", validEntry());
 
@@ -213,9 +216,9 @@ describe("entryImportUrl — the freshness token", () => {
 });
 
 describe("the scanned registry feeds the schema factory (via the factory)", () => {
-  // The scanner assembles entries in the seam's shape; the deeper invariants — a `fields` key colliding
-  // with `commonStepFields` — are the factory's, thrown when makeWorkflowFileSchema freezes (ADR 0018
-  // sub-4). This proves the assembled registry is what the factory consumes.
+  // The scanner assembles entries in the seam's shape; the deeper invariants — a `fields` key
+  // colliding with `commonStepFields` — are the factory's, thrown when makeWorkflowFileSchema
+  // freezes (ADR 0018 sub-4). This proves the assembled registry is what the factory consumes.
   it("builds a schema from a well-formed scanned registry", async () => {
     await writePlugin("api-call", zodEntry("endpoint"));
 

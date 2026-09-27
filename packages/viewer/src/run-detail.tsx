@@ -22,24 +22,27 @@ function loadTreeHeight(): number {
 
 export interface RunDetailProps {
   client: PathApiClient;
-  /** The live snapshot of the watched root run, owned by the app: one connection feeds two panes. */
+  /** The live snapshot of the watched root run, owned by the app: one connection feeds two
+   * panes. */
   load: RunViewLoad;
   rootRunId: string;
   /** The run the node-I/O pane is showing, owned above so both panes agree on it. */
   selectedRunId: string | null;
   onSelectRun: (runId: string) => void;
   /**
-   * The watched run's reachable workflow files (root + transitively-ref'd sub-files), for an awaiting
-   * leaf's assignee chip in the rail — the node may sit in a nested file, not only the root.
+   * The watched run's reachable workflow files (root + transitively-ref'd sub-files), for an
+   * awaiting leaf's assignee chip in the rail — the node may sit in a nested file, not only the
+   * root.
    */
   workflowFiles?: readonly WorkflowFile[];
 }
 
 /**
- * The run-detail read surface: root-run status plus the indented run tree, with the live narrative under
- * it. Status, tree and narrative are all live off one connection — the view-model folds the SSE stream in
- * as the run executes, and reopening a run mid-flight replays its history. That connection is held by the
- * app rather than by this pane, because the node-I/O pane reads the same snapshot.
+ * The run-detail read surface: root-run status plus the indented run tree, with the live narrative
+ * under it. Status, tree and narrative are all live off one connection — the view-model folds the
+ * SSE stream in as the run executes, and reopening a run mid-flight replays its history. That
+ * connection is held by the app rather than by this pane, because the node-I/O pane reads the same
+ * snapshot.
  */
 export function RunDetail({
   client,
@@ -117,11 +120,13 @@ export function RunDetail({
   const state = load.value;
   const root = state.runs.get(rootRunId);
   // The head shows the fact the view published, so it agrees with the rail, the tree and the node
-  // pane: a root whose leaf is parked reads `awaiting` although its record stays `running` (ADR 0038).
-  // A root the map does not hold yet (its row has not arrived) falls back to the snapshot's own status.
+  // pane: a root whose leaf is parked reads `awaiting` although its record stays `running` (ADR
+  // 0038). A root the map does not hold yet (its row has not arrived) falls back to the snapshot's
+  // own status.
   const displayStatus = state.displayStatus.get(rootRunId) ?? state.status;
-  // Several leaves can await at once (parallel joins, ADR 0042). The rail carries a count badge when
-  // more than one does, so the operator sees at a glance there is more than the selected one to act on.
+  // Several leaves can await at once (parallel joins, ADR 0042). The rail carries a count badge
+  // when more than one does, so the operator sees at a glance there is more than the selected one
+  // to act on.
   const awaitingCount = state.awaitingRunIds.size;
   // A terminal run has nothing to cancel — the button is absent, not disabled-and-explaining. The
   // finished-side mirror, Resume, lives in the runs rail (under the selected row), not here.

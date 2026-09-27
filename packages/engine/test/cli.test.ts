@@ -61,8 +61,9 @@ describe("cli main()", () => {
 
   // The load-time rejection of pre-migration files (#280, workflow-format-v2.md §1) as an operator
   // sees it: `path run` refuses and the one line on stderr names the codemod to run. Written here
-  // rather than checked in as a fixture because `scripts/archive/migrate-workflow-format-v2.ts` discovers
-  // every `*.workflow.json` in the repo and would migrate a checked-in `@1` file out from under it.
+  // rather than checked in as a fixture because `scripts/archive/migrate-workflow-format-v2.ts`
+  // discovers every `*.workflow.json` in the repo and would migrate a checked-in `@1` file out from
+  // under it.
   it("refuses a superseded @1 file at load and names the codemod", async () => {
     const superseded = join(fixtures, "superseded-v1.workflow.json");
     writeFileSync(
@@ -175,9 +176,9 @@ describe("cli main() — operator config flags (ticket #17)", () => {
   });
 
   // The launch worker-default flag (ADR 0044, #515): a peer of `--set`. The behaviour that a launch
-  // default picks the worker for un-pinned steps is proven at the engine seam (run-node.test.ts); here
-  // the CLI's own contract is checked — the flag parses, is repeatable, names its own type/worker
-  // selection (never folded into config), and a well-formed one runs.
+  // default picks the worker for un-pinned steps is proven at the engine seam (run-node.test.ts);
+  // here the CLI's own contract is checked — the flag parses, is repeatable, names its own
+  // type/worker selection (never folded into config), and a well-formed one runs.
   it("accepts a well-formed --worker-default and runs (the type's real worker resolves)", async () => {
     // `binary`'s only shipped worker is `spawn`; naming it explicitly at launch changes nothing but
     // proves the flag parses, forwards, and reaches a real un-pinned step through the whole stack.
@@ -226,8 +227,9 @@ describe("cli main() — operator config flags (ticket #17)", () => {
   });
 
   it("refuses --worker-default combined with --resume (exit 2)", async () => {
-    // A launch worker-default is fixed at launch (ADR 0044) — a resume does not re-take it. Supplying
-    // it on a resume is silently-discarded operator state, so it is refused, like --set-context.
+    // A launch worker-default is fixed at launch (ADR 0044) — a resume does not re-take it.
+    // Supplying it on a resume is silently-discarded operator state, so it is refused, like
+    // --set-context.
     const io = fakeIo();
     const code = await main(
       ["run", configEcho(), "--resume", "whatever", "--worker-default", "prompt=anthropic"],
@@ -240,9 +242,10 @@ describe("cli main() — operator config flags (ticket #17)", () => {
   });
 
   // The launch channel of ADR 0044's registry-relative validation (#518): a launch worker-default
-  // naming an absent type, or a worker a type does not ship, is a bad *request* — refused at the launch
-  // boundary (exit non-zero) before the run starts, the operator's own input to fix. Same taxonomy as
-  // the file channel, checked against the run's registry (the built-in `binary`/`prompt` types).
+  // naming an absent type, or a worker a type does not ship, is a bad *request* — refused at the
+  // launch boundary (exit non-zero) before the run starts, the operator's own input to fix. Same
+  // taxonomy as the file channel, checked against the run's registry (the built-in
+  // `binary`/`prompt` types).
   it("refuses a --worker-default naming an absent step type, naming the type and the installed list", async () => {
     const io = fakeIo();
     const code = await main(["run", configEcho(), "--worker-default", "badtype=x"], io);
@@ -396,8 +399,8 @@ describe("cli main() — --resume (ticket #177)", () => {
 
   const workflow = () => join(projectDir, "workflow.json");
 
-  // Combining a context seed with --resume is a hard validation error, not a silent drop (ADR 0003):
-  // a resumed run's starting context is already fully determined by restore-by-load.
+  // Combining a context seed with --resume is a hard validation error, not a silent drop (ADR
+  // 0003): a resumed run's starting context is already fully determined by restore-by-load.
   it("rejects --context combined with --resume as a validation error (exit 2)", async () => {
     const io = fakeIo();
     const code = await main(
@@ -444,7 +447,8 @@ describe("cli main() — --resume (ticket #177)", () => {
 
   it("refuses a non-terminal source run whole (exit 1) rather than resuming a still-running tree", async () => {
     // Run once so the store exists, then plant a still-`running` root: the legal-K test assumes a
-    // terminal source (a node's status can still flip while the tree runs), so resume refuses it whole.
+    // terminal source (a node's status can still flip while the tree runs), so resume refuses it
+    // whole.
     expect(await main(["run", workflow()], fakeIo())).toBe(1);
     const db = openDb(dbFilePath(projectDir));
     try {
@@ -484,9 +488,9 @@ describe("cli main() — --resume (ticket #177)", () => {
     ).root_run_id;
     db.close();
 
-    // Resume without fixing the config, so step-b fails again — the successor id must still print on
-    // this non-success outcome (#168 story 24), so the operator can inspect it or chain a further
-    // --resume regardless of how it ended.
+    // Resume without fixing the config, so step-b fails again — the successor id must still print
+    // on this non-success outcome (#168 story 24), so the operator can inspect it or chain a
+    // further --resume regardless of how it ended.
     const io = fakeIo();
     const code = await main(["run", workflow(), "--resume", originalRoot], io);
     expect(code).toBe(1);
@@ -531,9 +535,10 @@ describe("cli main() — --resume (ticket #177)", () => {
         status: string;
         reused_from_run_id: string | null;
       }[];
-      // step-a was reused: it now records a `succeeded` reuse row (#257) carrying a `reused_from_run_id`
-      // pointer to the original, rather than re-executing. step-b reran and succeeded (no pointer). The
-      // successor's root row records the immediate predecessor it resumed from.
+      // step-a was reused: it now records a `succeeded` reuse row (#257) carrying a
+      // `reused_from_run_id` pointer to the original, rather than re-executing. step-b reran and
+      // succeeded (no pointer). The successor's root row records the immediate predecessor it
+      // resumed from.
       const stepA = successorRows.find((r) => r.node_name === "step-a")!;
       expect(stepA.status).toBe("succeeded");
       expect(stepA.reused_from_run_id).not.toBeNull();
@@ -625,7 +630,8 @@ describe("cli main() — --resume (ticket #177)", () => {
 
     const after = openDb(dbFilePath(projectDir));
     try {
-      // step-a is <K: a reuse row. step-b is K: an ordinary re-executed row. The boundary is persisted.
+      // step-a is <K: a reuse row. step-b is K: an ordinary re-executed row. The boundary is
+      // persisted.
       const rows = after
         .prepare("SELECT node_name, reused_from_run_id FROM runs WHERE root_run_id = ?")
         .all(successorRoot) as { node_name: string | null; reused_from_run_id: string | null }[];
@@ -643,9 +649,10 @@ describe("cli main() — --resume (ticket #177)", () => {
   });
 });
 
-// `--list-eligible` (#446, spec §7): a dry-run of resume that prints one row per source-tree node with
-// an `eligible?` column, so an operator can find a legal `--from` value. Launches nothing; its verdict
-// runs the same legal-K authority `--from` is validated against, so the column can never disagree.
+// `--list-eligible` (#446, spec §7): a dry-run of resume that prints one row per source-tree node
+// with an `eligible?` column, so an operator can find a legal `--from` value. Launches nothing; its
+// verdict runs the same legal-K authority `--from` is validated against, so the column can never
+// disagree.
 describe("cli main() — --list-eligible (#446)", () => {
   let projectDir: string;
 
@@ -721,9 +728,9 @@ describe("cli main() — --list-eligible (#446)", () => {
   });
 
   it("refuses --worker-default on a list-eligible run — caught by the resume guard first (exit 2)", async () => {
-    // `--list-eligible` requires `--resume`, and `--worker-default` is refused with `--resume` outright
-    // (a launch worker-default is fixed at launch, ADR 0044), so that earlier guard catches it before
-    // the launch-only-flag refusal — still exit 2, still nothing launched.
+    // `--list-eligible` requires `--resume`, and `--worker-default` is refused with `--resume`
+    // outright (a launch worker-default is fixed at launch, ADR 0044), so that earlier guard
+    // catches it before the launch-only-flag refusal — still exit 2, still nothing launched.
     const io = fakeIo();
     const code = await main(
       [
@@ -753,8 +760,9 @@ describe("cli main() — --list-eligible (#446)", () => {
   });
 
   it("refuses a non-terminal source whole, with the same exit code a resume gives (exit 1)", async () => {
-    // Run once so the store + schema exist, then plant a still-`running` root row: a node's status can
-    // still flip while a tree runs, so the legal-K test assumes a terminal source (spec §5, §7).
+    // Run once so the store + schema exist, then plant a still-`running` root row: a node's status
+    // can still flip while a tree runs, so the legal-K test assumes a terminal source (spec §5,
+    // §7).
     expect(await main(["run", workflow()], fakeIo())).toBe(1);
     const db = openDb(dbFilePath(projectDir));
     try {
@@ -794,7 +802,8 @@ describe("cli main() — --list-eligible (#446)", () => {
     expect(rootLine).toMatch(/root run \(never a boundary\)/);
     const stepA = lines.find((l) => /\bstep-a\b/.test(l))!;
     const stepB = lines.find((l) => /\bstep-b\b/.test(l))!;
-    // step-a is the first node (empty prefix) and step-b's prefix (step-a) succeeded — both legal K.
+    // step-a is the first node (empty prefix) and step-b's prefix (step-a) succeeded — both legal
+    // K.
     expect(stepA).toMatch(/\byes$/);
     expect(stepB).toMatch(/\byes$/);
     // The run-id column is never truncated: step-b's full id is copyable into --from.
@@ -871,7 +880,8 @@ describe("cli main() — -C store relocation (ticket #201)", () => {
 
   it("still finds the workflow by its own path — -C does not re-root the positional", async () => {
     // The workflow lives under workflowHome, not under storeDir. A git-`-C` (chdir) reading would
-    // resolve the workflow relative to storeDir and fail to find it; store-only resolves it as given.
+    // resolve the workflow relative to storeDir and fail to find it; store-only resolves it as
+    // given.
     const io = fakeIo();
     const code = await main(["run", workflow(), "-C", storeDir], io);
     expect(code).toBe(0);
@@ -1035,9 +1045,9 @@ describe("cli main() — engine-settings file (ticket #27)", () => {
   });
 
   // The separation that matters (CONTEXT.md: Config is read *by steps*, engine settings by the
-  // *engine*). A step asking for `${config.processor.concurrency}` must find nothing there even when
-  // the settings file sets it: the plausible regression is an implementer merging the settings into
-  // operator Config under nested keys, which would make this run succeed and print the cap.
+  // *engine*). A step asking for `${config.processor.concurrency}` must find nothing there even
+  // when the settings file sets it: the plausible regression is an implementer merging the settings
+  // into operator Config under nested keys, which would make this run succeed and print the cap.
   it("never leaks an engine setting into a step's Config", async () => {
     writeSettings({ "processor.concurrency": 2 });
     cpSync(
@@ -1182,8 +1192,9 @@ describe("cli main() — graceful ^C (ticket #53)", () => {
 
   /**
    * A prompt step that presses `^C` `presses` times the moment it is in flight and then holds its
-   * processor open until the abort reaches it — what a live Agent SDK turn does for real. It returns
-   * `failed` on the abort; the engine relabels it `cancelled` from the signal (ADR 0021 sub-7).
+   * processor open until the abort reaches it — what a live Agent SDK turn does for real. It
+   * returns `failed` on the abort; the engine relabels it `cancelled` from the signal (ADR 0021
+   * sub-7).
    */
   function pressingLlmWorker(presses = 1): WorkerDescriptor {
     return {
@@ -1244,9 +1255,11 @@ describe("cli main() — graceful ^C (ticket #53)", () => {
     const root = rows.find((r) => r.run_id === r.root_run_id)!;
     expect(root.status).toBe("cancelled"); // not the lying `running` row ^C used to leave
     expect(rows.find((r) => r.node_name === "ask")!.status).toBe("cancelled");
-    expect(rows.find((r) => r.node_name === "never")).toBeUndefined(); // nothing ran after the abort
+    // nothing ran after the abort
+    expect(rows.find((r) => r.node_name === "never")).toBeUndefined();
 
-    // The NDJSON stream tells the same story, and the backends were closed on the root's terminal event.
+    // The NDJSON stream tells the same story, and the backends were closed on the root's terminal
+    // event.
     const events = readLogEvents(root.root_run_id);
     expect(events).toContainEqual(
       expect.objectContaining({
@@ -1523,7 +1536,8 @@ describe("cli main() — runs bare listing (ticket #174)", () => {
   });
 
   it("filters by --workflow-id on the durable GUID, disambiguating two same-named workflows (#202)", async () => {
-    // Two roots share the human name `dup` but carry distinct GUIDs — the GUID is what separates them.
+    // Two roots share the human name `dup` but carry distinct GUIDs — the GUID is what separates
+    // them.
     seedRoot("dup-a", "succeeded", undefined, { id: "guid-a", name: "dup" });
     seedRoot("dup-b", "succeeded", undefined, { id: "guid-b", name: "dup" });
 
@@ -1614,7 +1628,8 @@ describe("cli main() — runs rm reuse-marker guard (ticket #175)", () => {
     db.close();
   }
 
-  /** Write a reuse-marker into `holder`'s log naming a run in the original tree — what a resume does. */
+  /** Write a reuse-marker into `holder`'s log naming a run in the original tree — what a resume
+   * does. */
   async function seedReuseMarker(holderRootRunId: string, originalRunId: string): Promise<void> {
     const db = openDb(dbFilePath(projectDir));
     const backend = createDbLogBackend(db);
@@ -1828,7 +1843,8 @@ describe("cli main() — runs prune confirmation (ticket #166)", () => {
   });
 
   // `listRoots` pages at 50 rows by default, but `prune` deletes every root — the prompt must count
-  // and delete all of them, never one page (#166). Seed past both the page size and the id-preview cap.
+  // and delete all of them, never one page (#166). Seed past both the page size and the id-preview
+  // cap.
   it("counts and prunes every root past the default listing page", async () => {
     for (let i = 0; i < 60; i++) seedRoot(`run-${String(i).padStart(3, "0")}`);
     const confirm = vi.fn().mockResolvedValue(true);

@@ -11,22 +11,25 @@ import { RUN_STATUS_GLYPH } from "./run/run-status.js";
 import { useSelection } from "./selection-context.js";
 
 /**
- * The block-grammar render of a `path/workflow` body: read-only, or **editable** when an `editor` is
- * threaded through. Structure edits live on the canvas, so the block carries the structure affordances —
- * reorder (▲/▼), duplicate, delete (×, or the Delete key), the tail add-socket of each list, the
- * single-slot swap, and a branch's add-arm / add-`else`. Where the grammar refuses the armed kind, no
- * socket opens, so an illegal drop is unreachable rather than rejected on save. Content stays read-only here.
+ * The block-grammar render of a `path/workflow` body: read-only, or **editable** when an `editor`
+ * is threaded through. Structure edits live on the canvas, so the block carries the structure
+ * affordances — reorder (▲/▼), duplicate, delete (×, or the Delete key), the tail add-socket of
+ * each list, the single-slot swap, and a branch's add-arm / add-`else`. Where the grammar refuses
+ * the armed kind, no socket opens, so an illegal drop is unreachable rather than rejected on save.
+ * Content stays read-only here.
  */
 
 /**
  * A double-click on a `workflow`-ref block. The caller decides by the node's `ref`: a **set** ref
- * descends across the boundary (resolving the path against this file); an **empty** ref (a step just
- * swapped in, not yet pointed anywhere) opens the ref-target chooser to author or pick its target
- * instead — so a fresh `workflow` block is authorable by double-click, not a dead descent into `""`.
+ * descends across the boundary (resolving the path against this file); an **empty** ref (a step
+ * just swapped in, not yet pointed anywhere) opens the ref-target chooser to author or pick its
+ * target instead — so a fresh `workflow` block is authorable by double-click, not a dead descent
+ * into `""`.
  */
 export type DescendHandler = (node: Extract<WorkflowNode, { type: "workflow" }>) => void;
 
-/** A list socket the tree can grow: the file body (`ownerId` `null`) or a `sequence`/`parallel` owner. */
+/** A list socket the tree can grow: the file body (`ownerId` `null`) or a `sequence`/`parallel`
+ * owner. */
 interface ListSocket {
   ownerId: string | null;
   flavor: "sequence" | "branches";
@@ -39,7 +42,8 @@ interface TreeProps {
   editor?: EditorApi;
 }
 
-/** The file body (or a `sequence` body): a vertical stack of blocks, with the list's tail add-socket. */
+/** The file body (or a `sequence` body): a vertical stack of blocks, with the list's tail
+ * add-socket. */
 export function BlockTree({
   nodes,
   onDescend,
@@ -80,13 +84,15 @@ function TailSocket({
   );
 }
 
-/** The block's CSS custom properties, so its border and mouth tint pick up its kind's hue tokens. */
+/** The block's CSS custom properties, so its border and mouth tint pick up its kind's hue
+ * tokens. */
 function hueStyle(node: WorkflowNode): CSSProperties {
   const kind = nodeHue(node.type);
   return { "--block-fg": `var(--k-${kind})`, "--block-bg": `var(--k-${kind}-bg)` } as CSSProperties;
 }
 
-/** The per-node structure controls: reorder, duplicate, delete (§ Reordering, deleting). Only when editable. */
+/** The per-node structure controls: reorder, duplicate, delete (§ Reordering, deleting). Only when
+ * editable. */
 function NodeControls({
   node,
   editor,
@@ -141,12 +147,13 @@ function NodeControls({
   );
 }
 
-/** The Delete/Backspace handler for a focused block — the keyboard peer of the × control (§ Delete). */
+/** The Delete/Backspace handler for a focused block — the keyboard peer of the × control (§
+ * Delete). */
 function deleteKeyHandler(node: WorkflowNode, editor?: EditorApi) {
   return (event: KeyboardEvent): void => {
     if (!editor) return;
-    // Delete or Backspace: the undo stack backs a destructive subtree delete, so Backspace is unlocked
-    // and is itself undoable (via `editor.remove`).
+    // Delete or Backspace: the undo stack backs a destructive subtree delete, so Backspace is
+    // unlocked and is itself undoable (via `editor.remove`).
     if (event.key !== "Delete" && event.key !== "Backspace") return;
     if (event.target !== event.currentTarget) return; // ignore keys bubbling from a nested control
     if (!editor.canRemove(node.id)) return;
@@ -156,10 +163,10 @@ function deleteKeyHandler(node: WorkflowNode, editor?: EditorApi) {
 }
 
 /**
- * The single-click selection props for a block: a click reports the node's id to the selection context
- * (populating the properties pane), unless it landed on a control or socket button — those own their
- * action and must not also select. A selected block carries `data-selected`. On a read-only render (no
- * selection context) it returns nothing, so the block stays inert.
+ * The single-click selection props for a block: a click reports the node's id to the selection
+ * context (populating the properties pane), unless it landed on a control or socket button — those
+ * own their action and must not also select. A selected block carries `data-selected`. On a
+ * read-only render (no selection context) it returns nothing, so the block stays inert.
  */
 function useSelectable(node: WorkflowNode): {
   "data-node-id": string;
@@ -168,11 +175,11 @@ function useSelectable(node: WorkflowNode): {
   onClick?: (event: MouseEvent) => void;
 } {
   const selection = useSelection();
-  // A goto draws no edge, so its target's block is highlighted instead while the goto is selected or
-  // hovered. It rides with the selection props because every block already spreads them.
+  // A goto draws no edge, so its target's block is highlighted instead while the goto is selected
+  // or hovered. It rides with the selection props because every block already spreads them.
   const gotoTarget = useIsGotoTarget(node) ? ("true" as const) : undefined;
-  // `data-node-id` rides on every block regardless of edit mode, so the problems panel's jump-to-node
-  // can scroll the offending block into view whether or not it is the selected one.
+  // `data-node-id` rides on every block regardless of edit mode, so the problems panel's
+  // jump-to-node can scroll the offending block into view whether or not it is the selected one.
   if (!selection) return { "data-node-id": node.id, "data-goto-target": gotoTarget };
   return {
     "data-node-id": node.id,
@@ -187,9 +194,10 @@ function useSelectable(node: WorkflowNode): {
 }
 
 /**
- * The canvas run projection for one node: a status glyph+label badge when the watched run touched this
- * node. One node produces many runs, so the fold is `run-projection.ts`'s; this only draws the folded
- * status. Absent when no run is watched or the node has not run. `data-run-status` tints the badge.
+ * The canvas run projection for one node: a status glyph+label badge when the watched run touched
+ * this node. One node produces many runs, so the fold is `run-projection.ts`'s; this only draws the
+ * folded status. Absent when no run is watched or the node has not run. `data-run-status` tints the
+ * badge.
  */
 function NodeRunBadge({ id }: { id: string }): JSX.Element | null {
   const status = useNodeRunStatus(id);
@@ -261,7 +269,8 @@ function LeafStep({ node, editor }: { node: WorkflowNode; editor?: EditorApi }):
   );
 }
 
-/** A `workflow`-ref — its own-hue chip showing the ref path, the one block a double-click descends across. */
+/** A `workflow`-ref — its own-hue chip showing the ref path, the one block a double-click descends
+ * across. */
 function RefChip({
   node,
   onDescend,
@@ -329,8 +338,8 @@ function CheckpointBlock({
 }
 
 /**
- * A watched run's jumps spent by one goto, `<spent>/<max_jumps>`. A goto runs for no time, so it takes
- * no status badge; this is its whole run view. Absent when no run is watched.
+ * A watched run's jumps spent by one goto, `<spent>/<max_jumps>`. A goto runs for no time, so it
+ * takes no status badge; this is its whole run view. Absent when no run is watched.
  */
 function GotoJumpsBadge({
   node,
@@ -352,7 +361,8 @@ function GotoJumpsBadge({
 
 /**
  * A `goto` — a leaf block with a `→ <target>` chip and a direction glyph instead of an edge.
- * Hovering it highlights its target. In a watched run it shows its jumps spent instead of a status badge.
+ * Hovering it highlights its target. In a watched run it shows its jumps spent instead of a status
+ * badge.
  */
 function GotoBlock({
   node,
@@ -418,7 +428,8 @@ function CBlock({
   );
 }
 
-/** The single-slot swap affordance: an armed, single-legal kind can replace an occupant (§ Replace). */
+/** The single-slot swap affordance: an armed, single-legal kind can replace an occupant (§
+ * Replace). */
 function SlotSwap({
   target,
   editor,
@@ -434,7 +445,8 @@ function SlotSwap({
   );
 }
 
-/** `parallel` — a C-block, its N branches side by side in the mouth, with a `join:` badge on the head. */
+/** `parallel` — a C-block, its N branches side by side in the mouth, with a `join:` badge on the
+ * head. */
 function ParallelBlock({
   node,
   onDescend,
@@ -480,7 +492,8 @@ function ParallelBlock({
   );
 }
 
-/** `branch` — a C-block, its N arms side by side (each `when <cond>`), then `else`, then the add affordances. */
+/** `branch` — a C-block, its N arms side by side (each `when <cond>`), then `else`, then the add
+ * affordances. */
 function BranchBlock({
   node,
   onDescend,
@@ -533,7 +546,8 @@ function BranchBlock({
   );
 }
 
-/** `while-do` — a C-block wrapping one body node, with a `while <cond> · max N` summary on the head. */
+/** `while-do` — a C-block wrapping one body node, with a `while <cond> · max N` summary on the
+ * head. */
 function WhileBlock({
   node,
   onDescend,

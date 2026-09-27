@@ -11,24 +11,25 @@ import type { RunEvent, RunObserver } from "../../src/run-observer.js";
 
 /**
  * The synthetic `do-not-wait` acceptance workflow (issue #216, spec `docs/spec/do-not-wait-join.md`
- * §9): the checked-in `docs/acceptance-workflow/do-not-wait-probe.workflow.json` running through the
- * real `path run`, not a fixture rewrite of it. Why the case is synthetic — no motivating workflow
- * exists yet, it exercises the mechanism rather than relieving a real pain (spec §1) — is in its
- * neighbour `do-not-wait-probe.NOTES.md`, the same way `release-notes.test.ts` and
+ * §9): the checked-in `docs/acceptance-workflow/do-not-wait-probe.workflow.json` running through
+ * the real `path run`, not a fixture rewrite of it. Why the case is synthetic — no motivating
+ * workflow exists yet, it exercises the mechanism rather than relieving a real pain (spec §1) — is
+ * in its neighbour `do-not-wait-probe.NOTES.md`, the same way `release-notes.test.ts` and
  * `env-secret.test.ts` defer to their NOTES files.
  *
  * The workflow is one detached branch (`notify` → `post-signal`) that appends a line to a signal
  * file — the side effect a real branch would post to Slack — then holds for `branch_delay_ms` and
- * exits `branch_exit_code`, followed by a main-path `after` step that echoes the block's `{}` output.
- * Everything here is the real engine, db, blob tree, and both log backends; the branch is a `binary`
- * step, so unlike release-notes there is not even a scripted LLM in the way.
+ * exits `branch_exit_code`, followed by a main-path `after` step that echoes the block's `{}`
+ * output. Everything here is the real engine, db, blob tree, and both log backends; the branch is a
+ * `binary` step, so unlike release-notes there is not even a scripted LLM in the way.
  *
  * The five things it pins, one per spec section:
  *   - launch-and-continue (§2): `after` finishes before the held branch, seeing `{}`.
  *   - the enclosing-run barrier (§2/§1.1): the branch is terminal before the root run returns.
  *   - `publish` rejection at load (§4): a publish injected into the branch is a load error.
  *   - failure isolation (§5, ADR 0008): a `failed` branch leaves the run `succeeded`.
- *   - resume re-fire (§7, ADR 0009): a branch left non-`succeeded` re-fires, double-firing its effect.
+ *   - resume re-fire (§7, ADR 0009): a branch left non-`succeeded` re-fires, double-firing its
+ *     effect.
  */
 
 const packageRoot = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
@@ -75,7 +76,8 @@ function runProbe(extraArgs: string[] = []): Promise<number> {
   return main(["run", join(harness.projectDir, WORKFLOW_FILE), ...extraArgs], harness.io, {});
 }
 
-/** Where the detached branch appends its "fired" line — one line per fire, so double-firing shows. */
+/** Where the detached branch appends its "fired" line — one line per fire, so double-firing
+ * shows. */
 function signalPath(): string {
   return join(harness.projectDir, SIGNAL_FILE);
 }
@@ -149,7 +151,8 @@ describe("acceptance: do-not-wait launch-and-continue + barrier (issue #216, spe
     // the detached branch reached a terminal status rather than returning with it still live.
     expect(rowFor("after").status).toBe("succeeded");
     expect(rowFor("post-signal").status).toBe("succeeded");
-    // Every row shares one root run: strict nesting, the branch is not detached from the tree (§1.1).
+    // Every row shares one root run: strict nesting, the branch is not detached from the tree
+    // (§1.1).
     const root = rootRow();
     expect(rows.every((row) => row.root_run_id === root.run_id)).toBe(true);
     expect(root.status).toBe("succeeded");
@@ -159,9 +162,10 @@ describe("acceptance: do-not-wait launch-and-continue + barrier (issue #216, spe
 
 describe("acceptance: do-not-wait publish rejection at load (issue #216, spec §4)", () => {
   it("rejects the checked-in workflow the moment a publish is injected into its detached branch", async () => {
-    // Start from the real file and add the one thing §4 forbids — a `publish` inside the branch — so
-    // the rejection is pinned against the shipped workflow, not a hand-built lookalike.
-    // `@2`: a branch *is* a node, so the forbidden `publish` goes directly on the branch node (§4.3).
+    // Start from the real file and add the one thing §4 forbids — a `publish` inside the branch —
+    // so the rejection is pinned against the shipped workflow, not a hand-built lookalike.
+    // `@2`: a branch *is* a node, so the forbidden `publish` goes directly on the branch node
+    // (§4.3).
     const file = JSON.parse(readFileSync(join(acceptanceDir, WORKFLOW_FILE), "utf8")) as {
       body: { branches?: { publish?: unknown }[] }[];
     };
@@ -201,22 +205,23 @@ describe("acceptance: do-not-wait failure isolation (issue #216, spec §5, ADR 0
  * Runs the probe through the engine's own assembly (`openProject` + `Project.run`, the pieces `path
  * run` composes) and lands a cancellation with the detached branch still in flight: an appended
  * observer arms the operator's `AbortController` when the main-path `after` step finishes, and the
- * abort itself lands once the branch has fired its side effect — announced by the signal file, since
- * a step event cannot show it — while the branch holds on `branch_delay_ms`, so it is caught live.
- * This mirrors `release-notes.test.ts`'s `killMidFirstRevise`: a real operator
+ * abort itself lands once the branch has fired its side effect — announced by the signal file,
+ * since a step event cannot show it — while the branch holds on `branch_delay_ms`, so it is caught
+ * live. This mirrors `release-notes.test.ts`'s `killMidFirstRevise`: a real operator
  * cancel driven deterministically off an observation, without the process-signal plumbing an
  * in-process test cannot use. The branch ends non-`succeeded` (cancelled), which is the `--resume`
  * target's precondition.
  */
 async function killWithBranchInFlight(): Promise<string> {
   const controller = new AbortController();
-  // The main-path step's run id is captured off its `step-started`, and the abort is armed when *that*
-  // run finishes.
+  // The main-path step's run id is captured off its `step-started`, and the abort is armed when
+  // *that* run finishes.
   let afterRunId: string | undefined;
   // The branch fires its side effect from its own freshly spawned process, so `after` finishing can
   // beat that write on a starved runner — and the cancel then lands on a branch that never fired.
-  // Arm the abort on the side effect itself rather than on the instant `after` ends: waiting for the
-  // very line the test counts keeps the cancel inside the `branch_delay_ms` hold that follows it.
+  // Arm the abort on the side effect itself rather than on the instant `after` ends: waiting for
+  // the very line the test counts keeps the cancel inside the `branch_delay_ms` hold that follows
+  // it.
   const abortOnceBranchFired = async (): Promise<void> => {
     const deadline = Date.now() + 2000;
     while (firedCount() < 1 && Date.now() < deadline) {
@@ -239,17 +244,17 @@ async function killWithBranchInFlight(): Promise<string> {
   try {
     const result = await opened.project.run(rootFile, harness.projectDir, {
       // A hold long enough that the branch is still live when the instant `after` finishes and the
-      // abort lands, but short enough that the resumed run's barrier (which re-runs the branch under
-      // this same restored config) finishes well inside the test timeout.
+      // abort lands, but short enough that the resumed run's barrier (which re-runs the branch
+      // under this same restored config) finishes well inside the test timeout.
       operatorConfig: { branch_delay_ms: "1500" },
       files: loaded.workflow.files,
       signal: controller.signal,
       extraObservers: [abortOnAfterFinished],
     });
-    // The main path had already succeeded when the abort landed, so the operator cancel reaches only
-    // the still-live detached branch: it ends `cancelled` (cause `operator`, §6) while the root run
-    // reports `succeeded` on its main path. Either way the branch is left non-`succeeded`, which is
-    // the resume precondition the re-fire test needs.
+    // The main path had already succeeded when the abort landed, so the operator cancel reaches
+    // only the still-live detached branch: it ends `cancelled` (cause `operator`, §6) while the
+    // root run reports `succeeded` on its main path. Either way the branch is left non-`succeeded`,
+    // which is the resume precondition the re-fire test needs.
     expect(result.status).toBe("succeeded");
   } finally {
     opened.project.close();
@@ -259,11 +264,12 @@ async function killWithBranchInFlight(): Promise<string> {
 }
 
 /**
- * Resume re-fire (issue #216, spec §7, ADR 0009). The predecessor is killed with the detached branch
- * in flight — it fired once, then was cancelled before reaching `succeeded`. On resume the branch is
- * ordinary unfinished work to a cause-blind resume, so it re-runs and fires *again*: at-least-once,
- * with no `do-not-wait` short-circuit (the deliberate divergence from `wait-one`'s ADR 0004). The
- * double-fire is the point — the side-effect count going from 1 to 2 is the observable proof.
+ * Resume re-fire (issue #216, spec §7, ADR 0009). The predecessor is killed with the detached
+ * branch in flight — it fired once, then was cancelled before reaching `succeeded`. On resume the
+ * branch is ordinary unfinished work to a cause-blind resume, so it re-runs and fires *again*:
+ * at-least-once, with no `do-not-wait` short-circuit (the deliberate divergence from `wait-one`'s
+ * ADR 0004). The double-fire is the point — the side-effect count going from 1 to 2 is the
+ * observable proof.
  */
 describe("acceptance: do-not-wait resume re-fires the detached branch (issue #216, spec §7, ADR 0009)", () => {
   it("re-fires a branch left non-succeeded, double-firing its side effect", async () => {
@@ -273,8 +279,8 @@ describe("acceptance: do-not-wait resume re-fires the detached branch (issue #21
     expect(rowFor("post-signal", killedRootRunId).status).toBe("cancelled");
     expect(rowFor("after", killedRootRunId).status).toBe("succeeded");
 
-    // Resume through the real CLI. Config restores from the killed run, so no `--set` is needed; the
-    // restored 1.5s hold makes the resumed run wait at its barrier, then finish.
+    // Resume through the real CLI. Config restores from the killed run, so no `--set` is needed;
+    // the restored 1.5s hold makes the resumed run wait at its barrier, then finish.
     const code = await main(
       ["run", join(harness.projectDir, WORKFLOW_FILE), "--resume", killedRootRunId],
       harness.io,
@@ -290,9 +296,9 @@ describe("acceptance: do-not-wait resume re-fires the detached branch (issue #21
     expect(rootRow(successorRootRunId).status).toBe("succeeded");
     expect(rootRow(successorRootRunId).resumed_from_root_run_id).toBe(killedRootRunId);
 
-    // The re-fire: `after` succeeded before the kill so it reuses — now recorded as a reuse row (#257)
-    // carrying a `reused_from_run_id` pointer rather than re-executing — while the non-`succeeded`
-    // branch re-runs, so the side effect fired a *second* time.
+    // The re-fire: `after` succeeded before the kill so it reuses — now recorded as a reuse row
+    // (#257) carrying a `reused_from_run_id` pointer rather than re-executing — while the
+    // non-`succeeded` branch re-runs, so the side effect fired a *second* time.
     const successorRows = readRuns().filter((row) => row.root_run_id === successorRootRunId);
     expect(
       successorRows.some((row) => row.node_name === "post-signal" && row.status === "succeeded"),

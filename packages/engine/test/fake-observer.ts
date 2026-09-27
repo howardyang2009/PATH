@@ -63,7 +63,8 @@ export function fakeObserver(): FakeObserver {
 
 /**
  * One event flattened for assertions: its `run_id`, the log event's fields, then the payload's. A
- * record-only fact has no log event, so its `type` is its payload kind (`stderr`, `usage`, `context`).
+ * record-only fact has no log event, so its `type` is its payload kind (`stderr`, `usage`,
+ * `context`).
  */
 export function flat(e: RunEvent): { type: string; [field: string]: unknown } {
   const { kind, ...payload } = e.payload ?? { kind: undefined };

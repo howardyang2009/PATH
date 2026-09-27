@@ -4,8 +4,9 @@ import { join } from "node:path";
 import { rootRunTreeDir } from "./paths.js";
 
 /**
- * The per-root-run **Complete lease** (ADR 0041, the ADR 0017 lease pattern): single-writer exclusion so
- * only one Complete advances a tree at a time, and a concurrent one is rejected for the person to retry.
+ * The per-root-run **Complete lease** (ADR 0041, the ADR 0017 lease pattern): single-writer
+ * exclusion so only one Complete advances a tree at a time, and a concurrent one is rejected for
+ * the person to retry.
  *
  * The marker file **is** the state, so a restart does not lose it, and reclaim is lazy — an expired
  * marker is evaluated only when the next Complete acquires that tree's lease.
@@ -13,8 +14,9 @@ import { rootRunTreeDir } from "./paths.js";
 
 const LEASE_FILE = "complete.lease";
 
-// Generous, because one lease is held for a whole tail drive that may run a real binary or LLM step.
-// A tail outliving it is the rare case a racing Complete could reclaim; ADR 0041 promises no atomicity.
+// Generous, because one lease is held for a whole tail drive that may run a real binary or LLM
+// step. A tail outliving it is the rare case a racing Complete could reclaim; ADR 0041 promises no
+// atomicity.
 const TTL_MS = 10 * 60_000;
 
 interface LeaseMarker {
@@ -22,7 +24,8 @@ interface LeaseMarker {
   expires_at: string;
 }
 
-/** The live lease held by this call, if it won the tree. `release` is idempotent and holder-scoped. */
+/** The live lease held by this call, if it won the tree. `release` is idempotent and
+ * holder-scoped. */
 export interface CompleteLease {
   release(): void;
 }
@@ -45,9 +48,10 @@ function readMarker(absPath: string): LeaseMarker | undefined {
   return undefined;
 }
 
-// Acquires the Complete lease for `rootRunId`, or returns `null` when a **live** lease is already held.
-// Grants when no marker exists, the marker is expired, or the marker is corrupt. The read-decide-write
-// is synchronous, and a cross-*process* race is caught by the exclusive `wx` create.
+// Acquires the Complete lease for `rootRunId`, or returns `null` when a **live** lease is already
+// held. Grants when no marker exists, the marker is expired, or the marker is corrupt. The
+// read-decide-write is synchronous, and a cross-*process* race is caught by the exclusive `wx`
+// create.
 export function acquireCompleteLease(projectDir: string, rootRunId: string): CompleteLease | null {
   const absPath = join(rootRunTreeDir(projectDir, rootRunId), LEASE_FILE);
   const now = Date.now();

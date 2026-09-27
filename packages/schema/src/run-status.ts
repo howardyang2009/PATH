@@ -1,8 +1,8 @@
 import { z } from "zod";
 
 /**
- * How a run ended, or that it has not (mvp spec §5.7); `cancelled` is deliberately distinct from `failed`, since an
- * operator stop is not the workflow breaking (§5.6).
+ * How a run ended, or that it has not (mvp spec §5.7); `cancelled` is deliberately distinct from
+ * `failed`, since an operator stop is not the workflow breaking (§5.6).
  */
 export const RUN_STATUSES = [
   "pending",

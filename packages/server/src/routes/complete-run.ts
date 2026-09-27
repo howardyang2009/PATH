@@ -5,14 +5,15 @@ import { operatorConfigEnvError, prepareRunWorkflow } from "../launch.js";
 import type { ApiRequest } from "./route-context.js";
 
 /**
- * `POST /v0/runs/:step_run_id/complete` (server-api-v0.md §4.4) — resolve a parked `awaiting` leaf with
- * a person's output. The path names the leaf; the per-tree lease is taken from its root. Validation is
- * per-leaf and runs before the lease, so a bad submit never blocks a sibling's Complete.
+ * `POST /v0/runs/:step_run_id/complete` (server-api-v0.md §4.4) — resolve a parked `awaiting` leaf
+ * with a person's output. The path names the leaf; the per-tree lease is taken from its root.
+ * Validation is per-leaf and runs before the lease, so a bad submit never blocks a sibling's
+ * Complete.
  */
 
 /**
- * Body: `output` plus an optional `config` override — the door an operator re-supplies a launch-frozen
- * `$secret` through (ADR 0046). Same ADR 0012 `$env` reject as §2.
+ * Body: `output` plus an optional `config` override — the door an operator re-supplies a
+ * launch-frozen `$secret` through (ADR 0046). Same ADR 0012 `$env` reject as §2.
  */
 const CompleteBodySchema = z
   .object({ output: z.unknown(), config: ConfigObjectSchema.optional() })
@@ -49,8 +50,8 @@ export async function handleCompleteRun({
     return;
   }
 
-  // The compare half of the leaf CAS, checked before reload/lease so an ordinary double-submit never
-  // contends. The engine repeats it under the lease to close the concurrent-submit race.
+  // The compare half of the leaf CAS, checked before reload/lease so an ordinary double-submit
+  // never contends. The engine repeats it under the lease to close the concurrent-submit race.
   if (leaf.status !== "awaiting") {
     sendError(res, 409, `step run "${stepRunId}" is ${leaf.status}, not awaiting`);
     return;
@@ -62,8 +63,8 @@ export async function handleCompleteRun({
     return;
   }
 
-  // Recover and re-validate the workflow as it stands now: the node lookup below must be a lookup in
-  // *this run's* file (matching id, ADR 0006), not merely one sharing the node's id.
+  // Recover and re-validate the workflow as it stands now: the node lookup below must be a lookup
+  // in *this run's* file (matching id, ADR 0006), not merely one sharing the node's id.
   const prepared = await prepareRunWorkflow(ctx.project.dir, root, {
     notFound: () => `workflow file for run "${rootRunId}" not found at "${root.workflowPath}"`,
     noPath: () => `run "${rootRunId}" has no recorded workflow path and cannot be completed`,
@@ -84,7 +85,8 @@ export async function handleCompleteRun({
     workflow.workflowDir,
     {
       files: workflow.files,
-      // Dispatch reuses the registry the load validated the file against (ADR 0019 sub-15); no re-scan.
+      // Dispatch reuses the registry the load validated the file against (ADR 0019 sub-15); no
+      // re-scan.
       registry: workflow.registry,
       // Merged over the config the launch froze (ADR 0046).
       operatorConfig: config,

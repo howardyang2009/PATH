@@ -10,9 +10,9 @@ import {
 } from "../src/config-value.js";
 
 /**
- * The pure config-value shape algebra (#370). The mode transitions and the reference-only label are the
- * bug-prone part — a lost `$env` name across a mode switch, or a secret that resolves instead of masking.
- * These tests hit them directly, off the pane's render path.
+ * The pure config-value shape algebra (#370). The mode transitions and the reference-only label are
+ * the bug-prone part — a lost `$env` name across a mode switch, or a secret that resolves instead
+ * of masking. These tests hit them directly, off the pane's render path.
  */
 
 describe("configModeOf / isEditableScalar", () => {

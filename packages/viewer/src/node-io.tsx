@@ -23,41 +23,42 @@ export interface NodeIoProps {
   run: RunNodeState;
   /**
    * The watched run's derived facts (`RunViewFacts`): display status, last error, and the tree's
-   * `launchFacts` (ADR 0046) — the view owns them, so this pane asks rather than re-deriving. Only the
-   * pill, the E block and the masked-secret surfaces use it; blob reads stay keyed on the real
+   * `launchFacts` (ADR 0046) — the view owns them, so this pane asks rather than re-deriving. Only
+   * the pill, the E block and the masked-secret surfaces use it; blob reads stay keyed on the real
    * `run.status`.
    */
   view?: RunViewFacts;
   /**
    * The watched run's reachable workflow files, parsed structurally. An awaiting leaf's
-   * `description`/`assignee`/`outputSchema` live on the node in the file that defines it — possibly a
-   * nested one — so the Complete surface resolves them by node id; empty means it degrades to a
+   * `description`/`assignee`/`outputSchema` live on the node in the file that defines it — possibly
+   * a nested one — so the Complete surface resolves them by node id; empty means it degrades to a
    * schema-less submit.
    */
   workflowFiles?: readonly WorkflowFile[];
 }
 
 /**
- * The node-I/O/C read surface: the selected run's input, output and context objects. Masking happens at
- * the persistence boundary, so this pane renders what the server serves and never masks anything itself.
+ * The node-I/O/C read surface: the selected run's input, output and context objects. Masking
+ * happens at the persistence boundary, so this pane renders what the server serves and never masks
+ * anything itself.
  *
  * Which run each object is read from, and whether its ref gates the read, is `@path/client-core`'s
- * `runBlobSource`; this pane keeps only the wiring: three `useRunBlob` calls and their blocks. Context
- * has no ref column, so it is always fetched and its 404 read as "no context recorded".
+ * `runBlobSource`; this pane keeps only the wiring: three `useRunBlob` calls and their blocks.
+ * Context has no ref column, so it is always fetched and its 404 read as "no context recorded".
  */
 export function NodeIo({ client, run, view, workflowFiles = [] }: NodeIoProps) {
   const [reloadToken, setReloadToken] = useState(0);
   const settled = isTerminal(run.status);
-  // Head facts (display status, last error) come off the view's snapshot; everything else stays on the
-  // real `run.status`, because a flipped ancestor is not itself awaiting. Unwatched, the head falls back
-  // to the run's own record status and shows no error.
+  // Head facts (display status, last error) come off the view's snapshot; everything else stays on
+  // the real `run.status`, because a flipped ancestor is not itself awaiting. Unwatched, the head
+  // falls back to the run's own record status and shows no error.
   const displayStatus = view?.displayStatus.get(run.runId) ?? run.status;
   const errorMessage = view?.lastError.get(run.runId) ?? null;
-  // The tree's frozen launch facts (ADR 0046): per-tree, so the override sections render on the root run
-  // alone while `secretKeys` reaches the Complete form wherever the awaiting leaf sits.
+  // The tree's frozen launch facts (ADR 0046): per-tree, so the override sections render on the
+  // root run alone while `secretKeys` reaches the Complete form wherever the awaiting leaf sits.
   const launchFacts = view?.launchFacts;
-  // An awaiting leaf is the one actionable run. Its node fields come from the workflow file by id — the
-  // file may be nested, so the search spans the whole reachable set; unresolved reads as null.
+  // An awaiting leaf is the one actionable run. Its node fields come from the workflow file by id —
+  // the file may be nested, so the search spans the whole reachable set; unresolved reads as null.
   const awaitingNode = awaitingNodeForRun(workflowFiles, run);
   const inputSource = runBlobSource(run, "input");
   const outputSource = runBlobSource(run, "output");
@@ -81,7 +82,8 @@ export function NodeIo({ client, run, view, workflowFiles = [] }: NodeIoProps) {
     settled,
     reloadToken,
   });
-  // No `context_ref` rides a run row, so this read is ungated and a 404 reads as "no context recorded".
+  // No `context_ref` rides a run row, so this read is ungated and a 404 reads as "no context
+  // recorded".
   const context = useRunBlob({
     client,
     rootRunId: contextSource.rootRunId,
@@ -164,8 +166,8 @@ export function NodeIo({ client, run, view, workflowFiles = [] }: NodeIoProps) {
         load={output}
         blobRef={outputSource.ref}
         testId="node-io-output"
-        // A run still going has not written its output, a finished one never did; "yet" would promise
-        // something that is not coming.
+        // A run still going has not written its output, a finished one never did; "yet" would
+        // promise something that is not coming.
         absentNote={
           settled
             ? "No output object recorded for this run."
@@ -179,13 +181,15 @@ export function NodeIo({ client, run, view, workflowFiles = [] }: NodeIoProps) {
         // Input's and Output's (`runs/<root>/<run>/context.json`).
         blobRef={contextSource.ref}
         testId="node-io-context"
-        // An absent context is a run still in flight or one that never reached a verdict — not a failure.
+        // An absent context is a run still in flight or one that never reached a verdict — not a
+        // failure.
         absentNote="No context recorded for this run."
       />
       {isRootRun(run) && launchFacts !== undefined && (
         <>
-          {/* The operator's launch facts (ADR 0046), on the root run alone; each section renders only when
-              the launch supplied it. `config` is shown masked — the token is what the run stored. */}
+          {/* The operator's launch facts (ADR 0046), on the root run alone; each section renders
+              only when the launch supplied it. `config` is shown masked — the token is what the run
+              stored. */}
           {launchFacts.input !== undefined && (
             <FactBlock
               title="Override Input"
@@ -215,8 +219,8 @@ export function NodeIo({ client, run, view, workflowFiles = [] }: NodeIoProps) {
 }
 
 /**
- * One launch-fact block on the root run: the same section markup as the I/O/C `BlobBlock`s, but holding
- * a value already in the snapshot rather than a served blob — no ref line, no absence note.
+ * One launch-fact block on the root run: the same section markup as the I/O/C `BlobBlock`s, but
+ * holding a value already in the snapshot rather than a served blob — no ref line, no absence note.
  */
 function FactBlock({ title, testId, value }: { title: string; testId: string; value: unknown }) {
   const titleId = `${testId}-title`;
@@ -231,9 +235,10 @@ function FactBlock({ title, testId, value }: { title: string; testId: string; va
 }
 
 /**
- * The E block: the run's failure message, rendered only when the run actually failed — unlike the I/O/C
- * blocks, which are slots every run legitimately has, an error is the exception. The message is a plain
- * string the view folded off the run's `step-finished` event, so it renders verbatim, not as JSON.
+ * The E block: the run's failure message, rendered only when the run actually failed — unlike the
+ * I/O/C blocks, which are slots every run legitimately has, an error is the exception. The message
+ * is a plain string the view folded off the run's `step-finished` event, so it renders verbatim,
+ * not as JSON.
  */
 function ErrorBlock({ message }: { message: string }) {
   return (
@@ -242,8 +247,8 @@ function ErrorBlock({ message }: { message: string }) {
         Error
       </h3>
       <pre className="node-io-error-message">{message}</pre>
-      {/* The error rides the run's `step-finished` event, not a served blob file, so its provenance is
-          that event rather than a filename. */}
+      {/* The error rides the run's `step-finished` event, not a served blob file, so its provenance
+          is that event rather than a filename. */}
       <p className="blob-ref">from the run's step-finished event (event log)</p>
     </section>
   );

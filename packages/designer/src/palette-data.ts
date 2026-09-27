@@ -2,9 +2,9 @@ import type { WireStepPlugin } from "@path/client-core";
 
 /**
  * The palette's categories, split across the two rail tabs. The **Nodes** tab: **Step** — one
- * registry-driven entry per leaf step type (the `workflow` ref included) — and **Controller**, fixed by
- * the grammar and split into Structure | Graph. The **Templates** tab: one card per `GET /v0/templates`
- * entry, with no group heading (one kind only, ADR 0063).
+ * registry-driven entry per leaf step type (the `workflow` ref included) — and **Controller**,
+ * fixed by the grammar and split into Structure | Graph. The **Templates** tab: one card per `GET
+ * /v0/templates` entry, with no group heading (one kind only, ADR 0063).
  */
 export interface PaletteEntry {
   readonly kind: string;
@@ -55,7 +55,8 @@ function stepGroup(plugins: WireStepPlugin[]): PaletteGroup {
   return { title: "Step", entries: [...fromRegistry, workflowRef] };
 }
 
-/** The five Structure Controllers, checkpoint included, fixed by the grammar (§ What is authorable). */
+/** The five Structure Controllers, checkpoint included, fixed by the grammar (§ What is
+ * authorable). */
 const STRUCTURE_CONTROLLERS: readonly PaletteEntry[] = [
   { kind: "parallel", label: "Parallel", blurb: "Branches with a join mode", hue: "parallel" },
   { kind: "branch", label: "Branch", blurb: "First-match arms with an else", hue: "branch" },
@@ -82,7 +83,8 @@ export function paletteGroups(plugins: WireStepPlugin[]): readonly PaletteGroup[
   return [stepGroup(plugins), CONTROLLERS];
 }
 
-/** The leaf step type a block's auto-filled occupants take — the first Step entry, else `prompt`. */
+/** The leaf step type a block's auto-filled occupants take — the first Step entry, else
+ * `prompt`. */
 export function defaultLeafKind(plugins: WireStepPlugin[]): string {
   return plugins[0]?.name ?? "prompt";
 }

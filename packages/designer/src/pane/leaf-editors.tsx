@@ -33,7 +33,8 @@ export interface LeafEditorProps {
   commit: EditCommit<WorkflowNode>;
 }
 
-/** `prompt` — the first-class editor: the `model` (a config datum) and the `prompt` text, plus the worker. */
+/** `prompt` — the first-class editor: the `model` (a config datum) and the `prompt` text, plus the
+ * worker. */
 export function PromptEditor({ file, node, plugins, commit }: LeafEditorProps): JSX.Element {
   const prompt = nodeString(node, "prompt");
   const inheritedModel = configStringOf(file.config, "model");
@@ -56,8 +57,9 @@ export function PromptEditor({ file, node, plugins, commit }: LeafEditorProps): 
 
 /**
  * The `model` line: a config datum, so it inherits from `config.model` like any key, but as a
- * first-class field it edits as an input, not a ghosted config row. Empty shows the inherited value as
- * a ghosted placeholder; typing overrides; **Revert** drops the local `model` and restores the inherited.
+ * first-class field it edits as an input, not a ghosted config row. Empty shows the inherited value
+ * as a ghosted placeholder; typing overrides; **Revert** drops the local `model` and restores the
+ * inherited.
  */
 export function ModelField({
   value,
@@ -70,8 +72,8 @@ export function ModelField({
 }): JSX.Element {
   const inheriting = value === "" && inherited !== "";
   const overridden = value !== "" && inherited !== "";
-  // The wrapper renders in every state, only the Revert button toggling inside it, so appearing Revert
-  // never re-parents (and re-mounts, dropping focus) the input being typed into.
+  // The wrapper renders in every state, only the Revert button toggling inside it, so appearing
+  // Revert never re-parents (and re-mounts, dropping focus) the input being typed into.
   return (
     <label className="pane-field pane-field-row">
       <span className="pane-label">model</span>
@@ -99,7 +101,8 @@ export function ModelField({
   );
 }
 
-/** `workflow`-ref — the first-class editor: the referenced file path. A workflow step carries no worker. */
+/** `workflow`-ref — the first-class editor: the referenced file path. A workflow step carries no
+ * worker. */
 export function WorkflowRefEditor({
   node,
   commit,
@@ -110,8 +113,8 @@ export function WorkflowRefEditor({
   onAddRefTarget?: (nodeId: string) => void;
 }): JSX.Element {
   const ref = nodeString(node, "ref");
-  // An empty ref on a file with a path offers the target chooser; otherwise the plain path field is the
-  // editor, so a set ref stays retargetable by hand.
+  // An empty ref on a file with a path offers the target chooser; otherwise the plain path field is
+  // the editor, so a set ref stays retargetable by hand.
   if (ref === "" && onAddRefTarget) {
     return (
       <div className="pane-field ref-target-field">
@@ -133,10 +136,11 @@ export function WorkflowRefEditor({
 }
 
 /**
- * `person-activity` — the three fields a Complete surface reads by node id (CONTEXT.md § Person-activity).
- * `description` is interpolable text the server resolves at Complete, so the pane neither resolves nor
- * validates it; `outputSchema` is the JSON Schema the Complete form is built from (ADR 0040); `assignee`
- * is an informational label with no enforcement. The worker is fixed (`person`), so no selector shows.
+ * `person-activity` — the three fields a Complete surface reads by node id (CONTEXT.md §
+ * Person-activity). `description` is interpolable text the server resolves at Complete, so the pane
+ * neither resolves nor validates it; `outputSchema` is the JSON Schema the Complete form is built
+ * from (ADR 0040); `assignee` is an informational label with no enforcement. The worker is fixed
+ * (`person`), so no selector shows.
  */
 export function PersonActivityEditor({
   node,
@@ -196,8 +200,8 @@ export function OutputSchemaField({
 }
 
 /**
- * A generic registry leaf: the generated form when every field lays out, else the raw-JSON floor; both
- * carry the worker selector.
+ * A generic registry leaf: the generated form when every field lays out, else the raw-JSON floor;
+ * both carry the worker selector.
  */
 export function LeafPayloadEditor({ file, node, plugins, commit }: LeafEditorProps): JSX.Element {
   const tier = editorTier(node.type, plugins);
@@ -214,7 +218,8 @@ export function LeafPayloadEditor({ file, node, plugins, commit }: LeafEditorPro
   );
 }
 
-/** The generic tier — one typed control per field of the type's `fields` fragment (§ Editors, generic row). */
+/** The generic tier — one typed control per field of the type's `fields` fragment (§ Editors,
+ * generic row). */
 export function GenericForm({
   node,
   fields,
@@ -285,8 +290,9 @@ export function GenericField({
 
 /**
  * The raw-JSON floor: one live-validated textarea for the node's payload — every field outside the
- * identity/control envelope. On each edit it rebuilds the node and validates the whole file against the
- * registry (`safeParseWorkflowFile`); an invalid draft is **not** committed, so the canvas stays valid.
+ * identity/control envelope. On each edit it rebuilds the node and validates the whole file against
+ * the registry (`safeParseWorkflowFile`); an invalid draft is **not** committed, so the canvas
+ * stays valid.
  */
 export function RawJsonFloor({
   node,
@@ -311,15 +317,16 @@ export function RawJsonFloor({
  *
  * An un-pinned step resolves through the file worker-default too (ADR 0044, `node.worker → launch →
  * file → type`), so the leading `(default)` option names the *effective* worker and its tier
- * (`(default: <worker> — file)`, else `— type`); choosing it drops `worker`. Picking a concrete worker
- * pins `node.worker`. The launch tier lives in no file, so it is never shown here.
+ * (`(default: <worker> — file)`, else `— type`); choosing it drops `worker`. Picking a concrete
+ * worker pins `node.worker`. The launch tier lives in no file, so it is never shown here.
  */
 export function WorkerSelect({ file, node, plugins, commit }: LeafEditorProps): JSX.Element | null {
   const plugin = pluginFor(node.type, plugins);
   if (!plugin || plugin.workers.length <= 1) return null;
   const pinned = nodeString(node, "worker");
   const fileDefault = file.worker_defaults?.[node.type];
-  // What an un-pinned step resolves to in the Designer's view: the file default, else the type's own.
+  // What an un-pinned step resolves to in the Designer's view: the file default, else the type's
+  // own.
   const effective = fileDefault ?? plugin.default_worker;
   const effectiveTier = fileDefault !== undefined ? "file" : "type";
   // Empty value is the "(default)" option — the un-pinned case, distinct from any real worker name.
