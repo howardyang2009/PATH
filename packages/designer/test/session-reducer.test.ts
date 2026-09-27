@@ -7,14 +7,19 @@ import {
   initialSessionState,
   openedResultOf,
   planDelete,
-  planNewFileSave,
-  planNewTemplateSave,
-  planSave,
-  planTemplateSaveAs,
+  planWrite,
   reduceSession,
   type SessionState,
   type TemplateSource,
 } from "../src/session-reducer.js";
+
+/** The plan a door produces, or a failure that names the intent — so an unexpected refusal reads as
+ * the intent it refused. */
+function plan(state: SessionState, intent: Parameters<typeof planWrite>[1]) {
+  const plan = planWrite(state, intent);
+  if (!plan.ok) throw new Error(`refused ${intent.kind}: ${plan.message}`);
+  return plan;
+}
 
 /**
  * The pure session state machine (`session-reducer.ts`). These tests reach every transition the
@@ -385,14 +390,23 @@ describe("session-reducer — reload is a decision, not a hook guard", () => {
 
 describe("session-reducer — the save doors (#390, #391, ADR 0016)", () => {
   it("plans an overwrite under the frame's ETag for a written file", () => {
-    const plan = planSave(sessionOn(openFrame(file("flow"), { etag: "etag-1" })));
-    expect(plan).toMatchObject({
-      kind: "overwrite",
-      depth: 0,
+    const written = plan(sessionOn(openFrame(file("flow"), { etag: "etag-1" })), { kind: "save" });
+    expect(written.write).toMatchObject({
+      to: "workflow",
       path: "flow.workflow.json",
       ifMatch: "etag-1",
     });
-    expect(plan && plan.kind === "overwrite" && plan.file.name).toBe("flow");
+    expect(written.write.to === "workflow" && written.write.file.name).toBe("flow");
+    // The landing action advances the frame that still holds that path.
+    expect(
+      written.landed({ etag: "etag-2", relativePath: "flow.workflow.json", id: uuid(1) }, "b"),
+    ).toEqual({
+      type: "saved",
+      depth: 0,
+      path: "flow.workflow.json",
+      etag: "etag-2",
+      savedBytes: "b",
+    });
   });
 
   it("plans an exclusive create at the pre-assigned path for an unwritten create-new child", () => {
@@ -401,25 +415,86 @@ describe("session-reducer — the save doors (#390, #391, ADR 0016)", () => {
       written: false,
       refParent: { depth: 0, nodeId: uuid(9) },
     };
-    const plan = planSave({
-      frames: [openFrame(file("parent")), child],
-      activeIndex: 1,
-      saveState: { phase: "idle" },
-      mode: "workflow",
-    });
-    expect(plan).toMatchObject({
-      kind: "create",
-      depth: 1,
+    const created = plan(
+      {
+        frames: [openFrame(file("parent")), child],
+        activeIndex: 1,
+        saveState: { phase: "idle" },
+        mode: "workflow",
+      },
+      { kind: "save" },
+    );
+    expect(created.write).toMatchObject({
+      to: "workflow",
       path: "flows/child.workflow.json",
       ifMatch: undefined,
     });
+    // A taken pre-assigned path is the author's to retarget, not a stale buffer to reload.
+    expect(created.refused({ ok: false, conflict: "exists", message: "taken" })).toMatchObject({
+      phase: "error",
+    });
   });
 
-  it("plans nothing for a from-scratch root, which the first-save dialog owns instead", () => {
+  it("plans a workflow copy with a fresh identity, named after its new path", () => {
+    const source = file("flow");
+    const copy = plan(sessionOn(openFrame(source)), {
+      kind: "workflow-copy",
+      path: "flows/copied.workflow.json",
+    });
+
+    expect(copy.write).toMatchObject({ to: "workflow", path: "flows/copied.workflow.json" });
+    // Instantiation re-stamps every id and the human name follows the new file's stem (ADR 0006).
+    if (copy.write.to !== "workflow") throw new Error("expected a workflow write");
+    expect(copy.write.file.id).not.toBe(source.id);
+    expect(copy.write.file.name).toBe("copied");
+    expect(
+      copy.landed(
+        { etag: "etag-c", relativePath: "flows/copied.workflow.json", id: source.id },
+        "b",
+      ),
+    ).toMatchObject({ type: "detachedSaved", depth: 0, fromId: source.id, etag: "etag-c" });
+  });
+
+  it("plans a workflow-as-template write carrying only the body", () => {
+    const source = file("flow");
+    const asTemplate = plan(sessionOn(openFrame(source)), {
+      kind: "workflow-as-template",
+      name: "nightly",
+      description: "a nightly gate",
+    });
+
+    expect(asTemplate.write).toMatchObject({ to: "new-template", name: "nightly" });
+    if (asTemplate.write.to !== "new-template") throw new Error("expected a template write");
+    expect(asTemplate.write.file.body).toEqual(source.body);
+    expect(asTemplate.write.file.id).not.toBe(source.id);
+    // The workflow stays open: the door only reports that the template landed.
+    expect(asTemplate.landed({ etag: "e", relativePath: "p", id: source.id }, "b")).toEqual({
+      type: "setSaveState",
+      saveState: { phase: "saved-as-template", name: "nightly" },
+    });
+  });
+
+  it("plans no Save for a from-scratch root, and names the dialog that owns it instead", () => {
     const scratch = reduceSession(initialSessionState, { type: "newFile" });
-    expect(planSave(scratch)).toBeNull();
-    expect(planNewFileSave(scratch)).toMatchObject({ depth: 0 });
-    expect(planNewFileSave(sessionOn(openFrame(file("flow"))))).toBeNull();
+    expect(planWrite(scratch, { kind: "save" })).toMatchObject({
+      ok: false,
+      reason: "needs-workflow-path",
+    });
+    // The first-save door itself carries the path the author chose.
+    expect(
+      plan(scratch, { kind: "new-file", path: "flows/new.workflow.json" }).write,
+    ).toMatchObject({
+      to: "workflow",
+      path: "flows/new.workflow.json",
+      ifMatch: undefined,
+    });
+    // A saved frame is not a from-scratch root: it saves in place.
+    expect(
+      planWrite(sessionOn(openFrame(file("flow"))), { kind: "new-file", path: "x" }),
+    ).toMatchObject({
+      ok: false,
+      reason: "needs-workflow-path",
+    });
   });
 });
 
@@ -491,16 +566,19 @@ describe("session-reducer — author mode on a *.step-template.json (#580)", () 
       etag: "etag-t",
     });
     expect(frameDirty(s.frames[0])).toBe(false);
-    expect(planNewFileSave(s)).toBeNull();
+    // A template buffer saves in place by id, never as a new workflow.
+    expect(planWrite(s, { kind: "save" })).toMatchObject({
+      ok: true,
+      write: { to: "template", id: uuid(1) },
+    });
   });
 
   it("saves back to the original template by id, under the read's If-Match", () => {
     const s = reduceSession(authoring(), { type: "applyEdit", next: file("nightly", "edited") });
-    expect(planSave(s)).toEqual({
-      kind: "template",
-      depth: 0,
+    expect(plan(s, { kind: "save" }).write).toEqual({
+      to: "template",
       id: uuid(1),
-      template: source,
+      description: source.description,
       file: file("nightly", "edited"),
       ifMatch: "etag-t",
     });
@@ -534,13 +612,22 @@ describe("session-reducer — author mode on a *.step-template.json (#580)", () 
     expect(next.saveState).toEqual({ phase: "saved" });
   });
 
-  it("plans a save-as from the active template buffer only", () => {
-    expect(planTemplateSaveAs(authoring())).toEqual({
-      depth: 0,
-      template: source,
-      file: file("nightly"),
+  it("plans a template copy from the active template buffer only, and refuses otherwise", () => {
+    const copy = plan(authoring(), {
+      kind: "template-copy",
+      name: "copy",
+      description: "",
     });
-    expect(planTemplateSaveAs(sessionOn(openFrame(file("flow"))))).toBeNull();
+    expect(copy.write).toMatchObject({ to: "new-template", name: "copy" });
+    // The copy keeps the source's body and mints a fresh template id.
+    expect(copy.write.to === "new-template" && copy.write.file.id).not.toBe(uuid(1));
+    expect(
+      planWrite(sessionOn(openFrame(file("flow"))), {
+        kind: "template-copy",
+        name: "copy",
+        description: "",
+      }),
+    ).toMatchObject({ ok: false, reason: "needs-template-name" });
   });
 
   it("after a Save-As the frame edits the new template, clean, with a fresh history", () => {
@@ -561,7 +648,11 @@ describe("session-reducer — author mode on a *.step-template.json (#580)", () 
     expect(activeFile(s)).toEqual(copy);
     expect(frameDirty(s.frames[0])).toBe(false);
     expect(s.frames[0]!.history.past).toHaveLength(0);
-    expect(planSave(s)).toMatchObject({ kind: "template", id: uuid(7), ifMatch: "etag-c" });
+    expect(plan(s, { kind: "save" }).write).toMatchObject({
+      to: "template",
+      id: uuid(7),
+      ifMatch: "etag-c",
+    });
   });
 
   it("after a workflow Save as… the session edits the new *.workflow.json, clean and written", () => {
@@ -613,10 +704,21 @@ describe("edit mode (Workflow | Template)", () => {
     expect(s.mode).toBe("template");
     expect(s.frames[0]).toMatchObject({ path: null, written: false });
     expect(s.frames[0]!.template).toBeUndefined();
-    expect(planNewTemplateSave(s)).toMatchObject({ depth: 0 });
-    expect(planNewFileSave(s)).toMatchObject({ depth: 0 });
-    // The same buffer in workflow mode is a new workflow, not a new template.
-    expect(planNewTemplateSave(reduceSession(initialSessionState, { type: "newFile" }))).toBeNull();
+    expect(plan(s, { kind: "new-template", name: "t", description: "" }).write).toMatchObject({
+      to: "new-template",
+    });
+    // The same buffer offers the workflow first-save door too: identity comes from the dialog.
+    expect(plan(s, { kind: "new-file", path: "x.workflow.json" }).write).toMatchObject({
+      to: "workflow",
+    });
+    // …but a workflow-mode buffer is not a new template.
+    expect(
+      planWrite(reduceSession(initialSessionState, { type: "newFile" }), {
+        kind: "new-template",
+        name: "t",
+        description: "",
+      }),
+    ).toMatchObject({ ok: false, reason: "needs-template-name" });
   });
 
   it("a new template's first save makes the frame edit the created template", () => {
@@ -638,7 +740,12 @@ describe("edit mode (Workflow | Template)", () => {
       etag: "etag-n",
     });
     expect(next.frames[0]).toMatchObject({ template, written: true, etag: "etag-n" });
-    expect(planNewTemplateSave(next)).toBeNull();
+    // The frame now holds a template, so the new-template door is closed and Save writes it back.
+    expect(planWrite(next, { kind: "new-template", name: "t", description: "" })).toMatchObject({
+      ok: false,
+      reason: "needs-template-name",
+    });
+    expect(plan(next, { kind: "save" }).write).toMatchObject({ to: "template", id: f.id });
   });
 
   it("opening a workflow returns to workflow mode", () => {

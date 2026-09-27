@@ -8,7 +8,16 @@ import { FORMAT_VERSION, type WorkflowFile, type WorkflowNode } from "@path/sche
 import { errorMessage } from "@path/viewer";
 import { openWorkflowFile } from "./open-workflow.js";
 import { canonicalSerialize } from "./serialize.js";
-import { type Frame, openedResultOf, type SessionState } from "./session-reducer.js";
+import {
+  type DocumentWrite,
+  type PlanState,
+  planWrite,
+  type WriteOutcome,
+  type WriteSuccess,
+} from "./session/save-plan.js";
+import { type Frame, openedResultOf } from "./session-reducer.js";
+
+export type { DocumentWrite, WriteOutcome } from "./session/save-plan.js";
 
 /** The Designer's open document: a workflow file, path-addressed through `PUT /v0/workflows`, or a
  * step-template, id-addressed through the template API. Both open into one buffer and save by one
@@ -71,22 +80,6 @@ function templateBody(description: string, file: WorkflowFile): Record<string, u
   return { format: FORMAT_VERSION, id: file.id, description, body: file.body };
 }
 
-/** One document write: `workflow` — `PUT /v0/workflows`, overwrite under `ifMatch` or exclusive
- * create when absent; `template` — `PUT /v0/templates/:id` under `ifMatch`; `new-template` — `POST
- * /v0/templates`. */
-export type DocumentWrite =
-  | { to: "workflow"; path: string; ifMatch: string | undefined; file: WorkflowFile }
-  | { to: "template"; id: string; ifMatch: string; description: string; file: WorkflowFile }
-  | { to: "new-template"; name: string; description: string; file: WorkflowFile };
-
-/** A write's outcome: the written document's echo, or why it was refused. */
-export type WriteOutcome =
-  | { ok: true; etag: string; relativePath: string; id: string }
-  /** `stale` — an overwrite whose `If-Match` no longer matches; `exists` — a create whose target is
-   * taken. */
-  | { ok: false; conflict: "stale" | "exists"; message: string }
-  | { ok: false; conflict: null; message: string };
-
 /** Run one document write and read its refusal in document terms. An overwrite's `412` is
  * **stale**; a create's `412`/`409` are **exists** — the doors spell the same collision
  * differently. */
@@ -115,7 +108,7 @@ export async function writeDocument(
               description: write.description,
               body: templateBody(write.description, write.file),
             });
-    return { ok: true, ...result };
+    return { ok: true, ...(result satisfies WriteSuccess) };
   } catch (error) {
     const message = errorMessage(error);
     if (error instanceof PathApiError) {
@@ -150,20 +143,21 @@ export interface DocumentPolicy {
   leasedPaths: string[];
 }
 
-export function documentPolicy(
-  state: Pick<SessionState, "mode" | "frames" | "activeIndex">,
-): DocumentPolicy {
+export function documentPolicy(state: PlanState): DocumentPolicy {
   const active = state.frames[state.activeIndex];
   const isOpen = openedResultOf(active) !== null;
   const hasIdentity = Boolean(active?.path || active?.template);
+  // The door is the write plan's own answer: a plan means Save writes this buffer, and a refusal
+  // names the surface that must ask for the missing identity first.
+  const door = planWrite(state, { kind: "save" });
   return {
-    saveDoor: !isOpen
-      ? null
-      : hasIdentity
-        ? "save"
-        : state.mode === "template"
-          ? "new-template-dialog"
-          : "new-workflow-dialog",
+    saveDoor: door.ok
+      ? "save"
+      : door.reason === "needs-template-name"
+        ? "new-template-dialog"
+        : door.reason === "needs-workflow-path"
+          ? "new-workflow-dialog"
+          : null,
     canSaveAs: isOpen && hasIdentity,
     leasedPaths: state.frames
       .filter((frame) => openedResultOf(frame) !== null && frame.written && frame.path !== null)
