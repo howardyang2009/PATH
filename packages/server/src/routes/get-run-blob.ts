@@ -10,9 +10,9 @@ function toBlobName(name: string): RunBlobName | undefined {
 }
 
 /**
- * `GET /v0/runs/:root_run_id/blobs/:run_id/:name` — the run's on-disk blob, already secret-masked at
- * the persistence boundary; `input_ref`/`output_ref` are server-local paths a browser cannot read.
- * `404` for an unknown root/run, an unserved name, or an absent blob file.
+ * `GET /v0/runs/:root_run_id/blobs/:run_id/:name` — the run's on-disk blob, already secret-masked
+ * at the persistence boundary; `input_ref`/`output_ref` are server-local paths a browser cannot
+ * read. `404` for an unknown root/run, an unserved name, or an absent blob file.
  */
 export function handleGetRunBlob({
   res,

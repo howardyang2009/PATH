@@ -4,9 +4,10 @@ import { describe, expect, it, vi } from "vitest";
 import { fillPlaceholderOnTab, IdRow, NumberField, TextField } from "../src/pane-controls.js";
 
 /**
- * The pane's generic field vocabulary (`pane-controls.tsx`), lifted out of `properties-pane.tsx`. These
- * hit the atoms head-on — the coercion a number field does, the Tab-fills-placeholder handler, and the
- * confirmation gate on a re-key (ADR 0015) — without mounting the whole pane and a workflow buffer.
+ * The pane's generic field vocabulary (`pane-controls.tsx`), lifted out of `properties-pane.tsx`.
+ * These hit the atoms head-on — the coercion a number field does, the Tab-fills-placeholder
+ * handler, and the confirmation gate on a re-key (ADR 0015) — without mounting the whole pane and a
+ * workflow buffer.
  */
 
 describe("NumberField", () => {
@@ -31,7 +32,8 @@ describe("TextField", () => {
   });
 });
 
-/** A controlled input under the delegated `fillPlaceholderOnTab` handler, to drive the placeholder-fill. */
+/** A controlled input under the delegated `fillPlaceholderOnTab` handler, to drive the
+ * placeholder-fill. */
 function TabHarness({ placeholder }: { placeholder: string }): JSX.Element {
   const [value, setValue] = useState("");
   return (

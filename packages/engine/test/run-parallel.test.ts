@@ -13,12 +13,12 @@ import { runNode, runSequence } from "../src/run-workflow.js";
 import { flat } from "./fake-observer.js";
 
 /**
- * The `parallel` block, driven through the node seam. `runParallelNode` cannot be called in isolation
- * — a branch body is a node sequence, so it recurses back into `runSequence`/`runNode` — so these
- * exercise the block the only way it runs: `runNode` dispatching a `parallel` node. The three joins,
- * the cancellation cascade and the concurrency cap all surface here. (Detached `do-not-wait` branches
- * are covered end-to-end in `run-workflow.test.ts`, where the enclosing-run exit barrier that awaits
- * them is a `runWorkflow` concern.)
+ * The `parallel` block, driven through the node seam. `runParallelNode` cannot be called in
+ * isolation — a branch body is a node sequence, so it recurses back into `runSequence`/`runNode` —
+ * so these exercise the block the only way it runs: `runNode` dispatching a `parallel` node. The
+ * three joins, the cancellation cascade and the concurrency cap all surface here. (Detached
+ * `do-not-wait` branches are covered end-to-end in `run-workflow.test.ts`, where the enclosing-run
+ * exit barrier that awaits them is a `runWorkflow` concern.)
  */
 
 type Node = WorkflowFile["body"][number];
@@ -41,14 +41,15 @@ afterEach(() => {
   rmSync(fileDir, { recursive: true, force: true });
 });
 
-// The real scanned registry (binary/prompt), loaded once for the whole file. Leaf dispatch reads it;
-// a prompt-fanout test swaps in its own `prompt`/`anthropic` worker via `registryWith`.
+// The real scanned registry (binary/prompt), loaded once for the whole file. Leaf dispatch reads
+// it; a prompt-fanout test swaps in its own `prompt`/`anthropic` worker via `registryWith`.
 let registry: LoadedStepPluginRegistry;
 beforeAll(async () => {
   registry = await scanStepPlugins();
 });
 
-/** The scanned registry with one `(type, worker)` pair replaced — the concurrency test's scripted `anthropic`. */
+/** The scanned registry with one `(type, worker)` pair replaced — the concurrency test's scripted
+ * `anthropic`. */
 function registryWith(
   type: string,
   name: string,
@@ -236,8 +237,9 @@ describe("runNode — parallel", () => {
 
   /**
    * A node script that rendezvous with a sibling through a shared dir: write my flag, then poll for
-   * the sibling's — succeeding only if both run concurrently. Run sequentially, the first would wait
-   * out its deadline and exit non-zero. So a *success* is a genuine proof of concurrency (§5.2).
+   * the sibling's — succeeding only if both run concurrently. Run sequentially, the first would
+   * wait out its deadline and exit non-zero. So a *success* is a genuine proof of concurrency
+   * (§5.2).
    */
   const rendezvous = (dir: string, me: string, other: string): Node => ({
     type: "binary",
@@ -415,7 +417,8 @@ describe("runNode — parallel", () => {
 });
 
 describe("runNode — parallel wait-one", () => {
-  // A binary that writes `text` after `ms`, publishing it under `answer` — the slow loser of a race.
+  // A binary that writes `text` after `ms`, publishing it under `answer` — the slow loser of a
+  // race.
   const sleepThenPublish = (id: string, ms: number, text: string): Node => ({
     type: "binary",
     id,
@@ -467,7 +470,8 @@ describe("runNode — parallel wait-one", () => {
       published_keys: ["answer"],
       winner: "fast",
     });
-    // The loser is cancelled best-effort with the new cause — nothing failed, so it is not sibling-failed.
+    // The loser is cancelled best-effort with the new cause — nothing failed, so it is not
+    // sibling-failed.
     expect(observed.find((o) => o.type === "run-cancelled")).toMatchObject({
       node_id: "s",
       node_name: "s",
@@ -487,7 +491,8 @@ describe("runNode — parallel wait-one", () => {
       branches: [
         // Fails immediately; under wait-one this cancels nothing and the race continues (§2).
         { type: "sequence", id: "boom", name: "boom", body: [failFast("kab")] },
-        // Succeeds only after a delay — proof the race outlived the failure rather than ending on it.
+        // Succeeds only after a delay — proof the race outlived the failure rather than ending on
+        // it.
         {
           type: "sequence",
           id: "winner",

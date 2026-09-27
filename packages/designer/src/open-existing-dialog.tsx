@@ -11,17 +11,18 @@ import { type DiscoveryLoad, discoveredWorkflows } from "./discovery.js";
 
 /**
  * The open-existing-workflow picker (designer-spec § Opening a file). A modal over the
- * project's discovered workflows (`GET /v0/workflows`); a choice hands its project-relative path back to
- * the App, which opens it as a fresh root through the session's `open`. This is the in-app peer of the
- * `?path=` deep-link — the same open pipeline (registry-relative parse, the ADR 0026/0015 gates), reached
- * without hand-typing a path — so an author can start a session and pick up any existing workflow to edit.
+ * project's discovered workflows (`GET /v0/workflows`); a choice hands its project-relative path
+ * back to the App, which opens it as a fresh root through the session's `open`. This is the in-app
+ * peer of the `?path=` deep-link — the same open pipeline (registry-relative parse, the ADR
+ * 0026/0015 gates), reached without hand-typing a path — so an author can start a session and pick
+ * up any existing workflow to edit.
  *
  * Discovery is presented as the same **folder tree** the Viewer's WORKFLOWS panel draws (the shared
- * `workflow-tree` seam): each level shows only its own children — the workflow files that sit there,
- * plus the folders that hold a workflow below — and a folder opens one-per-level as an accordion. A
- * folder click walks in; a file click opens that workflow. The dialog owns only the tree's open-state;
- * the App loads discovery (`discovery.ts`) and decides what a pick does (discard the current stack and
- * open the chosen file), because that touches the whole session.
+ * `workflow-tree` seam): each level shows only its own children — the workflow files that sit
+ * there, plus the folders that hold a workflow below — and a folder opens one-per-level as an
+ * accordion. A folder click walks in; a file click opens that workflow. The dialog owns only the
+ * tree's open-state; the App loads discovery (`discovery.ts`) and decides what a pick does (discard
+ * the current stack and open the chosen file), because that touches the whole session.
  */
 export function OpenWorkflowDialog({
   discovery,
@@ -36,8 +37,8 @@ export function OpenWorkflowDialog({
 }): JSX.Element {
   // The deepest open folder path (accordion, one open folder per level; see `workflow-tree`).
   const [openFolder, setOpenFolder] = useState<string | null>(null);
-  // `null` until a scan lands, which reads as "still discovering". A failed scan with nothing behind it
-  // reads as an empty list here, so the dialog still opens with its "no workflows" note.
+  // `null` until a scan lands, which reads as "still discovering". A failed scan with nothing
+  // behind it reads as an empty list here, so the dialog still opens with its "no workflows" note.
   const workflows = discoveredWorkflows(discovery);
 
   const tree = useMemo(() => (workflows ? buildWorkflowTree(workflows) : []), [workflows]);
@@ -73,7 +74,8 @@ export function OpenWorkflowDialog({
   );
 }
 
-/** The left indent of one tree row at `depth`, in px — a folder step per level, over the row's base pad. */
+/** The left indent of one tree row at `depth`, in px — a folder step per level, over the row's base
+ * pad. */
 function indent(depth: number): React.CSSProperties {
   return { paddingLeft: 8 + depth * 14 };
 }
@@ -139,7 +141,8 @@ function WorkflowTree({
   );
 }
 
-/** One folder in the tree: a navigation step. Clicking it walks in (expands its level) or back out. */
+/** One folder in the tree: a navigation step. Clicking it walks in (expands its level) or back
+ * out. */
 function FolderRow({
   folder,
   depth,

@@ -6,12 +6,12 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { type PathServerHandle, startPathServer } from "../src/create-server.js";
 
 /**
- * `POST /v0/runs/:step_run_id/complete` to spec §4.4 (#485, ADR 0040/0041). The path names the parked
- * **leaf**; the server derives the root for the lease. These drive a real server over the built-in
- * `person-activity` plugin: each launches a workflow that parks at an `awaiting` leaf, then Completes
- * that leaf and asserts on the taxonomy and the persisted tree. The contract #485 adds over the #484
- * wiring is **validate-before-lease**: a bad `output` is a `400` with ajv issues and never takes the
- * lease, so it can never block a sibling.
+ * `POST /v0/runs/:step_run_id/complete` to spec §4.4 (#485, ADR 0040/0041). The path names the
+ * parked **leaf**; the server derives the root for the lease. These drive a real server over the
+ * built-in `person-activity` plugin: each launches a workflow that parks at an `awaiting` leaf,
+ * then Completes that leaf and asserts on the taxonomy and the persisted tree. The contract #485
+ * adds over the #484 wiring is **validate-before-lease**: a bad `output` is a `400` with ajv issues
+ * and never takes the lease, so it can never block a sibling.
  */
 
 const fixturesDir = join(dirname(fileURLToPath(import.meta.url)), "fixtures");
@@ -170,8 +170,8 @@ describe("validate-before-lease: invalid output → 400 with ajv issues, leaf un
   });
 
   // The schema is judged against the config the Complete runs with: the launch's frozen config
-  // (ADR 0046), not the file default. Before this lived behind `Project.complete`, the route read the
-  // file default and refused the launch's own value.
+  // (ADR 0046), not the file default. Before this lived behind `Project.complete`, the route read
+  // the file default and refused the launch's own value.
   it("interpolates the outputSchema against the launch's frozen config, not the file default", async () => {
     const rootRunId = await launch("awaiting-config-schema.workflow.json", { allowed: "urgent" });
     const leafId = await awaitingLeafId(rootRunId);
@@ -185,8 +185,8 @@ describe("validate-before-lease: invalid output → 400 with ajv issues, leaf un
     const rootRunId = await launch("awaiting-complete.workflow.json");
     const leafId = await awaitingLeafId(rootRunId);
 
-    // An `$env` in the override would let a browser operator read the server's environment — the one
-    // divergence ADR 0012 pins, and it holds on this door too.
+    // An `$env` in the override would let a browser operator read the server's environment — the
+    // one divergence ADR 0012 pins, and it holds on this door too.
     const envRes = await complete(leafId, {
       output: { approved: true },
       config: { token: { $env: "PATH_TOKEN" } },

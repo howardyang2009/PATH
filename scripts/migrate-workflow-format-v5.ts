@@ -10,8 +10,8 @@
  *   - it rewrites `format` to `path/workflow@5` and touches nothing else — the file's bytes are
  *     carried through, so its own formatting survives;
  *   - it **refuses nothing** — there is no shape it cannot carry forward honestly;
- *   - it is **idempotent** — a file already at `@5` (or still at an older `@0`–`@3` string, which is
- *     an earlier codemod's step) is left byte-unchanged.
+ *   - it is **idempotent** — a file already at `@5` (or still at an older `@0`–`@3` string, which
+ *     is an earlier codemod's step) is left byte-unchanged.
  *
  * Step-Templates and Workflow-Templates stamp the same `FORMAT_VERSION` (ADR 0048 §1), so they move
  * with workflow files.
@@ -36,7 +36,8 @@ function isObject(value: unknown): value is JsonObject {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-/** @returns the migrated file text, or null when the file is not a `@4` document (already `@5`, or older). */
+/** @returns the migrated file text, or null when the file is not a `@4` document (already `@5`, or
+ * older). */
 function migrateText(text: string): string | null {
   const doc = JSON.parse(text) as unknown;
   if (!isObject(doc) || doc.format !== LEGACY_FORMAT) return null;

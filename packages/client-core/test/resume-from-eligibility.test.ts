@@ -142,7 +142,8 @@ describe("resumeFromEligibility legal K", () => {
   });
 
   it("enables a nested K on its own success alone (the engine backstops the rest)", () => {
-    // A run under a nested workflow-run, whose file the Designer does not hold: succeeded ⇒ optimistic.
+    // A run under a nested workflow-run, whose file the Designer does not hold: succeeded ⇒
+    // optimistic.
     const nested = run("wf-run", { nodeId: "wf-node", nodeName: "wf-node" });
     const inner = run("inner", { parentRunId: "wf-run", status: "succeeded" });
     const result = resumeFromEligibility({
@@ -198,7 +199,8 @@ describe("resumeFromEligibility taxonomy (root level)", () => {
       condition: { path: "context.go", predicate: "is-true" },
       node: leaf("inner"),
     } as unknown as WorkflowNode;
-    // `inner` ran under the root scope (control nodes own no run row), so its run's parent is the root.
+    // `inner` ran under the root scope (control nodes own no run row), so its run's parent is the
+    // root.
     const result = resumeFromEligibility({
       rootRunId: "root",
       runs: mapOf(rootRow(), run("inner")),
@@ -210,7 +212,8 @@ describe("resumeFromEligibility taxonomy (root level)", () => {
   });
 
   it("checks the leaf's success (#4) before the prefix (#5), matching the engine order", () => {
-    // Both K and its prefix failed: the reason shown is the leaf's own, per taxonomy dependency order.
+    // Both K and its prefix failed: the reason shown is the leaf's own, per taxonomy dependency
+    // order.
     const result = resumeFromEligibility({
       rootRunId: "root",
       runs: mapOf(rootRow(), run("a", { status: "failed" }), run("b", { status: "failed" })),
@@ -223,7 +226,8 @@ describe("resumeFromEligibility taxonomy (root level)", () => {
 });
 
 describe("resumeFromEligibility #5 — a skipped prefix path is not a broken one", () => {
-  /** A `branch` whose arms' `node`s never run under the control node itself (they run under the root). */
+  /** A `branch` whose arms' `node`s never run under the control node itself (they run under the
+   * root). */
   function branch(id: string, ...armNodes: WorkflowNode[]): WorkflowNode {
     return {
       type: "branch",
@@ -234,7 +238,8 @@ describe("resumeFromEligibility #5 — a skipped prefix path is not a broken one
   }
 
   it("an untaken branch arm before K does not break the prefix — the arm never ran", () => {
-    // The prefix is a branch: `taken` ran and succeeded, `untaken` has no run at all. K = write after it.
+    // The prefix is a branch: `taken` ran and succeeded, `untaken` has no run at all. K = write
+    // after it.
     const result = resumeFromEligibility({
       rootRunId: "root",
       runs: mapOf(rootRow(), run("taken"), run("write")),
@@ -253,7 +258,8 @@ describe("resumeFromEligibility #5 — a skipped prefix path is not a broken one
       condition: { path: "context.go", predicate: "is-true" },
       node: leaf("revise"),
     } as unknown as WorkflowNode;
-    // `revise` (the loop body) has no run row: the loop ran zero iterations, yet the run still succeeded.
+    // `revise` (the loop body) has no run row: the loop ran zero iterations, yet the run still
+    // succeeded.
     const result = resumeFromEligibility({
       rootRunId: "root",
       runs: mapOf(rootRow(), run("write")),
@@ -300,7 +306,8 @@ describe("resumeFromEligibility — a sequence body is transparent (ADR 0064)", 
     expect(result).toMatchObject({ ok: true, runId: "b" });
   });
 
-  // Root [a, test{b, c}] under goto: pass 1 ran a, b, c; pass 2 ran b, c. Selections sit under a pass run.
+  // Root [a, test{b, c}] under goto: pass 1 ran a, b, c; pass 2 ran b, c. Selections sit under a
+  // pass run.
   const passRows = (over: { c1?: RunStatus } = {}) => [
     rootRow(),
     run("pass-1", { nodeId: "g", nodeName: "g", pass: 1 }),
@@ -339,8 +346,9 @@ describe("resumeFromEligibility — a sequence body is transparent (ADR 0064)", 
     expect(result).toMatchObject({ ok: false, reason: "in-body", container: "loop" });
   });
 
-  // A pass-2 row carries its opening goto's node id, so without the shared selection rule it read as a
-  // node and a succeeded pass enabled the button — which the engine then refused with 400 "pass-run".
+  // A pass-2 row carries its opening goto's node id, so without the shared selection rule it read
+  // as a node and a succeeded pass enabled the button — which the engine then refused with 400
+  // "pass-run".
   it("disables a goto pass row itself, as the engine refuses it", () => {
     const result = resumeFromEligibility({
       rootRunId: "root",

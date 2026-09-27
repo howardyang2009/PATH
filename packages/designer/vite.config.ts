@@ -12,11 +12,13 @@ export default defineConfig({
   plugins: [react()],
   test: {
     ...baseConfig.test,
-    // Build one jsdom environment per worker and reuse it across that worker's files, instead of one
-    // per file. Per-file module isolation is kept, so this is not the same trade as `isolate: false`.
+    // Build one jsdom environment per worker and reuse it across that worker's files, instead of
+    // one per file. Per-file module isolation is kept, so this is not the same trade as `isolate:
+    // false`.
     pool: "vmThreads",
-    // Sit above the 5000ms testing-library `asyncUtilTimeout` set in `test/setup.ts`, so a slow async
-    // wait on a starved CI runner fails with its own assertion before vitest's test timeout trips.
+    // Sit above the 5000ms testing-library `asyncUtilTimeout` set in `test/setup.ts`, so a slow
+    // async wait on a starved CI runner fails with its own assertion before vitest's test timeout
+    // trips.
     testTimeout: 15000,
   },
 });

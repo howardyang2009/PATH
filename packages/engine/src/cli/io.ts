@@ -4,15 +4,19 @@ import type { WorkerOverrides } from "../run-options.js";
 export interface CliIo {
   log(message: string): void;
   error(message: string): void;
-  /** Ask a yes/no question; `undefined` means the surface cannot ask, which counts as "not confirmed". */
+  /** Ask a yes/no question; `undefined` means the surface cannot ask, which counts as "not
+   * confirmed". */
   confirm?(question: string): Promise<boolean> | undefined;
 }
 
-/** Collaborators the CLI would otherwise construct; the acceptance run injects a scripted LLM worker. */
+/** Collaborators the CLI would otherwise construct; the acceptance run injects a scripted LLM
+ * worker. */
 export interface RunOverrides {
-  /** Replace named `(type, worker)` pairs in the scanned registry, forwarded to `runWorkflow` verbatim. */
+  /** Replace named `(type, worker)` pairs in the scanned registry, forwarded to `runWorkflow`
+   * verbatim. */
   workerOverrides?: WorkerOverrides;
-  /** How a forced second `^C` leaves the process — defaults to `process.exit(130)`; tests substitute their own. */
+  /** How a forced second `^C` leaves the process — defaults to `process.exit(130)`; tests
+   * substitute their own. */
   forceExit?: (code: number) => void;
 }
 

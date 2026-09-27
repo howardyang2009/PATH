@@ -6,8 +6,9 @@ export interface Deferred<T> {
 
 /**
  * A settle-once deferred: `POST /v0/runs` resolves as soon as the root run's start is observed,
- * well before the run finishes, but must not hang if the run never reaches it (a bug thrown earlier).
- * One `settled` flag lets the observer hook and the run's own promise race without clobbering.
+ * well before the run finishes, but must not hang if the run never reaches it (a bug thrown
+ * earlier). One `settled` flag lets the observer hook and the run's own promise race without
+ * clobbering.
  */
 export function createDeferred<T>(): Deferred<T> {
   let settled = false;

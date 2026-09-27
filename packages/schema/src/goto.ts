@@ -4,7 +4,8 @@ import type { WorkflowFile } from "./workflow-file-type.js";
 
 /** The **goto** load refusals as **data** (docs/spec/goto.md §2.3): the load refinement turns each
  * issue into a zod issue at its JSON path, and the Designer projects the same issues onto node ids.
- * File-scoped on purpose — "first level" is per file, so a Step-Template body is never checked here. */
+ * File-scoped on purpose — "first level" is per file, so a Step-Template body is never checked
+ * here. */
 
 /** Which refusal an issue came from. There is no other case. */
 export type GotoIssueRule = "target-absent" | "target-inner" | "target-self" | "placement";
@@ -19,15 +20,15 @@ export interface GotoIssue {
   message: string;
 }
 
-/** Every refused goto in a file body, in document order. A misplaced goto is reported as `placement`
- * only, its target not also judged; a clean or goto-free file yields `[]`. */
+/** Every refused goto in a file body, in document order. A misplaced goto is reported as
+ * `placement` only, its target not also judged; a clean or goto-free file yields `[]`. */
 export function gotoIssues(file: WorkflowFile): GotoIssue[] {
   const firstLevel = new Set(file.body.map((node) => node.name));
   const everyName = new Set([...walkNodes(file.body)].map((node) => node.name));
   const issues: GotoIssue[] = [];
 
-  // `barrier` is the nearest enclosing `while-do` / `parallel`, the only ancestors a goto may not have
-  // (§2.2): a jump out of an iteration or a concurrent branch has no single place to land.
+  // `barrier` is the nearest enclosing `while-do` / `parallel`, the only ancestors a goto may not
+  // have (§2.2): a jump out of an iteration or a concurrent branch has no single place to land.
   const visit = (
     node: WorkflowNode,
     nodePath: (string | number)[],

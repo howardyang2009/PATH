@@ -92,8 +92,9 @@ describe("projectRunStatus (#372 canvas projection)", () => {
   });
 
   it("projects `awaiting` for a running node that holds an awaiting run below it", () => {
-    // A `workflow` step's run is the nested run's root (ADR 0038): it stays `running` while a leaf in the
-    // sub-workflow parks, so the node reads `awaiting` — the same repaint every other run surface shows.
+    // A `workflow` step's run is the nested run's root (ADR 0038): it stays `running` while a leaf
+    // in the sub-workflow parks, so the node reads `awaiting` — the same repaint every other run
+    // surface shows.
     const projected = projectRunStatus(
       mapOf(
         run({ runId: "sub-root", nodeId: "revise", status: "running" }),
@@ -106,8 +107,9 @@ describe("projectRunStatus (#372 canvas projection)", () => {
 });
 
 describe("goto passes in the canvas projection (#620)", () => {
-  // A goto-holding file's top-level walk: pass 1 (opened by nothing), then two passes opened by goto `g`.
-  // Each pass is a container row; the steps it ran are its children, so a step revisited runs in two passes.
+  // A goto-holding file's top-level walk: pass 1 (opened by nothing), then two passes opened by
+  // goto `g`. Each pass is a container row; the steps it ran are its children, so a step revisited
+  // runs in two passes.
   const passRuns = mapOf(
     run({
       runId: "p1",

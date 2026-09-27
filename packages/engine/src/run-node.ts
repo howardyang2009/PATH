@@ -39,9 +39,11 @@ import { ObserverError } from "./run-observer.js";
 import type { RunResult } from "./run-options.js";
 import { runParallelNode, settleDetached } from "./run-parallel.js";
 
-/** The recursive walk: a workflow-run walks its body node by node, and a `workflow` node runs a nested workflow-run. */
+/** The recursive walk: a workflow-run walks its body node by node, and a `workflow` node runs a
+ * nested workflow-run. */
 
-// Everything a workflow-run needs for one file; incoming config crosses file boundaries, context does not (§8).
+// Everything a workflow-run needs for one file; incoming config crosses file boundaries, context
+// does not (§8).
 export interface WorkflowRunParams {
   file: WorkflowFile;
   fileDir: string;
@@ -56,8 +58,8 @@ export interface WorkflowRunParams {
   launchFacts?: LaunchFacts;
   runtime: StepRuntime;
   /**
-   * The tree's cancellation chain: a nested run inherits its block's authority, so its leaves die with a sibling (mvp
-   * spec §5.6).
+   * The tree's cancellation chain: a nested run inherits its block's authority, so its leaves die
+   * with a sibling (mvp spec §5.6).
    */
   signal?: AbortSignal;
   cancellation?: Cancellation;
@@ -74,7 +76,8 @@ export async function executeWorkflowRun(params: WorkflowRunParams): Promise<Run
   const { file, fileDir, input, incomingConfig, identity, files, emitter } = params;
 
   // Resume replays from the run's **seed**, never the counterpart's final `context.json` — under
-  // Resume-from-K that holds keys written after K. Complete re-entry restores its parked blackboard (ADR 0062).
+  // Resume-from-K that holds keys written after K. Complete re-entry restores its parked blackboard
+  // (ADR 0062).
   const continueReenter = params.continue?.existing;
   const seed = resumeSeed(params.resume, identity.parentRunId === null) ?? input;
   const parkedContext =
@@ -89,8 +92,8 @@ export async function executeWorkflowRun(params: WorkflowRunParams): Promise<Run
     : undefined;
   let previousOutput: JsonValue = seed;
 
-  // Incoming config shadows this file's defaults key by key (format doc §8); the second point `$env`/`$secret`
-  // resolve (ADR 0022 sub-4).
+  // Incoming config shadows this file's defaults key by key (format doc §8); the second point
+  // `$env`/`$secret` resolve (ADR 0022 sub-4).
   const fileConfig = effectiveConfig(file.config ?? {}, incomingConfig, params.env);
   const run: RunContext = {
     file,
@@ -113,16 +116,19 @@ export async function executeWorkflowRun(params: WorkflowRunParams): Promise<Run
     await emitter.runFinished({ status: "succeeded", output });
     return { status: "succeeded", output };
   };
-  // A run whose leaf step was killed by a failing sibling or an operator abort ends `cancelled` (mvp spec §5.6).
+  // A run whose leaf step was killed by a failing sibling or an operator abort ends `cancelled`
+  // (mvp spec §5.6).
   const cancel = async (): Promise<RunResult> => {
     await emitter.runFinished({ status: "cancelled" });
     return { status: "cancelled", output: previousOutput };
   };
 
-  // A log-backend write failure fails the run audit-first (mvp spec §8.2); any other thrown error is a
-  // bug and propagates. Each run converts its own hooks' ObserverError, so a nested failure travels up.
+  // A log-backend write failure fails the run audit-first (mvp spec §8.2); any other thrown error
+  // is a bug and propagates. Each run converts its own hooks' ObserverError, so a nested failure
+  // travels up.
   const failFromObserverError = async (err: ObserverError): Promise<RunResult> => {
-    // Honour the exit barrier even on an audit fault: no detached branch may outlive its owning run (§1.1).
+    // Honour the exit barrier even on an audit fault: no detached branch may outlive its owning run
+    // (§1.1).
     try {
       await settleDetached(run);
     } catch {
@@ -153,7 +159,8 @@ export async function executeWorkflowRun(params: WorkflowRunParams): Promise<Run
         input: seed,
         resumedFromRootRunId: params.resumedFromRootRunId,
         rerunFromNodePath: params.rerunFromNodePath,
-        // Root-only (ADR 0046): recorded so a later resume/Complete recovers the config and worker table.
+        // Root-only (ADR 0046): recorded so a later resume/Complete recovers the config and worker
+        // table.
         launchFacts: params.launchFacts,
         workflowId: file.id,
         workflowName: file.name,
@@ -162,7 +169,8 @@ export async function executeWorkflowRun(params: WorkflowRunParams): Promise<Run
     }
 
     // A run-start config failure lands here, not at load: the run exists, is recorded, and ends
-    // `failed` before its first node — operator config has no load to fail at. An abort in flight wins (§5.6).
+    // `failed` before its first node — operator config has no load to fail at. An abort in flight
+    // wins (§5.6).
     if (params.runStartFailure !== undefined && params.signal?.aborted !== true) {
       return fail(params.runStartFailure);
     }
@@ -176,10 +184,12 @@ export async function executeWorkflowRun(params: WorkflowRunParams): Promise<Run
       },
       walk: runSequence,
     });
-    // The run parked at a person-activity leaf (ADR 0039/0041): no terminal `step-finished`, the row
-    // stays `running`, and its detached branches keep running until a later Complete settles it.
+    // The run parked at a person-activity leaf (ADR 0039/0041): no terminal `step-finished`, the
+    // row stays `running`, and its detached branches keep running until a later Complete settles
+    // it.
     if (outcome.status === "awaiting") return { status: "awaiting", output: previousOutput };
-    // Drain every detached branch before this run reports finished, so the tree stays strictly nested (§1.1/§2).
+    // Drain every detached branch before this run reports finished, so the tree stays strictly
+    // nested (§1.1/§2).
     await settleDetached(run);
     if (outcome.status === "failed") return fail(outcome.error);
     if (outcome.status === "cancelled") return cancel();
@@ -201,16 +211,19 @@ export async function executeWorkflowRun(params: WorkflowRunParams): Promise<Run
   }
 }
 
-// A `workflow` step: resolve `ref` against the loaded tree and run the child as a nested run. Context
-// is isolated (fresh seed), the parent's effective config crosses (§8), its output map is this step's.
+// A `workflow` step: resolve `ref` against the loaded tree and run the child as a nested run.
+// Context is isolated (fresh seed), the parent's effective config crosses (§8), its output map is
+// this step's.
 async function runWorkflowNode(
   node: Extract<WorkflowFile["body"][number], { type: "workflow" }>,
   stepInput: JsonValue,
   ctx: StepContext,
-  /** The existing row this nested run re-enters in place on a Complete replay (ADR 0041); undefined on a fresh run. */
+  /** The existing row this nested run re-enters in place on a Complete replay (ADR 0041); undefined
+   * on a fresh run. */
   existingRun?: RunRecord,
 ): Promise<SeqOutcome> {
-  // The interpolated `input` must be a JSON object so its keys can seed the child's context (format doc §6.3).
+  // The interpolated `input` must be a JSON object so its keys can seed the child's context (format
+  // doc §6.3).
   if (!isPlainObject(stepInput)) {
     return {
       status: "failed",
@@ -231,7 +244,8 @@ async function runWorkflowNode(
     };
   }
 
-  // A still-`running` nested run in the tree being Completed is re-entered in place (ADR 0041): same id.
+  // A still-`running` nested run in the tree being Completed is re-entered in place (ADR 0041):
+  // same id.
   const identity = childIdentity(ctx.run.identity, { owner: node }, existingRun?.runId);
   const childResult = await executeWorkflowRun({
     file: child.file,
@@ -241,14 +255,16 @@ async function runWorkflowNode(
     identity,
     files: ctx.run.files,
     emitter: ctx.run.emitter.child(identity),
-    // The root's snapshot, so every file resolves `$env` against one environment; the root owns the unset check.
+    // The root's snapshot, so every file resolves `$env` against one environment; the root owns the
+    // unset check.
     env: ctx.run.env,
     runtime: ctx.run.runtime,
     signal: ctx.exec.signal,
     cancellation: ctx.exec.cancellation,
     // Continue this child in place when the tree is being Completed, else undefined.
     continue: ctx.run.continue ? { state: ctx.run.continue, existing: existingRun } : undefined,
-    // Resume recurses into every non-succeeded workflow-run, each against its own counterpart (ADR 0036).
+    // Resume recurses into every non-succeeded workflow-run, each against its own counterpart (ADR
+    // 0036).
     resume: enterNested(ctx.run.resume, ctx.run.file, node.id),
   });
 
@@ -264,13 +280,14 @@ async function runWorkflowNode(
 type WorkflowNode = WorkflowFile["body"][number];
 type ControlNode = Extract<WorkflowNode, { type: ControllerType }>;
 
-// The engine-evaluated controls the walker owns (CONTEXT invariant 1); derived from `@path/schema`'s `isStepType`.
+// The engine-evaluated controls the walker owns (CONTEXT invariant 1); derived from
+// `@path/schema`'s `isStepType`.
 function isControlNode(node: WorkflowNode): node is ControlNode {
   return !isStepType(node.type);
 }
 
-/** Runs **one node**, whatever kind: resolves its effective config and input, executes it, and lands
- * its `publish`. `incomingOutput` is the default-input chain's offer (format doc §6.1). */
+/** Runs **one node**, whatever kind: resolves its effective config and input, executes it, and
+ * lands its `publish`. `incomingOutput` is the default-input chain's offer (format doc §6.1). */
 export async function runNode(
   run: RunContext,
   node: WorkflowNode,
@@ -282,11 +299,12 @@ export async function runNode(
     if (node.type === "checkpoint") return runCheckpointNode(run, node, incomingOutput, exec);
     if (node.type === "branch") return runBranchNode(run, node, incomingOutput, exec);
     if (node.type === "while-do") return runWhileDoNode(run, node, incomingOutput, exec);
-    // A `sequence` adds no execution rule (`@2` §4.4): it runs its body as a nested node sequence, transparent to `exec`.
+    // A `sequence` adds no execution rule (`@2` §4.4): it runs its body as a nested node sequence,
+    // transparent to `exec`.
     if (node.type === "sequence") return runSequence(run, node.body, incomingOutput, exec);
     if (node.type === "goto") return runGotoNode(run, node, incomingOutput);
-    // Compile-time guard: a new control member breaks the build here. An unknown *leaf* type is caught
-    // below, at the registry lookup.
+    // Compile-time guard: a new control member breaks the build here. An unknown *leaf* type is
+    // caught below, at the registry lookup.
     const unwalked: never = node;
     const unknown = unwalked as { type: string; id: string };
     return {
@@ -295,19 +313,20 @@ export async function runNode(
     };
   }
 
-  // The second point effective config is materialized (so the second resolving `$env`/`$secret`) — the call the gate
-  // validated against.
+  // The second point effective config is materialized (so the second resolving `$env`/`$secret`) —
+  // the call the gate validated against.
   const stepConfig = effectiveConfig(run.fileConfig, node.config, run.env);
 
-  // The continuation adapter owns what a recorded row means, so every walker agrees without knowing Resume from
-  // Complete.
+  // The continuation adapter owns what a recorded row means, so every walker agrees without knowing
+  // Resume from Complete.
   const disposition = continuationOf(run).disposition(node);
   let outcome: SeqOutcome;
-  // The leaf runner reports its step emitter here, so the post-publish snapshot is attributed to its own run id.
+  // The leaf runner reports its step emitter here, so the post-publish snapshot is attributed to
+  // its own run id.
   let leafStep: StepEmitter | undefined;
   if (disposition.kind === "reuse") {
-    // The node does not execute: its recorded output threads the input chain and publishes as usual; a reused
-    // `workflow` node collapses its subtree.
+    // The node does not execute: its recorded output threads the input chain and publishes as
+    // usual; a reused `workflow` node collapses its subtree.
     const output = disposition.output();
     if (disposition.reusedFrom !== undefined)
       await run.emitter.emit(node, {
@@ -316,8 +335,8 @@ export async function runNode(
       });
     outcome = { status: "succeeded", output };
   } else if (disposition.kind === "complete") {
-    // The parked leaf transitions `awaiting → succeeded` in place under its own step-run id; publish lands as for a
-    // fresh output.
+    // The parked leaf transitions `awaiting → succeeded` in place under its own step-run id;
+    // publish lands as for a fresh output.
     const step = run.emitter.step(node, disposition.runId);
     leafStep = step;
     outcome = await finishSucceeded(step, node, disposition.output);
@@ -333,8 +352,8 @@ export async function runNode(
       return { status: "failed", error: describeInterpolationError(node.name, err) };
     }
 
-    // One context for every step kind; a `workflow` step runs a nested run, every other type dispatches through the
-    // registry.
+    // One context for every step kind; a `workflow` step runs a nested run, every other type
+    // dispatches through the registry.
     const step: StepContext = {
       run,
       exec,
@@ -342,7 +361,8 @@ export async function runNode(
       onLeafStep: (emitted) => (leafStep = emitted),
     };
     if (node.type === "workflow") {
-      // A `reenter` disposition hands the child its own existing row, so it is re-driven in place (ADR 0041).
+      // A `reenter` disposition hands the child its own existing row, so it is re-driven in place
+      // (ADR 0041).
       outcome = await runWorkflowNode(
         node,
         stepInput,
@@ -365,12 +385,14 @@ export async function runNode(
     } catch (err) {
       return { status: "failed", error: describeInterpolationError(node.name, err) };
     }
-    // Every entry resolves before any is written, so the publish lands atomically (§5.3) and only on this run's context.
+    // Every entry resolves before any is written, so the publish lands atomically (§5.3) and only
+    // on this run's context.
     Object.assign(exec.context, updates);
     await exec.onPublish(updates);
   }
 
-  // Every executed leaf records the context as it stands now, publish included, so it is followable step by step.
+  // Every executed leaf records the context as it stands now, publish included, so it is followable
+  // step by step.
   if (leafStep !== undefined) {
     await leafStep.record({ kind: "context", context: exec.context });
   }
@@ -388,8 +410,9 @@ export async function runSequence(
   let previous: JsonValue = seedInput;
 
   for (const node of nodes) {
-    // An abort arriving between two nodes stops the walk here (mvp spec §5.6): starting a run only to
-    // kill it would record a run that never really ran, and controls have no process to interrupt.
+    // An abort arriving between two nodes stops the walk here (mvp spec §5.6): starting a run only
+    // to kill it would record a run that never really ran, and controls have no process to
+    // interrupt.
     if (exec.signal?.aborted) return { status: "cancelled" };
 
     const outcome = await runNode(run, node, previous, exec);

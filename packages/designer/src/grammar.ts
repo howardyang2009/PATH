@@ -1,18 +1,18 @@
 import { childBodies, type WorkflowNode, walkNodes } from "@path/schema";
 
 /**
- * The block grammar as the canvas enforces it (designer-spec § Canvas interaction model): a block is
- * unsnappable where the grammar refuses it, rather than rejected on save. `checkpoint` is legal only in a
- * `sequence` list (CONTEXT.md § Composition), and a `goto` may not sit under a `while-do` or a `parallel`
- * at any depth, so a socket may be **barred**.
+ * The block grammar as the canvas enforces it (designer-spec § Canvas interaction model): a block
+ * is unsnappable where the grammar refuses it, rather than rejected on save. `checkpoint` is legal
+ * only in a `sequence` list (CONTEXT.md § Composition), and a `goto` may not sit under a `while-do`
+ * or a `parallel` at any depth, so a socket may be **barred**.
  */
 
 /** A socket's shape: an ordered list, a single-node slot, or a `parallel` branch list. */
 export type SocketFlavor = "sequence" | "single" | "branches";
 
 /**
- * The six controller kinds fixed by the grammar, five Structure Controllers and the one Graph Controller `goto` (ADR
- * 0057).
+ * The six controller kinds fixed by the grammar, five Structure Controllers and the one Graph
+ * Controller `goto` (ADR 0057).
  */
 export const CONTROLLER_KINDS = [
   "parallel",
@@ -24,7 +24,8 @@ export const CONTROLLER_KINDS = [
 ] as const;
 export type ControllerKind = (typeof CONTROLLER_KINDS)[number];
 
-/** Is `kind` legal in a socket of `flavor`? `checkpoint` only in a `sequence` list, `goto` only unbarred. */
+/** Is `kind` legal in a socket of `flavor`? `checkpoint` only in a `sequence` list, `goto` only
+ * unbarred. */
 export function socketAcceptsKind(flavor: SocketFlavor, kind: string, barred = false): boolean {
   if (kind === "checkpoint") return flavor === "sequence";
   if (kind === "goto") return !barred;
@@ -32,8 +33,8 @@ export function socketAcceptsKind(flavor: SocketFlavor, kind: string, barred = f
 }
 
 /**
- * Does `ownerId`'s socket sit under a `while-do` or a `parallel` (the owner itself counts)? This is the chain the
- * goto placement rule reads.
+ * Does `ownerId`'s socket sit under a `while-do` or a `parallel` (the owner itself counts)? This is
+ * the chain the goto placement rule reads.
  */
 export function socketBarred(body: readonly WorkflowNode[], ownerId: string | null): boolean {
   if (ownerId === null) return false;
@@ -52,14 +53,15 @@ export function socketBarred(body: readonly WorkflowNode[], ownerId: string | nu
 }
 
 /**
- * How a Template body lands, as `instantiate`'s socket option: a list splices, anything else wraps 2+ nodes in a
- * `sequence` (ADR 0049).
+ * How a Template body lands, as `instantiate`'s socket option: a list splices, anything else wraps
+ * 2+ nodes in a `sequence` (ADR 0049).
  */
 export function bodyInsertSocket(flavor: SocketFlavor): "list" | "single" {
   return flavor === "sequence" ? "list" : "single";
 }
 
-/** Is a Template `body` legal here? An empty body places nothing; a barred socket refuses a goto in it. */
+/** Is a Template `body` legal here? An empty body places nothing; a barred socket refuses a goto in
+ * it. */
 export function socketAcceptsBody(
   flavor: SocketFlavor,
   body: readonly WorkflowNode[],
@@ -73,8 +75,8 @@ export function socketAcceptsBody(
 }
 
 /**
- * Does a node of `type` carry the step envelope (`config`/`input`/`parse`/`publish`)? Exactly "not a controller
- * kind".
+ * Does a node of `type` carry the step envelope (`config`/`input`/`parse`/`publish`)? Exactly "not
+ * a controller kind".
  */
 export function carriesEnvelope(type: string): boolean {
   return !(CONTROLLER_KINDS as readonly string[]).includes(type);

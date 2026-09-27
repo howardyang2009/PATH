@@ -94,8 +94,8 @@ describe("mapEnv", () => {
   });
 
   it("reports the composed case under the path of the marked value, not a $secret segment", () => {
-    // `mapSecrets` reports `{a: {$secret: "s"}}` under `a`; the marking is not a level of structure,
-    // so the two walks must agree that the wrapper sits *at* `a`.
+    // `mapSecrets` reports `{a: {$secret: "s"}}` under `a`; the marking is not a level of
+    // structure, so the two walks must agree that the wrapper sits *at* `a`.
     expect(pathsOf({ a: { $secret: { $env: "ONE" } } })).toEqual([{ name: "ONE", path: "a" }]);
   });
 

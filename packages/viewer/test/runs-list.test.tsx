@@ -68,8 +68,9 @@ const FAILED: RootRunSummary = {
 };
 
 /**
- * A run-tree node rooted at run_beta, defaulting every field so a test overrides only what it asserts
- * on — the same shape the awaiting-pill test builds inline, hoisted so the in-flight tests reuse it.
+ * A run-tree node rooted at run_beta, defaulting every field so a test overrides only what it
+ * asserts on — the same shape the awaiting-pill test builds inline, hoisted so the in-flight tests
+ * reuse it.
  */
 function awaitingNode(over: Partial<RunNodeState> & { runId: string }): RunNodeState {
   return {
@@ -382,8 +383,8 @@ describe("RunsList", () => {
       const resumeRun = vi.spyOn(client, "resumeRun").mockReturnValue(new Promise(() => {}));
       renderList(client);
 
-      // The skeleton arrives on screen blank, so the verb is greyed with its reason from the start —
-      // the same rule the Complete form applies to the other continuation door.
+      // The skeleton arrives on screen blank, so the verb is greyed with its reason from the start
+      // — the same rule the Complete form applies to the other continuation door.
       fireEvent.click(await screen.findByTestId(`run-row-${withSecrets.run_id}`));
       const button = await screen.findByTestId("resume-button");
       expect(button).toBeDisabled();
@@ -425,9 +426,10 @@ describe("RunsList", () => {
     });
   });
 
-  // Delete (§ DELETE /v0/runs/:id) lives in the same expanded panel as Resume. It is offered on every
-  // finished row — succeeded as well as cancelled/failed — but not on a run still in flight, which the
-  // server would 409 anyway. It is two-step: an arm, then a confirm that spells out which run goes.
+  // Delete (§ DELETE /v0/runs/:id) lives in the same expanded panel as Resume. It is offered on
+  // every finished row — succeeded as well as cancelled/failed — but not on a run still in flight,
+  // which the server would 409 anyway. It is two-step: an arm, then a confirm that spells out which
+  // run goes.
   describe("delete affordance", () => {
     it.each([SUCCEEDED, CANCELLED, FAILED])(
       "offers Delete when a %s row is clicked",
@@ -493,7 +495,8 @@ describe("RunsList", () => {
   });
 
   // A run still in flight — running, or a running root reading awaiting because a leaf is parked
-  // (ADR 0038) — offers none of the three run actions. The panel says why instead of standing empty.
+  // (ADR 0038) — offers none of the three run actions. The panel says why instead of standing
+  // empty.
   describe("in-flight run actions", () => {
     it("offers no Resume, Resume from …, or Delete when a running row is clicked", async () => {
       const { client } = stubClient([RUNNING]);
@@ -541,8 +544,8 @@ describe("RunsList", () => {
 });
 
 /**
- * `GET /v0/runs` is a one-shot read and there is no stream of *all* runs, so the pane re-reads on an
- * interval (#50). Without it the rail contradicts the live centre pane: a run that has finished
+ * `GET /v0/runs` is a one-shot read and there is no stream of *all* runs, so the pane re-reads on
+ * an interval (#50). Without it the rail contradicts the live centre pane: a run that has finished
  * still reads `running`, and a run launched after page load never appears.
  */
 describe("RunsList refresh", () => {

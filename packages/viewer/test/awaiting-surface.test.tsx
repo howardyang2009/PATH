@@ -206,8 +206,8 @@ describe("awaiting detail panel — inline Complete (NodeIo)", () => {
 
   it("resolves an awaiting leaf living in a nested sub-workflow file, not only the root", async () => {
     // The leaf's node id (step-nested) is defined in SUB_FILE, reached from the root through a
-    // `workflow` step. The app hands the whole reachable set, so the surface resolves it there — the
-    // same content as a root leaf: description, assignee, output schema, and the Complete form.
+    // `workflow` step. The app hands the whole reachable set, so the surface resolves it there —
+    // the same content as a root leaf: description, assignee, output schema, and the Complete form.
     const nested = runState({
       runId: "run_nested",
       nodeId: "step-nested",
@@ -243,8 +243,9 @@ describe("awaiting detail panel — inline Complete (NodeIo)", () => {
   it("prefills the launch-secret config on an awaiting Complete from the tree's launch facts (ADR 0046)", async () => {
     const completeBodies: unknown[] = [];
     const client = stubClient({ completeBodies });
-    // The launch facts are a per-tree fact, so the awaiting leaf reads them off the same snapshot the
-    // root run would — the operator's masked secrets must be supplied again to continue past this leaf.
+    // The launch facts are a per-tree fact, so the awaiting leaf reads them off the same snapshot
+    // the root run would — the operator's masked secrets must be supplied again to continue past
+    // this leaf.
     const view = {
       displayStatus: new Map(),
       lastError: new Map<string, string>(),
@@ -288,8 +289,8 @@ describe("awaiting detail panel — inline Complete (NodeIo)", () => {
     });
     render(<NodeIo client={client} run={runState()} workflowFiles={[ROOT_FILE]} />);
 
-    // Submitting an unchecked box coerces to `approved: false`, which is present client-side but the
-    // server's required check here rejects — the point is the 400 field error renders in place.
+    // Submitting an unchecked box coerces to `approved: false`, which is present client-side but
+    // the server's required check here rejects — the point is the 400 field error renders in place.
     fireEvent.click(screen.getByTestId("complete-submit"));
 
     await waitFor(() =>
@@ -320,8 +321,8 @@ describe("awaiting detail panel — inline Complete (NodeIo)", () => {
   });
 
   it("degrades to a schema-less submit when the node is in no loaded file (the sub-file failed to read)", () => {
-    // step-nested lives in SUB_FILE; with only the root loaded (a since-moved or unreadable ref) the
-    // reachable set cannot resolve it, so the surface degrades rather than inventing a form.
+    // step-nested lives in SUB_FILE; with only the root loaded (a since-moved or unreadable ref)
+    // the reachable set cannot resolve it, so the surface degrades rather than inventing a form.
     render(
       <NodeIo
         client={stubClient()}
@@ -360,8 +361,8 @@ describe("awaiting detail panel — inline Complete (NodeIo)", () => {
       />,
     );
 
-    // The head reads awaiting (shared derivation), yet the running root is not itself awaiting, so it
-    // gets no Complete surface — that stays keyed on the real status.
+    // The head reads awaiting (shared derivation), yet the running root is not itself awaiting, so
+    // it gets no Complete surface — that stays keyed on the real status.
     expect(within(screen.getByTestId("node-io-head")).getByText("awaiting")).toBeInTheDocument();
     expect(screen.queryByTestId("awaiting-actions")).toBeNull();
   });

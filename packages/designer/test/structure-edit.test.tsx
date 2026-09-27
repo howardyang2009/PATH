@@ -5,9 +5,9 @@ import { describe, expect, it } from "vitest";
 import { App } from "../src/app.js";
 
 /**
- * #368 — canvas structure editing through the real app: a block snaps only into a grammar-legal socket
- * (add), reorder preserves structure, a replace swaps a single-node slot, the delete slot rules hold, a
- * duplicate gets a fresh node, and an empty canvas offers a start-a-body affordance.
+ * #368 — canvas structure editing through the real app: a block snaps only into a grammar-legal
+ * socket (add), reorder preserves structure, a replace swaps a single-node slot, the delete slot
+ * rules hold, a duplicate gets a fresh node, and an empty canvas offers a start-a-body affordance.
  */
 
 /** A distinct valid UUIDv4 per seed. */
@@ -24,8 +24,9 @@ function editableFile(): Record<string, unknown> {
     id: uuid(1),
     name: "flow",
     body: [
-      // alpha publishes the context keys the branch/while conditions below read, so the fixture carries
-      // no #388 dangling-context warning — these #368 structure-edit tests assert only on structure.
+      // alpha publishes the context keys the branch/while conditions below read, so the fixture
+      // carries no #388 dangling-context warning — these #368 structure-edit tests assert only on
+      // structure.
       {
         type: "prompt",
         id: uuid(2),
@@ -94,7 +95,8 @@ describe("add — a block snaps only into a grammar-legal socket", () => {
     // Arm a prompt: the file body's tail socket opens; place a node.
     arm("Prompt");
     fireEvent.click(within(canvas).getByRole("button", { name: /add prompt here/ }));
-    expect(within(canvas).getByText("prompt")).toBeInTheDocument(); // the minted node's default name
+    // the minted node's default name
+    expect(within(canvas).getByText("prompt")).toBeInTheDocument();
 
     // Arm a checkpoint: the file body (a sequence list) opens, but a parallel branch list does not
     // (checkpoint is unsnappable there) and neither does a single slot.

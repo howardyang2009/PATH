@@ -5,8 +5,8 @@ import { readRequestBody, sendError, sendJson } from "../http-json.js";
 import type { ApiRequest, RouteContext } from "./route-context.js";
 
 /**
- * The three Designer edit-lease doors (ADR 0017): acquire, heartbeat, release. The lease itself lives
- * in `edit-lease.ts`.
+ * The three Designer edit-lease doors (ADR 0017): acquire, heartbeat, release. The lease itself
+ * lives in `edit-lease.ts`.
  */
 
 const LockBodySchema = z
@@ -25,7 +25,8 @@ const LeaseOpBodySchema = z
   })
   .strict();
 
-/** The shared prologue: parse the body, find the named workflow's lease; `undefined` once refused. */
+/** The shared prologue: parse the body, find the named workflow's lease; `undefined` once
+ * refused. */
 async function leaseRequest<T extends { workflow_path: string }>(
   req: IncomingMessage,
   res: ServerResponse,
@@ -42,7 +43,8 @@ async function leaseRequest<T extends { workflow_path: string }>(
   return { body: body.data, lease };
 }
 
-/** `POST /v0/workflows/lock`: acquire or take over; a live lease held by another session is a `409`. */
+/** `POST /v0/workflows/lock`: acquire or take over; a live lease held by another session is a
+ * `409`. */
 export async function handleWorkflowLock({ req, res, ctx }: ApiRequest): Promise<void> {
   const request = await leaseRequest(req, res, ctx, LockBodySchema);
   if (!request) return;
@@ -61,8 +63,9 @@ export async function handleWorkflowLockHeartbeat({ req, res, ctx }: ApiRequest)
 }
 
 /**
- * `POST /v0/workflows/lock/release`: free; always `200`, idempotent, and only the holder's own lease.
- * POST, not DELETE, because `navigator.sendBeacon` drives release from `beforeunload` and is POST-only.
+ * `POST /v0/workflows/lock/release`: free; always `200`, idempotent, and only the holder's own
+ * lease. POST, not DELETE, because `navigator.sendBeacon` drives release from `beforeunload` and is
+ * POST-only.
  */
 export async function handleWorkflowLockRelease({ req, res, ctx }: ApiRequest): Promise<void> {
   const request = await leaseRequest(req, res, ctx, LeaseOpBodySchema);

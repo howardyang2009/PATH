@@ -2,10 +2,10 @@ import type { AcquireLockResult, HeartbeatResult, PathApiClient } from "@path/cl
 
 /**
  * The client half of the Designer edit-lock lease (ADR 0017): a lease is kept alive per open file —
- * acquire on open, heartbeat every 10s, release on close — and the two conflict outcomes surface as an
- * acquire `409` (offer a confirm-gated takeover) and a heartbeat `409` (warn and offer re-acquire). The
- * controller is framework-free over an injected client and scheduler, holding one lease per open path; a
- * brand-new, never-saved workflow has no path and so is never reconciled in.
+ * acquire on open, heartbeat every 10s, release on close — and the two conflict outcomes surface as
+ * an acquire `409` (offer a confirm-gated takeover) and a heartbeat `409` (warn and offer
+ * re-acquire). The controller is framework-free over an injected client and scheduler, holding one
+ * lease per open path; a brand-new, never-saved workflow has no path and so is never reconciled in.
  */
 
 /** Heartbeat cadence: 10s, so a live tab beats three times per the server's 30s TTL (ADR 0017). */
@@ -16,7 +16,8 @@ export type LeaseState =
   | { phase: "acquiring" }
   /** Held by us; `expiresAt` is the server's wall-clock expiry, renewed each beat. */
   | { phase: "held"; expiresAt: string }
-  /** A live marker under another session (acquire `409`); `expiresAt` drives the takeover countdown. */
+  /** A live marker under another session (acquire `409`); `expiresAt` drives the takeover
+   * countdown. */
   | { phase: "held-by-other"; expiresAt: string | null }
   /** The lease was lost mid-edit (heartbeat `409`): reclaimed after expiry, or taken over. */
   | { phase: "lost" }
@@ -36,7 +37,8 @@ type LockClient = Pick<PathApiClient, "acquireLock" | "heartbeatLock" | "release
 
 interface Entry {
   state: LeaseState;
-  /** Bumped on every acquire/reacquire/takeover/stop, so a stale async reply for this path is dropped. */
+  /** Bumped on every acquire/reacquire/takeover/stop, so a stale async reply for this path is
+   * dropped. */
   epoch: number;
   timer: unknown | null;
 }
@@ -72,9 +74,10 @@ export class LeaseController {
   }
 
   /**
-   * Reconcile the held leases against the set of open file paths (the navigation stack). A path that is
-   * newly open acquires; a path that is no longer open releases. Called on every stack change, so a
-   * descent acquires the child's lease and an ascend releases it. Idempotent for an unchanged set.
+   * Reconcile the held leases against the set of open file paths (the navigation stack). A path
+   * that is newly open acquires; a path that is no longer open releases. Called on every stack
+   * change, so a descent acquires the child's lease and an ascend releases it. Idempotent for an
+   * unchanged set.
    */
   reconcile(paths: readonly string[]): void {
     const wanted = new Set(paths);
@@ -90,12 +93,14 @@ export class LeaseController {
     this.emit();
   }
 
-  /** Take over a lease held by another session — the explicit, confirmation-gated `takeover: true`. */
+  /** Take over a lease held by another session — the explicit, confirmation-gated `takeover:
+   * true`. */
   takeover(path: string): void {
     if (this.entries.has(path)) void this.acquire(path, true);
   }
 
-  /** Re-acquire after a lost lease (a heartbeat `409`) — the "editing lease lost" re-acquire affordance. */
+  /** Re-acquire after a lost lease (a heartbeat `409`) — the "editing lease lost" re-acquire
+   * affordance. */
   reacquire(path: string): void {
     if (this.entries.has(path)) void this.acquire(path, false);
   }
@@ -114,7 +119,8 @@ export class LeaseController {
     this.emit();
   }
 
-  /** Acquire (or take over) one path, guarded by an epoch so a stale reply cannot overwrite a newer state. */
+  /** Acquire (or take over) one path, guarded by an epoch so a stale reply cannot overwrite a newer
+   * state. */
   private async acquire(path: string, takeover: boolean): Promise<void> {
     const entry = this.entries.get(path);
     if (!entry) return;
@@ -149,7 +155,8 @@ export class LeaseController {
     }
   }
 
-  /** Apply a settled acquire result if the epoch still matches, optionally starting the heartbeat. */
+  /** Apply a settled acquire result if the epoch still matches, optionally starting the
+   * heartbeat. */
   private settle(path: string, epoch: number, state: LeaseState, beat = false): void {
     const entry = this.entries.get(path);
     if (!entry || entry.epoch !== epoch) return;
@@ -163,7 +170,8 @@ export class LeaseController {
     entry.timer = this.scheduler.setInterval(() => void this.beat(path), this.heartbeatMs);
   }
 
-  /** One heartbeat, epoch-guarded like `acquire`: a `lost` stops the beat and flips the UI to re-acquire. */
+  /** One heartbeat, epoch-guarded like `acquire`: a `lost` stops the beat and flips the UI to
+   * re-acquire. */
   private async beat(path: string): Promise<void> {
     const entry = this.entries.get(path);
     if (entry?.state.phase !== "held") return;
@@ -173,8 +181,8 @@ export class LeaseController {
     try {
       result = await this.client.heartbeatLock({ workflowPath: path, sessionId: this.sessionId });
     } catch {
-      // A transient network error is not a lost lease — the marker is still ours on the server until
-      // the TTL. Skip this beat; the next one recovers if the network does.
+      // A transient network error is not a lost lease — the marker is still ours on the server
+      // until the TTL. Skip this beat; the next one recovers if the network does.
       return;
     }
     const current = this.entries.get(path);
@@ -188,7 +196,8 @@ export class LeaseController {
     this.emit();
   }
 
-  /** Release one path's lease (fire-and-forget) and forget it — the reconcile-away and dispose path. */
+  /** Release one path's lease (fire-and-forget) and forget it — the reconcile-away and dispose
+   * path. */
   private drop(path: string): void {
     const entry = this.entries.get(path);
     if (!entry) return;

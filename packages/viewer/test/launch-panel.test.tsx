@@ -29,8 +29,8 @@ const BROKEN: WorkflowSummary = {
 };
 
 /**
- * A registry whose only multi-worker type is `prompt` — the one type a worker-default can select, since
- * `binary` ships a single worker. Its shape is the `GET /v0/step-plugins` wire body (§8).
+ * A registry whose only multi-worker type is `prompt` — the one type a worker-default can select,
+ * since `binary` ships a single worker. Its shape is the `GET /v0/step-plugins` wire body (§8).
  */
 const PLUGINS = {
   step_plugins: [
@@ -46,11 +46,11 @@ interface Recorded {
 }
 
 /**
- * A client over a recording `fetch`: `GET /v0/workflows` answers `workflows`, `GET /v0/step-plugins`
- * answers `stepPlugins` (default: a registry with no types, so no worker-default editor renders), and
- * `POST /v0/runs` answers `startResponse` (a 202 body or, with `startStatus`, an error envelope). Every
- * request is captured so the launch body (`workflow_path`, `input`, `config`, `worker_defaults`) is
- * assertable.
+ * A client over a recording `fetch`: `GET /v0/workflows` answers `workflows`, `GET
+ * /v0/step-plugins` answers `stepPlugins` (default: a registry with no types, so no worker-default
+ * editor renders), and `POST /v0/runs` answers `startResponse` (a 202 body or, with `startStatus`,
+ * an error envelope). Every request is captured so the launch body (`workflow_path`, `input`,
+ * `config`, `worker_defaults`) is assertable.
  */
 function stubClient(opts: {
   workflows: WorkflowSummary[];
@@ -100,7 +100,8 @@ describe("LaunchPanel", () => {
     expect(await screen.findByTestId("workflow-row-release-notes.workflow.json")).toHaveTextContent(
       "root",
     );
-    // A nested file is hidden until its folder is opened — the top level shows the folder, not the file.
+    // A nested file is hidden until its folder is opened — the top level shows the folder, not the
+    // file.
     const folder = screen.getByTestId("workflow-folder-lib");
     expect(screen.queryByTestId("workflow-row-lib/draft.workflow.json")).toBeNull();
 
@@ -201,8 +202,8 @@ describe("LaunchPanel", () => {
     const input = screen.getByTestId("launch-input") as HTMLTextAreaElement;
     expect(input).toBeInTheDocument();
     expect(input.value).toBe("{}");
-    // The disclosure is the field's only visible title — the textarea is named by it, not by a second
-    // printed label.
+    // The disclosure is the field's only visible title — the textarea is named by it, not by a
+    // second printed label.
     expect(screen.getAllByText(/Override input \(optional\)/)).toHaveLength(1);
     expect(screen.getByLabelText(/Override input \(optional\)/)).toBe(input);
 
@@ -345,7 +346,8 @@ describe("LaunchPanel", () => {
     mount(client);
     fireEvent.click(await screen.findByTestId("workflow-row-release-notes.workflow.json"));
 
-    // A registry with nothing to select (or none at all) offers no field — there is no choice to make.
+    // A registry with nothing to select (or none at all) offers no field — there is no choice to
+    // make.
     await waitFor(() => expect(screen.getByTestId("launch-submit")).toBeInTheDocument());
     expect(screen.queryByTestId("launch-worker-defaults-toggle")).toBeNull();
   });
@@ -356,8 +358,8 @@ describe("LaunchPanel", () => {
     fireEvent.click(await screen.findByTestId("workflow-row-release-notes.workflow.json"));
 
     fireEvent.click(await screen.findByTestId("launch-worker-defaults-toggle"));
-    // The only multi-worker type is `prompt`, added with its default worker (`binary` ships one, so it
-    // is never offered); retargeting stays inside that type's shipped set.
+    // The only multi-worker type is `prompt`, added with its default worker (`binary` ships one, so
+    // it is never offered); retargeting stays inside that type's shipped set.
     fireEvent.click(screen.getByTestId("worker-default-add"));
     expect((screen.getByLabelText("type") as HTMLSelectElement).value).toBe("prompt");
     fireEvent.change(screen.getByLabelText("worker"), { target: { value: "batch" } });

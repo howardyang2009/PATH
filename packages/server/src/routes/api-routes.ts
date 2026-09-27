@@ -27,9 +27,9 @@ import {
 } from "./workflow-lock.js";
 
 /**
- * The `/v0/*` API as one table (server-api-v0.md): each row is a method, a path — literal, or a pattern
- * whose captures are the path parameters — and the handler it reaches. Matching and parameter decoding
- * happen once, here; a handler receives its parameters already decoded.
+ * The `/v0/*` API as one table (server-api-v0.md): each row is a method, a path — literal, or a
+ * pattern whose captures are the path parameters — and the handler it reaches. Matching and
+ * parameter decoding happen once, here; a handler receives its parameters already decoded.
  */
 
 /** One row of the table: the method and path it matches, and the handler that answers it. */
@@ -71,7 +71,8 @@ const API_ROUTES: readonly ApiRoute[] = [
   // The step-plugin palette (§8).
   { method: "GET", path: "/v0/step-plugins", handle: handleGetStepPlugins },
 
-  // Templates (§10, ADR 0050). The by-id lookup spans both kinds and origins, so it takes no `?kind=`.
+  // Templates (§10, ADR 0050). The by-id lookup spans both kinds and origins, so it takes no
+  // `?kind=`.
   { method: "GET", path: "/v0/templates", handle: handleGetTemplates },
   { method: "POST", path: "/v0/templates", handle: handlePostTemplates },
   { method: "GET", path: TEMPLATE, handle: handleGetTemplate },
@@ -80,9 +81,9 @@ const API_ROUTES: readonly ApiRoute[] = [
 ];
 
 /**
- * Answer `req` from the API table. `false` when no row matches, so the caller can fall through to its
- * own 404 or static mounts. A path parameter that is not valid percent-encoding is a `400`, not the
- * `500` a thrown `decodeURIComponent` would become.
+ * Answer `req` from the API table. `false` when no row matches, so the caller can fall through to
+ * its own 404 or static mounts. A path parameter that is not valid percent-encoding is a `400`, not
+ * the `500` a thrown `decodeURIComponent` would become.
  */
 export async function dispatchApi(
   req: IncomingMessage,

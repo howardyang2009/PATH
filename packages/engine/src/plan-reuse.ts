@@ -11,9 +11,10 @@ export type ReusePlan = Map<string, RunRecord>;
 
 /**
  * Which node ids of a re-read `WorkflowFile` reuse their original run, and which run each reuses
- * (resume-reuse-semantics.md): a node id reuses iff `originalRuns` holds exactly one `succeeded` run at
- * that id under the scope's parent run (`parentRunId`, or the root when omitted). Ids are unique only
- * within a file, so the scope bounds the match; `suppress` (Resume-from-K) makes those ids re-run. */
+ * (resume-reuse-semantics.md): a node id reuses iff `originalRuns` holds exactly one `succeeded`
+ * run at that id under the scope's parent run (`parentRunId`, or the root when omitted). Ids are
+ * unique only within a file, so the scope bounds the match; `suppress` (Resume-from-K) makes those
+ * ids re-run. */
 export function planReuse(
   originalRuns: RunRecord[],
   tree: WorkflowFile,
@@ -40,8 +41,9 @@ export function planReuse(
 type ParallelNode = Extract<WorkflowFile["body"][number], { type: "parallel" }>;
 type ParallelBranch = ParallelNode["branches"][number];
 
-// True when every run-producing node in a branch already reuses a succeeded original run — the winner of
-// an already-decided `wait-one` race. A branch with nothing recorded to reuse does not qualify (wait-one-join.md §7).
+// True when every run-producing node in a branch already reuses a succeeded original run — the
+// winner of an already-decided `wait-one` race. A branch with nothing recorded to reuse does not
+// qualify (wait-one-join.md §7).
 function branchIsReusedWinner(branch: ParallelBranch, plan: ReusePlan): boolean {
   let sawRunProducing = false;
   for (const inner of walkNodes([branch])) {
@@ -53,8 +55,8 @@ function branchIsReusedWinner(branch: ParallelBranch, plan: ReusePlan): boolean 
   return sawRunProducing;
 }
 
-// A fully-reused branch's completion time, the latest `finishedAt` among its reused runs; null falls back to
-// declaration order.
+// A fully-reused branch's completion time, the latest `finishedAt` among its reused runs; null
+// falls back to declaration order.
 function reusedBranchCompletion(branch: ParallelBranch, plan: ReusePlan): string | null {
   let completedAt: string | null = null;
   for (const inner of walkNodes([branch])) {
@@ -68,9 +70,10 @@ function reusedBranchCompletion(branch: ParallelBranch, plan: ReusePlan): string
   return completedAt;
 }
 
-/** The winner to reuse when replaying a decided `wait-one` race (wait-one-join.md §7). A photo-finish can
- * leave two branches recorded `succeeded`; resume orders them by recorded completion time (the live run's
- * `seq` is not on a `RunRecord`) and breaks an exact tie by declaration order. */
+/** The winner to reuse when replaying a decided `wait-one` race (wait-one-join.md §7). A
+ * photo-finish can leave two branches recorded `succeeded`; resume orders them by recorded
+ * completion time (the live run's `seq` is not on a `RunRecord`) and breaks an exact tie by
+ * declaration order. */
 export function pickReusedWaitOneWinner(
   node: ParallelNode,
   plan: ReusePlan,
@@ -89,7 +92,8 @@ export function pickReusedWaitOneWinner(
   })[0];
 }
 
-/** Which recorded row answers a scope: under one parent, by node id, iteration ordinal, or pass ordinal. */
+/** Which recorded row answers a scope: under one parent, by node id, iteration ordinal, or pass
+ * ordinal. */
 export interface RecordedScopeKey {
   nodeId?: string | null;
   iteration?: number;
@@ -97,8 +101,9 @@ export interface RecordedScopeKey {
   succeeded?: boolean;
 }
 
-/** The **one** recorded row under `parentRunId` that answers `key`, or `undefined`: zero matches (added
- * since) and more than one (which attempt is undefined) both answer none, so the scope runs fresh. */
+/** The **one** recorded row under `parentRunId` that answers `key`, or `undefined`: zero matches
+ * (added since) and more than one (which attempt is undefined) both answer none, so the scope runs
+ * fresh. */
 export function recordedChild(
   rows: readonly RunRecord[],
   parentRunId: string | undefined,

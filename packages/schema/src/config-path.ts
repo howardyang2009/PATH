@@ -1,9 +1,10 @@
 import type { JsonValue } from "./json-value.js";
 import { isPlainObject } from "./wrapper.js";
 
-/** A **config dot-path**: the address `mapWrappers` writes for a value inside a config — object keys and
- * array indices as `.`-joined segments (`model.api_key`, `headers.0`). A frozen launch records its
- * `$secret` values' locations by these paths (ADR 0046), and engine and Viewer read them here. */
+/** A **config dot-path**: the address `mapWrappers` writes for a value inside a config — object
+ * keys and array indices as `.`-joined segments (`model.api_key`, `headers.0`). A frozen launch
+ * records its `$secret` values' locations by these paths (ADR 0046), and engine and Viewer read
+ * them here. */
 
 /** The value at `path`, or `undefined` when any segment is absent. */
 export function valueAtConfigPath(
@@ -18,8 +19,8 @@ export function valueAtConfigPath(
   return current;
 }
 
-/** `value` with the leaf at `path` replaced by `update(leaf)`, copying only the containers on the path;
- * returned unchanged when the path does not exist. */
+/** `value` with the leaf at `path` replaced by `update(leaf)`, copying only the containers on the
+ * path; returned unchanged when the path does not exist. */
 export function updateAtConfigPath(
   value: JsonValue,
   path: string,

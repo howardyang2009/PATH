@@ -7,9 +7,10 @@ import { openWorkflowFile } from "../src/open-workflow.js";
 import { canonicalSerialize } from "../src/serialize.js";
 
 /**
- * #387 — the `$env` / `$secret` authoring affordance on a config value (designer-spec § `$env` / `$secret`
- * authoring, map decision 9). A per-config-value mode selector (`Literal` / `$env` / `$secret`) edits the
- * config region only; display is reference-only (never a resolved value); the wrapper round-trips intact.
+ * #387 — the `$env` / `$secret` authoring affordance on a config value (designer-spec § `$env` /
+ * `$secret` authoring, map decision 9). A per-config-value mode selector (`Literal` / `$env` /
+ * `$secret`) edits the config region only; display is reference-only (never a resolved value); the
+ * wrapper round-trips intact.
  */
 
 function uuid(n: number): string {
@@ -100,7 +101,8 @@ describe("config value mode selector", () => {
     const { canvas, pane } = await openPane();
     selectNode(canvas, "alpha");
     openSection(pane, "config");
-    // `prompt` (the prompt text) is a type field; `model` a first-class config field — neither carries the selector.
+    // `prompt` (the prompt text) is a type field; `model` a first-class config field — neither
+    // carries the selector.
     expect(within(pane).queryByLabelText("Prompt mode")).not.toBeInTheDocument();
     expect(within(pane).queryByLabelText("Model mode")).not.toBeInTheDocument();
   });

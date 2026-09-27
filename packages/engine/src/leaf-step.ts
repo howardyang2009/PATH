@@ -6,8 +6,9 @@ import type { StepRequest, StepResult } from "./plugin-seam/seam.js";
 import type { Cancellation, NodeExecContext, RunContext, SeqOutcome } from "./run-context.js";
 import type { StepEmitter } from "./run-emitter.js";
 
-// **Leaf steps**: every step type except `workflow`, dispatched through the frozen plugin registry to one
-// Worker (ADR 0021 sub-8). Owns worker selection, the `StepRequest`, the processor slot, and the result.
+// **Leaf steps**: every step type except `workflow`, dispatched through the frozen plugin registry
+// to one Worker (ADR 0021 sub-8). Owns worker selection, the `StepRequest`, the processor slot, and
+// the result.
 
 export interface LeafStepNode {
   type: string;
@@ -24,20 +25,24 @@ export interface LeafStepNode {
 export interface StepContext {
   run: RunContext;
   exec: NodeExecContext;
-  /** This step's config: the file's effective config with the step's own shadowing it (format §7). */
+  /** This step's config: the file's effective config with the step's own shadowing it (format
+   * §7). */
   stepConfig: ConfigObject;
-  /** Reports the minted step emitter so `runNode` can snapshot the post-step context under its run id. */
+  /** Reports the minted step emitter so `runNode` can snapshot the post-step context under its run
+   * id. */
   onLeafStep?: (step: StepEmitter) => void;
 }
 
 export interface SettleStepResult {
   step: StepEmitter;
-  /** The node: the name a worker error is prefixed with, and the `parse` applied to a string output. */
+  /** The node: the name a worker error is prefixed with, and the `parse` applied to a string
+   * output. */
   node: { name: string; parse?: "text" | "json" };
   result: StepResult;
   /** The worker's `meters` flag: a `usage` payload is recorded only for a metering worker. */
   meters: boolean;
-  /** The step's kill signal — a `parallel` block's or the operator's; `aborted` makes it `cancelled`. */
+  /** The step's kill signal — a `parallel` block's or the operator's; `aborted` makes it
+   * `cancelled`. */
   signal?: AbortSignal;
   cancellation?: Cancellation;
 }
@@ -106,7 +111,8 @@ export async function finishSucceeded(
   return { status: "succeeded", output };
 }
 
-// A never-aborting signal: `StepRequest.signal` is required, but a top-level uncancellable step has none.
+// A never-aborting signal: `StepRequest.signal` is required, but a top-level uncancellable step has
+// none.
 const NEVER_ABORT = new AbortController().signal;
 
 /**

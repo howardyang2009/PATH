@@ -29,12 +29,14 @@ export interface RunDockProps {
   /** The file open on the canvas — the launch target; `null` for a never-saved buffer. */
   workflowPath: string | null;
   workflowId: string | null;
-  /** The step-plugin registry, handed to the launch form for its worker-default field (ADR 0044). */
+  /** The step-plugin registry, handed to the launch form for its worker-default field (ADR
+   * 0044). */
   plugins: readonly WireStepPlugin[];
-  /** The open buffer's parsed root file, or `null`; the `Resume from …` button reads it for the eager
-   * legal-K check. */
+  /** The open buffer's parsed root file, or `null`; the `Resume from …` button reads it for the
+   * eager legal-K check. */
   rootFile: WorkflowFile | null;
-  /** The active buffer's dirty flag — gates save-first launch and the `Resume from …` clean-buffer gate. */
+  /** The active buffer's dirty flag — gates save-first launch and the `Resume from …` clean-buffer
+   * gate. */
   dirty: boolean;
   /** The open file's soft cross-node warning count — badges launch, never blocks it. */
   warningCount: number;
@@ -51,10 +53,11 @@ export interface RunDockProps {
 }
 
 /**
- * The Designer's run dock: the bottom-docked region reusing the Viewer's three read panels (`RunsList
+ * The Designer's run dock: the bottom-docked region reusing the Viewer's three read panels
+ * (`RunsList
  * │ RunDetail │ NodeIo`), so a run reads identically on both surfaces; the Designer adds scope (the
- * open file's `workflow_id`) and the save-first launch form above the list. Collapsed by default, with
- * expansion remembered only within the session.
+ * open file's `workflow_id`) and the save-first launch form above the list. Collapsed by default,
+ * with expansion remembered only within the session.
  */
 export function RunDock(props: RunDockProps): JSX.Element {
   const [expanded, setOpen] = useState(false);
@@ -62,8 +65,8 @@ export function RunDock(props: RunDockProps): JSX.Element {
   const open = expanded && props.disabledReason === undefined;
   const bodyRef = useRef<HTMLDivElement | null>(null);
 
-  // The dock's own height: one drag-set dimension (handle on the top edge, drag up grows). The width
-  // mechanics are the shared paired hook the app shell's rails use.
+  // The dock's own height: one drag-set dimension (handle on the top edge, drag up grows). The
+  // width mechanics are the shared paired hook the app shell's rails use.
   const dock = useDragSize({
     storageKey: HEIGHT_KEY,
     defaultSize: DEFAULT_HEIGHT,
@@ -147,8 +150,9 @@ export function RunDock(props: RunDockProps): JSX.Element {
               onResumed={props.onResumed}
               onDeleted={props.onDeleted}
               reloadNonce={props.reloadNonce}
-              // The `Resume from …` K-selection action rides in the selected row's action panel below
-              // plain Resume (ADR 0033), fed the watched tree and the open buffer for the legal-K check.
+              // The `Resume from …` K-selection action rides in the selected row's action panel
+              // below plain Resume (ADR 0033), fed the watched tree and the open buffer for the
+              // legal-K check.
               resumeFrom={
                 props.load.phase === "ready"
                   ? {
@@ -159,7 +163,8 @@ export function RunDock(props: RunDockProps): JSX.Element {
                     }
                   : undefined
               }
-              // So the row reads `awaiting` while a leaf is parked, though summary status stays `running` (ADR 0038).
+              // So the row reads `awaiting` while a leaf is parked, though summary status stays
+              // `running` (ADR 0038).
               displayStatus={
                 props.load.phase === "ready" ? props.load.value.displayStatus : undefined
               }
@@ -183,8 +188,9 @@ export function RunDock(props: RunDockProps): JSX.Element {
                 rootRunId={props.rootRunId}
                 selectedRunId={props.selectedRunId}
                 onSelectRun={props.onSelectRun}
-                // Passing the open buffer lets an awaiting leaf's assignee chip resolve by node id, the
-                // same surface the Viewer draws; the Viewer widens this to the reachable file set.
+                // Passing the open buffer lets an awaiting leaf's assignee chip resolve by node id,
+                // the same surface the Viewer draws; the Viewer widens this to the reachable file
+                // set.
                 workflowFiles={props.rootFile ? [props.rootFile] : []}
               />
             )}
@@ -200,11 +206,13 @@ export function RunDock(props: RunDockProps): JSX.Element {
             {selectedRun === undefined ? (
               <p className="pane-note">Select a run in the tree.</p>
             ) : (
-              // Passing the open buffer lets an awaiting leaf's Complete form build from `outputSchema` (ADR 0031).
+              // Passing the open buffer lets an awaiting leaf's Complete form build from
+              // `outputSchema` (ADR 0031).
               <NodeIo
                 client={props.client}
                 run={selectedRun}
-                // One snapshot feeds the pane: it reads this run's status and error off the view (ADR 0025/0031).
+                // One snapshot feeds the pane: it reads this run's status and error off the view
+                // (ADR 0025/0031).
                 view={props.load.phase === "ready" ? props.load.value : undefined}
                 workflowFiles={props.rootFile ? [props.rootFile] : []}
               />

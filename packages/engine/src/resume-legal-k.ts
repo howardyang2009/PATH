@@ -9,28 +9,29 @@ import {
 import { descendNodePath } from "./descend-node-path.js";
 
 /**
- * The legal-K authority for Resume-from-chosen-K (spec §5, ADR 0032/0036): resolves the source run id
- * to the rerun-boundary (K) node-id descent path and validates it against the current file, so
- * `--from` and `--list-eligible` can never disagree. K is either a node in the root file's serial order
- * (first level or inside sequences, a length-1 path) or a nested node reached by a root→…→K descent;
- * the path comes from walking the run's `parentRunId` chain, and each on-path level is validated
- * against its own file. Refusals, first failure wins: run in no run of the tree (400), deleted node or
- * unsucceeded K/prefix (409), illegal locus in a loop/parallel/branch body (400). The message is the
- * one wording authority a surface prints verbatim.
+ * The legal-K authority for Resume-from-chosen-K (spec §5, ADR 0032/0036): resolves the source run
+ * id to the rerun-boundary (K) node-id descent path and validates it against the current file, so
+ * `--from` and `--list-eligible` can never disagree. K is either a node in the root file's serial
+ * order (first level or inside sequences, a length-1 path) or a nested node reached by a root→…→K
+ * descent; the path comes from walking the run's `parentRunId` chain, and each on-path level is
+ * validated against its own file. Refusals, first failure wins: run in no run of the tree (400),
+ * deleted node or unsucceeded K/prefix (409), illegal locus in a loop/parallel/branch body (400).
+ * The message is the one wording authority a surface prints verbatim.
  */
 /**
- * The §5 taxonomy classification of a refusal, exposed so a surface can render a short reason without re-deriving it
- * from the `message` text — the `--list-eligible` column (spec §6).
+ * The §5 taxonomy classification of a refusal, exposed so a surface can render a short reason
+ * without re-deriving it from the `message` text — the `--list-eligible` column (spec §6).
  */
 export type LegalKReasonCode =
   | "not-in-tree" // the run id names no run of the source tree
   | "root-run"
   | "pass-run" // a goto pass container (ADR 0054); K is a node inside it, never the pass itself
-  | LegalKLevelReason; // the per-level taxonomy shared with the client's eager mirror (`classifyLevelK`)
+  // the per-level taxonomy shared with the client's eager mirror (`classifyLevelK`)
+  | LegalKLevelReason;
 
 /**
- * The innermost enclosing controller named in an `in-body` refusal (spec §6); an alias for `@path/schema`'s
- * `ControlBlockKind`, shared with the client's mirror.
+ * The innermost enclosing controller named in an `in-body` refusal (spec §6); an alias for
+ * `@path/schema`'s `ControlBlockKind`, shared with the client's mirror.
  */
 export type LegalKContainer = ControlBlockKind;
 
@@ -39,13 +40,14 @@ export interface LegalKRefusal {
   status: number;
   message: string;
   reason: LegalKReasonCode;
-  /** Only on `reason: "in-body"`: the innermost enclosing controller, so the listing can name it. */
+  /** Only on `reason: "in-body"`: the innermost enclosing controller, so the listing can name
+   * it. */
   container?: LegalKContainer;
 }
 
 /**
- * A legal K: the node-id descent path root→…→K, and level for level the goto pass each path-node sits in (ADR 0054
- * §6), `null` where the file holds no goto.
+ * A legal K: the node-id descent path root→…→K, and level for level the goto pass each path-node
+ * sits in (ADR 0054 §6), `null` where the file holds no goto.
  */
 export type LegalKResult =
   | { ok: true; nodePath: string[]; passes: (number | null)[] }
@@ -66,7 +68,8 @@ function refuse(
 /**
  * Resolve `runId` against the raw source tree `sourceRows` — the predecessor's own rows, not the
  * reuse-swapped plan input, since reasons 4 and 5 read its recorded statuses — and the current
- * `rootFile`/`rootDir` (with `files` for a nested K), returning the boundary node-id path or a refusal.
+ * `rootFile`/`rootDir` (with `files` for a nested K), returning the boundary node-id path or a
+ * refusal.
  */
 export function resolveLegalK(
   rootFile: WorkflowFile,
@@ -95,7 +98,8 @@ export function resolveLegalK(
       );
   }
   const { levels } = selection;
-  const nodePath = levels.map((level) => level.run.nodeId!); // non-null: the levels exclude the root and pass runs
+  // non-null: the levels exclude the root and pass runs
+  const nodePath = levels.map((level) => level.run.nodeId!);
   const passes = levels.map((level) => level.passRun?.pass ?? null);
 
   // Descend the current file tree along the node-id path once, up front, so each level's file feeds
@@ -108,7 +112,8 @@ export function resolveLegalK(
     const label = pathRun.nodeName ?? nodeId;
     const isLeaf = level === levels.length - 1;
 
-    // The descent reaches this level whenever every prior level descended, so absence is a divergence.
+    // The descent reaches this level whenever every prior level descended, so absence is a
+    // divergence.
     const levelInfo = descent.levels[level];
     if (!levelInfo) {
       return refuse(

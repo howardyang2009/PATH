@@ -4,13 +4,14 @@ import type { WorkflowNode } from "../src/node-type.js";
 import { walkNodes } from "../src/node-walk.js";
 import { FORMAT_VERSION, type WorkflowFile } from "../src/workflow-file-type.js";
 
-// A UUIDv4 the fixtures reuse for every authored id — inner ids are authoring ids, and instantiation
-// re-mints every one, so the source value never survives into the output.
+// A UUIDv4 the fixtures reuse for every authored id — inner ids are authoring ids, and
+// instantiation re-mints every one, so the source value never survives into the output.
 const UUID = "11111111-1111-4111-8111-111111111111";
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-// The ADR 0049 acceptance fixture: a `person-activity`-shaped leaf followed by a `branch` controller
-// whose arm reads the leaf's output by *value* (a name-level reference, untouched by instantiation).
+// The ADR 0049 acceptance fixture: a `person-activity`-shaped leaf followed by a `branch`
+// controller whose arm reads the leaf's output by *value* (a name-level reference, untouched by
+// instantiation).
 function acceptanceBody(): WorkflowNode[] {
   return [
     { type: "prompt", id: UUID, name: "activity", prompt: "Do the thing" } as WorkflowNode,

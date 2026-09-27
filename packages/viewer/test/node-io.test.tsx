@@ -201,8 +201,8 @@ describe("NodeIo", () => {
   });
 
   it("names the reused source run+tree when the shown I/O belongs to another run (#257)", async () => {
-    // A reuse row: the panel shows the source run's I/O (already resolved by the server), so it must
-    // also say so and name where those bytes live — the source's root run id and run id.
+    // A reuse row: the panel shows the source run's I/O (already resolved by the server), so it
+    // must also say so and name where those bytes live — the source's root run id and run id.
     const sourceRoot = "546ca6e6-3699-4d7d-8e4e-77b133528d02";
     const sourceRun = "5d7a664d-b485-40eb-aced-265119ec5f2d";
     const client = stubClient({ blobs: { [`${RUN}/input`]: { reused: true } } });
@@ -257,8 +257,8 @@ describe("NodeIo", () => {
     expect(context).toHaveTextContent('"since_tag": "1.3.0"');
     // Context is masked at the persistence boundary too — the pane renders what it is served.
     expect(context).toHaveTextContent('"token": "[secret:github_token]"');
-    // The context object carries a provenance line like Input's and Output's, derived from a sibling
-    // ref (there is no `context_ref` column) as `runs/<root>/<run>/context.json`.
+    // The context object carries a provenance line like Input's and Output's, derived from a
+    // sibling ref (there is no `context_ref` column) as `runs/<root>/<run>/context.json`.
     expect(context).toHaveTextContent(`runs/${ROOT}/${RUN}/context.json`);
   });
 
@@ -301,8 +301,9 @@ describe("NodeIo", () => {
 
   it("surfaces a failed run's error message in the E block", async () => {
     const client = stubClient({ blobs: { [`${RUN}/input`]: { a: 1 } } });
-    // The view folded this run's last failed `step-finished` from the event log; the pane reads the fact
-    // rather than scanning the narrative itself (the fold is covered in client-core's view-model test).
+    // The view folded this run's last failed `step-finished` from the event log; the pane reads the
+    // fact rather than scanning the narrative itself (the fold is covered in client-core's
+    // view-model test).
     const view = {
       displayStatus: new Map(),
       lastError: new Map([[RUN, "worker exited with code 1: boom"]]),
@@ -392,9 +393,10 @@ describe("NodeIo", () => {
   });
 
   it("shows the resumed-from root's input on a successor root, not the empty seed it wrote", async () => {
-    // A resume writes the successor root's own `input.json` as the empty seed it starts from; the input
-    // the tree actually started from belongs to the predecessor. The pane reads the predecessor's object
-    // directly (the same direct-to-source reading a reuse row gets) rather than a copy on disk.
+    // A resume writes the successor root's own `input.json` as the empty seed it starts from; the
+    // input the tree actually started from belongs to the predecessor. The pane reads the
+    // predecessor's object directly (the same direct-to-source reading a reuse row gets) rather
+    // than a copy on disk.
     const original = "05c47f7d-a6cb-4720-9b0f-11a8eb301726";
     const client = stubClient({
       blobs: { [`${original}/input`]: { test1: "test3", test4: "test5" } },

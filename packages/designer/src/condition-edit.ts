@@ -5,20 +5,23 @@ import {
   LEAF_CONDITION_TYPES,
 } from "@path/schema";
 
-/** The pure edit vocabulary the typed `Condition` builder is built on: it edits the structured AST, never
- * free text, so an ill-typed condition is *unrepresentable*. It owns a valid default per operator and the
- * operator switch that carries what it can from the previous shape. */
+/** The pure edit vocabulary the typed `Condition` builder is built on: it edits the structured AST,
+ * never free text, so an ill-typed condition is *unrepresentable*. It owns a valid default per
+ * operator and the operator switch that carries what it can from the previous shape. */
 
-/** The three combinators — the operators that compose other conditions rather than reading a `path`. */
+/** The three combinators — the operators that compose other conditions rather than reading a
+ * `path`. */
 export const COMBINATOR_CONDITION_TYPES = ["all", "any", "not"] as const;
 
-/** Every operator a builder row offers, leaves first then combinators, in the menu order the pane shows. */
+/** Every operator a builder row offers, leaves first then combinators, in the menu order the pane
+ * shows. */
 export const CONDITION_TYPES: readonly Condition["type"][] = [
   ...LEAF_CONDITION_TYPES,
   ...COMBINATOR_CONDITION_TYPES,
 ];
 
-/** True for a leaf predicate (one that reads a `path`), false for a combinator (`all` / `any` / `not`). */
+/** True for a leaf predicate (one that reads a `path`), false for a combinator (`all` / `any` /
+ * `not`). */
 export function isLeafConditionType(type: Condition["type"]): boolean {
   return (LEAF_CONDITION_TYPES as readonly string[]).includes(type);
 }
@@ -56,7 +59,8 @@ export function defaultScalar(kind: ScalarKind): JsonScalar {
   }
 }
 
-/** A fresh, structurally-valid condition of `type` — every operand slot filled with a valid default. */
+/** A fresh, structurally-valid condition of `type` — every operand slot filled with a valid
+ * default. */
 export function defaultConditionOfType(type: Condition["type"]): Condition {
   switch (type) {
     case "exists":
@@ -86,9 +90,10 @@ function pathOf(condition: Condition): string | undefined {
 }
 
 /**
- * Switch a condition's operator, carrying what the new shape can hold: a leaf → leaf keeps the dot-path,
- * an `all`/`any` keeps a combinator's children, a `not` keeps its single child. The result is always a
- * structurally-valid default of the new type, so the switch can never make a condition unrepresentable.
+ * Switch a condition's operator, carrying what the new shape can hold: a leaf → leaf keeps the
+ * dot-path, an `all`/`any` keeps a combinator's children, a `not` keeps its single child. The
+ * result is always a structurally-valid default of the new type, so the switch can never make a
+ * condition unrepresentable.
  */
 export function changeConditionType(prev: Condition, next: Condition["type"]): Condition {
   if (next === prev.type) return prev;
@@ -114,7 +119,8 @@ export function changeConditionType(prev: Condition, next: Condition["type"]): C
   return { type: combinator, of: [defaultLeaf()] };
 }
 
-/** Validate a whole condition against the schema; returns the first issue message, or `null` when valid. */
+/** Validate a whole condition against the schema; returns the first issue message, or `null` when
+ * valid. */
 export function validateCondition(condition: Condition): string | null {
   const result = ConditionSchema.safeParse(condition);
   return result.success ? null : (result.error.issues[0]?.message ?? "invalid condition");

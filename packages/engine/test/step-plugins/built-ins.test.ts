@@ -7,10 +7,11 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { STEP_PLUGINS_DIR, scanStepPlugins } from "../../src/plugin-seam/scan.js";
 import type { StepRequest, StepResult } from "../../src/plugin-seam/seam.js";
 
-// The end-to-end dogfood of the public surface (#336, ADR 0019 sub-10): the two shipped built-in leaf
-// step types are loaded through the real scanner (#335) from the real `plugin/step-plugin/` directory, and a
-// `binary` and a `prompt` node are validated through the schema factory (#334). Nothing is stubbed —
-// the folders resolve `@path/engine/plugin` exactly as a third-party plugin folder would.
+// The end-to-end dogfood of the public surface (#336, ADR 0019 sub-10): the two shipped built-in
+// leaf step types are loaded through the real scanner (#335) from the real `plugin/step-plugin/`
+// directory, and a `binary` and a `prompt` node are validated through the schema factory (#334).
+// Nothing is stubbed — the folders resolve `@path/engine/plugin` exactly as a third-party plugin
+// folder would.
 
 const UUID_FILE = "00000000-0000-4000-8000-000000000000";
 const UUID_BINARY = "11111111-1111-4111-8111-111111111111";
@@ -34,7 +35,8 @@ describe("the shipped built-ins load through the scanner", () => {
   it("declares the processor-slot and metering flags per worker", async () => {
     const registry = await loadRegistry();
 
-    // `prompt`'s `anthropic` needs a processor slot and meters; `binary`'s `spawn` stays uncapped and meters nothing.
+    // `prompt`'s `anthropic` needs a processor slot and meters; `binary`'s `spawn` stays uncapped
+    // and meters nothing.
     expect(registry.prompt!.workers.anthropic).toMatchObject({
       needsProcessorSlot: true,
       meters: true,
@@ -82,8 +84,8 @@ describe("the `prompt` plugin's two model workers", () => {
 
   it("offers both workers on the wire, so no surface restates the provider list", async () => {
     const registry = await loadRegistry();
-    // The same projection `GET /v0/step-plugins` serves the browser Designer (wire-step-plugins.ts);
-    // its worker dropdown appears whenever a type ships more than one.
+    // The same projection `GET /v0/step-plugins` serves the browser Designer
+    // (wire-step-plugins.ts); its worker dropdown appears whenever a type ships more than one.
     const response = toWireStepPlugins(registry);
     const prompt = response.step_plugins.find((p) => p.name === "prompt")!;
 
@@ -204,14 +206,16 @@ describe("the `binary` spawn worker", () => {
   }
 
   it("resolves its `cwd` field against `request.cwd`", async () => {
-    // A relative `cwd` field anchors to `request.cwd` (the workflow file's directory), never process.cwd().
+    // A relative `cwd` field anchors to `request.cwd` (the workflow file's directory), never
+    // process.cwd().
     const result = await runSpawn(
       { command: process.execPath, args: ["-e", "process.stdout.write(process.cwd())"], cwd: "." },
       dir,
     );
 
     expect(result).toMatchObject({ status: "succeeded" });
-    // `tmpdir()` may be a symlink (macOS `/var`→`/private/var`); the child reports the resolved real path.
+    // `tmpdir()` may be a symlink (macOS `/var`→`/private/var`); the child reports the resolved
+    // real path.
     const realDir = await realpath(dir);
     if (result.status === "succeeded") {
       expect(result.output).toBe(realDir);

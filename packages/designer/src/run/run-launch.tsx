@@ -3,7 +3,8 @@ import { LaunchForm } from "@path/viewer";
 
 export interface RunLaunchProps {
   client: PathApiClient;
-  /** The received step-plugin registry, passed through to the shared form's launch worker-default field (ADR 0044). */
+  /** The received step-plugin registry, passed through to the shared form's launch worker-default
+   * field (ADR 0044). */
   plugins: readonly WireStepPlugin[];
   /** The file open on the canvas; `null` for a never-saved buffer. */
   workflowPath: string | null;
@@ -14,8 +15,9 @@ export interface RunLaunchProps {
   onLaunched: (rootRunId: string) => void;
 }
 
-/** Save-first launch (ADR 0025): the shared {@link LaunchForm} with no picker; it runs the bytes on disk, so
- * a dirty or never-saved buffer gates it. The worker-default field rides along (ADR 0044). */
+/** Save-first launch (ADR 0025): the shared {@link LaunchForm} with no picker; it runs the bytes on
+ * disk, so a dirty or never-saved buffer gates it. The worker-default field rides along (ADR
+ * 0044). */
 export function RunLaunch({
   client,
   plugins,

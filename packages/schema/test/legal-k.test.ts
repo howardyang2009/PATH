@@ -11,7 +11,8 @@ import type { RunStatus } from "../src/run-status.js";
 
 /**
  * The per-level legal-K taxonomy (spec §5), the one predicate the engine authority and the client's
- * eager mirror both drive. The two surfaces used to spell it twice; this is its own test surface now.
+ * eager mirror both drive. The two surfaces used to spell it twice; this is its own test surface
+ * now.
  */
 
 // A leaf step node; the human id doubles as `id` and `name`, as the structural tests do.
@@ -24,7 +25,8 @@ const step = (id: string): WorkflowNode => ({
 });
 
 // A person-activity leaf — a plugin type, so it is not in the `WorkflowNode` union; cast as the
-// structural tests do. It is node-grain reusable (resume-from-k.md), so it gates the prefix like any step.
+// structural tests do. It is node-grain reusable (resume-from-k.md), so it gates the prefix like
+// any step.
 const person = (id: string): WorkflowNode =>
   ({ type: "person-activity", id, name: id, description: `do ${id}` }) as unknown as WorkflowNode;
 

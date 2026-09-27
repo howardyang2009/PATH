@@ -19,7 +19,8 @@ afterEach(async () => {
   rmSync(projectDir, { recursive: true, force: true });
 });
 
-/** `GET /v0/step-plugins` against a server started over `stepPlugins` (defaults to the real scan). */
+/** `GET /v0/step-plugins` against a server started over `stepPlugins` (defaults to the real
+ * scan). */
 async function getStepPlugins(stepPlugins?: LoadedStepPluginRegistry): Promise<Response> {
   handle = await startPathServer(projectDir, 0, undefined, undefined, stepPlugins);
   return fetch(`${handle.url}/v0/step-plugins`);
@@ -29,7 +30,8 @@ const doNotRun = () => Promise.reject(new Error("run must not be called"));
 
 describe("GET /v0/step-plugins", () => {
   it("serves the real registry: `prompt` and `binary` appear as ordinary snake_case entries", async () => {
-    // No injection — the server scans the real `packages/engine/plugin/step-plugin/` folder at start.
+    // No injection — the server scans the real `packages/engine/plugin/step-plugin/` folder at
+    // start.
     const res = await getStepPlugins();
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toBe("application/json");

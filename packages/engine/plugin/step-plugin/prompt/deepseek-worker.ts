@@ -3,42 +3,43 @@ import type { PromptConfig, PromptFields } from "./index.js";
 import { renderPromptMessage } from "./render-prompt-message.js";
 
 /**
- * The `prompt` type's `deepseek` worker: one OpenAI-compatible Chat Completions request per step-run
- * (https://api-docs.deepseek.com/api/create-chat-completion), selected by `"worker": "deepseek"` on the
- * step.
+ * The `prompt` type's `deepseek` worker: one OpenAI-compatible Chat Completions request per
+ * step-run (https://api-docs.deepseek.com/api/create-chat-completion), selected by `"worker":
+ * "deepseek"` on the step.
  *
- * DeepSeek also exposes an Anthropic-compatible endpoint, which would have let this worker reuse the
- * `anthropic` worker's Agent SDK transport verbatim. It does not, deliberately: the Agent SDK runs a whole
- * agent harness (tools, filesystem access, MCP servers, a bundled Claude Code binary) around the
- * model, and pointing that harness at a non-Anthropic endpoint makes the step's actual behavior depend
- * on how complete the third party's emulation is. A direct Chat Completions call sends exactly the
- * instruction the author wrote and takes exactly the text back, so this worker's behavior is legible
- * from its own file.
+ * DeepSeek also exposes an Anthropic-compatible endpoint, which would have let this worker reuse
+ * the `anthropic` worker's Agent SDK transport verbatim. It does not, deliberately: the Agent SDK
+ * runs a whole agent harness (tools, filesystem access, MCP servers, a bundled Claude Code binary)
+ * around the model, and pointing that harness at a non-Anthropic endpoint makes the step's actual
+ * behavior depend on how complete the third party's emulation is. A direct Chat Completions call
+ * sends exactly the instruction the author wrote and takes exactly the text back, so this worker's
+ * behavior is legible from its own file.
  *
  * The credential is read from `config.DEEPSEEK_API_KEY` first and `process.env.DEEPSEEK_API_KEY`
- * second (ADR 0045): config first because an operator launching a discovered workflow can supply the
- * key there without reaching the server's environment, and because a `$secret`-wrapped config value
- * is the one the masker collects — `process.env` is invisible to it. The environment stays as the
- * fallback a deployment-level key already used, so nothing that works today stops working. The
+ * second (ADR 0045): config first because an operator launching a discovered workflow can supply
+ * the key there without reaching the server's environment, and because a `$secret`-wrapped config
+ * value is the one the masker collects — `process.env` is invisible to it. The environment stays as
+ * the fallback a deployment-level key already used, so nothing that works today stops working. The
  * endpoint is environment only — `DEEPSEEK_BASE_URL` when a deployment proxies the API — because a
  * gateway address is deployment topology, not a per-run credential.
  *
- * The worker takes the same `fields` (`prompt`) and `config` (`model`, `options`) as `anthropic` — it is the
- * same step type, asked the same question — so a step switches provider by naming this worker and
- * changing nothing else.
+ * The worker takes the same `fields` (`prompt`) and `config` (`model`, `options`) as `anthropic` —
+ * it is the same step type, asked the same question — so a step switches provider by naming this
+ * worker and changing nothing else.
  */
 
-/** The API root every request path hangs off; `DEEPSEEK_BASE_URL` overrides it for a gateway or a test double. */
+/** The API root every request path hangs off; `DEEPSEEK_BASE_URL` overrides it for a gateway or a
+ * test double. */
 const DEFAULT_BASE_URL = "https://api.deepseek.com";
 
 /**
- * The DeepSeek models this worker knows the price of, per **million** tokens in USD, at the **peak**
- * rate (https://api-docs.deepseek.com/quick_start/pricing). Used only to turn the vendor's token counts
- * into the `estimatedCostUsd` the run row carries; never to gate or route a request.
+ * The DeepSeek models this worker knows the price of, per **million** tokens in USD, at the
+ * **peak** rate (https://api-docs.deepseek.com/quick_start/pricing). Used only to turn the vendor's
+ * token counts into the `estimatedCostUsd` the run row carries; never to gate or route a request.
  *
- * Peak, not off-peak: off-peak (all hours outside 01:00–04:00 and 06:00–10:00 UTC on weekdays) is half
- * these rates, so this is the ceiling of what the step could have cost. A cost estimate that can only
- * overstate is the honest direction for a ceiling to err.
+ * Peak, not off-peak: off-peak (all hours outside 01:00–04:00 and 06:00–10:00 UTC on weekdays) is
+ * half these rates, so this is the ceiling of what the step could have cost. A cost estimate that
+ * can only overstate is the honest direction for a ceiling to err.
  */
 const PEAK_USD_PER_MILLION_TOKENS: Record<
   string,
@@ -49,11 +50,11 @@ const PEAK_USD_PER_MILLION_TOKENS: Record<
 };
 
 /**
- * The Claude model names DeepSeek's own docs map onto its models. They are here so a step that switched
- * to this worker but left `model` inherited from a `config.model` naming a Claude model answers a
- * DeepSeek request instead of failing on the model name. The mapping is reported as a diagnostic
- * whenever it fires, because a silent substitution of the model behind a step is exactly the kind of
- * fact a run's audit should keep.
+ * The Claude model names DeepSeek's own docs map onto its models. They are here so a step that
+ * switched to this worker but left `model` inherited from a `config.model` naming a Claude model
+ * answers a DeepSeek request instead of failing on the model name. The mapping is reported as a
+ * diagnostic whenever it fires, because a silent substitution of the model behind a step is exactly
+ * the kind of fact a run's audit should keep.
  */
 function mapForeignModel(model: string): string | undefined {
   const name = model.toLowerCase();
@@ -62,7 +63,8 @@ function mapForeignModel(model: string): string | undefined {
   return undefined;
 }
 
-/** The request body for one call. Keys of the author's `options` bag this transport cannot express are ignored. */
+/** The request body for one call. Keys of the author's `options` bag this transport cannot express
+ * are ignored. */
 function buildRequestBody(request: StepRequest<PromptFields, PromptConfig>, model: string): string {
   const { prompt } = request.fields;
   const options = request.config.options ?? {};
@@ -75,25 +77,27 @@ function buildRequestBody(request: StepRequest<PromptFields, PromptConfig>, mode
   messages.push({ role: "user", content: renderPromptMessage(prompt, request.input) });
 
   const body: Record<string, unknown> = { model, messages, stream: false };
-  // Passed through when an author set them; DeepSeek's own defaults apply otherwise. `max_tokens` must
-  // be an integer to be accepted, so a non-number is dropped rather than sent to fail remotely.
+  // Passed through when an author set them; DeepSeek's own defaults apply otherwise. `max_tokens`
+  // must be an integer to be accepted, so a non-number is dropped rather than sent to fail
+  // remotely.
   if (typeof options.maxTokens === "number") body.max_tokens = options.maxTokens;
   if (typeof options.temperature === "number") body.temperature = options.temperature;
-  // DeepSeek-specific and passed through verbatim: `{ type: "disabled" }` turns thinking off, which is
-  // worth exposing because thinking mode changes both latency and what the model emits.
+  // DeepSeek-specific and passed through verbatim: `{ type: "disabled" }` turns thinking off, which
+  // is worth exposing because thinking mode changes both latency and what the model emits.
   if (options.thinking !== undefined) body.thinking = options.thinking;
   return JSON.stringify(body);
 }
 
-/** The vendor's own counter block, stored on the run row verbatim (spec §5.7). Undefined when the response carries none. */
+/** The vendor's own counter block, stored on the run row verbatim (spec §5.7). Undefined when the
+ * response carries none. */
 function asUsage(usage: unknown): JsonValue | undefined {
   return usage === undefined || usage === null ? undefined : (usage as JsonValue);
 }
 
 /**
- * The peak-rate cost estimate for one response, from DeepSeek's cache-aware counters. Returns undefined
- * for a model this worker holds no price for, or a response whose usage block is missing — an absent
- * estimate is honest; a zero would claim the step was free.
+ * The peak-rate cost estimate for one response, from DeepSeek's cache-aware counters. Returns
+ * undefined for a model this worker holds no price for, or a response whose usage block is missing
+ * — an absent estimate is honest; a zero would claim the step was free.
  */
 function estimateCostUsd(model: string, usage: JsonValue | undefined): number | undefined {
   const price = PEAK_USD_PER_MILLION_TOKENS[model];
@@ -124,16 +128,17 @@ function firstChoiceText(payload: unknown): { text: string; finishReason?: strin
   };
 }
 
-/** Keeps a provider's error text bounded — an HTML error page from a proxy is not worth a whole run row. */
+/** Keeps a provider's error text bounded — an HTML error page from a proxy is not worth a whole run
+ * row. */
 function truncate(text: string, limit = 500): string {
   return text.length <= limit ? text : `${text.slice(0, limit)}…`;
 }
 
 /**
- * The `deepseek` worker. Like `anthropic`, it declares `needsProcessorSlot: true` and `meters: true` — the
- * capabilities belong to the worker, and both make one metered processor call per step-run (ADR 0021
- * sub-5). `stderr` carries diagnostics, the one sanctioned channel (ADR 0020 sub-4): a model-name
- * mapping, and a body the API rejected.
+ * The `deepseek` worker. Like `anthropic`, it declares `needsProcessorSlot: true` and `meters:
+ * true` — the capabilities belong to the worker, and both make one metered processor call per
+ * step-run (ADR 0021 sub-5). `stderr` carries diagnostics, the one sanctioned channel (ADR 0020
+ * sub-4): a model-name mapping, and a body the API rejected.
  */
 export async function runDeepseekWorker(
   request: StepRequest<PromptFields, PromptConfig>,
@@ -143,9 +148,9 @@ export async function runDeepseekWorker(
 
   if (signal.aborted) return { status: "failed", error: "cancelled" };
 
-  // Config beats the environment; an empty string counts as unset in both, so a `config.DEEPSEEK_API_KEY`
-  // that resolved to "" (an `$env` naming an empty variable, say) falls through to the environment
-  // rather than sending an empty bearer token.
+  // Config beats the environment; an empty string counts as unset in both, so a
+  // `config.DEEPSEEK_API_KEY` that resolved to "" (an `$env` naming an empty variable, say) falls
+  // through to the environment rather than sending an empty bearer token.
   const configKey = request.config.DEEPSEEK_API_KEY;
   const apiKey =
     configKey !== undefined && configKey !== "" ? configKey : process.env.DEEPSEEK_API_KEY;
@@ -208,9 +213,10 @@ export async function runDeepseekWorker(
     }
 
     const usage = asUsage((payload as { usage?: unknown }).usage);
-    // A `length` finish means the answer was cut off at `max_tokens`. It is not an error — the text is
-    // real model output and a downstream `parse: "json"` step is the right place to reject a truncated
-    // document — but it is worth a diagnostic, because a silently clipped answer is otherwise invisible.
+    // A `length` finish means the answer was cut off at `max_tokens`. It is not an error — the text
+    // is real model output and a downstream `parse: "json"` step is the right place to reject a
+    // truncated document — but it is worth a diagnostic, because a silently clipped answer is
+    // otherwise invisible.
     const truncation =
       choice.finishReason === "length" ? "response was cut off at max_tokens" : undefined;
     return {
@@ -223,7 +229,8 @@ export async function runDeepseekWorker(
         undefined,
     };
   } catch (err) {
-    // An abort surfaces here as the fetch rejecting; the engine relabels it cancelled from the signal.
+    // An abort surfaces here as the fetch rejecting; the engine relabels it cancelled from the
+    // signal.
     return {
       status: "failed",
       error: `DeepSeek request failed: ${err instanceof Error ? err.message : String(err)}`,

@@ -27,7 +27,8 @@ function leaf(id: number, name: string): WorkflowNode {
   return { type: "prompt", id: uuid(id), name, prompt: "" };
 }
 
-/** A file exercising every container: a top step, a sequence, a parallel, a branch (arm + else), a while-do. */
+/** A file exercising every container: a top step, a sequence, a parallel, a branch (arm + else), a
+ * while-do. */
 function fixture(): WorkflowFile {
   return {
     format: FORMAT_VERSION,
@@ -133,8 +134,10 @@ describe("edit-tree — reorder preserves every id (#368, ADR 0015)", () => {
 
   it("is a no-op off either end and for a single-node slot, returning the same file (no spurious edit)", () => {
     const f = fixture();
-    expect(apply(f, { kind: "move", id: uuid(2), delta: -1 })).toBe(f); // already first in the file body
-    expect(apply(f, { kind: "move", id: uuid(14), delta: -1 })).toBe(f); // while body has no siblings
+    // already first in the file body
+    expect(apply(f, { kind: "move", id: uuid(2), delta: -1 })).toBe(f);
+    // while body has no siblings
+    expect(apply(f, { kind: "move", id: uuid(14), delta: -1 })).toBe(f);
     expect(apply(f, { kind: "move", id: uuid(7), delta: -1 })).toBe(f); // first parallel branch, up
     expect(apply(f, { kind: "move", id: uuid(8), delta: 1 })).toBe(f); // last parallel branch, down
     expect(apply(f, { kind: "move", id: uuid(10), delta: -1 })).toBe(f); // first branch arm, up
@@ -219,8 +222,10 @@ describe("edit-tree — delete slot rules (#368)", () => {
   });
 
   it("unwrapEdit throws on a refused delete rather than dropping it", () => {
-    const oneBranch = unwrapEdit(del(fixture(), uuid(7))); // remove b1, leaving the parallel with only b2
-    expect(() => unwrapEdit(del(oneBranch, uuid(8)))).toThrow(/edit refused/); // the last branch is refused
+    // remove b1, leaving the parallel with only b2
+    const oneBranch = unwrapEdit(del(fixture(), uuid(7)));
+    // the last branch is refused
+    expect(() => unwrapEdit(del(oneBranch, uuid(8)))).toThrow(/edit refused/);
   });
 });
 

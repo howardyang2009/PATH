@@ -10,8 +10,8 @@ import { type HttpTransport, ifMatchHeader } from "./transport.js";
 /** The camelCase input to `POST /v0/templates` (server-api-v0.md §10.3): the save-as envelope. */
 export type CreateTemplateInput = WirePostTemplateRequest;
 
-/** The camelCase input to `PUT /v0/templates/:id` (server-api-v0.md §10.4): `body`'s `id` must equal `id`; the
- * required `ifMatch` is the ETag of the last read or write.
+/** The camelCase input to `PUT /v0/templates/:id` (server-api-v0.md §10.4): `body`'s `id` must
+ * equal `id`; the required `ifMatch` is the ETag of the last read or write.
  */
 export interface PutTemplateInput {
   id: string;
@@ -19,7 +19,8 @@ export interface PutTemplateInput {
   ifMatch: string;
 }
 
-/** A template write's reply (server-api-v0.md §10.3, §10.4): the template id, its path, and the new ETag. */
+/** A template write's reply (server-api-v0.md §10.3, §10.4): the template id, its path, and the new
+ * ETag. */
 export interface TemplateWriteResult {
   id: string;
   relativePath: string;
@@ -58,7 +59,8 @@ export async function deleteTemplate(http: HttpTransport, id: string): Promise<v
   await http.request(`/v0/templates/${encodeURIComponent(id)}`, { method: "DELETE" });
 }
 
-/** The one transport behind both template writes: a JSON body, an optional `If-Match`, a parsed reply. */
+/** The one transport behind both template writes: a JSON body, an optional `If-Match`, a parsed
+ * reply. */
 async function writeTemplate(
   http: HttpTransport,
   path: string,

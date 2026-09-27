@@ -7,9 +7,9 @@ import { type FakeObserver, fakeObserver } from "./fake-observer.js";
 import { stampNames } from "./stamp-names.js";
 
 /**
- * Replay from seed (#608, ADR 0062): a re-entered workflow-run starts its context from its seed — the
- * root from its counterpart's recorded `input.json`, a nested run from its own replayed input — and
- * the reused prefix re-publishes in walk order, so every node sees exactly the context it saw
+ * Replay from seed (#608, ADR 0062): a re-entered workflow-run starts its context from its seed —
+ * the root from its counterpart's recorded `input.json`, a nested run from its own replayed input —
+ * and the reused prefix re-publishes in walk order, so every node sees exactly the context it saw
  * originally. The counterpart's final `context.json`
  * is never the starting point: under Resume-from-K it already holds keys written after K.
  *
@@ -185,7 +185,8 @@ describe("replay from seed — straight-line file", () => {
 describe("replay from seed — while-do", () => {
   it("a re-run loop evaluates its condition against the seed, not against keys its own past iterations wrote", async () => {
     // [a, loop { body }]: the loop runs while `done` is absent; its body publishes `done`. The
-    // original's final context holds `done`, so a restore-by-load engine would skip the loop entirely.
+    // original's final context holds `done`, so a restore-by-load engine would skip the loop
+    // entirely.
     const file = tree(
       [
         { type: "prompt", id: "a", name: "a", prompt: "a", publish: { fromA: "${output}" } },
@@ -336,7 +337,8 @@ describe("replay from seed — while-do", () => {
 
 describe("replay from seed — nested workflow step", () => {
   it("a descended child seeds from its own input, so its K does not see its own later writes", async () => {
-    // Root [sub → nested [p, k, q]]. The child's seed is v="orig"; q overwrites v. K = k inside sub.
+    // Root [sub → nested [p, k, q]]. The child's seed is v="orig"; q overwrites v. K = k inside
+    // sub.
     const nestedPath = join("/tmp", "nested.workflow.json");
     const nested = tree(
       [

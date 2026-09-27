@@ -7,11 +7,12 @@ import { openWorkflowFile } from "../src/open-workflow.js";
 import { canonicalSerialize } from "../src/serialize.js";
 
 /**
- * #388 — a cross-node soft error (a read of a context key no step publishes) is a per-node marker and a
- * problems-panel row, and it never blocks a save.
+ * #388 — a cross-node soft error (a read of a context key no step publishes) is a per-node marker
+ * and a problems-panel row, and it never blocks a save.
  */
 
-/** The canonical on-disk bytes of a file — what a Designer save writes, so it opens clean (not dirty). */
+/** The canonical on-disk bytes of a file — what a Designer save writes, so it opens clean (not
+ * dirty). */
 function canonical(f: Record<string, unknown>): string {
   const opened = openWorkflowFile(JSON.stringify(f), DEFAULT_PLUGINS);
   if (opened.status !== "opened") throw new Error(opened.status);
@@ -27,8 +28,8 @@ const PATH = "flows/main.workflow.json";
 
 /**
  * A file whose one step reads `${context.missing}` — a soft cross-node error (no step publishes
- * `missing`). Id-less, so it opens **dirty** (ids stamped on import), which enables Save without a UI
- * edit — the shape the "save is not blocked" criterion needs.
+ * `missing`). Id-less, so it opens **dirty** (ids stamped on import), which enables Save without a
+ * UI edit — the shape the "save is not blocked" criterion needs.
  */
 function danglingFile(): Record<string, unknown> {
   return {
@@ -85,7 +86,8 @@ describe("cross-node validation markers + problems panel", () => {
   });
 
   it("badges launch with the warning count, and still lets the run launch", async () => {
-    // A canonical (clean) file so launch is not gated by the dirty flag — only badged by the warning.
+    // A canonical (clean) file so launch is not gated by the dirty flag — only badged by the
+    // warning.
     const clean = canonical({
       format: FORMAT_VERSION,
       id: uuid(1),

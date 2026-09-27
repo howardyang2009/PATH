@@ -10,8 +10,8 @@ export interface InterpolationCheckResult {
   error?: string;
 }
 
-/** One piece of an interpolable string (docs/format/workflow-format.md §6). A bare `$` not followed by `{` is
- * inert literal text and arrives inside a `literal` token. */
+/** One piece of an interpolable string (docs/format/workflow-format.md §6). A bare `$` not followed
+ * by `{` is inert literal text and arrives inside a `literal` token. */
 export type InterpolationToken =
   | { kind: "literal"; text: string }
   /** A `$${` escape: the substituted result is a literal `${`. */
@@ -20,9 +20,9 @@ export type InterpolationToken =
   /** A `${` with no closing `}`. Rejected at load time; a runtime consumer must still handle it. */
   | { kind: "unclosed"; index: number };
 
-/** Tokenizes an interpolable string per docs/format/workflow-format.md §6 — the one place the placeholder
- * grammar is implemented, so `unclosed` is a token every consumer must handle. Resolves nothing:
- * what a `path` refers to is the caller's business. */
+/** Tokenizes an interpolable string per docs/format/workflow-format.md §6 — the one place the
+ * placeholder grammar is implemented, so `unclosed` is a token every consumer must handle. Resolves
+ * nothing: what a `path` refers to is the caller's business. */
 export function* tokenizeInterpolation(value: string): Generator<InterpolationToken> {
   let literalStart = 0;
   let i = 0;
@@ -65,7 +65,8 @@ export function* tokenizeInterpolation(value: string): Generator<InterpolationTo
   yield* flushLiteral(value.length);
 }
 
-/** Validates `${dot.path}` syntax and `$${` escaping (docs/format/workflow-format.md §6); resolves nothing. */
+/** Validates `${dot.path}` syntax and `$${` escaping (docs/format/workflow-format.md §6); resolves
+ * nothing. */
 export function checkInterpolationSyntax(
   value: string,
   allowedRoots: readonly InterpolationRoot[],

@@ -12,8 +12,9 @@ export function handleGetRun({ res, ctx, params: [rootRunId] }: ApiRequest<[stri
   // Still reports a tree when the root row is missing, falling back to the earliest row's status.
   // `output` does not fall back: `tree.output()` is the *root's* output, not a child's.
   const rootRow = tree.root ?? tree.runs[0]!;
-  // What the run was launched with (ADR 0046) — a per-tree fact. Absent for a bare launch; its config
-  // is stored masked, with `secret_keys` naming the values a continuation must be given again.
+  // What the run was launched with (ADR 0046) — a per-tree fact. Absent for a bare launch; its
+  // config is stored masked, with `secret_keys` naming the values a continuation must be given
+  // again.
   const launchFacts = ctx.project.archive.launchFacts(rootRunId);
 
   sendJson(res, 200, {

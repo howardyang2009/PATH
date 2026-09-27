@@ -1,6 +1,6 @@
 /**
- * Resolve a ref's relative path from the referring file's **directory**, POSIX-style (no `node:path`); the server
- * confines the result to the project root.
+ * Resolve a ref's relative path from the referring file's **directory**, POSIX-style (no
+ * `node:path`); the server confines the result to the project root.
  */
 export function resolveRefPath(fromPath: string, ref: string): string {
   const fromDir = fromPath.split("/").slice(0, -1);
@@ -23,7 +23,8 @@ export function basename(path: string): string {
 
 /**
  * The inverse of `resolveRefPath`: the relative `ref` a file at `fromPath` must store to reach the
- * project-relative `toPath`; satisfies `resolveRefPath(fromPath, relativeRefPath(fromPath, toPath)) === toPath`.
+ * project-relative `toPath`; satisfies `resolveRefPath(fromPath, relativeRefPath(fromPath, toPath))
+ * === toPath`.
  */
 export function relativeRefPath(fromPath: string, toPath: string): string {
   const fromDir = fromPath

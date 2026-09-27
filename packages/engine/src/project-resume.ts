@@ -19,8 +19,8 @@ import { type LegalKContainer, type LegalKReasonCode, resolveLegalK } from "./re
 import type { ResumeInput } from "./run-options.js";
 
 /**
- * The outcome of `Project.resume`: a Result because "no such root run" is ordinary operator input; `found: true`
- * carries the successor's own fresh root run id.
+ * The outcome of `Project.resume`: a Result because "no such root run" is ordinary operator input;
+ * `found: true` carries the successor's own fresh root run id.
  */
 export type ResumeResult =
   | { found: false; error: string }
@@ -28,15 +28,16 @@ export type ResumeResult =
   | {
       found: true;
       rootRunId: string;
-      // `awaiting` when the successor re-ran a person-activity step and parked; its root stays `running`.
+      // `awaiting` when the successor re-ran a person-activity step and parked; its root stays
+      // `running`.
       status: "succeeded" | "failed" | "cancelled" | "awaiting";
       output: JsonValue;
       error?: string;
     };
 
 /**
- * A Resume-from-K refusal: the legal-K authority rejected `rerunFromRunId` before any successor started. `status`
- * follows the §5 taxonomy (400 unsupported, 409 conflict).
+ * A Resume-from-K refusal: the legal-K authority rejected `rerunFromRunId` before any successor
+ * started. `status` follows the §5 taxonomy (400 unsupported, 409 conflict).
  */
 export interface ResumeRefusal {
   status: number;
@@ -61,17 +62,18 @@ export interface EligibilityRow {
 }
 
 /**
- * The outcome of `Project.listEligible`: `found: false` carries the message a resume of this root would; `found:
- * true` carries every source-tree run in DFS pre-order.
+ * The outcome of `Project.listEligible`: `found: false` carries the message a resume of this root
+ * would; `found: true` carries every source-tree run in DFS pre-order.
  */
 export type ListEligibleResult =
   | { found: false; error: string }
   | { found: true; rows: EligibilityRow[] };
 
 /**
- * The precondition `resume` and `listEligible` share: the source tree named by `rootRunId` must exist
- * and be terminal. `getRunsForRoot` keys on `root_run_id`, so a child id returns no rows — the same
- * `not-found` case; terminality is read off the root row, a non-terminal source refused whole.
+ * The precondition `resume` and `listEligible` share: the source tree named by `rootRunId` must
+ * exist and be terminal. `getRunsForRoot` keys on `root_run_id`, so a child id returns no rows —
+ * the same `not-found` case; terminality is read off the root row, a non-terminal source refused
+ * whole.
  */
 type ResumeSourceProblem =
   | { kind: "not-found"; message: string }
@@ -91,7 +93,8 @@ function checkResumeSource(rows: RunRecord[], rootRunId: string): ResumeSourcePr
   return undefined;
 }
 
-/** The source tree's runs in depth-first pre-order: a node under its parent, children in stored order. */
+/** The source tree's runs in depth-first pre-order: a node under its parent, children in stored
+ * order. */
 function preorderRuns(rows: RunRecord[]): RunRecord[] {
   const byParent = childrenByParent(rows);
   const root = findRootRun(rows);
@@ -104,7 +107,8 @@ function preorderRuns(rows: RunRecord[]): RunRecord[] {
   return out;
 }
 
-/** `Project.resume`: re-run `rootFile` as a successor of the terminal tree rooted at `rootRunId`. */
+/** `Project.resume`: re-run `rootFile` as a successor of the terminal tree rooted at
+ * `rootRunId`. */
 export async function resumeProjectRun(
   { db, absDir, execute }: ProjectCore,
   rootFile: WorkflowFile,
@@ -112,8 +116,8 @@ export async function resumeProjectRun(
   workflowDir: string,
   opts: ProjectRunOptions,
 ): Promise<ResumeResult> {
-  // The raw predecessor tree, read once. `getRunsForRoot` keys on `root_run_id`, so an unknown or child id
-  // yields no rows — the `found: false` case.
+  // The raw predecessor tree, read once. `getRunsForRoot` keys on `root_run_id`, so an unknown or
+  // child id yields no rows — the `found: false` case.
   const directRuns = getRunsForRoot(db, rootRunId);
   const problem = checkResumeSource(directRuns, rootRunId);
   if (problem !== undefined) {
@@ -123,8 +127,8 @@ export async function resumeProjectRun(
       : { found: false, refusal: { status: 409, message: problem.message } };
   }
 
-  // Resume-from-K: resolve the source run id to the boundary node-id path and enforce legal-K here — the one
-  // authority. The raw predecessor tree is the input, never the swapped one.
+  // Resume-from-K: resolve the source run id to the boundary node-id path and enforce legal-K here
+  // — the one authority. The raw predecessor tree is the input, never the swapped one.
   const { rerunFromRunId, ...runOpts } = opts;
   let rerunFromNodePath: string[] | undefined;
   let rerunFromPasses: (number | null)[] | undefined;
@@ -142,8 +146,8 @@ export async function resumeProjectRun(
     rerunFromPasses = verdict.passes;
   }
 
-  // The continuation recipe Resume and Complete share: rows with reuse rows swapped for their source, a
-  // read-only blob reader, and the recorded launch facts.
+  // The continuation recipe Resume and Complete share: rows with reuse rows swapped for their
+  // source, a read-only blob reader, and the recorded launch facts.
   const originalRuns = sourceRuns(db, directRuns);
   const capture = successorCapture();
   const resume: ResumeInput = {
@@ -156,8 +160,8 @@ export async function resumeProjectRun(
   const result = await execute(
     rootFile,
     workflowDir,
-    // Launch facts are identity-defining like `input` (ADR 0046): a resume recovers the predecessor's frozen
-    // config and worker defaults; the file tier stays live.
+    // Launch facts are identity-defining like `input` (ADR 0046): a resume recovers the
+    // predecessor's frozen config and worker defaults; the file tier stays live.
     continuationRunOptions(runOpts, getLaunchFacts(db, rootRunId)),
     resume,
     [capture.observer],

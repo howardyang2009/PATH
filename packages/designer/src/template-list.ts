@@ -3,8 +3,9 @@ import { useCallback, useMemo } from "react";
 import { useScanOnSave } from "./scan-on-save.js";
 import type { SaveState } from "./session-reducer.js";
 
-/** The palette's template list: one scan at load and one after each save that lands. A failed scan is its
- * own phase, not an empty list, so the palette never claims the project has none (ADR 0050). */
+/** The palette's template list: one scan at load and one after each save that lands. A failed scan
+ * is its own phase, not an empty list, so the palette never claims the project has none (ADR
+ * 0050). */
 export type TemplateListLoad =
   | { phase: "loading" }
   | { phase: "error"; message: string }

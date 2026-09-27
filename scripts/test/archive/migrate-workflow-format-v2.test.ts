@@ -13,15 +13,16 @@ import { runCodemod } from "../run-codemod.js";
  *
  * The codemod ran once, against this repo's 30 files, and the two behaviours the frozen spec argues
  * for by name went unexercised by anything repeatable: the **refusal** path never fired (no file in
- * the repo collides), and the **rename** path — an unwrapped single-node branch taking its wrapper's
- * `name`, so the `collect` output key survives the unwrap — cannot be re-demonstrated from the repo
- * now that every file is at `@2`. That rename has teeth: `run-parallel.ts` keys collect output by
- * `branch.name`, and `docs/dogfood/format-changelog.js` destructures those keys with `= ""`
- * defaults, so a skipped rename would have produced a silently empty changelog rather than an error.
+ * the repo collides), and the **rename** path — an unwrapped single-node branch taking its
+ * wrapper's `name`, so the `collect` output key survives the unwrap — cannot be re-demonstrated
+ * from the repo now that every file is at `@2`. That rename has teeth: `run-parallel.ts` keys
+ * collect output by `branch.name`, and `docs/dogfood/format-changelog.js` destructures those keys
+ * with `= ""` defaults, so a skipped rename would have produced a silently empty changelog rather
+ * than an error.
  *
- * Driven through the process, not the module: the script ends in a bare `main()` at module scope, so
- * importing it would run the codemod against `cwd`. The subprocess also reaches what a unit test of
- * `migrateDocument` cannot — the `process.exitCode = 1` and the stderr report on a refusal.
+ * Driven through the process, not the module: the script ends in a bare `main()` at module scope,
+ * so importing it would run the codemod against `cwd`. The subprocess also reaches what a unit test
+ * of `migrateDocument` cannot — the `process.exitCode = 1` and the stderr report on a refusal.
  */
 const scriptsRoot = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
 
@@ -62,10 +63,10 @@ const read = (file: string): Record<string, unknown> => JSON.parse(readFileSync(
 const bytes = (file: string): string => readFileSync(file, "utf8");
 
 /**
- * The migrated document must be a *loadable* file, not merely a reshaped one. `@2` is superseded now
- * (the schema reads `@5`), so lift a copy the rest of the way with the `@3`, `@4` and `@5` codemods first —
- * the check stays "the migrated file loads" without disturbing the `@2` file the test's other
- * assertions read.
+ * The migrated document must be a *loadable* file, not merely a reshaped one. `@2` is superseded
+ * now (the schema reads `@5`), so lift a copy the rest of the way with the `@3`, `@4` and `@5`
+ * codemods first — the check stays "the migrated file loads" without disturbing the `@2` file the
+ * test's other assertions read.
  */
 function expectSchemaValid(file: string): void {
   const copy = `${file}.lifted.json`;

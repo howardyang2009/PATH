@@ -19,8 +19,9 @@ import type { RunEvent } from "../src/run-observer.js";
 
 /**
  * The continuation recipe Resume and Complete share (#architecture-deepening). These pin the four
- * answers `continuation.ts` owns — the reuse-row swap, the blob reader, the recovered launch facts, and
- * the successor-root capture — because both engine entry points read them and neither may drift.
+ * answers `continuation.ts` owns — the reuse-row swap, the blob reader, the recovered launch facts,
+ * and the successor-root capture — because both engine entry points read them and neither may
+ * drift.
  */
 
 let dir: string;
@@ -36,7 +37,8 @@ afterEach(() => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-/** A row to insert: only the fields these tests care about, the rest left at their column defaults. */
+/** A row to insert: only the fields these tests care about, the rest left at their column
+ * defaults. */
 function newRow(runId: string, parentRunId: string | null, rootRunId = "root-1") {
   return {
     runId,
@@ -159,7 +161,8 @@ describe("continuationRunOptions", () => {
       model: "supplied-model",
       token: { $secret: "real-credential" },
     });
-    // Supplied again, so nothing is missing — the run must not end at its first step naming the key.
+    // Supplied again, so nothing is missing — the run must not end at its first step naming the
+    // key.
     expect(options.unresolvedLaunchSecrets).toEqual([]);
   });
 
@@ -200,7 +203,8 @@ describe("successorCapture", () => {
   });
 });
 
-/** A node the disposition adapters read: only the two fields they look at, cast to the body-node type. */
+/** A node the disposition adapters read: only the two fields they look at, cast to the body-node
+ * type. */
 function node(
   id: string,
   type = "binary",

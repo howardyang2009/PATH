@@ -6,8 +6,8 @@ import type {
 } from "@path/schema";
 import { type HttpTransport, parseReply, toApiError } from "./transport.js";
 
-/** The Designer edit-lock lease (ADR 0017): `session_id` is client-minted, the timestamps are server-stamped, and
- * `expires_at` is computed by the server, never trusted from the client.
+/** The Designer edit-lock lease (ADR 0017): `session_id` is client-minted, the timestamps are
+ * server-stamped, and `expires_at` is computed by the server, never trusted from the client.
  */
 export type WorkflowLease = WireWorkflowLease;
 
@@ -16,7 +16,8 @@ export interface AcquireLockInput {
   /** The workflow's `/`-bearing relative path — the body field, not a URL segment. */
   workflowPath: string;
   sessionId: string;
-  /** `true` overwrites a live marker held by another session — gate it behind an explicit user confirm. */
+  /** `true` overwrites a live marker held by another session — gate it behind an explicit user
+   * confirm. */
   takeover?: boolean;
 }
 
@@ -26,15 +27,15 @@ export interface LeaseOpInput {
   sessionId: string;
 }
 
-/** The outcome of an acquire: `held-by-other` is the `409` a **live** marker under another session takes, carrying the
- * holder's `expires_at` — a normal result here, not a `PathApiError`.
+/** The outcome of an acquire: `held-by-other` is the `409` a **live** marker under another session
+ * takes, carrying the holder's `expires_at` — a normal result here, not a `PathApiError`.
  */
 export type AcquireLockResult =
   | { status: "granted"; lease: WorkflowLease }
   | { status: "held-by-other"; expiresAt: string | null };
 
-/** The outcome of a heartbeat: `lost` is the `409` a reclaimed or taken-over marker returns, so the client stops
- * beating.
+/** The outcome of a heartbeat: `lost` is the `409` a reclaimed or taken-over marker returns, so the
+ * client stops beating.
  */
 export type HeartbeatResult = { status: "renewed"; lease: WorkflowLease } | { status: "lost" };
 

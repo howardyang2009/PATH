@@ -2,10 +2,11 @@ import { type RefObject, useCallback, useEffect, useRef, useState } from "react"
 import { beginDrag } from "./drag-size.js";
 
 /**
- * Drag-set pane widths with one fluid neighbour: two panes carry an explicit px width, the third takes
- * what is left. The two may sit adjacent or on opposite sides — the clamp is the same either way — and
- * `grow` signs which pointer direction widens each. The clamp is coupled (each pane's max reads the
- * other's live width), so it is this hook's own; pointer transport is the shared `beginDrag`.
+ * Drag-set pane widths with one fluid neighbour: two panes carry an explicit px width, the third
+ * takes what is left. The two may sit adjacent or on opposite sides — the clamp is the same either
+ * way — and `grow` signs which pointer direction widens each. The clamp is coupled (each pane's max
+ * reads the other's live width), so it is this hook's own; pointer transport is the shared
+ * `beginDrag`.
  */
 export interface PaneWidthsOptions {
   /** `localStorage` key the two widths persist under, as JSON `[a, b]`. */
@@ -20,7 +21,8 @@ export interface PaneWidthsOptions {
   grow: readonly [1 | -1, 1 | -1];
 }
 
-/** The props to spread onto a separator element; the caller adds `className`, `aria-label`, `data-*`. */
+/** The props to spread onto a separator element; the caller adds `className`, `aria-label`,
+ * `data-*`. */
 export interface PaneHandleProps {
   role: "separator";
   "aria-orientation": "vertical";
@@ -62,9 +64,9 @@ export function usePaneWidths(opts: PaneWidthsOptions): PaneWidths {
   const [widths, setWidths] = useState<[number, number]>(() =>
     loadWidths(storageKey, defaults, min),
   );
-  // Mirror `grow` in a ref: callers commonly pass an inline `[1, -1]` literal, so depending on it would
-  // rebuild the drag callbacks on the first `setWidth` re-render and let the unmount-cleanup effect tear
-  // out the `window` listeners mid-drag.
+  // Mirror `grow` in a ref: callers commonly pass an inline `[1, -1]` literal, so depending on it
+  // would rebuild the drag callbacks on the first `setWidth` re-render and let the unmount-cleanup
+  // effect tear out the `window` listeners mid-drag.
   const growRef = useRef(grow);
   growRef.current = grow;
   const dragRef = useRef<{ index: 0 | 1; startX: number; startWidth: number } | null>(null);
@@ -121,7 +123,8 @@ export function usePaneWidths(opts: PaneWidthsOptions): PaneWidths {
       onPointerDown: (e) => {
         e.preventDefault();
         dragRef.current = { index, startX: e.clientX, startWidth: widths[index] };
-        // The shared transport captures the pointer, holds the cursor, and clears the drag ref on pointer up.
+        // The shared transport captures the pointer, holds the cursor, and clears the drag ref on
+        // pointer up.
         stopRef.current = beginDrag(e, {
           cursor: "col-resize",
           onMove: onPointerMove,

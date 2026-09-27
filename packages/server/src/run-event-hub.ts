@@ -28,7 +28,8 @@ export class RunEventHub {
     for (const listener of channel.listeners) listener(event);
   }
 
-  /** The root run reached a terminal status — notify subscribers (end-of-stream) and drop the channel. */
+  /** The root run reached a terminal status — notify subscribers (end-of-stream) and drop the
+   * channel. */
   close(rootRunId: string): void {
     const channel = this.channels.get(rootRunId);
     if (!channel) return;
@@ -36,7 +37,8 @@ export class RunEventHub {
     for (const listener of channel.closeListeners) listener();
   }
 
-  /** Attach a live subscriber; returns an unsubscribe function, or `null` if there is no open channel. */
+  /** Attach a live subscriber; returns an unsubscribe function, or `null` if there is no open
+   * channel. */
   subscribe(
     rootRunId: string,
     onEvent: EventListener,

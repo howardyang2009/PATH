@@ -8,15 +8,17 @@ import {
 import { mergeConfig } from "./merge-config.js";
 
 /**
- * The engine's read of the two config wrappers, `{"$env": "<NAME>"}` (format §7.3) and `{"$secret": …}` (ADR 0022
- * sub-4); where a wrapper may sit is `@path/schema`'s answer. Run start hands the masker the *resolved* values —
- * masking is by value, so collecting before resolution would mask the name, not the credential.
+ * The engine's read of the two config wrappers, `{"$env": "<NAME>"}` (format §7.3) and `{"$secret":
+ * …}` (ADR 0022 sub-4); where a wrapper may sit is `@path/schema`'s answer. Run start hands the
+ * masker the *resolved* values — masking is by value, so collecting before resolution would mask
+ * the name, not the credential.
  */
 
 /** A snapshot of the environment: `process.env`'s shape, and anything a test hands over instead. */
 export type EnvSource = { readonly [name: string]: string | undefined };
 
-/** One `{"$env": "<NAME>"}` whose variable is not set, with the config key path it was named under. */
+/** One `{"$env": "<NAME>"}` whose variable is not set, with the config key path it was named
+ * under. */
 export interface UnsetEnvVar {
   name: string;
   /** The dot-path the wrapper sits at, from the config object's own key down — for the operator. */
@@ -37,16 +39,17 @@ export interface RunEnvResolution {
 }
 
 /**
- * Resolves every `$env` wrapper in one config object against `env`. An unset wrapper is left standing, not
- * placeholdered (`findUnsetEnv` makes running with one unreachable); empty counts as set — `FOO=` exports an empty
- * value and only an absent name is unset.
+ * Resolves every `$env` wrapper in one config object against `env`. An unset wrapper is left
+ * standing, not placeholdered (`findUnsetEnv` makes running with one unreachable); empty counts as
+ * set — `FOO=` exports an empty value and only an absent name is unset.
  */
 export function resolveConfigEnv(config: ConfigObject, env: EnvSource): EnvResolution {
   const unset: UnsetEnvVar[] = [];
   const resolved: ConfigObject = {};
 
-  // Per config *value*, keyed by the object's own key: a config object's keys are field names, not wrapper positions
-  // (format §7.3), so walking the object itself would misread a field named `$env`.
+  // Per config *value*, keyed by the object's own key: a config object's keys are field names, not
+  // wrapper positions (format §7.3), so walking the object itself would misread a field named
+  // `$env`.
   for (const [key, value] of Object.entries(config)) {
     const mapped = mapEnv(
       value as unknown as JsonValue,
@@ -67,17 +70,18 @@ export function resolveConfigEnv(config: ConfigObject, env: EnvSource): EnvResol
 }
 
 /**
- * The effective config for one merge: `$env` looked up and `$secret` handed back as its real value, in one call —
- * what validation, interpolation, condition evaluation and the worker all read. `$env` stays a separate step because
- * its unset names are reported at run start, and the `$secret` marker is left standing for the masker.
+ * The effective config for one merge: `$env` looked up and `$secret` handed back as its real value,
+ * in one call — what validation, interpolation, condition evaluation and the worker all read.
+ * `$env` stays a separate step because its unset names are reported at run start, and the `$secret`
+ * marker is left standing for the masker.
  */
 export function resolveEffectiveConfig(merged: ConfigObject, env: EnvSource): ConfigObject {
   return unwrapSecrets(resolveConfigEnv(merged, env).config);
 }
 
 /**
- * The effective config at one level (format §7): `override` shadows `base` key by key, then `$env` is resolved and
- * `$secret` unwrapped.
+ * The effective config at one level (format §7): `override` shadows `base` key by key, then `$env`
+ * is resolved and `$secret` unwrapped.
  */
 export function effectiveConfig(
   base: ConfigObject,
@@ -100,9 +104,9 @@ function unwrapSecrets(config: ConfigObject): ConfigObject {
 }
 
 /**
- * The run-start reading over every config a run can read: the resolved configs the masker collects from and every
- * variable not found. One walk answers both, so the halves cannot disagree; the list is deduped by name under the
- * first key naming it.
+ * The run-start reading over every config a run can read: the resolved configs the masker collects
+ * from and every variable not found. One walk answers both, so the halves cannot disagree; the list
+ * is deduped by name under the first key naming it.
  */
 export function resolveRunEnv(configs: ConfigObject[], env: EnvSource): RunEnvResolution {
   const byName = new Map<string, UnsetEnvVar>();
@@ -120,8 +124,8 @@ export function resolveRunEnv(configs: ConfigObject[], env: EnvSource): RunEnvRe
 }
 
 /**
- * The failure a run with unset variables ends on — every name and where each was found, worded "failed before its
- * first step" because the run row already exists.
+ * The failure a run with unset variables ends on — every name and where each was found, worded
+ * "failed before its first step" because the run row already exists.
  */
 export function describeUnsetEnv(unset: UnsetEnvVar[]): string {
   const list = unset

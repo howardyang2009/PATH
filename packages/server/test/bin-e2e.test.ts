@@ -8,10 +8,11 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 const packageRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const fixturesDir = join(packageRoot, "test", "fixtures");
 const bin = join(packageRoot, "bin", "path-server.ts");
-// Invoke tsx by its absolute bin path, never `npx tsx`. `npx` resolves `tsx` relative to the child's
-// `cwd`; the "defaults to cwd" test runs with `cwd` set to a throwaway tmpdir that has no repo
-// `node_modules` above it, so `npx` there fell through to a network install of tsx and hung past the
-// 5s test timeout (#220). `tsx` is a direct devDependency, so its `.bin` shim is always present.
+// Invoke tsx by its absolute bin path, never `npx tsx`. `npx` resolves `tsx` relative to the
+// child's `cwd`; the "defaults to cwd" test runs with `cwd` set to a throwaway tmpdir that has no
+// repo `node_modules` above it, so `npx` there fell through to a network install of tsx and hung
+// past the 5s test timeout (#220). `tsx` is a direct devDependency, so its `.bin` shim is always
+// present.
 const tsxBin = join(packageRoot, "node_modules", ".bin", "tsx");
 
 let projectDir: string;

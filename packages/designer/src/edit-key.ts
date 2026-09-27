@@ -1,9 +1,10 @@
 /**
- * One field edit's identity — owner, field, and row — as a value rather than a hand-minted string: the undo fold's
- * equality and the draft hooks' reset test.
+ * One field edit's identity — owner, field, and row — as a value rather than a hand-minted string:
+ * the undo fold's equality and the draft hooks' reset test.
  */
 
-/** One field edit's identity. `owner` is the node's durable GUID, or the file's own id for a file-level field. */
+/** One field edit's identity. `owner` is the node's durable GUID, or the file's own id for a
+ * file-level field. */
 export interface EditKey {
   readonly owner: string;
   readonly field: string;
@@ -20,7 +21,7 @@ export function sameEditKey(a: EditKey | undefined, b: EditKey | undefined): boo
 }
 
 /**
- * Commit one edit: `key` folds this commit into the in-progress undo entry when it matches the previous one; absent
- * for a structural edit.
+ * Commit one edit: `key` folds this commit into the in-progress undo entry when it matches the
+ * previous one; absent for a structural edit.
  */
 export type EditCommit<T> = (next: T, key?: EditKey) => void;

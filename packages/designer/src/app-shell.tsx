@@ -23,7 +23,8 @@ export interface AppShellProps {
 }
 
 /**
- * The Designer app frame: its own shell, not the Viewer's, though its run dock reuses the Viewer's run read panels.
+ * The Designer app frame: its own shell, not the Viewer's, though its run dock reuses the Viewer's
+ * run read panels.
  */
 export function AppShell({
   palette,
@@ -35,7 +36,8 @@ export function AppShell({
   runDock,
 }: AppShellProps) {
   const panesRef = useRef<HTMLDivElement | null>(null);
-  // Palette handle grows +1 (right edge), properties -1 (left edge); the stage between takes the remainder.
+  // Palette handle grows +1 (right edge), properties -1 (left edge); the stage between takes the
+  // remainder.
   const { widths, handleProps } = usePaneWidths({
     storageKey: RAILS_KEY,
     defaults: DEFAULT_RAILS,
@@ -52,7 +54,8 @@ export function AppShell({
         <span className="brand">PATH</span>
         <span className="brand-sub">designer</span>
         {modeSwitch ?? null}
-        {/* The centre slot always renders, so the toolbar keeps the right end with or without a title. */}
+        {/* The centre slot always renders, so the toolbar keeps the right end with or without a
+          title. */}
         <div className="topbar-title">{title ?? null}</div>
         {toolbar ? <div className="toolbar">{toolbar}</div> : null}
       </header>

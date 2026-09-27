@@ -1,8 +1,9 @@
 import type { LogEvent } from "@path/schema";
 import { nodeEventLabel } from "./node-label.js";
 
-/** One log event as one line of the narrative; every branch is exhaustive over the `LogEvent` union, so a new event
- * type is a compile error. A `trace` is per-predicate and does not fit one dense line, so it is never rendered.
+/** One log event as one line of the narrative; every branch is exhaustive over the `LogEvent`
+ * union, so a new event type is a compile error. A `trace` is per-predicate and does not fit one
+ * dense line, so it is never rendered.
  */
 export function eventMessage(event: LogEvent): string {
   const label = nodeEventLabel(event.node_id, event.node_name);
@@ -12,7 +13,8 @@ export function eventMessage(event: LogEvent): string {
     case "step-awaiting":
       return `${label} awaiting completion`;
     case "step-finished":
-      // The `error` tail carries the exit code + a short stderr tail on a binary step (mvp spec §8.1).
+      // The `error` tail carries the exit code + a short stderr tail on a binary step (mvp spec
+      // §8.1).
       return event.error === undefined
         ? `${label} ${event.status}`
         : `${label} ${event.status} · ${event.error}`;
@@ -21,7 +23,8 @@ export function eventMessage(event: LogEvent): string {
     case "checkpoint-failed":
       return `checkpoint ${label} failed`;
     case "branch-taken":
-      // The fallback arm has no index and no condition — naming it "arm else" would read as an index.
+      // The fallback arm has no index and no condition — naming it "arm else" would read as an
+      // index.
       return event.arm === "else"
         ? `branch ${label} took the else arm`
         : `branch ${label} took arm ${event.arm}`;

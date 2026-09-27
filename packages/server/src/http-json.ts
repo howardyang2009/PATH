@@ -45,10 +45,10 @@ export function readJsonBody(
 }
 
 /**
- * Read a request body, JSON-parse it, and check it against `schema` — the prologue every body-bearing
- * route shares. `undefined` once the `400` has been sent: invalid JSON, or a body the schema rejects
- * (with zod's issues as `details`). `raw` is the parsed JSON before the schema touched it, for a route
- * that must keep the author's key order.
+ * Read a request body, JSON-parse it, and check it against `schema` — the prologue every
+ * body-bearing route shares. `undefined` once the `400` has been sent: invalid JSON, or a body the
+ * schema rejects (with zod's issues as `details`). `raw` is the parsed JSON before the schema
+ * touched it, for a route that must keep the author's key order.
  */
 export async function readRequestBody<T>(
   req: IncomingMessage,

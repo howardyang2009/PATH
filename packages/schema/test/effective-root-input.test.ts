@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import { effectiveRootInput, launchInput } from "../src/effective-root-input.js";
 
 // The root-input fallback (format @4 §1a): a non-empty operator override wins, else the file's own
-// top-level `input`, else `{}`. Every launch door resolves it through this one function, so `path run`
-// and `POST /v0/runs` cannot disagree about which seed a run records.
+// top-level `input`, else `{}`. Every launch door resolves it through this one function, so `path
+// run` and `POST /v0/runs` cannot disagree about which seed a run records.
 describe("effectiveRootInput", () => {
   const fileInput = { ticket: 7 };
 

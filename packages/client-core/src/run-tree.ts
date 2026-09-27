@@ -18,7 +18,8 @@ export function buildRunTree(
   const root = runs.get(rootRunId);
   if (!root) return null;
 
-  // An orphan waits at the root — the event stream can run ahead of the last tree read (`orphanTo`).
+  // An orphan waits at the root — the event stream can run ahead of the last tree read
+  // (`orphanTo`).
   const byParent = childrenByParent(runs.values(), { orphanTo: rootRunId });
   for (const siblings of byParent.values()) siblings.sort(byStartOrder);
 

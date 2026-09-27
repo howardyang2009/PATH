@@ -1,31 +1,32 @@
 /**
- * One-time codemod for the workflow-format @2 migration — uniform single-node container slots and the
- * `sequence` controller (workflow-format-v2.md §0, §11; ADR 0014).
+ * One-time codemod for the workflow-format @2 migration — uniform single-node container slots and
+ * the `sequence` controller (workflow-format-v2.md §0, §11; ADR 0014).
  *
  * Rewrites every `*.workflow.json` in this repo from `path/workflow@1` to `path/workflow@2`:
  *
  *   - bumps `format` to `path/workflow@2`;
- *   - **unwraps each `parallel` branch**: the `@1` wrapper `{ id, name, body }` — a thing that was not
- *     itself a node — becomes the branch's single node directly in `branches`. When the wrapper held
- *     exactly one node, that node *is* the branch, and it is **renamed to the wrapper's `name`** so the
- *     `collect` / `wait-one` output key (which in `@1` was the wrapper's name, §4.3) is byte-preserved.
- *     When the wrapper held several nodes, the wrapper becomes a `sequence` carrying the same `id` +
- *     `name` (its shape was already a sequence's).
+ *   - **unwraps each `parallel` branch**: the `@1` wrapper `{ id, name, body }` — a thing that was
+ *     not itself a node — becomes the branch's single node directly in `branches`. When the wrapper
+ *     held exactly one node, that node *is* the branch, and it is **renamed to the wrapper's
+ *     `name`** so the `collect` / `wait-one` output key (which in `@1` was the wrapper's name,
+ *     §4.3) is byte-preserved. When the wrapper held several nodes, the wrapper becomes a
+ *     `sequence` carrying the same `id` + `name` (its shape was already a sequence's).
  *   - converts every **single-`node` slot** — a `branch` arm's occupant, a `branch`'s `else`, and a
- *     `while-do`'s body — from the `@1` node array to one node: a lone node directly, several wrapped
- *     in a minted `sequence` (§3.1, §4.3).
- *   - leaves the two node-array slots alone: the file's top-level `body` and a `sequence`'s `body` (§0).
+ *     `while-do`'s body — from the `@1` node array to one node: a lone node directly, several
+ *     wrapped in a minted `sequence` (§3.1, §4.3).
+ *   - leaves the two node-array slots alone: the file's top-level `body` and a `sequence`'s `body`
+ *     (§0).
  *
- * Unlike its `@0`→`@1` predecessor `scripts/archive/migrate-workflow-format-v1.ts`, this codemod **preserves
- * ids** — every node already carries its durable GUID (ADR 0006, fill-once), so nothing is
- * regenerated. Only minted `sequence` nodes get a fresh `randomUUID()`.
+ * Unlike its `@0`→`@1` predecessor `scripts/archive/migrate-workflow-format-v1.ts`, this codemod
+ * **preserves ids** — every node already carries its durable GUID (ADR 0006, fill-once), so nothing
+ * is regenerated. Only minted `sequence` nodes get a fresh `randomUUID()`.
  *
  * **Refuses rather than inventing.** If unwrapping a branch would rename its node to a `name` that
- * already exists elsewhere in the file, the codemod stops and reports the file rather than minting a
- * disambiguated name (§11). It refuses an **empty** container slot on the same grounds: a `sequence`
- * body is min 1, so the only rewrite available would be a file the schema rejects. Both refusals
- * leave the file byte-unchanged and exit 1. Across this repo's files neither fires and no `sequence`
- * is minted.
+ * already exists elsewhere in the file, the codemod stops and reports the file rather than minting
+ * a disambiguated name (§11). It refuses an **empty** container slot on the same grounds: a
+ * `sequence` body is min 1, so the only rewrite available would be a file the schema rejects. Both
+ * refusals leave the file byte-unchanged and exit 1. Across this repo's files neither fires and no
+ * `sequence` is minted.
  *
  * Idempotent: a file already at `@2` (or still at `@0`) is left untouched.
  *
@@ -41,7 +42,8 @@ const NEXT_FORMAT = "path/workflow@2";
 
 type JsonObject = { [key: string]: unknown };
 
-/** Thrown when a file cannot be migrated without inventing something — reported, and the file is left as-is. */
+/** Thrown when a file cannot be migrated without inventing something — reported, and the file is
+ * left as-is. */
 class MigrationRefused extends Error {}
 
 /**
@@ -58,10 +60,10 @@ function isObject(value: unknown): value is JsonObject {
 }
 
 /**
- * The names already in use across the whole file (§3: `name` is unique at every nesting level). Built
- * from the pre-migration document so a minted `sequence` name can be disambiguated against it, and so
- * a branch rename can be checked for collision. Includes `@1` branch-wrapper names — they occupied the
- * same namespace even though the wrapper was not a node.
+ * The names already in use across the whole file (§3: `name` is unique at every nesting level).
+ * Built from the pre-migration document so a minted `sequence` name can be disambiguated against
+ * it, and so a branch rename can be checked for collision. Includes `@1` branch-wrapper names —
+ * they occupied the same namespace even though the wrapper was not a node.
  */
 function collectNames(doc: JsonObject): Set<string> {
   const names = new Set<string>();
@@ -87,7 +89,8 @@ interface Ctx {
   used: Set<string>;
 }
 
-/** A file-unique `name` for a minted `sequence`, derived from its owner and disambiguated if needed. */
+/** A file-unique `name` for a minted `sequence`, derived from its owner and disambiguated if
+ * needed. */
 function mintName(base: string, ctx: Ctx): string {
   let candidate = base;
   let suffix = 2;
@@ -97,8 +100,9 @@ function mintName(base: string, ctx: Ctx): string {
 }
 
 /**
- * Collapse a `@1` node array standing in a single-`node` slot (an arm, an `else`, a `while-do` body)
- * into one node: a lone node passes through; several become a minted `sequence` carrying them in order.
+ * Collapse a `@1` node array standing in a single-`node` slot (an arm, an `else`, a `while-do`
+ * body) into one node: a lone node passes through; several become a minted `sequence` carrying them
+ * in order.
  */
 function toSingleNode(nodes: unknown[], baseName: string, ctx: Ctx): unknown {
   const migrated = migrateNodeArray(nodes, ctx);
@@ -108,7 +112,8 @@ function toSingleNode(nodes: unknown[], baseName: string, ctx: Ctx): unknown {
   return { type: "sequence", id: randomUUID(), name: mintName(baseName, ctx), body: migrated };
 }
 
-/** Unwrap one `@1` `parallel` branch wrapper into the `@2` branch node (single node, or a `sequence`). */
+/** Unwrap one `@1` `parallel` branch wrapper into the `@2` branch node (single node, or a
+ * `sequence`). */
 function unwrapBranch(branch: unknown, ctx: Ctx): unknown {
   if (!isObject(branch)) return branch;
   const wrapperName = branch.name;
@@ -119,7 +124,8 @@ function unwrapBranch(branch: unknown, ctx: Ctx): unknown {
     );
   }
   if (migratedBody.length === 1 && isObject(migratedBody[0])) {
-    // The single occupant *is* the branch. Rename it to the wrapper's name to preserve the collect key.
+    // The single occupant *is* the branch. Rename it to the wrapper's name to preserve the collect
+    // key.
     const node = migratedBody[0];
     node.name = wrapperName ?? node.name;
     return node;
@@ -130,9 +136,9 @@ function unwrapBranch(branch: unknown, ctx: Ctx): unknown {
 
 /**
  * The first `name` borne by two `@2` nodes, or null when every name is unique (§3). A branch unwrap
- * renames its node to the wrapper's name; in a valid `@1` file that never collides (names were already
- * file-unique), but a hand-edited file could, and the codemod refuses rather than inventing a
- * disambiguated name (§11).
+ * renames its node to the wrapper's name; in a valid `@1` file that never collides (names were
+ * already file-unique), but a hand-edited file could, and the codemod refuses rather than inventing
+ * a disambiguated name (§11).
  */
 function findDuplicateName(doc: JsonObject): string | null {
   const seen = new Set<string>();
@@ -179,8 +185,8 @@ function migrateChildBodies(node: JsonObject, ctx: Ctx): void {
     node.node = toSingleNode(node.body, `${asName(node.name)}-body`, ctx);
     delete node.body;
   } else if (Array.isArray(node.body)) {
-    // A `sequence`'s body (only present if the file was already partly `@2`) or any other node-array
-    // stays an array of migrated nodes.
+    // A `sequence`'s body (only present if the file was already partly `@2`) or any other
+    // node-array stays an array of migrated nodes.
     node.body = migrateNodeArray(node.body, ctx);
   }
 }
@@ -197,7 +203,8 @@ function migrateNodeArray(nodes: unknown[], ctx: Ctx): unknown[] {
   });
 }
 
-/** @returns the migrated document, or null when the file is not a `@1` workflow (already `@2`, or `@0`). */
+/** @returns the migrated document, or null when the file is not a `@1` workflow (already `@2`, or
+ * `@0`). */
 function migrateDocument(doc: unknown): JsonObject | null {
   if (!isObject(doc) || doc.format !== LEGACY_FORMAT) return null;
   const ctx: Ctx = { used: collectNames(doc) };

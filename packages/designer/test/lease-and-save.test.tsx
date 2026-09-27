@@ -6,8 +6,8 @@ import { App } from "../src/app.js";
 import { canonicalSerialize } from "../src/serialize.js";
 
 /**
- * #371 — the Designer's edit-lock lease (acquire on open, a confirmation-gated takeover, one lease per
- * descended ref file) and its save through the write route (`PUT` with `If-Match`).
+ * #371 — the Designer's edit-lock lease (acquire on open, a confirmation-gated takeover, one lease
+ * per descended ref file) and its save through the write route (`PUT` with `If-Match`).
  */
 
 /** A distinct valid UUIDv4 per seed. */
@@ -129,7 +129,8 @@ describe("Designer edit-lock lease", () => {
 describe("Designer save through the write route", () => {
   it("saves through PUT with the If-Match ETag and preserves every node id, clearing the dirty flag", async () => {
     const calls = makeCalls();
-    // An id-less-but-valid file opens dirty (ids stamped on import) — so Save is enabled without an edit.
+    // An id-less-but-valid file opens dirty (ids stamped on import) — so Save is enabled without an
+    // edit.
     const idless = rootFile();
     delete idless.id;
     delete (idless.body as Record<string, unknown>[])[0]!.id;
@@ -143,15 +144,17 @@ describe("Designer save through the write route", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     await waitFor(() => expect(calls.put).toHaveLength(1));
-    // The read ETag rides as If-Match (ADR 0016), and every node id is present in the saved bytes (ADR 0015).
+    // The read ETag rides as If-Match (ADR 0016), and every node id is present in the saved bytes
+    // (ADR 0015).
     expect(calls.put[0]!.ifMatch).toBe('"stub"');
     const saved = calls.put[0]!.body.workflow;
     expect(typeof saved.id).toBe("string");
     for (const node of saved.body as Record<string, unknown>[]) {
       expect(typeof node.id).toBe("string");
     }
-    // The buffer is now clean: "Saved" shows and the dirty badge is gone (the one clean save-point).
-    // It shows in the top bar's centre slot, not among the toolbar buttons, so they never shift.
+    // The buffer is now clean: "Saved" shows and the dirty badge is gone (the one clean
+    // save-point). It shows in the top bar's centre slot, not among the toolbar buttons, so they
+    // never shift.
     expect((await screen.findByText("Saved")).closest(".topbar-title")).not.toBeNull();
     expect(screen.queryByText(/stamped on import/)).not.toBeInTheDocument();
     // The status replaces the workflow's file name in that slot.
@@ -159,7 +162,8 @@ describe("Designer save through the write route", () => {
   });
 
   it("names the open workflow's file in the top bar while no status shows", async () => {
-    // Canonical bytes, so the file opens clean (ADR 0030) and no "Unsaved edits" status replaces the name.
+    // Canonical bytes, so the file opens clean (ADR 0030) and no "Unsaved edits" status replaces
+    // the name.
     const clean = {
       format: FORMAT_VERSION,
       id: uuid(1),
@@ -193,9 +197,9 @@ describe("Designer save through the write route", () => {
     await screen.findByText("draft");
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
-    // Anchor on the async cause before asserting its effect: wait for the PUT to have landed (the 412), so the
-    // conflict dispatch is one render away. Without this the banner assertion raced the in-flight save and
-    // could time out under a loaded CI runner.
+    // Anchor on the async cause before asserting its effect: wait for the PUT to have landed (the
+    // 412), so the conflict dispatch is one render away. Without this the banner assertion raced
+    // the in-flight save and could time out under a loaded CI runner.
     await waitFor(() => expect(calls.put).toHaveLength(1));
     const alert = await screen.findByText(/changed on disk since you opened it/);
     // It replaces the file status in the top bar's centre slot, not a banner after the buttons.
@@ -235,8 +239,9 @@ describe("Designer save through the write route", () => {
 
     await screen.findByText("draft");
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
-    // The conflict banner waits on the async 412 response and a pane re-render; under a loaded CI runner
-    // that can exceed findByText's 1s default, so give the network-driven waits in this test more room (#510).
+    // The conflict banner waits on the async 412 response and a pane re-render; under a loaded CI
+    // runner that can exceed findByText's 1s default, so give the network-driven waits in this test
+    // more room (#510).
     await screen.findByText(/changed on disk since you opened it/, undefined, { timeout: 5000 });
 
     // Reload discards the buffer for the on-disk bytes, clearing the conflict.

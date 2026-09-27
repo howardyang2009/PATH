@@ -3,7 +3,8 @@ import { childBodies } from "./node-walk.js";
 import type { WorkflowFile } from "./workflow-file-type.js";
 
 /** **Instantiation** (ADR 0049): the pure transform turning a Step-Template body into ordinary
- * workflow nodes — deep-copy, re-stamp every `id`, copy data verbatim, uniquify names, wrap 2+ for a slot. */
+ * workflow nodes — deep-copy, re-stamp every `id`, copy data verbatim, uniquify names, wrap 2+ for
+ * a slot. */
 export interface InstantiateOptions {
   /** Names already in use in the target, so a colliding name is uniquified. Defaults to none. */
   usedNames?: Iterable<string>;
@@ -12,7 +13,8 @@ export interface InstantiateOptions {
   socket?: "list" | "single";
 }
 
-/** A free name derived from `base`: `base`, then `base-2`, `base-3`, … until one is unused. Reserves it. */
+/** A free name derived from `base`: `base`, then `base-2`, `base-3`, … until one is unused.
+ * Reserves it. */
 export function uniqueName(base: string, used: Set<string>): string {
   if (!used.has(base)) {
     used.add(base);
@@ -27,8 +29,8 @@ export function uniqueName(base: string, used: Set<string>): string {
   }
 }
 
-/** Re-stamps a cloned node in place: fresh id, name verbatim unless taken. Pre-order, so a node's own
- * name is reserved before its children's — the deterministic order ADR 0049 fixes. */
+/** Re-stamps a cloned node in place: fresh id, name verbatim unless taken. Pre-order, so a node's
+ * own name is reserved before its children's — the deterministic order ADR 0049 fixes. */
 function restamp(node: WorkflowNode, used: Set<string>): void {
   (node as { id: string }).id = crypto.randomUUID();
   (node as { name: string }).name = uniqueName(node.name, used);
@@ -45,7 +47,8 @@ export function instantiate(
   const nodes = structuredClone(body) as WorkflowNode[];
   for (const node of nodes) restamp(node, used);
 
-  // A 2+-node body cannot occupy a single-node slot as-is (ADR 0014 / `@2` §4.3); wrap it in a `sequence`.
+  // A 2+-node body cannot occupy a single-node slot as-is (ADR 0014 / `@2` §4.3); wrap it in a
+  // `sequence`.
   if (options.socket === "single" && nodes.length >= 2) {
     return [
       {
@@ -59,8 +62,9 @@ export function instantiate(
   return nodes;
 }
 
-/** Whole-workflow copy: {@link instantiate} over the body plus a fresh workflow `id` — two workflows
- * must not share a source-workflow identity (ADR 0006). Every other field rides across verbatim. */
+/** Whole-workflow copy: {@link instantiate} over the body plus a fresh workflow `id` — two
+ * workflows must not share a source-workflow identity (ADR 0006). Every other field rides across
+ * verbatim. */
 export function instantiateWorkflow(template: WorkflowFile): WorkflowFile {
   const file = structuredClone(template);
   return { ...file, id: crypto.randomUUID(), body: instantiate(file.body) };

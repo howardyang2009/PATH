@@ -3,11 +3,13 @@ import { type ConfigObject, type WorkflowFile, type WorkflowNode, walkNodes } fr
 import { type EnvSource, effectiveConfig } from "./resolve-env.js";
 
 /**
- * The loaded ref tree: one root `workflow.json` plus every file its nested `workflow` steps reach, each level's `ref`
- * resolved against that level's own directory, with the config that reaches each node.
+ * The loaded ref tree: one root `workflow.json` plus every file its nested `workflow` steps reach,
+ * each level's `ref` resolved against that level's own directory, with the config that reaches each
+ * node.
  */
 
-/** A resolved nested-`workflow` reference: the child file and the directory its own `ref`s resolve against. */
+/** A resolved nested-`workflow` reference: the child file and the directory its own `ref`s resolve
+ * against. */
 export interface ChildRef {
   file: WorkflowFile;
   dir: string;
@@ -25,7 +27,8 @@ export interface RefTreeEntry {
 
 /** What a walk needs to resolve `$env`, thread operator overrides, and reach nested files. */
 export interface RefTreeScope {
-  /** Every workflow file reachable from the root, keyed by absolute path; absent when a `ref` cannot resolve. */
+  /** Every workflow file reachable from the root, keyed by absolute path; absent when a `ref`
+   * cannot resolve. */
   files?: Map<string, WorkflowFile>;
   /** The operator's launch-time config, the first merge term at the root level (spec §3). */
   operatorConfig?: ConfigObject;
@@ -34,8 +37,8 @@ export interface RefTreeScope {
 }
 
 /**
- * Resolve one `workflow` node's `ref` against its own level's `dir`, or `undefined` when the loaded tree holds no
- * such file.
+ * Resolve one `workflow` node's `ref` against its own level's `dir`, or `undefined` when the loaded
+ * tree holds no such file.
  */
 export function resolveChildRef(
   dir: string,
@@ -49,8 +52,8 @@ export function resolveChildRef(
 }
 
 /**
- * Every node of the loaded ref tree, depth-first in body order, each with the config that reaches it; a `workflow`
- * node is yielded then descended, its child inheriting this step's config.
+ * Every node of the loaded ref tree, depth-first in body order, each with the config that reaches
+ * it; a `workflow` node is yielded then descended, its child inheriting this step's config.
  */
 export function* walkRefTree(
   rootFile: WorkflowFile,
@@ -79,13 +82,14 @@ export function* walkRefTree(
 /** A node found by id in a loaded ref tree, with the effective config that reaches it. */
 export interface ResolvedNode {
   node: WorkflowNode;
-  /** The `config` scope a caller interpolates this node's fields against, exactly what `runLeafStep` uses. */
+  /** The `config` scope a caller interpolates this node's fields against, exactly what
+   * `runLeafStep` uses. */
   config: ConfigObject;
 }
 
 /**
- * Locate a node by its durable GUID `id` across the loaded ref tree, with the config the run interpolates;
- * `undefined` when no reachable file carries it (deleted mid-wait).
+ * Locate a node by its durable GUID `id` across the loaded ref tree, with the config the run
+ * interpolates; `undefined` when no reachable file carries it (deleted mid-wait).
  */
 export function resolveNode(
   rootFile: WorkflowFile,
@@ -97,8 +101,8 @@ export function resolveNode(
     env?: EnvSource;
   } = {},
 ): ResolvedNode | undefined {
-  // The caller owns the environment snapshot: a fresh `process.env` here would judge the node against config the run
-  // never used.
+  // The caller owns the environment snapshot: a fresh `process.env` here would judge the node
+  // against config the run never used.
   const scope = {
     files: options.files,
     operatorConfig: options.operatorConfig,

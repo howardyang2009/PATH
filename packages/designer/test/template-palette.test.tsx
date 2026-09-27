@@ -6,8 +6,8 @@ import { App } from "../src/app.js";
 
 /**
  * #577 — the palette lists templates. A `Templates` tab beside `Nodes` (variant C of #564) holds a
- * Template category (the only kind, ADR 0063), populated from `GET /v0/templates` — shipped and user
- * rows alike. An invalid row is listed with its error and cannot be selected.
+ * Template category (the only kind, ADR 0063), populated from `GET /v0/templates` — shipped and
+ * user rows alike. An invalid row is listed with its error and cannot be selected.
  */
 
 function template(

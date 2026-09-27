@@ -22,14 +22,16 @@ import {
  * end-to-end through `path run` against a real git repo.
  *
  * Everything here is the real thing except the LLM processor: the engine, both workflow files,
- * git, the sqlite db, the blob tree and both log backends. The `prompt`/`anthropic` worker is scripted
- * (see ./scripted-llm-worker.ts) so the pipeline is deterministic and free to run in CI; the seam it
- * plugs into is `workerOverrides.prompt.anthropic`, the same registry override the CLI leaves open (ADR 0021).
+ * git, the sqlite db, the blob tree and both log backends. The `prompt`/`anthropic` worker is
+ * scripted (see ./scripted-llm-worker.ts) so the pipeline is deterministic and free to run in CI;
+ * the seam it plugs into is `workerOverrides.prompt.anthropic`, the same registry override the CLI
+ * leaves open (ADR 0021).
  */
 
 // Each test drives the whole pipeline in-process through `main` against a real git repo, sqlite db
-// and blob tree, some resuming a second full run. On a loaded CI runner that I/O-bound work can exceed
-// the default 5s vitest `testTimeout`, tripping unrelated PRs (#220, same headroom as cli-e2e).
+// and blob tree, some resuming a second full run. On a loaded CI runner that I/O-bound work can
+// exceed the default 5s vitest `testTimeout`, tripping unrelated PRs (#220, same headroom as
+// cli-e2e).
 vi.setConfig({ testTimeout: 30_000 });
 
 const packageRoot = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
@@ -68,9 +70,9 @@ function happyPathScript(): Record<string, ScriptedHandler> {
 }
 
 /**
- * Recover the node name from a prompt request. The `prompt`/`anthropic` seam carries no node name (ADR 0021
- * sub-6), so the scripted worker identifies the node from its interpolated prompt text — each of the
- * two real workflow files' prompts opens with distinct wording.
+ * Recover the node name from a prompt request. The `prompt`/`anthropic` seam carries no node name
+ * (ADR 0021 sub-6), so the scripted worker identifies the node from its interpolated prompt text —
+ * each of the two real workflow files' prompts opens with distinct wording.
  */
 function labelPrompt(request: { fields: { [key: string]: unknown } }): string {
   const prompt = String(request.fields.prompt ?? "");
@@ -225,7 +227,8 @@ function classifyRuns(runs: RunRow[]): {
 }
 
 function isLlmRun(row: RunRow): boolean {
-  // A `prompt` step runs on the `anthropic` worker (ADR 0021 sub-2); its name is the bare column value now.
+  // A `prompt` step runs on the `anthropic` worker (ADR 0021 sub-2); its name is the bare column
+  // value now.
   return row.worker_name === "anthropic";
 }
 
@@ -533,11 +536,11 @@ function readReuseMarkers(
 }
 
 /**
- * Runs the real pipeline through the engine's own assembly (`openProject` + `Project.run` — the very
- * pieces `path run` composes under the hood) and lands a genuine cancellation one `while-do`
+ * Runs the real pipeline through the engine's own assembly (`openProject` + `Project.run` — the
+ * very pieces `path run` composes under the hood) and lands a genuine cancellation one `while-do`
  * iteration in: an `AbortController`, the operator's own `RunOptions.signal` (mvp spec §5.6), fires
- * the instant the first `revise` prompt is in flight, so the run unwinds to `cancelled` exactly as a
- * `^C` would. This mirrors #144's kill methodology — a SIGINT delivered deep in the LLM stretch —
+ * the instant the first `revise` prompt is in flight, so the run unwinds to `cancelled` exactly as
+ * a `^C` would. This mirrors #144's kill methodology — a SIGINT delivered deep in the LLM stretch —
  * driving the same cancellation path without the process-signal plumbing a deterministic in-process
  * acceptance run cannot use (a real SIGINT would take vitest itself down). Returns the killed run's
  * root id — the `--resume` target — and its worker, for the re-burn assertion.
@@ -546,8 +549,9 @@ async function killMidFirstRevise(): Promise<{ rootRunId: string; worker: Script
   const controller = new AbortController();
   const worker = createScriptedLlmWorker(happyPathScript(), labelPrompt, {
     onCall: ({ nodeName, callNumber }) => {
-      // The first `revise` prompt runs inside the while-do's first nested revise-cycle — killing here
-      // is a kill mid-iteration, after the pre-loop work (summaries, draft, judge-draft) succeeded.
+      // The first `revise` prompt runs inside the while-do's first nested revise-cycle — killing
+      // here is a kill mid-iteration, after the pre-loop work (summaries, draft, judge-draft)
+      // succeeded.
       if (nodeName === "revise" && callNumber === 1) controller.abort();
     },
   });
@@ -595,7 +599,8 @@ describe("acceptance: resume after a mid-while-do kill (#178)", () => {
     // The killed run left no output file — it stopped inside the loop, before write-file.
     expect(existsSync(join(harness.projectDir, "RELEASE_NOTES.md"))).toBe(false);
 
-    // Resume through the real CLI. A fresh worker, so its `calls` count only what the successor ran.
+    // Resume through the real CLI. A fresh worker, so its `calls` count only what the successor
+    // ran.
     const resumeWorker = createScriptedLlmWorker(happyPathScript(), labelPrompt);
     const code = await main(
       ["run", join(harness.projectDir, "release-notes.workflow.json"), "--resume", killedRootRunId],
@@ -638,13 +643,14 @@ describe("acceptance: resume after a mid-while-do kill (#178)", () => {
     ).resolves.toBe(0);
     const successorRootRunId = harness.stdout.join("\n").trim();
 
-    // Every pre-loop node reused, each with a marker back-referencing the killed tree's own run — the
-    // narrative record of "not re-run" (#172). One marker per node, no more.
+    // Every pre-loop node reused, each with a marker back-referencing the killed tree's own run —
+    // the narrative record of "not re-run" (#172). One marker per node, no more.
     const markers = readReuseMarkers(harness.projectDir, successorRootRunId);
     expect(markers.map((marker) => marker.nodeName).sort()).toEqual([...REUSED_NODES].sort());
     expect(markers.every((marker) => marker.originalRunId.length > 0)).toBe(true);
 
-    // The successor is a successor: its root row links back to the killed run, and it is a fresh tree.
+    // The successor is a successor: its root row links back to the killed run, and it is a fresh
+    // tree.
     const successorRuns = readRuns(harness.projectDir).filter(
       (row) => row.root_run_id === successorRootRunId,
     );
@@ -652,8 +658,9 @@ describe("acceptance: resume after a mid-while-do kill (#178)", () => {
     expect(successorRoot.resumed_from_root_run_id).toBe(killedRootRunId);
 
     // Not re-billed, as a number (#144's re-burn made a metric): a reused node writes no row in the
-    // successor tree at all, so the only spend the successor carries is the three LLM steps it truly
-    // re-ran — the loop's revise + judge, and format-short. The five reused nodes contribute nothing.
+    // successor tree at all, so the only spend the successor carries is the three LLM steps it
+    // truly re-ran — the loop's revise + judge, and format-short. The five reused nodes contribute
+    // nothing.
     const { leaves } = classifyRuns(successorRuns);
     const llmLeaves = leaves.filter(isLlmRun);
     expect(llmLeaves).toHaveLength(3);
@@ -667,14 +674,14 @@ describe("acceptance: resume after a mid-while-do kill (#178)", () => {
 
 /**
  * #454 (ADR 0037): a completed `while-do` that ran **more than one iteration**, resumed from a K
- * serialized **after** the loop, must reuse **every** iteration of the loop body — the exact case the
- * old node-id-only reuse key mis-handled (it re-ran the whole loop from scratch when the loop ran >1
- * time, while a one-iteration loop reused correctly). The per-iteration run scope makes the loop body's
- * runs unique across iterations, so each reuses.
+ * serialized **after** the loop, must reuse **every** iteration of the loop body — the exact case
+ * the old node-id-only reuse key mis-handled (it re-ran the whole loop from scratch when the loop
+ * ran >1 time, while a one-iteration loop reused correctly). The per-iteration run scope makes the
+ * loop body's runs unique across iterations, so each reuses.
  */
 describe("acceptance: Resume-from-K after a multi-iteration while-do (#454)", () => {
-  // The judge inside the revise-cycle fails once, then passes — so the `revise-loop` runs exactly two
-  // iterations before the verdict turns true and the loop exits.
+  // The judge inside the revise-cycle fails once, then passes — so the `revise-loop` runs exactly
+  // two iterations before the verdict turns true and the loop exits.
   function twoIterationScript(): Record<string, ScriptedHandler> {
     return {
       ...happyPathScript(),
@@ -714,18 +721,20 @@ describe("acceptance: Resume-from-K after a multi-iteration while-do (#454)", ()
     expect(harness.stderr).toEqual([]);
     expect(readFileSync(join(harness.projectDir, "RELEASE_NOTES.md"), "utf8")).toBe(FINAL_NOTES);
 
-    // The decisive proof: not one LLM step re-ran. Before the fix, the loop re-ran from scratch, so the
-    // successor's worker was asked for `revise`/`judge` again; now every pre-write-file node reuses.
+    // The decisive proof: not one LLM step re-ran. Before the fix, the loop re-ran from scratch, so
+    // the successor's worker was asked for `revise`/`judge` again; now every pre-write-file node
+    // reuses.
     expect(resumeWorker.calls).toEqual([]);
 
-    // Both loop iterations reused, recorded as reuse-markers on the `revise` node — one per iteration.
+    // Both loop iterations reused, recorded as reuse-markers on the `revise` node — one per
+    // iteration.
     const successorRootRunId = harness.stdout.join("\n").trim();
     expect(successorRootRunId).not.toBe(root.run_id);
     const markers = readReuseMarkers(harness.projectDir, successorRootRunId);
     expect(markers.filter((marker) => marker.nodeName === "revise")).toHaveLength(2);
 
-    // No fresh revise-cycle ran in the successor: the loop body left no genuine-execution leaf, only
-    // reuse rows. (A reuse row carries no worker; a fresh run would.)
+    // No fresh revise-cycle ran in the successor: the loop body left no genuine-execution leaf,
+    // only reuse rows. (A reuse row carries no worker; a fresh run would.)
     const successorRuns = readRuns(harness.projectDir).filter(
       (row) => row.root_run_id === successorRootRunId,
     );

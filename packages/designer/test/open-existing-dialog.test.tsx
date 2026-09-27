@@ -5,10 +5,11 @@ import { describe, expect, it } from "vitest";
 import { App } from "../src/app.js";
 
 /**
- * #254 — open an existing workflow from inside the app. The empty canvas offers "Open workflow" beside
- * "New workflow", and the toolbar offers "Open…" once a file is open; both raise a picker over the
- * project's discovered workflows (`GET /v0/workflows`). A choice opens that file through the same open
- * pipeline the `?path=` deep-link uses, so the author can pick up and edit any existing workflow.
+ * #254 — open an existing workflow from inside the app. The empty canvas offers "Open workflow"
+ * beside "New workflow", and the toolbar offers "Open…" once a file is open; both raise a picker
+ * over the project's discovered workflows (`GET /v0/workflows`). A choice opens that file through
+ * the same open pipeline the `?path=` deep-link uses, so the author can pick up and edit any
+ * existing workflow.
  */
 
 function uuid(n: number): string {
@@ -51,10 +52,12 @@ describe("open existing — empty-canvas entry point", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Open workflow" }));
 
     const dialog = await screen.findByRole("dialog", { name: "Open a workflow" });
-    // Both files sit under `flows/`, so the top level shows only that folder — open it to reach them.
+    // Both files sit under `flows/`, so the top level shows only that folder — open it to reach
+    // them.
     fireEvent.click(within(dialog).getByRole("button", { name: /flows/ }));
     const list = within(dialog).getByRole("list", { name: "Discovered workflows" });
-    // Discovery returned beta-before-alpha; the tree sorts, so alpha lists first — by file name now.
+    // Discovery returned beta-before-alpha; the tree sorts, so alpha lists first — by file name
+    // now.
     const items = within(list)
       .getAllByRole("button")
       .filter((b) => b.textContent?.endsWith(".json"));

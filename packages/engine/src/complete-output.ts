@@ -10,10 +10,10 @@ import { resolveNode } from "./ref-tree.js";
 import type { EnvSource } from "./resolve-env.js";
 
 /**
- * Is this output a valid Complete of this parked leaf? (server-api-v0.md §4.4) The node must still be an
- * awaiting node and the output must satisfy its `outputSchema`, interpolated against the config the run
- * executes with: the tree's frozen launch config merged under anything supplied again, which is why this
- * sits behind `Project.complete` rather than in a route.
+ * Is this output a valid Complete of this parked leaf? (server-api-v0.md §4.4) The node must still
+ * be an awaiting node and the output must satisfy its `outputSchema`, interpolated against the
+ * config the run executes with: the tree's frozen launch config merged under anything supplied
+ * again, which is why this sits behind `Project.complete` rather than in a route.
  */
 
 /** The one awaiting step type. */

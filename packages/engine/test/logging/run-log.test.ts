@@ -11,9 +11,10 @@ import { openRunLog } from "../../src/logging/run-log.js";
 import { openDb } from "../../src/persistence/db.js";
 
 /**
- * One root run's narrative, read across both stores (#architecture-deepening): the archive's replay and
- * a Complete's continuation point now read the same rule, because they read the same module. These drive
- * the two backends for real, so "which store answers" is exercised over actual files and rows.
+ * One root run's narrative, read across both stores (#architecture-deepening): the archive's replay
+ * and a Complete's continuation point now read the same rule, because they read the same module.
+ * These drive the two backends for real, so "which store answers" is exercised over actual files
+ * and rows.
  */
 
 const ROOT = "root-1";

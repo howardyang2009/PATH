@@ -154,9 +154,11 @@ describe("goto — the top-level walk and its passes", () => {
       ["b"],
       ["b", "done"],
     ]);
-    // Each B visit reads the goto's passed-through output: the guard's incoming output, B's own last output.
+    // Each B visit reads the goto's passed-through output: the guard's incoming output, B's own
+    // last output.
     expect(r.inputs.get("b")).toEqual(["a-1", "b-1", "b-2"]);
-    // Pass N's input is its seed: the workflow input for pass 1, the goto's passed-through output after.
+    // Pass N's input is its seed: the workflow input for pass 1, the goto's passed-through output
+    // after.
     expect(passes.map((p) => p.input)).toEqual([{}, "b-1", "b-2"]);
   });
 
@@ -221,8 +223,8 @@ describe("goto — the top-level walk and its passes", () => {
   });
 
   it("G-E-07 / 08: a goto in a nested workflow-ref file has its own passes, and each fresh child run counts from zero", async () => {
-    // The child jumps once per run (`max_jumps: 1`), on its first `x` visit. Run twice by the parent's
-    // own loop, its second run would exhaust if the count carried over from the first.
+    // The child jumps once per run (`max_jumps: 1`), on its first `x` visit. Run twice by the
+    // parent's own loop, its second run would exhaust if the count carried over from the first.
     const child = file(
       [
         step("x", { publish: { last: "${output}" } }),
@@ -249,7 +251,8 @@ describe("goto — the top-level walk and its passes", () => {
       [1, null],
       [2, "redo"],
     ]);
-    // The parent sees one ordinary `workflow` step run per pass; each child run holds its own passes.
+    // The parent sees one ordinary `workflow` step run per pass; each child run holds its own
+    // passes.
     const childRuns = parentPasses.map((p) => r.childrenOf(p.runId));
     expect(childRuns.map((runs) => runs.map((o) => o.nodeName))).toEqual([
       ["w"],
@@ -570,7 +573,8 @@ describe("goto — audit events (spec §7, ADR 0061)", () => {
   });
 });
 
-/** A first-level `branch` whose one arm holds a goto, taken when `path` is one of `values`; else a plain step. */
+/** A first-level `branch` whose one arm holds a goto, taken when `path` is one of `values`; else a
+ * plain step. */
 function guardedGoto(
   id: string,
   values: string[],

@@ -109,9 +109,9 @@ async function deleteRun(rootRunId: string, query = ""): Promise<Response> {
 /**
  * Waits until a cancellable fixture's child process is genuinely alive, by watching for the marker
  * file it writes on startup (in the workflow file's directory — a binary step's default cwd).
- * A `running` run row is not enough: it is written by `runStarted`, *before* the process spawns, and
- * a cancel that lands in that window takes the engine's already-aborted fast path and never kills a
- * process at all — the opposite of what these tests mean to exercise.
+ * A `running` run row is not enough: it is written by `runStarted`, *before* the process spawns,
+ * and a cancel that lands in that window takes the engine's already-aborted fast path and never
+ * kills a process at all — the opposite of what these tests mean to exercise.
  */
 async function pollUntilStepAlive(marker: string): Promise<void> {
   const markerPath = join(projectDir, marker);
@@ -164,9 +164,9 @@ describe("POST /v0/runs + GET /v0/runs/:root_run_id — end to end", () => {
 
   it("resolves a nested workflow ref against the workflow's own directory, not the project root (#59)", async () => {
     // The whole point is a workflow that does *not* sit at the project root: `runWorkflow`'s second
-    // argument resolves `./child.workflow.json`, and passing `projectDir` there looked for the child
-    // beside `.path/` instead of beside its parent, so it was never in the loaded tree. A fixture at
-    // the root cannot catch this — the two directories are equal there.
+    // argument resolves `./child.workflow.json`, and passing `projectDir` there looked for the
+    // child beside `.path/` instead of beside its parent, so it was never in the loaded tree. A
+    // fixture at the root cannot catch this — the two directories are equal there.
     const postRes = await postRun({ workflow_path: "nested/parent.workflow.json" });
     expect(postRes.status).toBe(202);
     const { root_run_id } = (await postRes.json()) as { root_run_id: string };
@@ -209,15 +209,16 @@ describe("POST /v0/runs + GET /v0/runs/:root_run_id — end to end", () => {
     expect(finalA.status).toBe("succeeded");
     expect(finalB.status).toBe("succeeded");
 
-    // "Without queueing" asserted as the **overlap**, not as a stopwatch. Each step lingers ~2s, so two
-    // launches accepted concurrently run over each other: the second starts well before the first
-    // finishes. A server that ran one launch to completion before accepting the next would stamp the
-    // second's start at or after the first's finish — the failure this test is for, and a property that
-    // holds at any runner speed.
+    // "Without queueing" asserted as the **overlap**, not as a stopwatch. Each step lingers ~2s, so
+    // two launches accepted concurrently run over each other: the second starts well before the
+    // first finishes. A server that ran one launch to completion before accepting the next would
+    // stamp the second's start at or after the first's finish — the failure this test is for, and a
+    // property that holds at any runner speed.
     //
     // This replaces `expect(elapsed).toBeLessThan(500)`, which measured the machine rather than the
-    // server: on CI it failed at 1559ms — past even the ~600ms a *serialized* server would show, so no
-    // bar could distinguish the two there — while the same test measures 132–190ms on a developer box.
+    // server: on CI it failed at 1559ms — past even the ~600ms a *serialized* server would show, so
+    // no bar could distinguish the two there — while the same test measures 132–190ms on a
+    // developer box.
     const rootA = rootRowOf(finalA);
     const rootB = rootRowOf(finalB);
     expect(Date.parse(rootB.started_at!)).toBeLessThan(Date.parse(rootA.finished_at!));
@@ -330,8 +331,9 @@ describe("POST /v0/runs + GET /v0/runs/:root_run_id — end to end", () => {
     expect(res.status).toBe(404);
   });
 
-  // The launch gate confines like every other file door (`confine.ts`): a symlink inside the project
-  // could otherwise point the run at a file outside it, which the read and write doors already refuse.
+  // The launch gate confines like every other file door (`confine.ts`): a symlink inside the
+  // project could otherwise point the run at a file outside it, which the read and write doors
+  // already refuse.
   it("404s a workflow_path that traverses a symlink, and starts no run", async () => {
     symlinkSync(
       join(projectDir, "two-binary-steps.workflow.json"),
@@ -344,8 +346,8 @@ describe("POST /v0/runs + GET /v0/runs/:root_run_id — end to end", () => {
   });
 
   // Issue #237 — the CSRF/origin gate on the state-changing routes. A cross-origin browser fetch
-  // (another tab on a malicious site) carries `Sec-Fetch-Site: cross-site` or a mismatched `Origin`;
-  // the viewer's own fetch and non-browser clients do not.
+  // (another tab on a malicious site) carries `Sec-Fetch-Site: cross-site` or a mismatched
+  // `Origin`; the viewer's own fetch and non-browser clients do not.
   describe("CSRF/origin gate (#237)", () => {
     async function postRunFrom(headers: Record<string, string>): Promise<Response> {
       return fetch(`${handle.url}/v0/runs`, {
@@ -379,7 +381,8 @@ describe("POST /v0/runs + GET /v0/runs/:root_run_id — end to end", () => {
 
     it("allows a POST /v0/runs on the Origin-vs-Host fallback when Origin matches Host", async () => {
       // No Sec-Fetch-Site (an older browser), so the gate falls back to comparing Origin to Host.
-      // The server's own URL is same-origin, so its host is exactly what a same-origin Origin carries.
+      // The server's own URL is same-origin, so its host is exactly what a same-origin Origin
+      // carries.
       const res = await postRunFrom({ Origin: handle.url });
       expect(res.status).toBe(202);
     });
@@ -449,8 +452,9 @@ describe("POST /v0/runs + GET /v0/runs/:root_run_id — end to end", () => {
   });
 
   it("GET /v0/runs?workflow_id filters server-side to one workflow, composing with limit and status", async () => {
-    // Two roots of one workflow (`two-binary-steps`, succeeds) and one of another (`failing-step`) — a
-    // set with more than one distinct `workflow_id`, so the filter has something to pick out (#365).
+    // Two roots of one workflow (`two-binary-steps`, succeeds) and one of another (`failing-step`)
+    // — a set with more than one distinct `workflow_id`, so the filter has something to pick out
+    // (#365).
     const wfIdBinary = "418fca45-8a32-4069-8b17-f3f43ce7c30f";
     const first = (await (
       await postRun({ workflow_path: "two-binary-steps.workflow.json" })
@@ -471,15 +475,16 @@ describe("POST /v0/runs + GET /v0/runs/:root_run_id — end to end", () => {
     };
     await pollUntilTerminal(second.root_run_id);
 
-    // The filter alone: only the two `two-binary-steps` roots, most-recent-first, and past the `failing-step`
-    // root that sits between them in the unfiltered window.
+    // The filter alone: only the two `two-binary-steps` roots, most-recent-first, and past the
+    // `failing-step` root that sits between them in the unfiltered window.
     const filtered = (await (await listRuns(`?workflow_id=${wfIdBinary}`)).json()) as {
       runs: RootRunSummary[];
     };
     expect(filtered.runs.map((r) => r.run_id)).toEqual([second.root_run_id, first.root_run_id]);
     expect(filtered.runs.every((r) => r.workflow_id === wfIdBinary)).toBe(true);
 
-    // Composes with `limit` (the newer of the two) and with `status` (both succeeded; the failing one is excluded).
+    // Composes with `limit` (the newer of the two) and with `status` (both succeeded; the failing
+    // one is excluded).
     const limited = (await (await listRuns(`?workflow_id=${wfIdBinary}&limit=1`)).json()) as {
       runs: RootRunSummary[];
     };
@@ -529,7 +534,8 @@ describe("DELETE /v0/runs/:root_run_id — remove a run from both stores", () =>
     expect(res.status).toBe(200);
     expect((await res.json()) as { root_run_id: string }).toEqual({ root_run_id });
 
-    // …and both stores are gone after it: the run is unknown, its blob no longer served, the list empty.
+    // …and both stores are gone after it: the run is unknown, its blob no longer served, the list
+    // empty.
     expect((await getRun(root_run_id)).status).toBe(404);
     expect((await getBlob(root_run_id, shout.run_id, "output")).status).toBe(404);
     const listed = (await (await listRuns()).json()) as { runs: RootRunSummary[] };
@@ -611,9 +617,9 @@ describe("GET /v0/runs/:root_run_id/blobs/:run_id/:name — run blob content", (
   });
 
   it("serves a reuse row's blobs by following the pointer to the source run (#257)", async () => {
-    // A run where `keep` succeeds and `boom` fails, then resumed: `keep` reuses. Its reuse row holds
-    // no blobs of its own, so the blob route must reach through to the source run — otherwise the
-    // viewer's I/O panel shows "no input object recorded" for a step that plainly has one.
+    // A run where `keep` succeeds and `boom` fails, then resumed: `keep` reuses. Its reuse row
+    // holds no blobs of its own, so the blob route must reach through to the source run — otherwise
+    // the viewer's I/O panel shows "no input object recorded" for a step that plainly has one.
     const { root_run_id: original } = (await (
       await postRun({ workflow_path: "reuse-then-fail.workflow.json" })
     ).json()) as {
@@ -635,7 +641,8 @@ describe("GET /v0/runs/:root_run_id/blobs/:run_id/:name — run blob content", (
       output_ref: string | null;
     };
     expect(keepRefs.reused_from_run_id).not.toBeNull();
-    // The provenance pair the viewer shows: run id plus the resolved root of the source's tree (#257).
+    // The provenance pair the viewer shows: run id plus the resolved root of the source's tree
+    // (#257).
     expect(keepRefs.reused_from_root_run_id).toBe(original);
     // The row owns no blobs, but the archive resolves its input/output refs to the source's, so the
     // reuse row ships non-null refs addressing the source — honest about having I/O, not a null a
@@ -971,9 +978,9 @@ describe("POST /v0/runs/:root_run_id/cancel — cancel a run in flight", () => {
 
   it("404s rather than reading terminality off a child when the tree has no root row", async () => {
     // A tree whose root row is missing but whose child says `succeeded`. Guessing at any row of the
-    // tree would answer "already finished with status succeeded" — a refused cancel of what may well
-    // be a live run. Unreachable through the engine today; seeded here because the route's whole job
-    // is to never answer off a row that isn't the root's.
+    // tree would answer "already finished with status succeeded" — a refused cancel of what may
+    // well be a live run. Unreachable through the engine today; seeded here because the route's
+    // whole job is to never answer off a row that isn't the root's.
     const rootRunId = "22222222-2222-2222-2222-222222222222";
     const db = openDb(dbFilePath(projectDir));
     try {
@@ -1067,8 +1074,8 @@ describe("POST /v0/runs/:root_run_id/resume — resume a finished-but-unsuccessf
     expect(successor).not.toBe(original);
     expect(run_id).toBe(successor);
 
-    // The successor is a real root run that runs the workflow again — failing-step fails again — and
-    // its root row records the lineage back to the run it resumed.
+    // The successor is a real root run that runs the workflow again — failing-step fails again —
+    // and its root row records the lineage back to the run it resumed.
     const successorBody = await pollUntilTerminal(successor);
     expect(successorBody.status).toBe("failed");
     const successorRoot = successorBody.runs.find((r) => r.parent_run_id === null)!;
@@ -1130,8 +1137,9 @@ describe("POST /v0/runs/:root_run_id/resume — resume a finished-but-unsuccessf
     );
   });
 
-  // Resume-from-K (#444): the already-succeeded gate is relaxed when `rerun_from_run_id` is supplied —
-  // a succeeded region is a legitimate re-run target. Plain Resume of a succeeded run stays 409 above.
+  // Resume-from-K (#444): the already-succeeded gate is relaxed when `rerun_from_run_id` is
+  // supplied — a succeeded region is a legitimate re-run target. Plain Resume of a succeeded run
+  // stays 409 above.
   it("202s Resume-from-K on a succeeded run and persists rerun_from_node_path on the successor", async () => {
     const { root_run_id: original } = (await (
       await postRun({ workflow_path: "two-binary-steps.workflow.json" })
@@ -1243,7 +1251,8 @@ describe("POST /v0/runs/:root_run_id/resume — resume a finished-but-unsuccessf
       root_run_id: string;
     };
     expect((await pollUntilTerminal(root_run_id)).status).toBe("failed");
-    // The file at that path is now schema-invalid — a resume of it is a 400, as a fresh launch would be.
+    // The file at that path is now schema-invalid — a resume of it is a 400, as a fresh launch
+    // would be.
     writeFileSync(
       join(projectDir, "failing-step.workflow.json"),
       JSON.stringify({ format: "path/workflow@2" }),
@@ -1342,8 +1351,8 @@ describe("POST /v0/runs/:root_run_id/resume — resume a finished-but-unsuccessf
       root_run_id: string;
     };
     expect((await pollUntilTerminal(root_run_id)).status).toBe("failed");
-    // A valid workflow, but not the one that ran — its id differs, so resuming the old run's context
-    // into it would be running a workflow the operator never launched.
+    // A valid workflow, but not the one that ran — its id differs, so resuming the old run's
+    // context into it would be running a workflow the operator never launched.
     writeFileSync(
       join(projectDir, "failing-step.workflow.json"),
       JSON.stringify({

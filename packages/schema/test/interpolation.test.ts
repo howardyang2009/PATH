@@ -71,7 +71,8 @@ describe("checkInterpolationSyntax", () => {
   });
 
   it("rejects splicing that would need to stringify a placeholder next to another dollar sign edge case gracefully", () => {
-    // Not a real edge case from the spec, just confirms literal `$` not followed by `{` is inert text.
+    // Not a real edge case from the spec, just confirms literal `$` not followed by `{` is inert
+    // text.
     expect(checkInterpolationSyntax("price: $5", ["config", "context"])).toEqual({ ok: true });
   });
 });

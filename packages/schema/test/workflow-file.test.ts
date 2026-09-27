@@ -5,9 +5,10 @@ import {
 } from "../src/workflow-file.js";
 import { builtinRegistry } from "./builtin-registry.js";
 
-// The closed `WorkflowFileSchema` const is gone (#337): a file is validated against the open schema a
-// registry builds. These envelope/invariant tests use the built-in `binary`/`prompt` grammar, so they
-// build one schema from the built-in registry fixture and reuse it — the same grammar it encoded.
+// The closed `WorkflowFileSchema` const is gone (#337): a file is validated against the open schema
+// a registry builds. These envelope/invariant tests use the built-in `binary`/`prompt` grammar, so
+// they build one schema from the built-in registry fixture and reuse it — the same grammar it
+// encoded.
 const WorkflowFileSchema = makeWorkflowFileSchema(builtinRegistry);
 
 // `safeParseWorkflowFile` now requires a registry; bind the built-in one so the call sites read as
@@ -16,8 +17,9 @@ function safeParseWorkflowFile(json: unknown) {
   return safeParse(json, builtinRegistry);
 }
 
-// One valid UUIDv4. Schema checks name uniqueness across the file, not id uniqueness (ids are unique
-// by construction), so a single valid GUID can stand in for every node's `id` in these fixtures.
+// One valid UUIDv4. Schema checks name uniqueness across the file, not id uniqueness (ids are
+// unique by construction), so a single valid GUID can stand in for every node's `id` in these
+// fixtures.
 const UUID = "11111111-1111-4111-8111-111111111111";
 
 const minimal = {
@@ -33,8 +35,8 @@ describe("WorkflowFileSchema — envelope", () => {
   });
 
   it("rejects a superseded or wrong format version", () => {
-    // `@5` is the only accepted format string; `@0`–`@4` are superseded (the loader gives a targeted
-    // "run the codemod" message — see the actionable-errors block below).
+    // `@5` is the only accepted format string; `@0`–`@4` are superseded (the loader gives a
+    // targeted "run the codemod" message — see the actionable-errors block below).
     expect(WorkflowFileSchema.safeParse({ ...minimal, format: "path/workflow@0" }).success).toBe(
       false,
     );
@@ -730,8 +732,8 @@ describe("safeParseWorkflowFile — actionable errors", () => {
   });
 
   // `@0` names its whole codemod chain, in order (§1): each script migrates one step and nothing
-  // else, so it would report "skipped" on a file two or three versions behind and leave it exactly as
-  // unreadable as it was.
+  // else, so it would report "skipped" on a file two or three versions behind and leave it exactly
+  // as unreadable as it was.
   it("reports the spec §1 targeted error for a superseded @0 file, naming every codemod in order", () => {
     const result = safeParseWorkflowFile({ ...minimal, format: "path/workflow@0" });
     expect(result.success).toBe(false);
@@ -811,9 +813,10 @@ describe("safeParseWorkflowFile — actionable errors", () => {
   });
 
   it("reports a readable error for bad ${} syntax in a disallowed position", () => {
-    // A registry leaf's own fields are plain zod now (#337), so the bad-root check lives on the core
-    // grammar the file schema still owns — here the file `output` map, `interpolatedJsonValue(STEP_ROOTS)`:
-    // `output` is not a STEP root, so referencing it is a load error naming the root.
+    // A registry leaf's own fields are plain zod now (#337), so the bad-root check lives on the
+    // core grammar the file schema still owns — here the file `output` map,
+    // `interpolatedJsonValue(STEP_ROOTS)`: `output` is not a STEP root, so referencing it is a load
+    // error naming the root.
     const result = safeParseWorkflowFile({
       ...minimal,
       output: { bad: "${output.cmd}" },
@@ -833,11 +836,12 @@ describe("safeParseWorkflowFile — actionable errors", () => {
   });
 });
 
-// The file channel of ADR 0044's two-channel registry-relative validation (#516). Shape is checked in
-// the registry-agnostic base schema (`z.record(min(1), min(1))`); *registry-relative* validity — the
-// named type exists and ships the named worker — is this whole-file refinement, fed by the registry
-// captured by closure. A bad entry makes the file invalid at load, so discovery reports it and the
-// Designer refuses to open it. The launch channel (`--worker-default`) is a separate boundary (#506).
+// The file channel of ADR 0044's two-channel registry-relative validation (#516). Shape is checked
+// in the registry-agnostic base schema (`z.record(min(1), min(1))`); *registry-relative* validity —
+// the named type exists and ships the named worker — is this whole-file refinement, fed by the
+// registry captured by closure. A bad entry makes the file invalid at load, so discovery reports it
+// and the Designer refuses to open it. The launch channel (`--worker-default`) is a separate
+// boundary (#506).
 describe("WorkflowFileSchema — worker_defaults registry validation (ADR 0044, #516)", () => {
   it("accepts a worker_defaults naming a real type and a worker it ships", () => {
     // `prompt` ships `anthropic`; `binary` ships `spawn` — both are real (type, worker) selections.

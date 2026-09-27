@@ -13,7 +13,8 @@ import type { RunEvent, RunPayload, UnsequencedLogEvent } from "./run-observer.j
  * before crossing the observer seam, `[secret:<config-key>]` replacing each occurrence. Workers
  * still receive real values and a succeeded run returns its `output` unmasked.
  *
- * Documented limit: a transformed secret (base64 etc.) escapes string matching — accepted, no taint tracking.
+ * Documented limit: a transformed secret (base64 etc.) escapes string matching — accepted, no taint
+ * tracking.
  */
 
 // Below this length masking would over-replace unrelated text, so warn rather than skip.
@@ -37,7 +38,8 @@ export interface SecretMasker {
 // Collection only records; the mapped tree is discarded. The first key a value is seen under wins
 // its token, so never overwrite an existing entry.
 function collectFromValue(path: string, value: ConfigValue, into: Map<string, SecretEntry>): void {
-  // ConfigValue and JsonValue are structurally compatible but not nominally assignable across unions.
+  // ConfigValue and JsonValue are structurally compatible but not nominally assignable across
+  // unions.
   mapSecrets(
     value as unknown as JsonValue,
     (secret, secretPath) => {
@@ -73,8 +75,8 @@ export function collectSecrets(configs: ConfigObject[]): SecretMasker {
   function maskString(text: string): string {
     let out = text;
     for (const entry of entries) {
-      // `{"$secret": {"$env": "FOO"}}` with `FOO=` resolves to "", a set empty value; split("") would
-      // explode every character, and the short-secret warning above already flags it.
+      // `{"$secret": {"$env": "FOO"}}` with `FOO=` resolves to "", a set empty value; split("")
+      // would explode every character, and the short-secret warning above already flags it.
       if (entry.value.length === 0) continue;
       out = out.split(entry.value).join(entry.token);
     }
@@ -123,10 +125,12 @@ function maskEvent(masker: SecretMasker, e: UnsequencedLogEvent): UnsequencedLog
       return e.trace === null ? e : { ...e, trace: maskTrace(masker, e.trace) };
     case "branch-no-match":
       return { ...e, traces: e.traces.map((trace) => maskTrace(masker, trace)) };
-    // `assignee` is an interpolated author value that can read `${config.x}`, so scrub it by value too.
+    // `assignee` is an interpolated author value that can read `${config.x}`, so scrub it by value
+    // too.
     case "step-awaiting":
       return e.assignee === null ? e : { ...e, assignee: masker.maskString(e.assignee) };
-    // No secret can reach these — every field is an id, name, count, context key or engine-chosen enum (ADR 0061).
+    // No secret can reach these — every field is an id, name, count, context key or engine-chosen
+    // enum (ADR 0061).
     case "step-started":
     case "join-applied":
     case "run-cancelled":
@@ -145,7 +149,8 @@ function maskEvent(masker: SecretMasker, e: UnsequencedLogEvent): UnsequencedLog
 function maskPayload(masker: SecretMasker, p: RunPayload): RunPayload {
   switch (p.kind) {
     case "started":
-      // The frozen launch facts (ADR 0046) carry the operator's config override, which may hold a secret.
+      // The frozen launch facts (ADR 0046) carry the operator's config override, which may hold a
+      // secret.
       return {
         ...p,
         input: masker.maskValue(p.input),
@@ -159,7 +164,8 @@ function maskPayload(masker: SecretMasker, p: RunPayload): RunPayload {
       return { ...p, output: masker.maskValue(p.output) };
     case "stderr":
       return { ...p, stderr: masker.maskString(p.stderr) };
-    // `usage` is the worker's own report, stored verbatim on the run row (§5.7); scrubbed like any other payload.
+    // `usage` is the worker's own report, stored verbatim on the run row (§5.7); scrubbed like any
+    // other payload.
     case "usage":
       return p.usage === null ? p : { ...p, usage: masker.maskValue(p.usage) };
     case "context":
@@ -171,7 +177,8 @@ function maskPayload(masker: SecretMasker, p: RunPayload): RunPayload {
   }
 }
 
-/** Scrubs one run event, its log event and its payload both, before it crosses the seam (mvp spec §8.3). */
+/** Scrubs one run event, its log event and its payload both, before it crosses the seam (mvp spec
+ * §8.3). */
 export function maskRunEvent(masker: SecretMasker, e: RunEvent): RunEvent {
   return {
     ...e,

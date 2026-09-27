@@ -11,8 +11,8 @@ export const RUN_USAGE =
   "usage: path run <workflow.json> [-C <dir>] [--resume <root-run-id> [--from <run-id> | --list-eligible]] [--config <config.json>] [--set key=value]... [--worker-default type=name]... [--context <context.json>] [--set-context key=value]... [--log-backends db,ndjson] [--processor-concurrency <n>]";
 
 /**
- * What `path run` was asked to do, as a value: three arms, each carrying only the flags its form can
- * use, so illegal flag combinations are unconstructable and the run assembly reads one shape.
+ * What `path run` was asked to do, as a value: three arms, each carrying only the flags its form
+ * can use, so illegal flag combinations are unconstructable and the run assembly reads one shape.
  */
 export interface LaunchInvocation {
   kind: "launch";
@@ -29,15 +29,17 @@ export interface LaunchInvocation {
 }
 
 /**
- * The resume form: its starting context is rebuilt from the original tree and a launch worker-default
- * is fixed at launch, so both are refused and carried as `undefined`/empty here instead.
+ * The resume form: its starting context is rebuilt from the original tree and a launch
+ * worker-default is fixed at launch, so both are refused and carried as `undefined`/empty here
+ * instead.
  */
 export interface ResumeInvocation {
   kind: "resume";
   workflowPath: string;
   storeDir?: string;
   resumeRootRunId: string;
-  /** `--from <run-id>`: the rerun boundary K; the CLI does zero K-logic and forwards it to `Project`. */
+  /** `--from <run-id>`: the rerun boundary K; the CLI does zero K-logic and forwards it to
+   * `Project`. */
   rerunFromRunId?: string;
   configFile?: string;
   setPairs: readonly (readonly [string, string])[];
@@ -71,11 +73,12 @@ export type RunInvocationResult =
   | { success: true; invocation: RunInvocation }
   | { success: false; error: string };
 
-// Operator launch-time config via CLI flags and/or a config file (spec §3): `--config` loads a whole
-// object, repeatable `--set key=value` overrides top-level keys, both merging over file defaults.
+// Operator launch-time config via CLI flags and/or a config file (spec §3): `--config` loads a
+// whole object, repeatable `--set key=value` overrides top-level keys, both merging over file
+// defaults.
 export function parseRunInvocation(argv: string[]): RunInvocationResult {
-  // `-C <dir>` can appear anywhere, so it is stripped before the positional is taken. Absent means the
-  // store defaults to the workflow file's own directory.
+  // `-C <dir>` can appear anywhere, so it is stripped before the positional is taken. Absent means
+  // the store defaults to the workflow file's own directory.
   const dirFlag = extractDirFlag(argv, RUN_USAGE);
   if (!dirFlag.success) return dirFlag;
   const storeDir = dirFlag.dir;
@@ -120,7 +123,8 @@ export function parseRunInvocation(argv: string[]): RunInvocationResult {
       i += 1;
     } else if (flag === "--worker-default") {
       // Both sides non-empty: an empty worker name is an operator mistake at parse (exit 2), not a
-      // mid-run failure; registry-relative validity is the launch-boundary check, not this shape check.
+      // mid-run failure; registry-relative validity is the launch-boundary check, not this shape
+      // check.
       const taken = takePair(rest, i, "--worker-default", "type=name", RUN_USAGE, {
         valueRequired: true,
       });
@@ -154,8 +158,8 @@ export function parseRunInvocation(argv: string[]): RunInvocationResult {
     }
   }
 
-  // A resumed run's context is rebuilt from the original tree, so a supplied seed is refused outright
-  // rather than silently discarded.
+  // A resumed run's context is rebuilt from the original tree, so a supplied seed is refused
+  // outright rather than silently discarded.
   if (resumeRootRunId !== undefined && (contextFile !== undefined || setContextPairs.length > 0)) {
     return {
       success: false,
@@ -163,8 +167,9 @@ export function parseRunInvocation(argv: string[]): RunInvocationResult {
     };
   }
 
-  // A launch worker-default is fixed at launch and identity-defining, so supplying one with `--resume`
-  // is refused rather than silently discarded — changing the worker is a new run, not a resume.
+  // A launch worker-default is fixed at launch and identity-defining, so supplying one with
+  // `--resume` is refused rather than silently discarded — changing the worker is a new run, not a
+  // resume.
   if (resumeRootRunId !== undefined && workerDefaultPairs.length > 0) {
     return {
       success: false,
@@ -177,8 +182,8 @@ export function parseRunInvocation(argv: string[]): RunInvocationResult {
     return { success: false, error: `--from requires --resume\n${RUN_USAGE}` };
   }
 
-  // `--list-eligible` is a dry-run of resume: it requires `--resume`, excludes `--from`, and refuses
-  // the launch-only flags because it launches nothing.
+  // `--list-eligible` is a dry-run of resume: it requires `--resume`, excludes `--from`, and
+  // refuses the launch-only flags because it launches nothing.
   if (listEligible) {
     if (resumeRootRunId === undefined) {
       return { success: false, error: `--list-eligible requires --resume\n${RUN_USAGE}` };
@@ -189,8 +194,9 @@ export function parseRunInvocation(argv: string[]): RunInvocationResult {
         error: `--list-eligible cannot be combined with --from: one lists candidate rerun boundaries, the other resumes from a chosen one\n${RUN_USAGE}`,
       };
     }
-    // `--context`/`--set-context` and `--worker-default` are already refused above whenever `--resume`
-    // is set, so they cannot reach this block; the rest only configure a launch this mode does not do.
+    // `--context`/`--set-context` and `--worker-default` are already refused above whenever
+    // `--resume` is set, so they cannot reach this block; the rest only configure a launch this
+    // mode does not do.
     const launchFlag =
       configFile !== undefined
         ? "--config"
@@ -249,14 +255,16 @@ export function parseRunInvocation(argv: string[]): RunInvocationResult {
   };
 }
 
-// The engine-wide Processor cap (spec §5.5): ~400 MB per live processor, so this is the memory knob.
+// The engine-wide Processor cap (spec §5.5): ~400 MB per live processor, so this is the memory
+// knob.
 function parseProcessorConcurrency(value: string | undefined): PositiveIntResult {
   return parsePositiveInt("--processor-concurrency", value, RUN_USAGE);
 }
 
 type LogBackendsResult = { success: true; ids: LogBackendId[] } | { success: false; error: string };
 
-// The engine-level `log.backends` setting: a comma-separated list; absent means both are on by default.
+// The engine-level `log.backends` setting: a comma-separated list; absent means both are on by
+// default.
 function parseLogBackends(value: string | undefined): LogBackendsResult {
   if (!value) return { success: false, error: `--log-backends requires a value\n${RUN_USAGE}` };
   if (value === "none") return { success: true, ids: [] };

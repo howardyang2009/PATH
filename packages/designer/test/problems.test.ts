@@ -34,7 +34,8 @@ describe("cross-node problems", () => {
   });
 
   it("does not flag a context read a sibling publishes, whatever the order", () => {
-    // Consumer authored before its producer — routine, must not be flagged (spec § save-with-warnings).
+    // Consumer authored before its producer — routine, must not be flagged (spec §
+    // save-with-warnings).
     const file = wrap([
       step(2, "reader", { input: { q: "${context.ready}" } }),
       step(3, "writer", { publish: { ready: "${output.a}" } }),
@@ -142,7 +143,8 @@ describe("cross-node problems", () => {
   });
 
   it("does not flag a `workflow`-ref whose target is a saved (discovered) file", () => {
-    // Ref stored relative to the parent's directory; resolved against the known set clears the marker.
+    // Ref stored relative to the parent's directory; resolved against the known set clears the
+    // marker.
     const file = wrap([refNode(2, "child", "child.workflow.json")]);
     const known = new Set(["flows/child.workflow.json"]);
     const problems = fileProblems(file, {
@@ -175,7 +177,8 @@ describe("cross-node problems", () => {
   });
 
   it("suppresses the ref check before discovery loads (null known set) and for a pathless file", () => {
-    // An empty set reads as "no files exist"; only a `null` set means "not loaded yet" and skips the check.
+    // An empty set reads as "no files exist"; only a `null` set means "not loaded yet" and skips
+    // the check.
     expect(refLookupFor("flows/parent.workflow.json", null)).toBeUndefined();
     expect(refLookupFor(undefined, new Set())).toBeUndefined();
     expect(refLookupFor(null, new Set())).toBeUndefined();

@@ -7,13 +7,14 @@ import {
   walkNodes,
 } from "@path/schema";
 
-/** The pure support for the input-wiring editor (designer-spec § Input/output wiring): the pane validates
- * `${…}` placeholders against the schema's own roots, so it never green-lights one a save would reject. */
+/** The pure support for the input-wiring editor (designer-spec § Input/output wiring): the pane
+ * validates `${…}` placeholders against the schema's own roots, so it never green-lights one a save
+ * would reject. */
 
 /**
  * The concrete dot-paths worth autocompleting: `config.<key>` for the file's own config keys,
- * `context.<key>` for every published key, and the bare `<root>.` prefix for each allowed root. Sorted
- * and de-duplicated; `output` carries no enumerable keys (ADR 0022 sub-7).
+ * `context.<key>` for every published key, and the bare `<root>.` prefix for each allowed root.
+ * Sorted and de-duplicated; `output` carries no enumerable keys (ADR 0022 sub-7).
  */
 export function referenceablePaths(
   file: WorkflowFile,
@@ -33,10 +34,12 @@ export function referenceablePaths(
   return [...out].sort();
 }
 
-/** The outcome of parsing an input draft: the parsed object, or the first reason it is not acceptable. */
+/** The outcome of parsing an input draft: the parsed object, or the first reason it is not
+ * acceptable. */
 export type InputParse = { ok: true; value: JsonValue } | { ok: false; error: string };
 
-/** Recursively check every string leaf of a parsed JSON value through the interpolation syntax check. */
+/** Recursively check every string leaf of a parsed JSON value through the interpolation syntax
+ * check. */
 function checkInterpolation(value: JsonValue, roots: readonly InterpolationRoot[]): string | null {
   if (typeof value === "string") {
     const result = checkInterpolationSyntax(value, roots);
@@ -60,8 +63,9 @@ function checkInterpolation(value: JsonValue, roots: readonly InterpolationRoot[
 }
 
 /**
- * Parse and validate an input draft: JSON-looking text is parsed and every `${…}` leaf checked; anything
- * else is taken as a raw whole-string interpolation. An invalid draft is reported, never committed.
+ * Parse and validate an input draft: JSON-looking text is parsed and every `${…}` leaf checked;
+ * anything else is taken as a raw whole-string interpolation. An invalid draft is reported, never
+ * committed.
  */
 export function parseInputDraft(text: string, roots: readonly InterpolationRoot[]): InputParse {
   const trimmed = text.trim();

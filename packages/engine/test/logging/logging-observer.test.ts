@@ -186,8 +186,9 @@ describe("createLoggingObserver", () => {
     const rec = recordingBackend();
     const root = rootEmitter(createLoggingObserver([rec.backend]));
     await root.runStarted({ input: {} });
-    // A Complete re-invocation (ADR 0041) re-enters a parked leaf and drives it straight to its finish;
-    // nothing earlier in *this* stream ever named that leaf's node — the emitter stamps the pair.
+    // A Complete re-invocation (ADR 0041) re-enters a parked leaf and drives it straight to its
+    // finish; nothing earlier in *this* stream ever named that leaf's node — the emitter stamps the
+    // pair.
     await root.step(node("review"), "step-9").finished({ status: "succeeded", output: "ok" });
 
     expect(rec.events.find((e) => e.run_id === "step-9")).toMatchObject({
@@ -209,8 +210,8 @@ describe("createLoggingObserver", () => {
       published_keys: ["ka", "kb"],
     });
 
-    // A cancelled step: its run-cancelled points at the failing sibling, and its step-finished carries
-    // the cancelled status with no error.
+    // A cancelled step: its run-cancelled points at the failing sibling, and its step-finished
+    // carries the cancelled status with no error.
     const slow = root.step(node("slow"), "step-slow");
     await slow.started({ stepType: "binary", workerName: "spawn", input: {} });
     await slow.cancelled({ cause: "sibling-failed", causeRunId: "step-boom" });

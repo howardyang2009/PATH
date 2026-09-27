@@ -1,12 +1,13 @@
 import type { CancelCause, Cancellation } from "./run-context.js";
 
 /**
- * The cancellation authorities of a run tree: one for the root run and one per `parallel` block, each
- * extending its enclosing one. Cause is first trigger wins, read at read time since an outer sibling
- * can fail after an inner block starts.
+ * The cancellation authorities of a run tree: one for the root run and one per `parallel` block,
+ * each extending its enclosing one. Cause is first trigger wins, read at read time since an outer
+ * sibling can fail after an inner block starts.
  */
 
-/** The root run's authority: an operator abort only; the operator's signal is chained into our controller. */
+/** The root run's authority: an operator abort only; the operator's signal is chained into our
+ * controller. */
 export function rootCancellation(operatorSignal?: AbortSignal): Cancellation {
   const controller = new AbortController();
   if (operatorSignal) {
@@ -23,7 +24,8 @@ export function rootCancellation(operatorSignal?: AbortSignal): Cancellation {
   };
 }
 
-/** A block's authority together with the handle that stops chaining it to the enclosing execution. */
+/** A block's authority together with the handle that stops chaining it to the enclosing
+ * execution. */
 export interface BlockCancellation {
   cancellation: Cancellation;
   /** Stop chaining to the outside signal — the block is done with it. */
@@ -54,7 +56,8 @@ export function blockCancellation(
         return ownCause ?? parent?.cause ?? null;
       },
       get causeRunId() {
-        // Cause and cause run are one pair: a block's own cause wins, and a win has no cause run (§5).
+        // Cause and cause run are one pair: a block's own cause wins, and a win has no cause run
+        // (§5).
         return ownCause !== null ? ownCauseRunId : (parent?.causeRunId ?? null);
       },
       trigger(causeRunId: string) {
@@ -78,7 +81,8 @@ export function blockCancellation(
   };
 }
 
-/** The cause a stopped step narrates: the authority's, or `operator` for a caller that brought no tree. */
+/** The cause a stopped step narrates: the authority's, or `operator` for a caller that brought no
+ * tree. */
 export function stopCause(cancellation: Cancellation | undefined): {
   cause: CancelCause;
   causeRunId: string | null;

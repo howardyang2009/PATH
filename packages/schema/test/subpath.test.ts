@@ -5,10 +5,10 @@ import { describe, expect, it } from "vitest";
 import * as barrel from "../src/index.js";
 
 /**
- * `@path/schema`'s subpaths are seams a consumer can name an owner with (the block grammar, the wire
- * codec) instead of pulling the whole 200-name barrel. A package `exports` map is not checked by tsc
- * alone — a typo'd path type-checks nowhere and fails at run time — so each subpath is resolved here
- * and compared to the barrel entry it names.
+ * `@path/schema`'s subpaths are seams a consumer can name an owner with (the block grammar, the
+ * wire codec) instead of pulling the whole 200-name barrel. A package `exports` map is not checked
+ * by tsc alone — a typo'd path type-checks nowhere and fails at run time — so each subpath is
+ * resolved here and compared to the barrel entry it names.
  */
 
 describe("@path/schema/nodes", () => {

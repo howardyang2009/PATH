@@ -3,14 +3,15 @@ import type Database from "better-sqlite3";
 import { getLogEventsForRoot, maxLogSeqForRoot } from "./db-backend.js";
 import { readNdjsonLog } from "./ndjson-backend.js";
 
-// One root run's **narrative**, read back. **Emptiness, not existence, is the switch**: a header-only
-// `run.log` has no narrative, so the table answers instead.
+// One root run's **narrative**, read back. **Emptiness, not existence, is the switch**: a
+// header-only `run.log` has no narrative, so the table answers instead.
 export interface RunLog {
   /** Every recorded event, in `seq` order — already masked at write, so no second pass here. */
   events(): LogEvent[];
   /** The events after `afterSeq` — what an SSE replay asks for. */
   read(afterSeq: number): LogEvent[];
-  /** The highest recorded `seq`, or `0` — where a Complete re-invocation continues from (ADR 0041). */
+  /** The highest recorded `seq`, or `0` — where a Complete re-invocation continues from (ADR
+   * 0041). */
   lastSeq(): number;
 }
 

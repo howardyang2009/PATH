@@ -15,10 +15,12 @@ export interface SubscribeRunEventsOptions {
   onEvent: (event: LogEvent) => void;
   /** The stream is connected and delivering — fired on the first connect and on every reconnect. */
   onOpen?: () => void;
-  /** The stream dropped mid-run and a reconnect from the high-water `seq` is about to be attempted. */
+  /** The stream dropped mid-run and a reconnect from the high-water `seq` is about to be
+   * attempted. */
   onReconnecting?: (error?: unknown) => void;
   /** The run is quiescent: a leaf is parked `awaiting`, so the server ended the stream with no more
-   * events although the root run is still `running` (ADR 0038) — the core slow-polls. Fired per poll.
+   * events although the root run is still `running` (ADR 0038) — the core slow-polls. Fired per
+   * poll.
    */
   onWaiting?: () => void;
   /** Terminal completion — the root run finished and the stream closed for good. */
@@ -29,9 +31,11 @@ export interface SubscribeRunEventsOptions {
   lastEventId?: number;
   /** Reconnect from the last seq when the transport drops mid-run (default true). */
   reconnect?: boolean;
-  /** Base reconnect delay before a drop retry (default 200ms); doubles per failure up to {@link MAX_RECONNECT_MS}. */
+  /** Base reconnect delay before a drop retry (default 200ms); doubles per failure up to {@link
+   * MAX_RECONNECT_MS}. */
   reconnectDelayMs?: number;
-  /** Poll interval while the run is quiescent (default 3000ms); nothing is wrong, so it waits longer. */
+  /** Poll interval while the run is quiescent (default 3000ms); nothing is wrong, so it waits
+   * longer. */
   idlePollMs?: number;
   /** Injected `fetch`; defaults to the global. */
   fetch?: FetchLike;
@@ -42,7 +46,8 @@ const MAX_RECONNECT_MS = 5000;
 const DEFAULT_RECONNECT_MS = 200;
 const DEFAULT_IDLE_POLL_MS = 3000;
 
-/** A cancellable delay: resolves after `ms`, or at once when `signal` aborts (a `close()` mid-wait). */
+/** A cancellable delay: resolves after `ms`, or at once when `signal` aborts (a `close()`
+ * mid-wait). */
 function delay(ms: number, signal: AbortSignal): Promise<void> {
   return new Promise((resolve) => {
     if (signal.aborted) return resolve();
@@ -74,7 +79,8 @@ export function subscribeRunEvents(options: SubscribeRunEventsOptions): RunEvent
   let terminalSeen = false;
   let closed = false;
   let backoff = reconnectDelayMs;
-  // Runs parked `awaiting`, kept across reconnects (the server replays only `seq >` the high-water mark).
+  // Runs parked `awaiting`, kept across reconnects (the server replays only `seq >` the high-water
+  // mark).
   const awaitingRuns = new Set<string>();
   const controller = new AbortController();
 
@@ -104,7 +110,8 @@ export function subscribeRunEvents(options: SubscribeRunEventsOptions): RunEvent
         await readFrames(res, deliver, () => closed);
       } catch (error) {
         if (closed) return;
-        // Transport dropped — reconnect from the high-water seq (server replays the tail) when enabled.
+        // Transport dropped — reconnect from the high-water seq (server replays the tail) when
+        // enabled.
         if (reconnect) {
           options.onReconnecting?.(error);
           await delay(backoff, controller.signal);
@@ -120,18 +127,21 @@ export function subscribeRunEvents(options: SubscribeRunEventsOptions): RunEvent
         options.onClose?.();
         return;
       }
-      // With reconnect off this is not a completion — reporting one would say the run is done early.
+      // With reconnect off this is not a completion — reporting one would say the run is done
+      // early.
       if (!reconnect) {
         options.onError?.(new Error("event stream ended before the root run finished"));
         return;
       }
       if (awaitingRuns.size > 0) {
-        // Quiescent clean end (ADR 0038): slow-poll for a `complete` driven elsewhere, not a hot loop.
+        // Quiescent clean end (ADR 0038): slow-poll for a `complete` driven elsewhere, not a hot
+        // loop.
         options.onWaiting?.();
         await delay(idlePollMs, controller.signal);
         continue;
       }
-      // A clean mid-run end with nothing parked is an early close (e.g. a proxy idle-timeout): reconnect.
+      // A clean mid-run end with nothing parked is an early close (e.g. a proxy idle-timeout):
+      // reconnect.
       options.onReconnecting?.();
       await delay(backoff, controller.signal);
       backoff = Math.min(backoff * 2, MAX_RECONNECT_MS);
@@ -162,8 +172,9 @@ function openStream(
   });
 }
 
-/** Read a response body to its end, handing each decoded event to `onEvent`; returns when the stream
- * ends or `isClosed()`. The frame grammar is `@path/schema`'s — this owns only the transport. */
+/** Read a response body to its end, handing each decoded event to `onEvent`; returns when the
+ * stream ends or `isClosed()`. The frame grammar is `@path/schema`'s — this owns only the
+ * transport. */
 async function readFrames(
   res: Response,
   onEvent: (event: LogEvent) => void,

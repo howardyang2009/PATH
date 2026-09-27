@@ -7,10 +7,10 @@ import {
 import { createContext, type ReactNode, useContext, useMemo } from "react";
 
 /**
- * The canvas projection (surface 6, ADR 0025): each node's runs folded to one status, keyed by the node's
- * durable `id`. A node with any run executing projects `running`; otherwise the status of its most-recently
- * started run, read through `displayStatusByRun` (ADR 0038). Pass rows and `nodeId: null` root runs project
- * nothing onto the canvas (ADR 0054).
+ * The canvas projection (surface 6, ADR 0025): each node's runs folded to one status, keyed by the
+ * node's durable `id`. A node with any run executing projects `running`; otherwise the status of
+ * its most-recently started run, read through `displayStatusByRun` (ADR 0038). Pass rows and
+ * `nodeId: null` root runs project nothing onto the canvas (ADR 0054).
  */
 export function projectRunStatus(runs: ReadonlyMap<string, RunNodeState>): Map<string, RunStatus> {
   const display = displayStatusByRun(runs);
@@ -32,8 +32,8 @@ export function projectRunStatus(runs: ReadonlyMap<string, RunNodeState>): Map<s
 }
 
 /**
- * Each goto's pass rows in the watched run, keyed by the goto's node id (ADR 0060 §4); a goto that never jumped is
- * absent.
+ * Each goto's pass rows in the watched run, keyed by the goto's node id (ADR 0060 §4); a goto that
+ * never jumped is absent.
  */
 export function projectJumpsSpent(runs: ReadonlyMap<string, RunNodeState>): Map<string, number> {
   const spent = new Map<string, number>();
@@ -73,19 +73,22 @@ export function RunProjectionProvider({
   );
 }
 
-/** The projected status for one node id, or `null` when nothing is watched or the node has no run yet. */
+/** The projected status for one node id, or `null` when nothing is watched or the node has no run
+ * yet. */
 export function useNodeRunStatus(nodeId: string): RunStatus | null {
   return useContext(RunProjectionContext)?.status.get(nodeId) ?? null;
 }
 
 /**
- * The whole status map, for a caller that looks up many node ids in one render (a per-id hook cannot run in a loop).
+ * The whole status map, for a caller that looks up many node ids in one render (a per-id hook
+ * cannot run in a loop).
  */
 export function useRunProjection(): ReadonlyMap<string, RunStatus> | null {
   return useContext(RunProjectionContext)?.status ?? null;
 }
 
-/** A goto's jumps spent in the watched run (0 when it never jumped), or `null` when nothing is watched. */
+/** A goto's jumps spent in the watched run (0 when it never jumped), or `null` when nothing is
+ * watched. */
 export function useGotoJumpsSpent(nodeId: string): number | null {
   const projection = useContext(RunProjectionContext);
   return projection ? (projection.jumpsSpent.get(nodeId) ?? 0) : null;

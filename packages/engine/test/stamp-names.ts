@@ -3,11 +3,11 @@
  *
  * The engine's runtime reads a node's human `name` (output keys, log narration, error messages) and
  * its GUID `id` (audit `node_id`, reuse key) as two distinct fields. Unit tests that build a
- * `WorkflowFile` or a node array *inline* — bypassing the schema, which is the only thing that would
- * otherwise force both fields — historically wrote a single human `id`. Rather than restate every
- * literal with a UUID `id` plus a `name`, these helpers stamp `name = id` (and leave the human `id`
- * in place, which the runtime never validates as a UUID). Assertions that named a node by its old
- * `id` keep passing, because that value is now also its `name` and its audit `node_id`.
+ * `WorkflowFile` or a node array *inline* — bypassing the schema, which is the only thing that
+ * would otherwise force both fields — historically wrote a single human `id`. Rather than restate
+ * every literal with a UUID `id` plus a `name`, these helpers stamp `name = id` (and leave the
+ * human `id` in place, which the runtime never validates as a UUID). Assertions that named a node
+ * by its old `id` keep passing, because that value is now also its `name` and its audit `node_id`.
  *
  * Disk-loaded fixtures are migrated to real GUIDs + names by the codemod, so the id-vs-name
  * distinction is exercised for real there; these helpers cover only the inline-construction tests.
@@ -90,15 +90,17 @@ export function stampNodes(nodes: unknown): WorkflowNode[] {
 export function stampNames(file: unknown): WorkflowFile {
   const f = { ...(file as AnyNode) };
   f.format = "path/workflow@5";
-  if (f.id === undefined) f.id = "wf-id"; // a placeholder GUID stand-in; runWorkflow never validates it
+  // a placeholder GUID stand-in; runWorkflow never validates it
+  if (f.id === undefined) f.id = "wf-id";
   if (Array.isArray(f.body)) f.body = stampNodes(f.body as AnyNode[]);
   return f as unknown as WorkflowFile;
 }
 
 /**
- * Like `stampNames`, but produces a file that passes the *real* schema (`parseWorkflowFile`): the old
- * human `id` moves to `name` and a fresh UUID replaces it on the workflow and every node/branch — the
- * shape the codemod produces. Use for tests that assert the schema itself accepts/rejects a file.
+ * Like `stampNames`, but produces a file that passes the *real* schema (`parseWorkflowFile`): the
+ * old human `id` moves to `name` and a fresh UUID replaces it on the workflow and every node/branch
+ * — the shape the codemod produces. Use for tests that assert the schema itself accepts/rejects a
+ * file.
  */
 function guidNode(node: AnyNode): AnyNode {
   refuseLegacyShape(node);

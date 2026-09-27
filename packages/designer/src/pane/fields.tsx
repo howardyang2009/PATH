@@ -9,9 +9,9 @@ import {
 } from "../validated-draft.js";
 
 /**
- * One keyed-row line — `key = value ×` — behind both `publish` and the file's `output`. The value is
- * live-checked against the field's own `roots`; the row is transparent to the grid (`display: contents`)
- * so its cells share the section grid. Labels and placeholders come from the owner.
+ * One keyed-row line — `key = value ×` — behind both `publish` and the file's `output`. The value
+ * is live-checked against the field's own `roots`; the row is transparent to the grid (`display:
+ * contents`) so its cells share the section grid. Labels and placeholders come from the owner.
  */
 export function KeyedRowField({
   row,
@@ -71,12 +71,12 @@ export function KeyedRowField({
   );
 }
 
-// ── The max-iterations field (schema-validated, so it stays with the pane) ─────────────────────────
+// ── The max-iterations field (schema-validated, so it stays with the pane) ───────────────────────
 
 /**
  * `while-do`'s **max iterations**: a positive whole number or a `${config.…}` / `${context.…}`
- * interpolation (`MaxIterationsSchema`), so it must be a text field held as a draft — digits commit as a
- * number, a valid interpolation as a string, anything else is flagged and not committed.
+ * interpolation (`MaxIterationsSchema`), so it must be a text field held as a draft — digits commit
+ * as a number, a valid interpolation as a string, anything else is flagged and not committed.
  */
 export function MaxIterationsField({
   label = "max iterations",
@@ -116,7 +116,7 @@ export function MaxIterationsField({
   );
 }
 
-// ── Shared field pieces ───────────────────────────────────────────────────────────────────────────
+// ── Shared field pieces ──────────────────────────────────────────────────────────────────────────
 
 /**
  * A live-validated JSON textarea: only a valid value commits, and an invalid draft shows its error
@@ -169,8 +169,8 @@ export function FieldError({ error }: { error: string | null }): JSX.Element | n
 
 /**
  * One collapsible region: its title is the toggle, and the body mounts only while open. The caller
- * picks the default — field sections expanded (`defaultOpen`), payload regions collapsed — so a closed
- * region is not in the DOM and cannot be tabbed into.
+ * picks the default — field sections expanded (`defaultOpen`), payload regions collapsed — so a
+ * closed region is not in the DOM and cannot be tabbed into.
  */
 export function PaneSection({
   title,

@@ -6,8 +6,8 @@ import { SUPERSEDED_FORMAT_VERSIONS } from "../src/workflow-file-type.js";
 
 /**
  * The "run the codemod" message is a fix, so every script it names must exist. The chains live in
- * `workflow-file-type.ts` while the scripts live in `scripts/`; a format bump that forgets to add its
- * codemod, or a move that renames one, turns the message into a path the operator cannot run.
+ * `workflow-file-type.ts` while the scripts live in `scripts/`; a format bump that forgets to add
+ * its codemod, or a move that renames one, turns the message into a path the operator cannot run.
  */
 const repoRoot = dirname(dirname(dirname(dirname(fileURLToPath(import.meta.url)))));
 

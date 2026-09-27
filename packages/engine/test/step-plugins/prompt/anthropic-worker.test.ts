@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-// The `anthropic` worker loads the Agent SDK through a dynamic `import("@anthropic-ai/claude-agent-sdk")`;
-// mocking the specifier lets each case script the single terminal `result` message the worker reads.
+// The `anthropic` worker loads the Agent SDK through a dynamic
+// `import("@anthropic-ai/claude-agent-sdk")`; mocking the specifier lets each case script the
+// single terminal `result` message the worker reads.
 const query = vi.fn();
 vi.mock("@anthropic-ai/claude-agent-sdk", () => ({ query }));
 

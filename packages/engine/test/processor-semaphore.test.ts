@@ -4,7 +4,8 @@ import {
   DEFAULT_PROCESSOR_CONCURRENCY,
 } from "../src/processor-semaphore.js";
 
-/** A promise plus the handle that settles it — lets a test hold acquired slots open deliberately. */
+/** A promise plus the handle that settles it — lets a test hold acquired slots open
+ * deliberately. */
 function deferred(): { promise: Promise<void>; resolve: () => void } {
   let resolve!: () => void;
   const promise = new Promise<void>((r) => {

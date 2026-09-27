@@ -9,9 +9,10 @@ import type { StepRequest, StepResult, WorkerDescriptor } from "../../src/plugin
 export type ScriptedHandler = (request: StepRequest, callNumber: number) => string;
 
 /**
- * Maps a worker request to the script key (the node's name). The `prompt`/`anthropic` seam carries no node
- * name (ADR 0021 sub-6 — the engine owns the name and never hands it to a worker), so a scripted
- * worker recovers the identity from the request itself, typically from the interpolated prompt text.
+ * Maps a worker request to the script key (the node's name). The `prompt`/`anthropic` seam carries
+ * no node name (ADR 0021 sub-6 — the engine owns the name and never hands it to a worker), so a
+ * scripted worker recovers the identity from the request itself, typically from the interpolated
+ * prompt text.
  */
 export type ScriptedLabel = (request: StepRequest) => string;
 
@@ -24,7 +25,8 @@ export interface ScriptedCall {
 export interface ScriptedLlmWorker extends WorkerDescriptor {
   /** Every worker request the engine made, in settle order. */
   readonly calls: readonly ScriptedCall[];
-  /** The high-water mark of concurrently in-flight processors — the fan-out cap under test (§11.4). */
+  /** The high-water mark of concurrently in-flight processors — the fan-out cap under test
+   * (§11.4). */
   readonly maxConcurrent: number;
 }
 
@@ -32,9 +34,9 @@ export interface ScriptedWorkerOptions {
   /**
    * Fired synchronously the instant a call is recorded — *before* it settles — so a test can act
    * while a chosen prompt is genuinely in flight. The resume acceptance run (#178) uses it to abort
-   * the run mid-`while-do`, the same real cancellation `^C` drives (mvp spec §5.6): the hook aborts,
-   * the worker then observes the abort on its own request signal and returns `failed`, and the engine
-   * relabels it `cancelled` from the signal, exactly as a live processor's would.
+   * the run mid-`while-do`, the same real cancellation `^C` drives (mvp spec §5.6): the hook
+   * aborts, the worker then observes the abort on its own request signal and returns `failed`, and
+   * the engine relabels it `cancelled` from the signal, exactly as a live processor's would.
    */
   onCall?: (call: ScriptedCall & { callNumber: number }) => void;
 }
@@ -44,15 +46,15 @@ export const SCRIPTED_USAGE: JsonValue = { input_tokens: 1200, output_tokens: 34
 export const SCRIPTED_COST_USD = 0.0042;
 
 /**
- * A stand-in for the shipped `prompt`/`anthropic` worker (mvp spec §7) that answers from a per-label script
- * instead of spawning a processor. It is the *only* thing faked in the acceptance run: the engine, the
- * real workflow files, git, persistence and logging are all real. Faking it is what makes the pipeline
- * deterministic and free to run in CI — a live processor is neither.
+ * A stand-in for the shipped `prompt`/`anthropic` worker (mvp spec §7) that answers from a
+ * per-label script instead of spawning a processor. It is the *only* thing faked in the acceptance
+ * run: the engine, the real workflow files, git, persistence and logging are all real. Faking it is
+ * what makes the pipeline deterministic and free to run in CI — a live processor is neither.
  *
  * It plugs into `runWorkflow` as `workerOverrides.prompt.anthropic` (ADR 0021 sub-15). It declares
- * `needsProcessorSlot: true` and holds no semaphore of its own, so the engine's processor cap governs
- * it — each call holds its slot for a turn of the event loop before resolving, so two branches the
- * engine genuinely runs at once overlap here and `maxConcurrent` can observe the cap.
+ * `needsProcessorSlot: true` and holds no semaphore of its own, so the engine's processor cap
+ * governs it — each call holds its slot for a turn of the event loop before resolving, so two
+ * branches the engine genuinely runs at once overlap here and `maxConcurrent` can observe the cap.
  */
 export function createScriptedLlmWorker(
   script: Record<string, ScriptedHandler>,
@@ -94,7 +96,8 @@ export function createScriptedLlmWorker(
       calls.push(call);
 
       // The kill seam (#178): fired before the wait below, so an abort it triggers is already live
-      // when this call re-checks its signal — the prompt is cancelled mid-flight, not after settling.
+      // when this call re-checks its signal — the prompt is cancelled mid-flight, not after
+      // settling.
       options.onCall?.({ ...call, callNumber });
 
       inFlight += 1;

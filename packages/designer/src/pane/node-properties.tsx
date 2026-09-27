@@ -43,13 +43,14 @@ export function NodeProperties({
   onReselect: (id: string) => void;
   onAddRefTarget?: (nodeId: string) => void;
 }): JSX.Element {
-  // A field edit passes its identity so a run of keystrokes folds to one undo entry; a discrete change
-  // passes none, so it is its own entry.
+  // A field edit passes its identity so a run of keystrokes folds to one undo entry; a discrete
+  // change passes none, so it is its own entry.
   const commit = (next: WorkflowNode, key?: EditKey): void =>
     applyEdit(replaceNode(file, next), key);
   const reKey = (): void => {
     const id = crypto.randomUUID();
-    // The one edit found by its *previous* id: the re-key replaces the node that holds `node.id` today.
+    // The one edit found by its *previous* id: the re-key replaces the node that holds `node.id`
+    // today.
     applyEdit(replaceNode(file, { ...node, id }, node.id));
     onReselect(id);
   };
@@ -67,9 +68,9 @@ export function NodeProperties({
       ) : null}
       <p className="pane-explain">{kindExplanation(node.type)}</p>
       <hr className="pane-divider" />
-      {/* Identity is the pane's anchor — which node is this — so `name` and `id` never fold away. The
-          kind's own fields are a section: they open expanded, and folding them is an option for a busy
-          node, never a step before an ordinary edit. */}
+      {/* Identity is the pane's anchor — which node is this — so `name` and `id` never fold away.
+          The kind's own fields are a section: they open expanded, and folding them is an option for
+          a busy node, never a step before an ordinary edit. */}
       <TextField
         label="name"
         value={node.name}
@@ -116,8 +117,8 @@ export function NodeProperties({
 
 /**
  * The one **Reference** list, at the very end of the pane: the dot-paths this node's interpolable
- * fields may read, the union of its own fields' roots (an arm occupant adds its `when` roots). A node
- * with no interpolable field contributes no roots, so the section does not render.
+ * fields may read, the union of its own fields' roots (an arm occupant adds its `when` roots). A
+ * node with no interpolable field contributes no roots, so the section does not render.
  */
 export function ReferenceSection({
   file,
@@ -169,9 +170,9 @@ export function armWhen(file: WorkflowFile, branchId: string, armIndex: number):
 }
 
 /**
- * The role a node's container gives it (§ Pane layout, orientation before editing). Only a container
- * that distinguishes its occupants supplies one: a branch arm (its 1-based position), a branch `else`,
- * or a parallel branch.
+ * The role a node's container gives it (§ Pane layout, orientation before editing). Only a
+ * container that distinguishes its occupants supplies one: a branch arm (its 1-based position), a
+ * branch `else`, or a parallel branch.
  */
 export function occupantRole(site: ReturnType<typeof locate>, file: WorkflowFile): string | null {
   if (!site) return null;
@@ -202,7 +203,8 @@ export function KindFields({
   condSuggest: string[];
   onAddRefTarget?: (nodeId: string) => void;
 }): JSX.Element {
-  // `person-activity` is a plugin leaf outside the core node union, so it is dispatched by string type.
+  // `person-activity` is a plugin leaf outside the core node union, so it is dispatched by string
+  // type.
   if ((node.type as string) === "person-activity") {
     return <PersonActivityEditor node={node} commit={commit} />;
   }
@@ -265,9 +267,9 @@ export function KindFields({
 }
 
 /**
- * `goto` — the `target` picker (every first-level node in file order, the goto excluded, each marked
- * `↑`/`↓`) and the mandatory `max_jumps`, which shares `max_iterations`' grammar. A value naming no
- * eligible node stays selected as `missing: <name>` and is never cleared silently.
+ * `goto` — the `target` picker (every first-level node in file order, the goto excluded, each
+ * marked `↑`/`↓`) and the mandatory `max_jumps`, which shares `max_iterations`' grammar. A value
+ * naming no eligible node stays selected as `missing: <name>` and is never cleared silently.
  */
 export function GotoEditor({
   file,

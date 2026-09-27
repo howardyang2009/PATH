@@ -32,8 +32,9 @@ function open(): Project {
 
 /**
  * A scripted `prompt` worker. Each prompt text is a step; its answers are taken in order from
- * `answers[prompt]`, falling back to `<prompt>-<visit>` (the visit counted per prompt for this worker).
- * A prompt in `failing` fails. `ran` records every execution, so a reused node is one that is absent.
+ * `answers[prompt]`, falling back to `<prompt>-<visit>` (the visit counted per prompt for this
+ * worker). A prompt in `failing` fails. `ran` records every execution, so a reused node is one that
+ * is absent.
  */
 function scripted(
   ran: string[],
@@ -170,9 +171,9 @@ describe("goto — Resume pairs passes (spec §8.1)", () => {
       await project.run(loop(), dir, { workerOverrides: scripted([], { failing: ["done"] }) });
       const rootId = await originalRoot(project);
 
-      // The edit: `b-1` now jumps through a new goto `other`, so pass 2's opener no longer matches. Pass
-      // 3 is opened by `check` again, the same goto that opened the predecessor's pass 3, and still runs
-      // fresh: the walk left the record at pass 2.
+      // The edit: `b-1` now jumps through a new goto `other`, so pass 2's opener no longer matches.
+      // Pass 3 is opened by `check` again, the same goto that opened the predecessor's pass 3, and
+      // still runs fresh: the walk left the record at pass 2.
       const edited = file([
         step("a"),
         step("b", { publish: { last: "${output}" } }),
@@ -206,8 +207,8 @@ describe("goto — Resume pairs passes (spec §8.1)", () => {
   });
 
   it("G-E-16: Resume-from-K with K in pass 2 reuses pass 1 and pass 2 before K, re-runs K on, and runs later passes fresh", async () => {
-    // `[a, b, c, guard]`: the guard jumps back to `b` while `c`'s output is `c-1` or `c-2`, so every
-    // pass holds `b, c`; pass 3 ends in `done`. The original run succeeds whole.
+    // `[a, b, c, guard]`: the guard jumps back to `b` while `c`'s output is `c-1` or `c-2`, so
+    // every pass holds `b, c`; pass 3 ends in `done`. The original run succeeds whole.
     const kLoop = () =>
       file([
         step("a"),
@@ -254,8 +255,9 @@ describe("goto — Resume pairs passes (spec §8.1)", () => {
   });
 
   it("G-E-17: Resume-from-K into pass 1 of a loop that publishes in later passes: K sees its original context", async () => {
-    // `x` is published by `a` before K and again by `late` after it, in every pass. K in pass 1 saw `a`'s
-    // value; the predecessor's final blackboard holds `late`'s last one, which must not leak into K.
+    // `x` is published by `a` before K and again by `late` after it, in every pass. K in pass 1 saw
+    // `a`'s value; the predecessor's final blackboard holds `late`'s last one, which must not leak
+    // into K.
     const publishing = () =>
       file([
         step("a", { publish: { x: "${output}" } }),

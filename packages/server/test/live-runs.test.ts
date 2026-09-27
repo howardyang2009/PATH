@@ -44,7 +44,8 @@ async function startFixture(filename: string, runs = live): Promise<StartedRun> 
   });
 }
 
-/** Waits for the root row to reach a terminal status, then lets the run promise's settle handler run. */
+/** Waits for the root row to reach a terminal status, then lets the run promise's settle handler
+ * run. */
 async function awaitSettled(rootRunId: string): Promise<string> {
   for (;;) {
     const root = project.archive.tree(rootRunId)?.root;
@@ -84,16 +85,17 @@ describe("LiveRuns — start resolves on run-started, not on finish", () => {
     );
   });
 
-  // The one link `POST /v0/runs`'s own route test cannot cover with a mocked `LiveRuns`: that `start`
-  // forwards its options — including the launch worker-default table (ADR 0044, #517) — straight into
-  // `Project.run`, which is where the engine reads `RunOptions.launchWorkerDefaults`. A capturing
-  // `Project` records the third argument the spread hands `run`.
+  // The one link `POST /v0/runs`'s own route test cannot cover with a mocked `LiveRuns`: that
+  // `start` forwards its options — including the launch worker-default table (ADR 0044, #517) —
+  // straight into `Project.run`, which is where the engine reads `RunOptions.launchWorkerDefaults`.
+  // A capturing `Project` records the third argument the spread hands `run`.
   it("forwards launchWorkerDefaults through to Project.run verbatim", async () => {
     let seen: Parameters<Project["run"]>[2] | undefined;
     const capturing: Project = {
       ...project,
-      // Capture the forwarded options, then hang: the run never emits `run-started`, so `start` never
-      // resolves — the assertion reads the captured options after a tick instead of awaiting `start`.
+      // Capture the forwarded options, then hang: the run never emits `run-started`, so `start`
+      // never resolves — the assertion reads the captured options after a tick instead of awaiting
+      // `start`.
       run: (_rootFile, _workflowDir, opts) => {
         seen = opts;
         return new Promise<never>(() => {});
@@ -103,7 +105,8 @@ describe("LiveRuns — start resolves on run-started, not on finish", () => {
     if (!loaded.success) throw new Error(loaded.errors.join("\n"));
     const { workflow } = loaded;
 
-    // Fire-and-forget: `start`'s promise stays pending (no `run-started`), which is why it is not awaited.
+    // Fire-and-forget: `start`'s promise stays pending (no `run-started`), which is why it is not
+    // awaited.
     void createLiveRuns(capturing).start(workflow.rootFile, workflow.workflowDir, {
       files: workflow.files,
       registry: workflow.registry,
@@ -186,7 +189,8 @@ describe("LiveRuns — idle drains in-flight runs (#439)", () => {
     });
 
     // A run is fire-and-forget, so `idle` must not resolve while one is still executing — a caller
-    // that closed the store on an early `idle` would pull the connection out from under the run (#439).
+    // that closed the store on an early `idle` would pull the connection out from under the run
+    // (#439).
     await tick();
     expect(resolved).toBe(false);
     expect(live.cancellable).toBe(1);

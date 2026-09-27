@@ -10,8 +10,8 @@ import { runCodemod } from "../run-codemod.js";
  * The `@3` → `@4` codemod, black-box (#514, ADR 0044). `worker_defaults` is a file-level envelope
  * grammar change, so the format version bumps `@3` → `@4` (workflow-format-v4.md), but the shape a
  * `@3` file already carries is a valid `@4` file: the codemod only rewrites the `format` string. So
- * unlike its predecessors it holds no rewrite and no refusal — the only thing to pin is that it stamps
- * the version, touches nothing else, and is idempotent.
+ * unlike its predecessors it holds no rewrite and no refusal — the only thing to pin is that it
+ * stamps the version, touches nothing else, and is idempotent.
  */
 const V4 = "archive/migrate-workflow-format-v4.ts";
 
@@ -37,8 +37,8 @@ const read = (file: string): Record<string, unknown> => JSON.parse(readFileSync(
 const bytes = (file: string): string => readFileSync(file, "utf8");
 
 /**
- * The migrated document must be a *loadable* file, not merely a reshaped one. `@4` is superseded now
- * (the schema reads `@5`), so lift a copy the rest of the way with the `@5` codemod first.
+ * The migrated document must be a *loadable* file, not merely a reshaped one. `@4` is superseded
+ * now (the schema reads `@5`), so lift a copy the rest of the way with the `@5` codemod first.
  */
 function expectSchemaValid(file: string): void {
   const copy = `${file}.v5.json`;

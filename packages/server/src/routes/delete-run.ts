@@ -3,9 +3,9 @@ import { sendError, sendJson } from "../http-json.js";
 import type { ApiRequest } from "./route-context.js";
 
 /**
- * `DELETE /v0/runs/:root_run_id` — permanently remove a root run from `path.db` and `.path/runs/<root>/`.
- * Refuses a non-terminal run (`409`: cancel first) and, unless `?force=true`, a delete whose data a live
- * successor still reuses (`409`). `404` means neither store held the id.
+ * `DELETE /v0/runs/:root_run_id` — permanently remove a root run from `path.db` and
+ * `.path/runs/<root>/`. Refuses a non-terminal run (`409`: cancel first) and, unless `?force=true`,
+ * a delete whose data a live successor still reuses (`409`). `404` means neither store held the id.
  */
 export function handleDeleteRun({
   res,

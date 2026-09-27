@@ -1,9 +1,10 @@
 import type { Condition, JsonScalar } from "@path/schema";
 
 /**
- * A one-line, read-only plain-text summary of a structured `Condition`: the text the canvas shows on a
- * branch arm's `when`, a `while-do`'s `condition`, and a `checkpoint`'s `assert`. It is a *summary*,
- * never an editor, and favours legibility over round-trip fidelity — it reads like the predicate.
+ * A one-line, read-only plain-text summary of a structured `Condition`: the text the canvas shows
+ * on a branch arm's `when`, a `while-do`'s `condition`, and a `checkpoint`'s `assert`. It is a
+ * *summary*, never an editor, and favours legibility over round-trip fidelity — it reads like the
+ * predicate.
  */
 export function summarizeCondition(condition: Condition): string {
   switch (condition.type) {
@@ -32,7 +33,8 @@ export function summarizeCondition(condition: Condition): string {
   }
 }
 
-/** A scalar operand rendered compactly: a string keeps its quotes so it is told from a bare path or number. */
+/** A scalar operand rendered compactly: a string keeps its quotes so it is told from a bare path or
+ * number. */
 function scalar(value: JsonScalar): string {
   return typeof value === "string" ? JSON.stringify(value) : String(value);
 }

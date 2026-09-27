@@ -17,9 +17,9 @@ import { stampNames } from "./stamp-names.js";
 /**
  * Engine consumption of the reuse plan (#172): a resumed run reuses a succeeded node's recorded
  * `output.json` instead of re-executing it, seeds each re-entered workflow-run's context from its
- * seed and replays the reused prefix over it (ADR 0062), and narrates every reuse decision with a single `reuse-marker` — while
- * never opening the original tree for writing. The plan itself is #170's pure `planReuse`; this
- * suite drives what the walker does with it.
+ * seed and replays the reused prefix over it (ADR 0062), and narrates every reuse decision with a
+ * single `reuse-marker` — while never opening the original tree for writing. The plan itself is
+ * #170's pure `planReuse`; this suite drives what the walker does with it.
  */
 
 // A run row of the original tree, with the fields planReuse and the seed load read.
@@ -49,8 +49,8 @@ function run(
   };
 }
 
-// The `prompt`/`anthropic` seam carries no node name (ADR 0021 sub-6), so these fixtures set each prompt
-// node's `prompt` to its own id — the worker reads `fields.prompt` as the node label.
+// The `prompt`/`anthropic` seam carries no node name (ADR 0021 sub-6), so these fixtures set each
+// prompt node's `prompt` to its own id — the worker reads `fields.prompt` as the node label.
 function nodeLabel(request: StepRequest): string {
   return String(request.fields.prompt);
 }
@@ -68,12 +68,14 @@ function recordingWorker(outputs: { [nodeName: string]: string }, ran: string[])
   };
 }
 
-/** Plug a scripted `prompt`/`anthropic` worker in via the registry override seam (ADR 0021 sub-15). */
+/** Plug a scripted `prompt`/`anthropic` worker in via the registry override seam (ADR 0021
+ * sub-15). */
 function promptOverride(worker: WorkerDescriptor) {
   return { prompt: { anthropic: worker } };
 }
 
-/** A reader over an in-memory original tree, recording every `<runId>/<filename>` it is asked for. */
+/** A reader over an in-memory original tree, recording every `<runId>/<filename>` it is asked
+ * for. */
 function reader(blobs: { [key: string]: JsonValue }, reads: string[]): ResumeInput["readBlob"] {
   return (record, filename) => {
     const key = `${record.runId}/${filename}`;
@@ -84,8 +86,8 @@ function reader(blobs: { [key: string]: JsonValue }, reads: string[]): ResumeInp
 }
 
 function tree(body: WorkflowFile["body"], output?: WorkflowFile["output"]): WorkflowFile {
-  // stampNames keeps each node's human id in place (so resume matching by id still works) and mirrors
-  // it to `name`; runWorkflow takes the object directly, so no UUIDs are needed here.
+  // stampNames keeps each node's human id in place (so resume matching by id still works) and
+  // mirrors it to `name`; runWorkflow takes the object directly, so no UUIDs are needed here.
   return stampNames({
     format: "path/workflow@5",
     name: "resumed",
@@ -151,10 +153,12 @@ describe("resume — reusing a node's recorded output (#172)", () => {
     // a reused, b executed
     expect(ran).toEqual(["b"]);
     expect(result.status).toBe("succeeded");
-    // The reused output flows the default-input chain and the workflow output exactly like a fresh one.
+    // The reused output flows the default-input chain and the workflow output exactly like a fresh
+    // one.
     expect(result.output).toEqual({ a: "REUSED_A", b: "FRESH_B" });
 
-    // Exactly one reuse-marker, for a, pointing at the original run; run_id is this successor's root run.
+    // Exactly one reuse-marker, for a, pointing at the original run; run_id is this successor's
+    // root run.
     const m = markers(observer);
     expect(m).toHaveLength(1);
     expect(m[0]).toMatchObject({ node_id: "a", node_name: "a", original_run_id: "a-run" });
@@ -311,7 +315,8 @@ describe("resume — reusing a node's recorded output (#172)", () => {
             nodeName: "sub",
             status: "succeeded",
           }),
-          // A descendant inside the collapsed subtree: it must never be walked, so its blob is never read.
+          // A descendant inside the collapsed subtree: it must never be walked, so its blob is
+          // never read.
           run({
             runId: "inner-run",
             parentRunId: "sub-run",
@@ -369,7 +374,8 @@ describe("resume — reusing a node's recorded output (#172)", () => {
             nodeName: null,
             status: "failed",
           }),
-          // sub failed originally, so it re-enters rather than reusing — its succeeded child x reuses.
+          // sub failed originally, so it re-enters rather than reusing — its succeeded child x
+          // reuses.
           run({
             runId: "sub-run",
             parentRunId: "orig-root",
@@ -409,7 +415,8 @@ describe("resume — reusing a node's recorded output (#172)", () => {
     const subStarted = observer.runStarts().find((e) => e.event.node_id === "sub");
     expect(subStarted).toBeDefined();
 
-    // x's reuse-marker is attributed to the nested run, not the root — the nearest re-entered ancestor.
+    // x's reuse-marker is attributed to the nested run, not the root — the nearest re-entered
+    // ancestor.
     const m = markers(observer);
     expect(m).toHaveLength(1);
     expect(m[0]).toMatchObject({
@@ -420,8 +427,8 @@ describe("resume — reusing a node's recorded output (#172)", () => {
     });
 
     // The nested run seeds from its own input (replay from seed, ADR 0062), never from a recorded
-    // blob of its counterpart: `restored` comes from the `workflow` node's input, and `fromX` proves
-    // the reused node re-published over that seed.
+    // blob of its counterpart: `restored` comes from the `workflow` node's input, and `fromX`
+    // proves the reused node re-published over that seed.
     expect(reads.some((key) => key.startsWith("sub-run/"))).toBe(false);
     const nestedContexts = observer
       .records("context")
@@ -528,9 +535,9 @@ describe("resume — the original tree is read-only (#172)", () => {
 });
 
 describe("resume — wait-one join re-evaluates and short-circuits the losers (§7)", () => {
-  // The original tree decided the race: the winner branch's step succeeded (reusable), the loser was
-  // cancelled (not `succeeded`, so absent from the plan). Replaying must reuse the winner and start
-  // no loser at all — no run for cause-blindness to re-run, so no re-fired side effects.
+  // The original tree decided the race: the winner branch's step succeeded (reusable), the loser
+  // was cancelled (not `succeeded`, so absent from the plan). Replaying must reuse the winner and
+  // start no loser at all — no run for cause-blindness to re-run, so no re-fired side effects.
   const raceFile = tree(
     [
       {
@@ -593,7 +600,8 @@ describe("resume — wait-one join re-evaluates and short-circuits the losers (�
             status: "cancelled",
           }),
         ],
-        // Only the winner's blob exists; a read of the loser's would throw, proving it is never reused.
+        // Only the winner's blob exists; a read of the loser's would throw, proving it is never
+        // reused.
         readBlob: reader({ "orig-root/input.json": {}, "f-run/output.json": "REUSED_F" }, reads),
       },
     });
@@ -619,9 +627,10 @@ describe("resume — wait-one join re-evaluates and short-circuits the losers (�
   });
 
   it("reproduces the seq-first winner when a photo-finish left two branches succeeded, not declaration order", async () => {
-    // Best-effort cancellation is async, so a race can record *two* succeeded branches. The original
-    // run named the branch that finished first (lower seq, §6). Here that is the second-declared
-    // branch, so a declaration-order pick would crown the wrong one; resume must follow completion time.
+    // Best-effort cancellation is async, so a race can record *two* succeeded branches. The
+    // original run named the branch that finished first (lower seq, §6). Here that is the
+    // second-declared branch, so a declaration-order pick would crown the wrong one; resume must
+    // follow completion time.
     const ran: string[] = [];
     const reads: string[] = [];
     const observer = fakeObserver();
@@ -721,19 +730,21 @@ describe("resume — wait-one join re-evaluates and short-circuits the losers (�
 
 describe("resume — do-not-wait re-fires a non-`succeeded` detached branch; no short-circuit (ADR 0009)", () => {
   // In contrast to the wait-one suite above — which re-evaluates the race and short-circuits the
-  // cancelled loser so it never starts — do-not-wait has no race and no winner. A detached branch left
-  // non-`succeeded` in the predecessor is ordinary *unfinished* work, so cause-blind resume RE-RUNS it
-  // (ADR 0009): do-not-wait adds nothing to the resume contract. This locks the *absence* of a
-  // short-circuit so no future change quietly introduces one.
+  // cancelled loser so it never starts — do-not-wait has no race and no winner. A detached branch
+  // left non-`succeeded` in the predecessor is ordinary *unfinished* work, so cause-blind resume
+  // RE-RUNS it (ADR 0009): do-not-wait adds nothing to the resume contract. This locks the
+  // *absence* of a short-circuit so no future change quietly introduces one.
   //
   // The predecessor's detached branch is `failed` (issue #215 headline; the #214 blocked-by exists
-  // precisely so this failed-branch re-run is exercisable). On resume it re-runs and fails *again*, and
-  // failure isolation (ADR 0008 / #214) keeps the resumed run `succeeded` — the same at-least-once
-  // re-fire every non-`succeeded` node gets, with no carve-out for the detached branch.
+  // precisely so this failed-branch re-run is exercisable). On resume it re-runs and fails *again*,
+  // and failure isolation (ADR 0008 / #214) keeps the resumed run `succeeded` — the same
+  // at-least-once re-fire every non-`succeeded` node gets, with no carve-out for the detached
+  // branch.
   const file = tree(
     [
       // A succeeded predecessor node, reused on resume — proves the reuse machinery is live, so the
-      // detached branch's re-run below is a deliberate non-reuse, not resume failing to reuse anything.
+      // detached branch's re-run below is a deliberate non-reuse, not resume failing to reuse
+      // anything.
       { type: "prompt", id: "pre", name: "pre", prompt: "pre", publish: { seed: "${output}" } },
       {
         type: "parallel",
@@ -753,8 +764,9 @@ describe("resume — do-not-wait re-fires a non-`succeeded` detached branch; no 
     { seed: "${context.seed}" },
   );
 
-  // A worker that reports every `d` re-run as `failed` (records the call), so the re-executed detached
-  // branch fails exactly as it did in the predecessor. `pre` is reused and never reaches the worker.
+  // A worker that reports every `d` re-run as `failed` (records the call), so the re-executed
+  // detached branch fails exactly as it did in the predecessor. `pre` is reused and never reaches
+  // the worker.
   const failingBranchWorker = (ran: string[]): WorkerDescriptor => ({
     meters: false,
     needsProcessorSlot: true,
@@ -805,18 +817,21 @@ describe("resume — do-not-wait re-fires a non-`succeeded` detached branch; no 
       },
     });
 
-    // Failure isolation holds on resume: the re-run's failure did not fail the run (ADR 0008 / #214).
+    // Failure isolation holds on resume: the re-run's failure did not fail the run (ADR 0008 /
+    // #214).
     expect(result.status).toBe("succeeded");
-    expect(result.output).toEqual({ seed: "REUSED_PRE" }); // the reused predecessor still published.
+    // the reused predecessor still published.
+    expect(result.output).toEqual({ seed: "REUSED_PRE" });
 
-    // `pre` succeeded → reused (one marker, no execution). The failed detached branch → re-ran on the
-    // worker. So exactly the detached branch executed, and only the predecessor reused.
+    // `pre` succeeded → reused (one marker, no execution). The failed detached branch → re-ran on
+    // the worker. So exactly the detached branch executed, and only the predecessor reused.
     const markerIds = markers(observer).map((m) => m.node_id);
     expect(ran).toEqual(["d"]);
     expect(markerIds).toEqual(["pre"]);
 
-    // The lock. The detached branch produced a FRESH step-started *and* step-finished — it was neither
-    // reused (no marker for `d`) nor short-circuited away (a wait-one loser never starts; this one does).
+    // The lock. The detached branch produced a FRESH step-started *and* step-finished — it was
+    // neither reused (no marker for `d`) nor short-circuited away (a wait-one loser never starts;
+    // this one does).
     expect(startedNodeIds(observer)).toContain("d");
     expect(markerIds).not.toContain("d");
     const dRunId = observer.stepStarts().find((e) => e.event.node_name === "d")!.runId;
@@ -826,8 +841,9 @@ describe("resume — do-not-wait re-fires a non-`succeeded` detached branch; no 
     // Its recorded output was never read: resume re-executed it rather than restoring it.
     expect(reads).not.toContain("d-run/output.json");
 
-    // No wait-one machinery: the join fires (spec §9) but crowns no winner, and nothing was cancelled —
-    // there is no reused winner making the branch pointless, so nothing to short-circuit.
+    // No wait-one machinery: the join fires (spec §9) but crowns no winner, and nothing was
+    // cancelled — there is no reused winner making the branch pointless, so nothing to
+    // short-circuit.
     const joinApplied = observer.of("join-applied").find((e) => e.event.node_name === "fire");
     expect(joinApplied).toBeDefined();
     expect(joinApplied!.event).not.toHaveProperty("winner");

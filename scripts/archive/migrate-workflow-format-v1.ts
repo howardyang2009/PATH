@@ -7,8 +7,8 @@
  *   - stamps a fresh `randomUUID()` as the durable `id` on the workflow and on every node/branch;
  *   - moves each node/branch's old human `id` to `name` (the workflow already had `name`).
  *
- * This is the *only* sanctioned write-back of an `id` (ADR 0006: fill-once, never regenerate). It is
- * a committed repo-internal script, not a shipped `path migrate` command — pre-1.0 there are no
+ * This is the *only* sanctioned write-back of an `id` (ADR 0006: fill-once, never regenerate). It
+ * is a committed repo-internal script, not a shipped `path migrate` command — pre-1.0 there are no
  * external stored workflow files, and #202's schema v4 bump resets `.path/path.db`, so no resume
  * continuity spans the migration and no id-preservation mapping is needed.
  *
@@ -30,7 +30,8 @@ function isObject(value: unknown): value is { [key: string]: unknown } {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-/** Rebuild an object with `id`/`name` leading, a fresh GUID `id`, and the old human `id` as `name`. */
+/** Rebuild an object with `id`/`name` leading, a fresh GUID `id`, and the old human `id` as
+ * `name`. */
 function withStampedIdentity(node: { [key: string]: unknown }): { [key: string]: unknown } {
   const oldHumanId = node.id;
   const name = node.name ?? oldHumanId;
@@ -77,7 +78,8 @@ function migrateNodeArray(nodes: unknown[]): unknown[] {
   });
 }
 
-/** @returns the migrated document, or null when the file is not a legacy workflow (already `@1`). */
+/** @returns the migrated document, or null when the file is not a legacy workflow (already
+ * `@1`). */
 function migrateDocument(doc: unknown): { [key: string]: unknown } | null {
   if (!isObject(doc) || doc.format !== LEGACY_FORMAT) return null;
   const { format: _f, id: _i, name, worker, config, body, output, ...rest } = doc;
@@ -87,7 +89,8 @@ function migrateDocument(doc: unknown): { [key: string]: unknown } | null {
   if (Array.isArray(body)) migrated.body = migrateNodeArray(body);
   else if (body !== undefined) migrated.body = body;
   if (output !== undefined) migrated.output = output;
-  Object.assign(migrated, rest); // preserve any unknown fields verbatim (e.g. an invalid-schema probe)
+  // preserve any unknown fields verbatim (e.g. an invalid-schema probe)
+  Object.assign(migrated, rest);
   return migrated;
 }
 

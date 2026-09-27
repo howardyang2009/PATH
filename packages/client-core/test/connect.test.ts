@@ -121,7 +121,8 @@ describe("connectRunViewModel", () => {
     const connected = await connectRunViewModel({ client, rootRunId: ROOT });
     expect(connected.model.getState().runs.has(CHILD)).toBe(false);
 
-    // A log event carries no `parent_run_id`, so the child would hang parentless without the re-read.
+    // A log event carries no `parent_run_id`, so the child would hang parentless without the
+    // re-read.
     stream.push({
       type: "step-started",
       seq: 1,
@@ -263,8 +264,8 @@ describe("connectRunViewModel", () => {
       node_name: null,
       status: "succeeded",
     });
-    // The end below is a completion, not a drop, only if the terminal event was seen first — and the
-    // subscription records terminality before handing the event to the fold, so the root status
+    // The end below is a completion, not a drop, only if the terminal event was seen first — and
+    // the subscription records terminality before handing the event to the fold, so the root status
     // moving means the stream already knows.
     await waitFor(() => connected.model.getState().status === "succeeded");
     stream.end();

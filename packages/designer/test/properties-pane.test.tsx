@@ -5,9 +5,9 @@ import { describe, expect, it } from "vitest";
 import { App } from "../src/app.js";
 
 /**
- * #369 — the properties pane: a selection populates it, the id re-key is confirmation-gated, and the
- * three editor tiers (hand-built, generic, raw JSON) resolve per step type. Later tickets added the
- * file worker-defaults (#505) and the person-activity editor (#487).
+ * #369 — the properties pane: a selection populates it, the id re-key is confirmation-gated, and
+ * the three editor tiers (hand-built, generic, raw JSON) resolve per step type. Later tickets added
+ * the file worker-defaults (#505) and the person-activity editor (#487).
  */
 
 /** A distinct valid UUIDv4 per seed. */
@@ -17,7 +17,8 @@ function uuid(n: number): string {
 
 const PATH = "flows/main.workflow.json";
 
-/** A file with a plain step, a parallel (2 branches), a branch (2 arms + else), and a generic + a raw-JSON leaf. */
+/** A file with a plain step, a parallel (2 branches), a branch (2 arms + else), and a generic + a
+ * raw-JSON leaf. */
 function paneFile(): Record<string, unknown> {
   return {
     format: FORMAT_VERSION,
@@ -59,7 +60,8 @@ function paneFile(): Record<string, unknown> {
   };
 }
 
-/** Registry with a multi-worker prompt, a layoutable generic type, and an unlayoutable (raw-JSON) type. */
+/** Registry with a multi-worker prompt, a layoutable generic type, and an unlayoutable (raw-JSON)
+ * type. */
 const RICH_PLUGINS: WireStepPlugin[] = [
   {
     name: "prompt",
@@ -192,7 +194,8 @@ describe("selection populates the pane", () => {
     const pane = screen.getByRole("region", { name: "Properties" });
     selectNode(canvas, "alpha");
 
-    // A step that names no worker renders as the leading "(default)" option — value empty, not the type default.
+    // A step that names no worker renders as the leading "(default)" option — value empty, not the
+    // type default.
     expect((within(pane).getByLabelText("worker") as HTMLSelectElement).value).toBe("");
 
     fireEvent.change(within(pane).getByLabelText("worker"), { target: { value: "batch" } });
@@ -203,7 +206,8 @@ describe("selection populates the pane", () => {
     const saved = calls.put.at(-1)!.body.workflow as { body: { name: string; worker?: string }[] };
     expect(saved.body.find((n) => n.name === "alpha")!.worker).toBe("batch");
 
-    // Choosing "(default)" (the empty-value option) drops the key, so the step is identical to one that never named a worker.
+    // Choosing "(default)" (the empty-value option) drops the key, so the step is identical to one
+    // that never named a worker.
     fireEvent.change(within(pane).getByLabelText("worker"), { target: { value: "" } });
     await waitFor(() => expect(screen.getByRole("button", { name: "Save" })).not.toBeDisabled());
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
@@ -249,7 +253,8 @@ describe("selection populates the pane", () => {
   it("keeps the selection through a structure-control click (not a background click)", async () => {
     const { canvas, pane } = await openPane();
     selectNode(canvas, "alpha");
-    // Reorder the selected node — a control-button click bubbles to the canvas but must not deselect.
+    // Reorder the selected node — a control-button click bubbles to the canvas but must not
+    // deselect.
     fireEvent.click(within(canvas).getByRole("button", { name: "Move alpha down" }));
     expect((within(pane).getByLabelText("name") as HTMLInputElement).value).toBe("alpha");
   });
@@ -289,8 +294,8 @@ describe("the three editor tiers", () => {
     expect(within(pane).getByLabelText("model")).toBeInTheDocument();
     expect(within(pane).getByLabelText("prompt")).toBeInTheDocument();
 
-    // `binary` retired to the generic tier (registry-driven): its command/args/cwd controls are laid
-    // out from the wire field-spec, not a bespoke BinaryEditor.
+    // `binary` retired to the generic tier (registry-driven): its command/args/cwd controls are
+    // laid out from the wire field-spec, not a bespoke BinaryEditor.
     selectNode(canvas, "runner");
     expect((within(pane).getByLabelText("command") as HTMLInputElement).value).toBe("ls");
     expect(within(pane).getByLabelText(/args/)).toBeInTheDocument();
@@ -317,7 +322,8 @@ describe("the three editor tiers", () => {
     fireEvent.click(within(pane).getByRole("button", { name: "+ add config key" }));
     fireEvent.change(within(pane).getByLabelText("region"), { target: { value: "eu" } });
 
-    // A step now shows that key as inherited from the file: a ghosted value with an Override button.
+    // A step now shows that key as inherited from the file: a ghosted value with an Override
+    // button.
     selectNode(canvas, "alpha");
     openSection(pane, "config");
     const regionRow = within(pane).getByText("region").closest(".pane-config-row") as HTMLElement;
@@ -377,7 +383,8 @@ describe("the three editor tiers", () => {
     const canvas = screen.getByRole("region", { name: "Workflow canvas" });
     const pane = screen.getByRole("region", { name: "Properties" });
 
-    // An empty field ghosting the inherited model: Tab takes the placeholder as the value (an override).
+    // An empty field ghosting the inherited model: Tab takes the placeholder as the value (an
+    // override).
     selectNode(canvas, "alpha");
     const model = within(pane).getByLabelText("model") as HTMLInputElement;
     expect(model.value).toBe("");
@@ -386,7 +393,8 @@ describe("the three editor tiers", () => {
     expect(filled.value).toBe("claude-sonnet-5");
     expect(filled).not.toHaveClass("pane-input-inherit");
 
-    // A field that already holds text shows no placeholder, so Tab is left to move focus (value stays).
+    // A field that already holds text shows no placeholder, so Tab is left to move focus (value
+    // stays).
     fireEvent.change(filled, { target: { value: "claude-opus-4-8" } });
     fireEvent.keyDown(filled, { key: "Tab" });
     expect((within(pane).getByLabelText("model") as HTMLInputElement).value).toBe(
@@ -443,8 +451,8 @@ describe("worker selection", () => {
 
 describe("file worker-defaults", () => {
   it("hides the section when no type ships more than one worker", async () => {
-    // A file whose only step type is `prompt` as the default registry ships it — one worker, nothing to
-    // select, so the section (its header included) is not rendered at all.
+    // A file whose only step type is `prompt` as the default registry ships it — one worker,
+    // nothing to select, so the section (its header included) is not rendered at all.
     const file = {
       format: FORMAT_VERSION,
       id: uuid(1),
@@ -475,7 +483,8 @@ describe("file worker-defaults", () => {
     const pane = screen.getByRole("region", { name: "Properties" });
     selectNode(canvas, "alpha");
 
-    // An un-pinned step resolves to the file default now, so the "(default)" option names it and its tier.
+    // An un-pinned step resolves to the file default now, so the "(default)" option names it and
+    // its tier.
     const select = within(pane).getByLabelText("worker") as HTMLSelectElement;
     expect(select.value).toBe("");
     expect(select.options[0]!.textContent).toBe("(default: batch — file)");
@@ -502,7 +511,8 @@ describe("file worker-defaults", () => {
     openSection(pane, "worker defaults");
     fireEvent.click(within(pane).getByRole("button", { name: "+ add worker default" }));
 
-    // The only multi-worker type is `prompt`, added with its default worker; a constrained retarget to `batch`.
+    // The only multi-worker type is `prompt`, added with its default worker; a constrained retarget
+    // to `batch`.
     expect((within(pane).getByLabelText("type") as HTMLSelectElement).value).toBe("prompt");
     expect((within(pane).getByLabelText("worker") as HTMLSelectElement).value).toBe("anthropic");
     fireEvent.change(within(pane).getByLabelText("worker"), { target: { value: "batch" } });
@@ -619,7 +629,8 @@ describe("the workflow-level output object (§6.4)", () => {
 describe("the workflow-level reference list", () => {
   it("gathers the output roots' referenceable paths into one file-level reference section", async () => {
     // The file's own `output` reads config/context (STEP_ROOTS), so the file reference list carries
-    // those roots' concrete keys plus their bare prefixes — the counterpart of a node's reference list.
+    // those roots' concrete keys plus their bare prefixes — the counterpart of a node's reference
+    // list.
     const file = {
       ...paneFile(),
       config: { model: "claude-sonnet-5" },

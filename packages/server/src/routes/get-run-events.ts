@@ -9,7 +9,8 @@ const SSE_HEADERS = {
   Connection: "keep-alive",
 } as const;
 
-/** The `Last-Event-ID` seq to replay after (server-api-v0.md §5); absent or non-numeric replays all. */
+/** The `Last-Event-ID` seq to replay after (server-api-v0.md §5); absent or non-numeric replays
+ * all. */
 function parseLastEventId(req: IncomingMessage): number | undefined {
   const header = req.headers["last-event-id"];
   const raw = Array.isArray(header) ? header[0] : header;
@@ -19,8 +20,8 @@ function parseLastEventId(req: IncomingMessage): number | undefined {
 
 /**
  * `GET /v0/runs/:root_run_id/events` (server-api-v0.md §5): the SSE event stream. Which events a
- * subscriber gets, and in what order, is `LiveRuns.stream`'s guarantee; this route owns the 404, the
- * `Last-Event-ID` header, and the socket.
+ * subscriber gets, and in what order, is `LiveRuns.stream`'s guarantee; this route owns the 404,
+ * the `Last-Event-ID` header, and the socket.
  */
 export function handleGetRunEvents({
   req,

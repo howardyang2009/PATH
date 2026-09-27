@@ -8,3 +8,4 @@ dist/
 .pnpm-store/
 # Scratch workflows an operator runs from the repo root: samples live in examples/ and docs/.
 /*.workflow.json
+.idea/

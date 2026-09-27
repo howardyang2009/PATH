@@ -22,27 +22,31 @@ export interface CompleteFormProps {
   /** The node's `outputSchema`, or `null` for a node that accepts any JSON (an empty output). */
   outputSchema: JsonValue | null;
   /**
-   * The launch config dot-paths the tree recorded as `$secret`-masked (ADR 0046). Non-empty, the form
-   * draws an optional config field prefilled with a skeleton of those paths, because a continuation
-   * recovers the frozen config and its `[secret:<key>]` tokens cannot run — the operator supplies the
-   * values again. Empty or absent, no config field renders: there is nothing to re-enter.
+   * The launch config dot-paths the tree recorded as `$secret`-masked (ADR 0046). Non-empty, the
+   * form draws an optional config field prefilled with a skeleton of those paths, because a
+   * continuation recovers the frozen config and its `[secret:<key>]` tokens cannot run — the
+   * operator supplies the values again. Empty or absent, no config field renders: there is nothing
+   * to re-enter.
    */
   launchSecretKeys?: readonly string[];
   /** The submit button's label. Defaults to the panel's "Complete this activity". */
   submitLabel?: string;
-  /** Called on a `202` — the leaf is `succeeded` and the root's SSE stream carries the continuation. */
+  /** Called on a `202` — the leaf is `succeeded` and the root's SSE stream carries the
+   * continuation. */
   onCompleted: () => void;
 }
 
 /**
- * The Complete form built from a `person-activity` node's `outputSchema` (ADR 0040). The field list,
- * value coercion, client pre-check and server-`400`→field mapping are the framework-free model in
- * `@path/client-core`, shared with the Designer; this component is only the controls, state and submit.
+ * The Complete form built from a `person-activity` node's `outputSchema` (ADR 0040). The field
+ * list, value coercion, client pre-check and server-`400`→field mapping are the framework-free
+ * model in `@path/client-core`, shared with the Designer; this component is only the controls,
+ * state and submit.
  *
  * The server is the authority: a `400` still lands and its **own** field errors (ajv's messages,
- * verbatim) replace the client's, while the leaf stays `awaiting` for a corrected resubmit. A node with
- * **no** schema accepts any JSON, so the form draws a single free-text control instead of no fields — it
- * takes JSON as its value, plain prose as a JSON string, and blank as an empty output, so it never rejects.
+ * verbatim) replace the client's, while the leaf stays `awaiting` for a corrected resubmit. A node
+ * with **no** schema accepts any JSON, so the form draws a single free-text control instead of no
+ * fields — it takes JSON as its value, plain prose as a JSON string, and blank as an empty output,
+ * so it never rejects.
  */
 export function CompleteForm({
   client,
@@ -60,8 +64,8 @@ export function CompleteForm({
   const showSecrets = resupply.required;
   const [values, setValues] = useState<Partial<Record<string, CompleteFieldValue>>>({});
   const [rawText, setRawText] = useState("");
-  // Prefilled from the tree's recorded secret paths, so the operator fills values rather than retyping
-  // the shape. Lazy init: the skeleton is built once per mount.
+  // Prefilled from the tree's recorded secret paths, so the operator fills values rather than
+  // retyping the shape. Lazy init: the skeleton is built once per mount.
   const [configText, setConfigText] = useState(() => resupply.skeleton);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [formErrors, setFormErrors] = useState<string[]>([]);
@@ -71,10 +75,11 @@ export function CompleteForm({
     setValues((prev) => ({ ...prev, [key]: value }));
   };
 
-  // The shared secret-restore gate (ADR 0046, `@path/client-core`) — the same verdict the Resume card
-  // reads. A recorded launch secret is a credential the frozen config holds only as a mask token, so the
-  // form refuses one the operator left blank: the engine would otherwise fall through to the environment.
-  // Derived from the text, so the button is disabled from the moment the skeleton is on screen.
+  // The shared secret-restore gate (ADR 0046, `@path/client-core`) — the same verdict the Resume
+  // card reads. A recorded launch secret is a credential the frozen config holds only as a mask
+  // token, so the form refuses one the operator left blank: the engine would otherwise fall through
+  // to the environment. Derived from the text, so the button is disabled from the moment the
+  // skeleton is on screen.
   const gate = resupplyGate(secrets, configText, "completing");
   const blankSecrets = gate.blankPaths;
 
@@ -85,8 +90,8 @@ export function CompleteForm({
       output = coerceRawCompleteOutput(rawText);
     } else {
       output = coerceCompleteOutput(fields, values);
-      // The same validator the route runs, over the node's own schema: a `pattern`, a `minimum` or a
-      // nested shape is caught here now rather than coming back as a `400`.
+      // The same validator the route runs, over the node's own schema: a `pattern`, a `minimum` or
+      // a nested shape is caught here now rather than coming back as a `400`.
       const clientErrors = validateCompleteDraft(outputSchema, output);
       if (Object.keys(clientErrors.fieldErrors).length > 0 || clientErrors.formErrors.length > 0) {
         setFieldErrors(clientErrors.fieldErrors);
@@ -96,9 +101,10 @@ export function CompleteForm({
       setFieldErrors({});
     }
     setFormErrors([]);
-    // The continuation's config is a separate gate from the output: an unparseable value, or a blank at
-    // a path the launch recorded as a secret, blocks the submit with no request spent. Blank parses to
-    // `undefined`, so a run with no secrets sends the same `{ output }` body as before.
+    // The continuation's config is a separate gate from the output: an unparseable value, or a
+    // blank at a path the launch recorded as a secret, blocks the submit with no request spent.
+    // Blank parses to `undefined`, so a run with no secrets sends the same `{ output }` body as
+    // before.
     const submitGate = resupplyGate(secrets, configText, "completing");
     if (!submitGate.configResult.ok) {
       setFormErrors([submitGate.configResult.message]);
@@ -117,8 +123,8 @@ export function CompleteForm({
       (thrown: unknown) => {
         setPhase("idle");
         // A 400 carries the server's ajv issues in `details` — map them onto the fields (leaf stays
-        // awaiting for a retry). Any other failure (404/409, transport) has no per-field shape, so it
-        // reads at the form level.
+        // awaiting for a retry). Any other failure (404/409, transport) has no per-field shape, so
+        // it reads at the form level.
         if (thrown instanceof PathApiError && thrown.status === 400) {
           const mapped = mapCompleteErrors(thrown.details);
           setFieldErrors(mapped.fieldErrors);
@@ -197,8 +203,8 @@ interface RawOutputControlProps {
 
 /**
  * The one control a schema-less `person-activity` node draws: a free-text textarea for the step's
- * `${output}`. It never rejects (ADR 0040: any JSON is accepted) — plain text submits as a JSON string,
- * JSON as its value, blank as an empty output.
+ * `${output}`. It never rejects (ADR 0040: any JSON is accepted) — plain text submits as a JSON
+ * string, JSON as its value, blank as an empty output.
  */
 function RawOutputControl({ value, onChange }: RawOutputControlProps) {
   const id = "complete-fld-__raw";
@@ -229,9 +235,9 @@ interface LaunchSecretsControlProps {
 }
 
 /**
- * The Complete form's optional config override, drawn only when the launch recorded `$secret` config
- * (ADR 0046). Prefilled with the masked paths' skeleton; the frozen values are stored masked and the
- * engine refuses to continue with a token.
+ * The Complete form's optional config override, drawn only when the launch recorded `$secret`
+ * config (ADR 0046). Prefilled with the masked paths' skeleton; the frozen values are stored masked
+ * and the engine refuses to continue with a token.
  */
 function LaunchSecretsControl({ value, onChange }: LaunchSecretsControlProps) {
   const id = "complete-fld-__config";
@@ -264,7 +270,8 @@ interface CompleteControlProps {
   onChange: (value: CompleteFieldValue) => void;
 }
 
-/** One schema-driven control: a checkbox, a select, or a text/number input, with its help and error. */
+/** One schema-driven control: a checkbox, a select, or a text/number input, with its help and
+ * error. */
 function CompleteControl({ field, value, error, onChange }: CompleteControlProps) {
   const id = `complete-fld-${field.key}`;
   const errId = `${id}-err`;

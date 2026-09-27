@@ -2,8 +2,9 @@ import { type ConfigObject, ENVELOPE_KEYS, type WorkflowNode } from "@path/schem
 import { withoutKey } from "./edit-target.js";
 
 /**
- * The pure **content** edits the pane performs on one `WorkflowNode` (the counterpart of `edit-tree.ts`'s
- * structure edits); each returns a new node and none touches the spine. `rec` opens the closed union.
+ * The pure **content** edits the pane performs on one `WorkflowNode` (the counterpart of
+ * `edit-tree.ts`'s structure edits); each returns a new node and none touches the spine. `rec`
+ * opens the closed union.
  */
 
 /** A node as an open record — the discriminated union carries no index signature. */
@@ -20,7 +21,8 @@ export function nodePayload(node: WorkflowNode): Record<string, unknown> {
   return out;
 }
 
-/** Rebuild a node from its envelope plus a fresh payload (envelope keys in the payload are ignored). */
+/** Rebuild a node from its envelope plus a fresh payload (envelope keys in the payload are
+ * ignored). */
 export function mergeNodePayload(
   node: WorkflowNode,
   payload: Record<string, unknown>,
@@ -36,7 +38,8 @@ export function mergeNodePayload(
   return { ...envelope, ...cleaned } as unknown as WorkflowNode;
 }
 
-/** Set a payload/envelope key on a node (an `undefined` value drops the key), returning a new node. */
+/** Set a payload/envelope key on a node (an `undefined` value drops the key), returning a new
+ * node. */
 export function setNodeField(node: WorkflowNode, key: string, value: unknown): WorkflowNode {
   if (value === undefined) return dropNodeKey(node, key);
   return { ...node, [key]: value } as WorkflowNode;
@@ -73,7 +76,8 @@ export function applyNodeConfig(
   return config === undefined ? dropNodeKey(node, "config") : ({ ...node, config } as WorkflowNode);
 }
 
-/** Read a string payload/envelope datum off a node, or `""` when the key is absent or non-string. */
+/** Read a string payload/envelope datum off a node, or `""` when the key is absent or
+ * non-string. */
 export function nodeString(node: WorkflowNode, key: string): string {
   const value = rec(node)[key];
   return typeof value === "string" ? value : "";
@@ -90,7 +94,8 @@ export function configStringOf(config: Record<string, unknown> | undefined, key:
   return typeof value === "string" ? value : "";
 }
 
-/** Write a string config datum on a node, dropping the key (and an emptied `config`) when cleared. */
+/** Write a string config datum on a node, dropping the key (and an emptied `config`) when
+ * cleared. */
 export function withConfig(node: WorkflowNode, key: string, value: string): WorkflowNode {
   const config: Record<string, unknown> = {
     ...((rec(node).config as Record<string, unknown> | undefined) ?? {}),

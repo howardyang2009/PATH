@@ -8,8 +8,8 @@ import * as barrel from "../src/index.js";
 /**
  * `@path/client-core`'s subpaths are seams a surface can name an owner with — the HTTP client, the
  * run view-model, the Complete form model, a run's blob addressing — instead of the whole barrel. A
- * package `exports` map is not checked by tsc alone, so each subpath is resolved here and compared to
- * the barrel entry it names.
+ * package `exports` map is not checked by tsc alone, so each subpath is resolved here and compared
+ * to the barrel entry it names.
  */
 
 describe("@path/client-core subpaths", () => {

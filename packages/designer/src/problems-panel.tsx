@@ -2,9 +2,10 @@ import type { Problem, ProblemKind } from "./problems.js";
 import { useSelection } from "./selection-context.js";
 
 /**
- * The aggregate problems panel. The per-node ⚠ marker and this panel are **two coupled surfaces**: a
- * marker on a collapsed or off-screen node is invisible, so every current cross-node error is also
- * listed here, each row jumping to its node. These are **soft** errors — they do not block save.
+ * The aggregate problems panel. The per-node ⚠ marker and this panel are **two coupled surfaces**:
+ * a marker on a collapsed or off-screen node is invisible, so every current cross-node error is
+ * also listed here, each row jumping to its node. These are **soft** errors — they do not block
+ * save.
  */
 
 /** The short tag each row wears, naming which check flagged it. */
@@ -23,7 +24,8 @@ const KIND_LABEL: Record<ProblemKind, string> = {
 function jumpTo(nodeId: string, onSelect: (id: string) => void): void {
   onSelect(nodeId);
   const block = document.querySelector(`[data-node-id="${nodeId}"]`);
-  // `scrollIntoView` is absent under jsdom; the select above is the load-bearing half a test asserts.
+  // `scrollIntoView` is absent under jsdom; the select above is the load-bearing half a test
+  // asserts.
   block?.scrollIntoView?.({ block: "center", behavior: "smooth" });
 }
 

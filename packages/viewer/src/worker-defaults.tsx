@@ -1,10 +1,11 @@
 import type { WireStepPlugin } from "@path/client-core";
 
 /**
- * The worker-default editor, shared by the Designer's file `worker_defaults` region and the Viewer's
- * launch form, which authors the launch worker-default. The two *tiers* differ (file-scoped and live
- * versus run-wide and frozen) but not the editing: both pick a type among the registry's multi-worker
- * types and a worker among that type's names, so an invalid `{ type, worker }` pair cannot be authored.
+ * The worker-default editor, shared by the Designer's file `worker_defaults` region and the
+ * Viewer's launch form, which authors the launch worker-default. The two *tiers* differ
+ * (file-scoped and live versus run-wide and frozen) but not the editing: both pick a type among the
+ * registry's multi-worker types and a worker among that type's names, so an invalid `{ type, worker
+ * }` pair cannot be authored.
  *
  * Controlled and storage-free: the caller decides what an empty table means (the Designer drops the
  * file key, the launch form omits the wire field) and owns the section's framing.
@@ -21,9 +22,9 @@ export interface WorkerDefaultsEditorProps {
 }
 
 /**
- * The registry types a worker-default can select: a single-worker type has nothing to pick, so it is
- * never offered. Exported because a caller that renders its own disclosure needs the same test to
- * decide whether the section exists at all.
+ * The registry types a worker-default can select: a single-worker type has nothing to pick, so it
+ * is never offered. Exported because a caller that renders its own disclosure needs the same test
+ * to decide whether the section exists at all.
  */
 export function workerDefaultCandidates(plugins: readonly WireStepPlugin[]): WireStepPlugin[] {
   return plugins.filter((plugin) => plugin.workers.length > 1);

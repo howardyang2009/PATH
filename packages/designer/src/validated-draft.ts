@@ -17,8 +17,9 @@ import { dropNodeKey, mergeNodePayload, setNodeField } from "./node-edit.js";
 import { wireToRegistry } from "./open-workflow.js";
 
 /**
- * The **draft → validate → commit** protocol behind the pane's live-validated fields: an author sees an
- * invalid draft, but it is never committed, so the canvas stays strict-valid. `useDraft` is the core.
+ * The **draft → validate → commit** protocol behind the pane's live-validated fields: an author
+ * sees an invalid draft, but it is never committed, so the canvas stays strict-valid. `useDraft` is
+ * the core.
  */
 
 /**
@@ -28,8 +29,8 @@ import { wireToRegistry } from "./open-workflow.js";
 export type DraftResult<T> = { ok: true; value: T } | { ok: false; error?: string };
 
 /**
- * The protocol's core over a draft `D` validating into `C`; when `identity` changes the draft re-seeds,
- * so selecting another node never shows the previous value.
+ * The protocol's core over a draft `D` validating into `C`; when `identity` changes the draft
+ * re-seeds, so selecting another node never shows the previous value.
  */
 export interface DraftField<D> {
   draft: D;
@@ -49,7 +50,8 @@ export function useDraft<D, C>(
     error: null,
   });
   const [state, setState] = useState(seed);
-  // Adjusting state during render when the prop-like `identity` changes — React's documented pattern.
+  // Adjusting state during render when the prop-like `identity` changes — React's documented
+  // pattern.
   if (!sameEditKey(state.identity, identity)) setState(seed());
 
   const onEdit = (next: D, key?: EditKey): void => {
@@ -65,7 +67,8 @@ export function useDraft<D, C>(
   return { draft: state.draft, error: state.error, onEdit };
 }
 
-/** A single-text field as the core over a string: validate every keystroke, commit only a valid value. */
+/** A single-text field as the core over a string: validate every keystroke, commit only a valid
+ * value. */
 export function useValidatedDraft<T>(
   initial: string | (() => string),
   validate: (text: string) => DraftResult<T>,
@@ -83,8 +86,8 @@ export function useValidatedDraft<T>(
 }
 
 /**
- * Parse the payload JSON, rebuild the node from its envelope plus the payload, and validate the whole
- * one-node file against the registry (§ Editors); an invalid draft is not committed.
+ * Parse the payload JSON, rebuild the node from its envelope plus the payload, and validate the
+ * whole one-node file against the registry (§ Editors); an invalid draft is not committed.
  */
 export function validateJsonPayload(
   node: WorkflowNode,
@@ -114,8 +117,8 @@ export function validateJsonPayload(
 }
 
 /**
- * The input object's rule (§ Input/output wiring): any JSON value with `${…}` placeholders over the step
- * roots; empty, or `{}`, drops the key, and an ill-typed placeholder errors.
+ * The input object's rule (§ Input/output wiring): any JSON value with `${…}` placeholders over the
+ * step roots; empty, or `{}`, drops the key, and an ill-typed placeholder errors.
  */
 export function validateInputDraft(node: WorkflowNode, text: string): DraftResult<WorkflowNode> {
   const parsed = parseInputDraft(text, STEP_ROOTS);
@@ -135,8 +138,8 @@ export function validateInputDraft(node: WorkflowNode, text: string): DraftResul
 }
 
 /**
- * The file-level **input** seed: a plain JSON object with no interpolation. Empty or `{}` drops the key;
- * an unparseable, array, or scalar draft errors.
+ * The file-level **input** seed: a plain JSON object with no interpolation. Empty or `{}` drops the
+ * key; an unparseable, array, or scalar draft errors.
  */
 export function validateFileInputDraft(
   file: WorkflowFile,
@@ -154,8 +157,8 @@ export function validateFileInputDraft(
 }
 
 /**
- * The `person-activity` **outputSchema** rule: the JSON Schema object the Complete form is built from
- * (ADR 0040); empty drops the key, and a present draft must parse as a JSON object.
+ * The `person-activity` **outputSchema** rule: the JSON Schema object the Complete form is built
+ * from (ADR 0040); empty drops the key, and a present draft must parse as a JSON object.
  */
 export function validateOutputSchema(node: WorkflowNode, text: string): DraftResult<WorkflowNode> {
   if (text.trim() === "") return { ok: true, value: dropNodeKey(node, "outputSchema") };
@@ -172,8 +175,8 @@ export function validateOutputSchema(node: WorkflowNode, text: string): DraftRes
 }
 
 /**
- * The `while-do` max-iterations rule: a run of digits is a literal count (at least 1), anything else a
- * `${config.…}` / `${context.…}` interpolation.
+ * The `while-do` max-iterations rule: a run of digits is a literal count (at least 1), anything
+ * else a `${config.…}` / `${context.…}` interpolation.
  */
 export function validateMaxIterations(text: string): DraftResult<number | string> {
   const trimmed = text.trim();
@@ -200,8 +203,8 @@ export interface KeyedRow {
 }
 
 /**
- * Build the `key → value` map a row list commits, **only** when every named row's value interpolates
- * over `roots`; unnamed rows are in-progress and are skipped.
+ * Build the `key → value` map a row list commits, **only** when every named row's value
+ * interpolates over `roots`; unnamed rows are in-progress and are skipped.
  */
 export function validRowsToMap(
   rows: KeyedRow[],

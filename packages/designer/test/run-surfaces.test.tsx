@@ -12,9 +12,10 @@ import { openWorkflowFile } from "../src/open-workflow.js";
 import { canonicalSerialize } from "../src/serialize.js";
 
 /**
- * The on-disk bytes of a file the Designer has already saved: canonical, so a re-open is a fixed point
- * and reads **clean** (ADR 0030). A raw `JSON.stringify` of a fixture is *not* canonical (whitespace and
- * parse-time key order differ), so it would open dirty — this models what production files look like.
+ * The on-disk bytes of a file the Designer has already saved: canonical, so a re-open is a fixed
+ * point and reads **clean** (ADR 0030). A raw `JSON.stringify` of a fixture is *not* canonical
+ * (whitespace and parse-time key order differ), so it would open dirty — this models what
+ * production files look like.
  */
 function canonicalBytes(file: Record<string, unknown>): string {
   const result = openWorkflowFile(JSON.stringify(file), DEFAULT_PLUGINS);
@@ -33,7 +34,8 @@ const STEP_ID = uuid(2);
 const OTHER_PATH = "flows/other.workflow.json";
 const OTHER_WF_ID = uuid(9);
 
-/** A clean, fully-id'd root file — opens without a stamp, so the buffer is clean and launch is enabled. */
+/** A clean, fully-id'd root file — opens without a stamp, so the buffer is clean and launch is
+ * enabled. */
 function cleanFile(): Record<string, unknown> {
   return {
     format: FORMAT_VERSION,
@@ -43,7 +45,8 @@ function cleanFile(): Record<string, unknown> {
   };
 }
 
-/** A second clean root, a workflow that was never run — its own id, so opening it re-scopes the dock. */
+/** A second clean root, a workflow that was never run — its own id, so opening it re-scopes the
+ * dock. */
 function otherFile(): Record<string, unknown> {
   return {
     format: FORMAT_VERSION,
@@ -62,7 +65,8 @@ function dirtyFile(): Record<string, unknown> {
   };
 }
 
-/** A wire run record with the fields the inspector/tree/projection read; the rest are inert nulls. */
+/** A wire run record with the fields the inspector/tree/projection read; the rest are inert
+ * nulls. */
 function wireRun(partial: {
   run_id: string;
   status: string;
@@ -112,9 +116,10 @@ async function renderClean(extra: Parameters<typeof stubClient>[0] = {}, calls?:
 }
 
 /**
- * A registry shaped like the shipped one: `prompt` declares **two** workers, `anthropic` (default) and
- * `deepseek` (`packages/engine/plugin/step-plugin/prompt/index.ts`), so a worker-default has one to select
- * (ADR 0044). `DEFAULT_PLUGINS` is the stub's single-worker stand-in, not the real registry.
+ * A registry shaped like the shipped one: `prompt` declares **two** workers, `anthropic` (default)
+ * and `deepseek` (`packages/engine/plugin/step-plugin/prompt/index.ts`), so a worker-default has
+ * one to select (ADR 0044). `DEFAULT_PLUGINS` is the stub's single-worker stand-in, not the real
+ * registry.
  */
 const MULTI_WORKER_PLUGINS: WireStepPlugin[] = DEFAULT_PLUGINS.map((plugin) =>
   plugin.name === "prompt" ? { ...plugin, workers: ["anthropic", "deepseek"] } : plugin,
@@ -133,8 +138,8 @@ describe("Designer run surfaces (#372)", () => {
     fireEvent.click(submit);
     await waitFor(() => expect(calls.startRun).toHaveLength(1));
     expect(calls.startRun[0]!.workflow_path).toBe(ROOT_PATH);
-    // No input override was typed, so the field is omitted — the server falls back to the file's own
-    // `input` seed (else `{}`); no config override was set either.
+    // No input override was typed, so the field is omitted — the server falls back to the file's
+    // own `input` seed (else `{}`); no config override was set either.
     expect(calls.startRun[0]!.input).toBeUndefined();
     expect(calls.startRun[0]!.config).toBeUndefined();
   });
@@ -362,8 +367,8 @@ describe("Designer run surfaces (#372)", () => {
     fireEvent.click(await screen.findByTestId("run-row-root-1"));
     fireEvent.click(await screen.findByTestId("tree-row-r-step"));
 
-    // Input present → rendered; output absent on a terminal run → the "no output recorded" note (the
-    // read-anyway-and-trust-the-404 branch of the shared absence rule, #51).
+    // Input present → rendered; output absent on a terminal run → the "no output recorded" note
+    // (the read-anyway-and-trust-the-404 branch of the shared absence rule, #51).
     const io = await screen.findByTestId("node-io-head");
     await waitFor(() =>
       expect(within(screen.getByTestId("node-io-input")).queryByText(/seed/)).toBeInTheDocument(),
@@ -377,9 +382,10 @@ describe("Designer run surfaces (#372)", () => {
   });
 
   it("drops the watched run when a different workflow is opened", async () => {
-    // Open the root file, watch its succeeded run, then open a *different* workflow that was never run. The
-    // watched run belongs to the old workflow, so it must not survive the re-scope: the run-detail pane
-    // clears and the new workflow's breadcrumb carries no status badge (the reported bug).
+    // Open the root file, watch its succeeded run, then open a *different* workflow that was never
+    // run. The watched run belongs to the old workflow, so it must not survive the re-scope: the
+    // run-detail pane clears and the new workflow's breadcrumb carries no status badge (the
+    // reported bug).
     const client = stubClient({
       files: {
         [ROOT_PATH]: canonicalBytes(cleanFile()),
@@ -429,7 +435,8 @@ describe("Designer run surfaces (#372)", () => {
     await screen.findByRole("region", { name: "Workflow canvas" });
     openDock();
 
-    // Watch the succeeded run: the badge lights and the run-detail pane shows the tree, not its empty note.
+    // Watch the succeeded run: the badge lights and the run-detail pane shows the tree, not its
+    // empty note.
     fireEvent.click(await screen.findByTestId("run-row-root-1"));
     expect(await screen.findByTestId("workflow-run-badge")).toHaveAttribute(
       "data-run-status",
@@ -451,11 +458,11 @@ describe("Designer run surfaces (#372)", () => {
 });
 
 /**
- * #487 / ADR 0031: the Designer run dock reuses the Viewer's awaiting surfaces. The dock feeds the open
- * buffer to `RunDetail`/`NodeIo` as their `rootFile`, so an awaiting `person-activity` leaf reads the
- * same assignee chip in the rail and the same schema-built inline Complete form the Viewer draws — no
- * Designer fork. This test would fail if the dock stopped threading `rootFile` (the surface would degrade
- * to the schema-less fallback, showing `awaiting-unresolved`).
+ * #487 / ADR 0031: the Designer run dock reuses the Viewer's awaiting surfaces. The dock feeds the
+ * open buffer to `RunDetail`/`NodeIo` as their `rootFile`, so an awaiting `person-activity` leaf
+ * reads the same assignee chip in the rail and the same schema-built inline Complete form the
+ * Viewer draws — no Designer fork. This test would fail if the dock stopped threading `rootFile`
+ * (the surface would degrade to the schema-less fallback, showing `awaiting-unresolved`).
  */
 describe("Designer run dock reuses the Viewer awaiting/Complete surfaces (#487, ADR 0031)", () => {
   const PERSON_PLUGINS: WireStepPlugin[] = [
@@ -545,8 +552,8 @@ describe("Designer run dock reuses the Viewer awaiting/Complete surfaces (#487, 
 
   it("badges the canvas breadcrumb `awaiting`, not `running`, while a leaf is parked (ADR 0038)", async () => {
     await renderAwaiting();
-    // The root record stays `running`, but the breadcrumb reads the shared display status, so it agrees
-    // with the run rail: a running root with an awaiting leaf below reads `awaiting`.
+    // The root record stays `running`, but the breadcrumb reads the shared display status, so it
+    // agrees with the run rail: a running root with an awaiting leaf below reads `awaiting`.
     const badge = await screen.findByTestId("workflow-run-badge");
     expect(badge).toHaveAttribute("data-run-status", "awaiting");
   });
@@ -555,8 +562,8 @@ describe("Designer run dock reuses the Viewer awaiting/Complete surfaces (#487, 
     await renderAwaiting();
     fireEvent.click(await screen.findByTestId("tree-row-r-step"));
 
-    // The detail-panel awaiting surface resolves the node from the open buffer (rootFile), so it is the
-    // real form, never the degraded "could not read this step's form" note.
+    // The detail-panel awaiting surface resolves the node from the open buffer (rootFile), so it is
+    // the real form, never the degraded "could not read this step's form" note.
     const actions = within(await screen.findByTestId("awaiting-actions"));
     expect(screen.queryByTestId("awaiting-unresolved")).not.toBeInTheDocument();
     expect(actions.getByTestId("awaiting-description")).toHaveTextContent("Review the draft");

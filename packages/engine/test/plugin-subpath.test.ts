@@ -8,8 +8,8 @@ import { stepPlugin } from "./fixtures/plugin-contract/index.js";
 
 describe("@path/engine/plugin", () => {
   it("re-exports the engine's own single zod instance", () => {
-    // ADR 0019 sub-5: two zod instances break the schema factory's `instanceof` checks, so the subpath
-    // must hand out the very object `zod` exports, not a copy.
+    // ADR 0019 sub-5: two zod instances break the schema factory's `instanceof` checks, so the
+    // subpath must hand out the very object `zod` exports, not a copy.
     expect(z).toBe(zFromZod);
   });
 

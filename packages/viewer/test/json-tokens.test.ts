@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { type JsonToken, tokenizeJson } from "../src/json-tokens.js";
 
-/** The tokens of one kind, in order — what a test asserts about, rather than the whole span list. */
+/** The tokens of one kind, in order — what a test asserts about, rather than the whole span
+ * list. */
 function textOf(tokens: readonly JsonToken[], kind: JsonToken["kind"]): string[] {
   return tokens.filter((token) => token.kind === kind).map((token) => token.text);
 }
 
-/** Re-joining every token must reproduce the input exactly: the tokenizer only splits, never edits. */
+/** Re-joining every token must reproduce the input exactly: the tokenizer only splits, never
+ * edits. */
 function joined(tokens: readonly JsonToken[]): string {
   return tokens.map((token) => token.text).join("");
 }

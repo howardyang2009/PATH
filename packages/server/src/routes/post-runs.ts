@@ -17,8 +17,8 @@ const PostRunsBodySchema = z
     workflow_path: z.string().min(1),
     input: z.record(z.string(), z.unknown()).optional(),
     config: ConfigObjectSchema.optional(),
-    // The launch worker-default table (ADR 0044): a top-level peer of `input`/`config`. Shape-only here;
-    // registry-relative validity is the launch-boundary check below.
+    // The launch worker-default table (ADR 0044): a top-level peer of `input`/`config`. Shape-only
+    // here; registry-relative validity is the launch-boundary check below.
     worker_defaults: z.record(z.string().min(1), z.string().min(1)).optional(),
     log_backends: z.array(z.enum(LOG_BACKEND_IDS)).optional(),
     processor_concurrency: z.number().int().positive().optional(),
@@ -38,7 +38,8 @@ export async function handlePostRuns({ req, res, ctx }: ApiRequest): Promise<voi
   } = body.data;
 
   // ADR 0012: operator config may carry a literal `$secret` but not `$env`. Rejected before the
-  // filesystem is touched — a bad config invalidates the request whatever the workflow turns out to be.
+  // filesystem is touched — a bad config invalidates the request whatever the workflow turns out to
+  // be.
   if (config !== undefined) {
     const envError = operatorConfigEnvError(config);
     if (envError) {
@@ -58,8 +59,9 @@ export async function handlePostRuns({ req, res, ctx }: ApiRequest): Promise<voi
   }
   const { workflow } = prepared;
 
-  // The launch channel of ADR 0044's registry-relative validation: `worker_defaults` is operator input,
-  // authored in no file, so a bad entry is a `400` before the run starts, every bad entry in one pass.
+  // The launch channel of ADR 0044's registry-relative validation: `worker_defaults` is operator
+  // input, authored in no file, so a bad entry is a `400` before the run starts, every bad entry in
+  // one pass.
   const workerDefaultErrors = validateLaunchWorkerDefaults(
     launchWorkerDefaults,
     workflow.registry,
@@ -71,21 +73,24 @@ export async function handlePostRuns({ req, res, ctx }: ApiRequest): Promise<voi
 
   let ids: StartedRun;
   try {
-    // The *root workflow file's own* directory — what the engine resolves nested `workflow` refs and
-    // binary `cwd`s against. Distinct from the project directory, where `.path/` lives.
+    // The *root workflow file's own* directory — what the engine resolves nested `workflow` refs
+    // and binary `cwd`s against. Distinct from the project directory, where `.path/` lives.
     ids = await ctx.live.start(workflow.rootFile, workflow.workflowDir, {
       // The effective root input and recorded override, by the one rule every launch door shares
-      // (format @4 §1a, ADR 0046): the run records the input it actually seeded, not the file default.
+      // (format @4 §1a, ADR 0046): the run records the input it actually seeded, not the file
+      // default.
       ...launchInput(input as { [key: string]: JsonValue } | undefined, workflow.rootFile.input),
       operatorConfig: config,
       // Forwarded verbatim to the engine's `RunOptions.launchWorkerDefaults` (ADR 0044).
       launchWorkerDefaults,
       files: workflow.files,
-      // Dispatch reuses the registry the load validated the file against (ADR 0019 sub-15); no re-scan.
+      // Dispatch reuses the registry the load validated the file against (ADR 0019 sub-15); no
+      // re-scan.
       registry: workflow.registry,
       logBackends: logBackendIds,
       processorConcurrency,
-      // Recorded on the root row so this run is resumable (§4.3), in the same relative form `path run` stores.
+      // Recorded on the root row so this run is resumable (§4.3), in the same relative form `path
+      // run` stores.
       sourceWorkflowPath: workflow.storeRelativePath(ctx.project.dir),
     });
   } catch (err) {

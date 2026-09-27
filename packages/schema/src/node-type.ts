@@ -16,14 +16,16 @@ interface CommonStepFields {
 
 export interface PromptStep extends CommonStepFields {
   type: "prompt";
-  /** The worker *name* to run on (`@3` §4); omitted resolves to `prompt`'s default worker `anthropic`. */
+  /** The worker *name* to run on (`@3` §4); omitted resolves to `prompt`'s default worker
+   * `anthropic`. */
   worker?: PromptWorkerName;
   prompt: string;
 }
 
 export interface BinaryStep extends CommonStepFields {
   type: "binary";
-  /** The worker *name* to run on (`@3` §4); omitted resolves to `binary`'s default worker `spawn`. */
+  /** The worker *name* to run on (`@3` §4); omitted resolves to `binary`'s default worker
+   * `spawn`. */
   worker?: BinaryWorkerName;
   command: string;
   args?: string[];
@@ -41,13 +43,15 @@ export interface ParallelNode {
   id: string;
   name: string;
   join: "collect" | "wait-one" | "do-not-wait";
-  /** Each branch is a node carrying its own `id` + `name` — the `collect`/`wait-one` output key (`@2` §4.3). */
+  /** Each branch is a node carrying its own `id` + `name` — the `collect`/`wait-one` output key
+   * (`@2` §4.3). */
   branches: WorkflowNode[];
 }
 
 export interface BranchArm {
   when: Condition;
-  /** The arm's occupant is a single node (`@2` §4.3) — a `sequence` where several nodes are needed. */
+  /** The arm's occupant is a single node (`@2` §4.3) — a `sequence` where several nodes are
+   * needed. */
   node: WorkflowNode;
 }
 
@@ -74,7 +78,8 @@ export interface SequenceNode {
   type: "sequence";
   id: string;
   name: string;
-  /** Node array, minimum length 1 — the nodes run in order; output is the last child's (`@2` §4.4). */
+  /** Node array, minimum length 1 — the nodes run in order; output is the last child's (`@2`
+   * §4.4). */
   body: WorkflowNode[];
 }
 
@@ -87,7 +92,8 @@ export interface CheckpointNode {
 
 /**
  * The one **Graph Controller** (ADR 0057): sets the next node of its file's top-level walk to the
- * first-level node named `target` (ADR 0056, spec docs/spec/goto.md §2.1). No child body, no envelope.
+ * first-level node named `target` (ADR 0056, spec docs/spec/goto.md §2.1). No child body, no
+ * envelope.
  */
 export interface GotoNode {
   type: "goto";

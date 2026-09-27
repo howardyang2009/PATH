@@ -28,7 +28,8 @@ function isObject(value: unknown): value is JsonObject {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-/** @returns the migrated document, or null when the file is not a `@3` workflow (already `@4`, or older). */
+/** @returns the migrated document, or null when the file is not a `@3` workflow (already `@4`, or
+ * older). */
 function migrateDocument(doc: unknown): JsonObject | null {
   if (!isObject(doc) || doc.format !== LEGACY_FORMAT) return null;
   // A no-op stamp: only `format` moves, every other key is carried through in place.
@@ -69,8 +70,8 @@ function main(): void {
   );
 }
 
-// Import-safe: run only when invoked directly, so the codemod's unit test can import `migrateDocument`
-// without the discovery/main side effects.
+// Import-safe: run only when invoked directly, so the codemod's unit test can import
+// `migrateDocument` without the discovery/main side effects.
 if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))) {
   main();
 }

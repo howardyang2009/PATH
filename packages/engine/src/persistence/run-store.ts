@@ -10,8 +10,8 @@ import type {
 import { fromWireRunRecord } from "@path/schema";
 import type Database from "better-sqlite3";
 
-// `RunStatus`, `RUN_STATUSES` and `RunRecord` are domain vocabulary and live in @path/schema; this module owns how a
-// run is *stored*.
+// `RunStatus`, `RUN_STATUSES` and `RunRecord` are domain vocabulary and live in @path/schema; this
+// module owns how a run is *stored*.
 export { RUN_STATUSES, type RunRecord, type RunStatus } from "@path/schema";
 
 export interface NewRunRow {
@@ -30,15 +30,17 @@ export interface NewRunRow {
   inputRef?: string;
   /** Meaningful only on a root row: the predecessor's root run id for a resumed tree. */
   resumedFromRootRunId?: string | null;
-  /** Root-only (ADR 0032): the rerun boundary (K) descent path a Resume-from-K successor resumed from; JSON TEXT. */
+  /** Root-only (ADR 0032): the rerun boundary (K) descent path a Resume-from-K successor resumed
+   * from; JSON TEXT. */
   rerunFromNodePath?: RerunFromNodePathEntry[] | null;
   /** Root-only (ADR 0006): the producing workflow's GUID `id`. */
   workflowId?: string | null;
   workflowName?: string | null;
   workflowPath?: string | null;
   /**
-   * Root-only (ADR 0046): the operator's frozen **launch facts** — input override, `$env`-resolved and
-   * `$secret`-masked config override, launch worker-default table (ADR 0044), and secret config paths — as JSON TEXT.
+   * Root-only (ADR 0046): the operator's frozen **launch facts** — input override, `$env`-resolved
+   * and `$secret`-masked config override, launch worker-default table (ADR 0044), and secret config
+   * paths — as JSON TEXT.
    */
   launchFacts?: LaunchFacts | null;
 }
@@ -65,15 +67,17 @@ export function insertRun(db: Database.Database, row: NewRunRow): void {
     workflowId: row.workflowId ?? null,
     workflowName: row.workflowName ?? null,
     workflowPath: row.workflowPath ?? null,
-    // JSON-encoded launch facts, root-only; null on every nested row and a launch that supplied nothing (ADR 0046).
+    // JSON-encoded launch facts, root-only; null on every nested row and a launch that supplied
+    // nothing (ADR 0046).
     launchFacts: row.launchFacts ? JSON.stringify(row.launchFacts) : null,
   });
 }
 
 /**
- * A **reuse row**: the whole record of a node a resumed tree reused, written in one shot — a reuse neither ran
- * nor produced blobs. `status` is always `succeeded`, `reusedFromRunId` names the source run (ADR 0001), and every
- * execution-only column stays null so spend is never double-counted. */
+ * A **reuse row**: the whole record of a node a resumed tree reused, written in one shot — a reuse
+ * neither ran nor produced blobs. `status` is always `succeeded`, `reusedFromRunId` names the
+ * source run (ADR 0001), and every execution-only column stays null so spend is never
+ * double-counted. */
 export function insertReuseRun(
   db: Database.Database,
   row: {
@@ -100,8 +104,9 @@ export function insertReuseRun(
   });
 }
 
-/** Move a run to a non-terminal status without stamping `finished_at` (the `awaiting` transition). A terminal
- * status is rejected at the type level — it belongs to `finishRun`, which also stamps the finish. */
+/** Move a run to a non-terminal status without stamping `finished_at` (the `awaiting` transition).
+ * A terminal status is rejected at the type level — it belongs to `finishRun`, which also stamps
+ * the finish. */
 export function setRunStatus(
   db: Database.Database,
   runId: string,
@@ -120,8 +125,9 @@ export function finishRun(db: Database.Database, runId: string, status: Terminal
   });
 }
 
-/** Cancel a **parked** tree's every non-terminal run in one write (`awaiting → cancelled`, ADR 0041). Only
- * for a tree not executing live — nothing then races these rows; a live tree uses its `AbortController`. */
+/** Cancel a **parked** tree's every non-terminal run in one write (`awaiting → cancelled`, ADR
+ * 0041). Only for a tree not executing live — nothing then races these rows; a live tree uses its
+ * `AbortController`. */
 export function cancelNonTerminalRuns(db: Database.Database, rootRunId: string): number {
   const info = db
     .prepare(
@@ -132,8 +138,9 @@ export function cancelNonTerminalRuns(db: Database.Database, rootRunId: string):
   return info.changes;
 }
 
-/** The output ref lands on its own UPDATE because it cannot be known at insert time — a run's output exists
- * only once it succeeded. The *input* ref goes in with the row, so it has no setter. */
+/** The output ref lands on its own UPDATE because it cannot be known at insert time — a run's
+ * output exists only once it succeeded. The *input* ref goes in with the row, so it has no
+ * setter. */
 export function setRunOutputRef(db: Database.Database, runId: string, outputRef: string): void {
   db.prepare(`UPDATE runs SET output_ref = @ref WHERE run_id = @runId`).run({
     ref: outputRef,
@@ -141,8 +148,9 @@ export function setRunOutputRef(db: Database.Database, runId: string, outputRef:
   });
 }
 
-/** What one LLM run spent (mvp spec §5.7): `usage` is the worker's real token counts, stored verbatim;
- * `estimatedCostUsd` is the SDK's client-side estimate at list prices — notional under subscription billing. */
+/** What one LLM run spent (mvp spec §5.7): `usage` is the worker's real token counts, stored
+ * verbatim; `estimatedCostUsd` is the SDK's client-side estimate at list prices — notional under
+ * subscription billing. */
 export interface RunUsage {
   usage: JsonValue | null;
   estimatedCostUsd: number | null;
@@ -183,8 +191,9 @@ interface RunRowDb {
 }
 
 function fromDbRow(row: RunRowDb): RunRecord {
-  // The db row is already the wire shape (snake_case) bar a few columns stored differently; normalize those,
-  // then let the one wire codec map every field, so a new `RunRecord` field reaches this read from the manifest.
+  // The db row is already the wire shape (snake_case) bar a few columns stored differently;
+  // normalize those, then let the one wire codec map every field, so a new `RunRecord` field
+  // reaches this read from the manifest.
   const wire: WireRunRecord = {
     ...row,
     // Stored as JSON TEXT; the wire/domain shape is the parsed value.
@@ -192,14 +201,16 @@ function fromDbRow(row: RunRowDb): RunRecord {
     rerun_from_node_path: row.rerun_from_node_path
       ? (JSON.parse(row.rerun_from_node_path) as RerunFromNodePathEntry[])
       : null,
-    // Not a stored column: the archive read path resolves the source run's root on demand; a bare row leaves it null.
+    // Not a stored column: the archive read path resolves the source run's root on demand; a bare
+    // row leaves it null.
     reused_from_root_run_id: null,
   };
   return fromWireRunRecord(wire);
 }
 
-/** One run row by its own id, or undefined. Resume resolves a reuse row's `reusedFromRunId` through it to
- * the source record in an ancestor tree; undefined means that tree was `rm`'d, i.e. no data to reuse (ADR 0001). */
+/** One run row by its own id, or undefined. Resume resolves a reuse row's `reusedFromRunId` through
+ * it to the source record in an ancestor tree; undefined means that tree was `rm`'d, i.e. no data
+ * to reuse (ADR 0001). */
 export function getRun(db: Database.Database, runId: string): RunRecord | undefined {
   const row = db.prepare(`SELECT * FROM runs WHERE run_id = @runId`).get({ runId }) as
     | RunRowDb
@@ -214,8 +225,9 @@ export function getRunsForRoot(db: Database.Database, rootRunId: string): RunRec
   return rows.map(fromDbRow);
 }
 
-/** The frozen **launch facts** a run recorded on its own root row (ADR 0046), or `undefined` when the run
- * supplied nothing beyond the file or no row has that id. The one read of the JSON column. */
+/** The frozen **launch facts** a run recorded on its own root row (ADR 0046), or `undefined` when
+ * the run supplied nothing beyond the file or no row has that id. The one read of the JSON
+ * column. */
 export function getLaunchFacts(db: Database.Database, rootRunId: string): LaunchFacts | undefined {
   const row = db
     .prepare(`SELECT launch_facts FROM runs WHERE run_id = @rootRunId`)
@@ -225,9 +237,9 @@ export function getLaunchFacts(db: Database.Database, rootRunId: string): Launch
 }
 
 /**
- * The frozen **launch worker-default** table a run recorded on its own root row (ADR 0044), or `undefined`
- * when none; a projection of {@link getLaunchFacts}. Identity-defining like `input`, so resume/complete restore it
- * from here, not the request.
+ * The frozen **launch worker-default** table a run recorded on its own root row (ADR 0044), or
+ * `undefined` when none; a projection of {@link getLaunchFacts}. Identity-defining like `input`, so
+ * resume/complete restore it from here, not the request.
  */
 export function getLaunchWorkerDefaults(
   db: Database.Database,
@@ -236,8 +248,9 @@ export function getLaunchWorkerDefaults(
   return getLaunchFacts(db, rootRunId)?.workerDefaults;
 }
 
-/** The root run id of the tree a run belongs to, or `null` when no row has that id. The cost SUM uses it to
- * reach a reuse marker's tree; `null` means that tree was `rm`'d, read as "no recorded data", not an error. */
+/** The root run id of the tree a run belongs to, or `null` when no row has that id. The cost SUM
+ * uses it to reach a reuse marker's tree; `null` means that tree was `rm`'d, read as "no recorded
+ * data", not an error. */
 export function rootRunIdOf(db: Database.Database, runId: string): string | null {
   const row = db.prepare(`SELECT root_run_id FROM runs WHERE run_id = @runId`).get({ runId }) as
     | { root_run_id: string }
@@ -254,7 +267,8 @@ export interface ListRootRunsOptions {
 }
 
 /** Lists root runs — rows whose own id is the tree root, one per tree — most-recent-first
- * (server-api-v0.md §3). The `rowid DESC` tiebreaker keeps ordering stable when two roots share a millisecond. */
+ * (server-api-v0.md §3). The `rowid DESC` tiebreaker keeps ordering stable when two roots share a
+ * millisecond. */
 export function listRootRuns(
   db: Database.Database,
   options: ListRootRunsOptions = {},
@@ -267,8 +281,8 @@ export function listRootRuns(
     filterClause += " AND status = @status";
     params.status = options.status;
   }
-  // Root-only columns: a nested row's `workflow_name`/`workflow_id` is always null, so matching a non-null
-  // value can never pick up a nested row.
+  // Root-only columns: a nested row's `workflow_name`/`workflow_id` is always null, so matching a
+  // non-null value can never pick up a nested row.
   if (options.workflowName !== undefined) {
     filterClause += " AND workflow_name = @workflowName";
     params.workflowName = options.workflowName;
@@ -285,8 +299,9 @@ export function listRootRuns(
   return rows.map(fromDbRow);
 }
 
-/** Which of the given run ids still have a row, as a set. Rendering `resumed-from` uses existence — not
- * membership of any listing page — to tell a live predecessor from one since `runs rm`'d (rendered `(deleted)`). */
+/** Which of the given run ids still have a row, as a set. Rendering `resumed-from` uses existence —
+ * not membership of any listing page — to tell a live predecessor from one since `runs rm`'d
+ * (rendered `(deleted)`). */
 export function existingRunIds(db: Database.Database, ids: readonly string[]): Set<string> {
   const unique = [...new Set(ids)];
   if (unique.length === 0) return new Set();

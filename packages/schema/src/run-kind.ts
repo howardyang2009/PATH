@@ -1,6 +1,7 @@
 /**
- * The six kinds a `runs` row stands in for: root, nested-workflow, leaf, reuse, `while-do` iteration container, and
- * goto pass container — each distinction lives in exactly one type guard below.
+ * The six kinds a `runs` row stands in for: root, nested-workflow, leaf, reuse, `while-do`
+ * iteration container, and goto pass container — each distinction lives in exactly one type guard
+ * below.
  */
 
 /** The fields a run's kind is read from — a `RunRecord` or a client-side `RunNodeState` fits. */
@@ -26,8 +27,8 @@ export function isRootRun<T extends Pick<RunKindFields, "parentRunId">>(
 }
 
 /**
- * A `while-do` iteration container (ADR 0037): a run scope minted per loop pass, told apart by its 1-based
- * `iteration` ordinal.
+ * A `while-do` iteration container (ADR 0037): a run scope minted per loop pass, told apart by its
+ * 1-based `iteration` ordinal.
  */
 export function isIterationRun<T extends Pick<RunKindFields, "iteration">>(
   run: T,
@@ -36,8 +37,8 @@ export function isIterationRun<T extends Pick<RunKindFields, "iteration">>(
 }
 
 /**
- * A goto pass container (ADR 0054): one forward stretch of a goto-holding file's top-level walk, told apart by its
- * 1-based `pass` ordinal.
+ * A goto pass container (ADR 0054): one forward stretch of a goto-holding file's top-level walk,
+ * told apart by its 1-based `pass` ordinal.
  */
 export function isPassRun<T extends Pick<RunKindFields, "pass">>(
   run: T,

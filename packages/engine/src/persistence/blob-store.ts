@@ -38,7 +38,8 @@ export function removeDir(dir: string): void {
 /**
  * Writes one of a run's blobs and returns the ref that addresses it — **one call producing both**.
  * Where the bytes go (`runBlobDir`, host separators) and what the row records (`blobRef`, forward
- * slashes) must address the same file; derived from one set of arguments here, they cannot disagree.
+ * slashes) must address the same file; derived from one set of arguments here, they cannot
+ * disagree.
  */
 export function writeRunBlob(
   projectDir: string,

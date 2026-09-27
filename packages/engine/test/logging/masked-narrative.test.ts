@@ -20,16 +20,16 @@ import {
 import { stampNames } from "../stamp-names.js";
 
 /**
- * The regression test for #62, shaped as a **differential**: every fixture runs twice, identical but
- * for whether its `token` config value is a plain string or a `{"$secret": ...}` wrapper, and the two
- * runs must produce the same narrative and the same populated run-row columns.
+ * The regression test for #62, shaped as a **differential**: every fixture runs twice, identical
+ * but for whether its `token` config value is a plain string or a `{"$secret": ...}` wrapper, and
+ * the two runs must produce the same narrative and the same populated run-row columns.
  *
  * Why this shape. The defect was not a wrong value — it was *absence*. `createMaskingObserver`
- * implemented 6 of `RunObserver`'s 14 hooks, and merely declaring a secret was enough to route every
- * observation through it, so eight kinds of observation silently disappeared: no checkpoint, branch,
- * loop, join or cancellation events reached either backend, and no run row got `usage`. A test that
- * only checked the secret was masked would have passed throughout. What catches absence is
- * demanding that a secret change *nothing* except the values.
+ * implemented 6 of `RunObserver`'s 14 hooks, and merely declaring a secret was enough to route
+ * every observation through it, so eight kinds of observation silently disappeared: no checkpoint,
+ * branch, loop, join or cancellation events reached either backend, and no run row got `usage`. A
+ * test that only checked the secret was masked would have passed throughout. What catches absence
+ * is demanding that a secret change *nothing* except the values.
  *
  * Between them the fixtures below emit all eight of the observations that were being dropped.
  */
@@ -37,7 +37,8 @@ import { stampNames } from "../stamp-names.js";
 const SECRET = "s3cret-token-value";
 const PLAIN = "plain-token-value";
 
-/** Echo `${config.token}` to stdout, so the secret genuinely reaches an output object and a blob. */
+/** Echo `${config.token}` to stdout, so the secret genuinely reaches an output object and a
+ * blob. */
 function echoToken(id: string): WorkflowFile["body"][number] {
   return {
     type: "binary",
@@ -168,7 +169,8 @@ const parallelJoin: WorkflowFile = {
   ],
 };
 
-/** run-cancelled with cause `sibling-failed` — one branch fails, its in-flight sibling is killed. */
+/** run-cancelled with cause `sibling-failed` — one branch fails, its in-flight sibling is
+ * killed. */
 const parallelCancel: WorkflowFile = {
   format: "path/workflow@5",
   id: "wf-id",
@@ -361,8 +363,8 @@ describe("declaring a secret must not change the narrative (#62)", () => {
   it("masks the value a condition trace recorded, which no run ever did before", async () => {
     const secret = await runOnce(noMatch, { $secret: SECRET });
 
-    // The `branch-no-match` event carries every arm's trace, and each leaf records the value it read
-    // — here `context.pick`, which the seed step published straight from `${config.token}`.
+    // The `branch-no-match` event carries every arm's trace, and each leaf records the value it
+    // read — here `context.pick`, which the seed step published straight from `${config.token}`.
     expect(secret.serialized).toContain("branch-no-match");
     expect(secret.serialized).toContain("[secret:token]");
     expect(secret.serialized).not.toContain(SECRET);

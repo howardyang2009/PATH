@@ -6,16 +6,16 @@ import { describe, expect, it } from "vitest";
 import { App } from "../src/app.js";
 
 /**
- * #580 — author mode. Opening a `*.step-template.json` itself (a double-click on its palette card) edits
- * the template source inside a synthetic workflow, and two save doors apply (ADR 0049 decision 8, ADR
- * 0050):
+ * #580 — author mode. Opening a `*.step-template.json` itself (a double-click on its palette card)
+ * edits the template source inside a synthetic workflow, and two save doors apply (ADR 0049
+ * decision 8, ADR 0050):
  *
  * - Save writes back the template envelope through `PUT /v0/templates/:id`, id preserved, under
  *   `If-Match`;
  * - Save as… creates a new `*.step-template.json` through `POST /v0/templates`, fresh id.
  *
- * A template saves only as a template: there is no Save as workflow door. A shipped template refuses the
- * write-back with the API's `403`. The Template is the only template kind (ADR 0063).
+ * A template saves only as a template: there is no Save as workflow door. A shipped template
+ * refuses the write-back with the API's `403`. The Template is the only template kind (ADR 0063).
  */
 
 function uuid(n: number): string {
@@ -119,9 +119,11 @@ function templatesPanel(): HTMLElement {
   return within(palette).getByRole("tabpanel", { name: "Templates" });
 }
 
-/** Open a template source in author mode with a double-click on its card, and wait for its nodes. */
+/** Open a template source in author mode with a double-click on its card, and wait for its
+ * nodes. */
 async function editTemplate(stem: string): Promise<HTMLElement> {
-  // A double-click edits only in template mode; switching from an empty workflow canvas asks nothing.
+  // A double-click edits only in template mode; switching from an empty workflow canvas asks
+  // nothing.
   const mode = await screen.findByRole("radiogroup", { name: "Edit mode" });
   fireEvent.click(within(mode).getByRole("radio", { name: "Template" }));
   fireEvent.doubleClick(

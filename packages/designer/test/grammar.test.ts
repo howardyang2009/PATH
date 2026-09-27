@@ -54,10 +54,12 @@ describe("grammar — which kind snaps into which socket (#368)", () => {
   it("admits a template body where its insert form is legal (#578)", () => {
     const leaf = { type: "prompt" } as WorkflowNode;
     const checkpoint = { type: "checkpoint" } as WorkflowNode;
-    // A list socket splices the nodes in, so each node must be legal there — every kind is, in a sequence.
+    // A list socket splices the nodes in, so each node must be legal there — every kind is, in a
+    // sequence.
     expect(socketAcceptsBody("sequence", [checkpoint])).toBe(true);
     expect(socketAcceptsBody("sequence", [leaf, checkpoint])).toBe(true);
-    // A single slot or a parallel branch takes one node: a one-node body inserts bare, so its kind decides.
+    // A single slot or a parallel branch takes one node: a one-node body inserts bare, so its kind
+    // decides.
     expect(socketAcceptsBody("single", [leaf])).toBe(true);
     expect(socketAcceptsBody("single", [checkpoint])).toBe(false);
     expect(socketAcceptsBody("branches", [checkpoint])).toBe(false);

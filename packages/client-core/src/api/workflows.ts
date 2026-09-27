@@ -7,8 +7,9 @@ import type {
 } from "@path/schema";
 import { type HttpTransport, ifMatchHeader } from "./transport.js";
 
-/** The camelCase input to `PUT /v0/workflows` (ADR 0016): a present `ifMatch` (the ETag of the opened bytes) makes the
- * write overwrite-only, a changed file is a `412`; absent, it is create-only.
+/** The camelCase input to `PUT /v0/workflows` (ADR 0016): a present `ifMatch` (the ETag of the
+ * opened bytes) makes the write overwrite-only, a changed file is a `412`; absent, it is
+ * create-only.
  */
 export interface PutWorkflowInput {
   workflowPath: string;
@@ -16,16 +17,17 @@ export interface PutWorkflowInput {
   ifMatch?: string;
 }
 
-/** The `PUT /v0/workflows` success reply (server-api-v0.md §7): the written path, its `id`, and the new ETag. */
+/** The `PUT /v0/workflows` success reply (server-api-v0.md §7): the written path, its `id`, and the
+ * new ETag. */
 export interface PutWorkflowResult {
   relativePath: string;
   id: string;
   etag: string;
 }
 
-/** The raw read of one workflow file (`GET /v0/workflows/file`, server-api-v0.md §7.1): the exact on-disk bytes as
- * text, never the loader's parse, so the Designer keeps unknown fields and an **id-less** file it stamps on import
- * (ADR 0015).
+/** The raw read of one workflow file (`GET /v0/workflows/file`, server-api-v0.md §7.1): the exact
+ * on-disk bytes as text, never the loader's parse, so the Designer keeps unknown fields and an
+ * **id-less** file it stamps on import (ADR 0015).
  */
 export interface WorkflowFileRaw {
   text: string;

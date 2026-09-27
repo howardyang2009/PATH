@@ -1,7 +1,8 @@
 import { createContext, type ReactNode, useContext } from "react";
 
-/** The canvas selection, threaded to every block without drilling it through component signatures. Selection
- * is not an edit, so it rides its own context; `selectedId` is `null` when the file's own properties show. */
+/** The canvas selection, threaded to every block without drilling it through component signatures.
+ * Selection is not an edit, so it rides its own context; `selectedId` is `null` when the file's own
+ * properties show. */
 export interface Selection {
   selectedId: string | null;
   onSelect: (id: string | null) => void;

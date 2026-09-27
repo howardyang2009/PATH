@@ -2,8 +2,8 @@ import type { PathApiClient } from "@path/client-core";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { LeaseController, type LeaseMap } from "./lease-client.js";
 
-/** The React binding over `LeaseController`: one `session_id` per Designer session, leases reconciled
- * against the open paths, plus the `beforeunload` release beacon and React state. */
+/** The React binding over `LeaseController`: one `session_id` per Designer session, leases
+ * reconciled against the open paths, plus the `beforeunload` release beacon and React state. */
 export interface EditLeases {
   /** This Designer session's `session_id`, the holder its leases carry — a Delete names it. */
   sessionId: string;
@@ -31,14 +31,15 @@ export function useEditLeases(client: PathApiClient, paths: readonly string[]): 
     };
   }, [controller]);
 
-  // Reconcile whenever the set of open paths changes; keyed on the joined paths so an unchanged set does not re-run.
+  // Reconcile whenever the set of open paths changes; keyed on the joined paths so an unchanged set
+  // does not re-run.
   const pathsKey = paths.join("\n");
   useEffect(() => {
     controller.reconcile(pathsKey === "" ? [] : pathsKey.split("\n"));
   }, [controller, pathsKey]);
 
-  // Release-on-close via `navigator.sendBeacon` from `beforeunload` (ADR 0017): POST-only, best-effort.
-  // If the beacon never lands (kill, crash), the server's TTL reaps the lease in ≤30s.
+  // Release-on-close via `navigator.sendBeacon` from `beforeunload` (ADR 0017): POST-only,
+  // best-effort. If the beacon never lands (kill, crash), the server's TTL reaps the lease in ≤30s.
   useEffect(() => {
     const releaseUrl = client.url("/v0/workflows/lock/release");
     const onUnload = (): void => {

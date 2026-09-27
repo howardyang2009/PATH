@@ -5,9 +5,9 @@ import { resolveLegalK } from "../src/resume-legal-k.js";
 import { stampNames } from "./stamp-names.js";
 
 /**
- * The one legal-K authority (spec §5, ADR 0032): `resolveLegalK` resolves an operator's source run id
- * to the top-level rerun boundary node-id path, or refuses it with the five-reason taxonomy. This
- * suite pins each reason and each status, plus the happy path, over the same two inputs
+ * The one legal-K authority (spec §5, ADR 0032): `resolveLegalK` resolves an operator's source run
+ * id to the top-level rerun boundary node-id path, or refuses it with the five-reason taxonomy.
+ * This suite pins each reason and each status, plus the happy path, over the same two inputs
  * `Project.resume` feeds it — the source tree's raw rows and the current file.
  */
 
@@ -177,7 +177,8 @@ describe("resolveLegalK — the refusal taxonomy (spec §5)", () => {
   });
 });
 
-// Root [a, sub→nested, d]; nested [p, k, q]. K = k inside sub, reached by the descent path [sub, k].
+// Root [a, sub→nested, d]; nested [p, k, q]. K = k inside sub, reached by the descent path [sub,
+// k].
 const NESTED_PATH = join("/tmp", "nested.workflow.json");
 const nestedFile = tree([
   { type: "prompt", id: "p", name: "p", prompt: "p" },
@@ -212,7 +213,8 @@ function nestedRows(
 
 describe("resolveLegalK — a nested descent path (ADR 0036)", () => {
   it("resolves a nested K by walking the run's parents to root", () => {
-    // sub itself failed (a later node re-runs), but K = k succeeded with a succeeded inner prefix p.
+    // sub itself failed (a later node re-runs), but K = k succeeded with a succeeded inner prefix
+    // p.
     const verdict = resolveLegalK(rootWithSub, nestedRows(), "k-run", nestedFiles, "/tmp");
     expect(verdict).toEqual({ ok: true, nodePath: ["sub", "k"], passes: [null, null] });
   });
@@ -360,11 +362,12 @@ describe("resolveLegalK — the refusal reason code (spec §6)", () => {
   });
 });
 
-// #5's static walk yields every run-producing node of a prefix control block, but a control block runs
-// its bodies conditionally: a branch takes one arm, a `while-do` may run zero iterations. A node that
-// produced no run under scope was legitimately skipped, not broken — K does not depend on it, so it
-// must not gate the prefix. Only a node that ran and did not succeed breaks reuse. (Repro: #— — a run
-// with a passed verdict skips its revise-loop and untaken format arm, yet write-file is a legal K.)
+// #5's static walk yields every run-producing node of a prefix control block, but a control block
+// runs its bodies conditionally: a branch takes one arm, a `while-do` may run zero iterations. A
+// node that produced no run under scope was legitimately skipped, not broken — K does not depend on
+// it, so it must not gate the prefix. Only a node that ran and did not succeed breaks reuse.
+// (Repro: #— — a run with a passed verdict skips its revise-loop and untaken format arm, yet
+// write-file is a legal K.)
 describe("resolveLegalK — a skipped prefix path is not a broken one (#5)", () => {
   // Root: [branch pick { short, long }, write]. Only the `long` arm ran; `short` has no run row.
   const pickFile = tree([
@@ -421,7 +424,8 @@ describe("resolveLegalK — a skipped prefix path is not a broken one (#5)", () 
   });
 
   it("a zero-iteration while-do body before K does not break the prefix", () => {
-    // Root: [while-do revise { revise }, write]. The loop ran zero times, so `revise` has no run row.
+    // Root: [while-do revise { revise }, write]. The loop ran zero times, so `revise` has no run
+    // row.
     const loopFile = tree([
       {
         type: "while-do",

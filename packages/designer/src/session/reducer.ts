@@ -57,16 +57,18 @@ export function reduceSession(state: SessionState, action: SessionAction): Sessi
     case "descend": {
       const depth = state.activeIndex;
       const active = state.frames[depth];
-      // No active frame, or a from-scratch one with no path: there is no file to resolve the ref against.
+      // No active frame, or a from-scratch one with no path: there is no file to resolve the ref
+      // against.
       if (!active || active.path === null) return state;
       const path = resolveRefPath(active.path, action.ref);
-      // Re-entry down the same trail: the frame just ahead already holds the target, so return to its live
-      // buffer rather than reloading a dirty child out from under the author.
+      // Re-entry down the same trail: the frame just ahead already holds the target, so return to
+      // its live buffer rather than reloading a dirty child out from under the author.
       const ahead = state.frames[depth + 1];
       if (ahead && ahead.path === path) {
         return { ...state, activeIndex: depth + 1, saveState: IDLE };
       }
-      // Otherwise truncate the forward trail and load fresh; `nodeId` feeds the breadcrumb's run badge.
+      // Otherwise truncate the forward trail and load fresh; `nodeId` feeds the breadcrumb's run
+      // badge.
       return {
         mode: state.mode,
         frames: [
@@ -102,8 +104,8 @@ export function reduceSession(state: SessionState, action: SessionAction): Sessi
       const frame = state.frames[depth];
       const opened = openedResultOf(frame);
       if (!frame || !opened) return { ...state, saveState: IDLE };
-      // A field edit whose identity matches the run in progress folds — undo jumps to where the run began.
-      // Any other edit pushes the present as a new entry; either way redo is cleared.
+      // A field edit whose identity matches the run in progress folds — undo jumps to where the run
+      // began. Any other edit pushes the present as a new entry; either way redo is cleared.
       const fold = action.key !== undefined && sameEditKey(action.key, frame.history.coalesceKey);
       const past = fold ? frame.history.past : [...frame.history.past, opened.file];
       return withBuffer(state, depth, frame, action.next, {
@@ -121,8 +123,9 @@ export function reduceSession(state: SessionState, action: SessionAction): Sessi
       if (!frame || !opened || frame.history.past.length === 0) return state;
       const past = frame.history.past.slice();
       const restored = past.pop()!;
-      // The present moves to the redo stack; clean re-derives against the unchanged baseline, so an undo
-      // past the save-point re-dirties for free (ADR 0030). Closing the coalesce run opens a fresh entry next.
+      // The present moves to the redo stack; clean re-derives against the unchanged baseline, so an
+      // undo past the save-point re-dirties for free (ADR 0030). Closing the coalesce run opens a
+      // fresh entry next.
       return withBuffer(state, depth, frame, restored, {
         past,
         future: [opened.file, ...frame.history.future],
@@ -147,18 +150,21 @@ export function reduceSession(state: SessionState, action: SessionAction): Sessi
     case "reload": {
       const depth = state.activeIndex;
       const frame = state.frames[depth];
-      // An unwritten buffer has no on-disk bytes to re-fetch; a template frame has no path but re-reads by id.
+      // An unwritten buffer has no on-disk bytes to re-fetch; a template frame has no path but
+      // re-reads by id.
       if (!frame?.written || (frame.path === null && !frame.template)) return state;
       const frames = state.frames.slice();
-      // A reload keeps the frame's descent origin, so a re-fetched child still badges its run status.
+      // A reload keeps the frame's descent origin, so a re-fetched child still badges its run
+      // status.
       frames[depth] = loadingFrame(frame.path, frame.descendedVia, action.loadSeq, frame.template);
       return { ...state, frames, saveState: IDLE };
     }
 
     case "loadLanded": {
       const { depth, loadSeq } = action;
-      // The staleness guard: patch in only when the frame at `depth` still awaits this exact fetch; a frame
-      // the author left, replaced, or that already landed holds a different number, so its result is dropped.
+      // The staleness guard: patch in only when the frame at `depth` still awaits this exact fetch;
+      // a frame the author left, replaced, or that already landed holds a different number, so its
+      // result is dropped.
       if (state.frames[depth]?.loadSeq !== loadSeq) return state;
       const frames = state.frames.slice();
       frames[depth] = {
@@ -180,8 +186,8 @@ export function reduceSession(state: SessionState, action: SessionAction): Sessi
     case "saveStarted":
       return { ...state, saveState: { phase: "saving" } };
 
-    // A landing save advances the frame only if it is still the one written; each case below states what
-    // "still the saved frame" means for its door, and `landSave` does the rest.
+    // A landing save advances the frame only if it is still the one written; each case below states
+    // what "still the saved frame" means for its door, and `landSave` does the rest.
     case "saved":
       return landSave(
         state,
@@ -200,7 +206,8 @@ export function reduceSession(state: SessionState, action: SessionAction): Sessi
           withFrame(state, action.depth, withSavePoint(frame, action.etag, action.savedBytes)),
       );
 
-    // A from-scratch buffer's first save: it is still that buffer while it is unwritten and path-less.
+    // A from-scratch buffer's first save: it is still that buffer while it is unwritten and
+    // path-less.
     case "newFileSaved":
       return landSave(
         state,
@@ -269,8 +276,8 @@ function withBuffer(
 }
 
 /**
- * Land a save on the frame at `depth`; the phase is `saved` either way, but `land` runs only while `stillSaved`
- * holds.
+ * Land a save on the frame at `depth`; the phase is `saved` either way, but `land` runs only while
+ * `stillSaved` holds.
  */
 function landSave(
   state: SessionState,
@@ -284,7 +291,8 @@ function landSave(
   return { ...landed, saveState: { phase: "saved" } };
 }
 
-/** A buffer that now matches what is on disk: written, open on `file`, its save point at `file`'s bytes. */
+/** A buffer that now matches what is on disk: written, open on `file`, its save point at `file`'s
+ * bytes. */
 function savedBuffer(
   file: WorkflowFile,
   etag: string,
@@ -305,8 +313,8 @@ function savedBuffer(
 }
 
 /**
- * A create-new child's first save: the child adopts its server path and drops its `refParent`, and the parent's
- * `workflow` node gets its `ref` back-filled.
+ * A create-new child's first save: the child adopts its server path and drops its `refParent`, and
+ * the parent's `workflow` node gets its `ref` back-filled.
  */
 function landNewFile(
   state: SessionState,

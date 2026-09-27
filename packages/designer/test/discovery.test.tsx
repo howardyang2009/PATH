@@ -5,9 +5,10 @@ import { discoveredWorkflows, useWorkflowDiscovery } from "../src/discovery.js";
 import type { SaveState } from "../src/session-reducer.js";
 
 /**
- * The Designer's one discovery load (`discovery.ts`). The four consumers' projections are covered where
- * they render (the dialogs and the problems pass, through the App); these prove the load's own policy —
- * the `null`-versus-`[]` distinction, keep-last on failure, and one re-scan per save that lands.
+ * The Designer's one discovery load (`discovery.ts`). The four consumers' projections are covered
+ * where they render (the dialogs and the problems pass, through the App); these prove the load's
+ * own policy — the `null`-versus-`[]` distinction, keep-last on failure, and one re-scan per save
+ * that lands.
  */
 
 function clientOver(responses: (() => Promise<Response>)[]): {
@@ -65,7 +66,8 @@ describe("useWorkflowDiscovery", () => {
     const hook = renderDiscovery(client);
 
     await waitFor(() => expect(hook.result.current.phase).toBe("error"));
-    // No successful scan behind the failure: nothing discovered, so a dialog reads empty rather than hanging.
+    // No successful scan behind the failure: nothing discovered, so a dialog reads empty rather
+    // than hanging.
     expect(discoveredWorkflows(hook.result.current)).toBeNull();
 
     const empty = clientOver([ok([])]);

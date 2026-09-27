@@ -11,25 +11,27 @@ import { type LoadedStepPluginRegistry, scanStepPlugins } from "./plugin-seam/sc
 
 /**
  * One workflow, loaded: the entry file itself, where it sits, and every file it reaches. Everything
- * derivable from the load is derived here, once, so no caller re-derives the root file, the directory
- * refs resolve against, or the store-relative provenance path.
+ * derivable from the load is derived here, once, so no caller re-derives the root file, the
+ * directory refs resolve against, or the store-relative provenance path.
  */
 export interface LoadedWorkflow {
   rootPath: string;
   rootFile: WorkflowFile;
   /**
-   * The entry file's **own** directory, never the project directory: `-C` relocating a store must not
-   * re-root the workflow (ADR 0005).
+   * The entry file's **own** directory, never the project directory: `-C` relocating a store must
+   * not re-root the workflow (ADR 0005).
    */
   workflowDir: string;
   files: Map<string, WorkflowFile>;
   /**
-   * The frozen registry this load scanned to build the schema (ADR 0019 sub-15). `runWorkflow` takes it
-   * as `RunOptions.registry`, so a run dispatches against exactly the registry its file was validated
-   * against, with no window in which an edit between load and run splits verdict from dispatch.
+   * The frozen registry this load scanned to build the schema (ADR 0019 sub-15). `runWorkflow`
+   * takes it as `RunOptions.registry`, so a run dispatches against exactly the registry its file
+   * was validated against, with no window in which an edit between load and run splits verdict from
+   * dispatch.
    */
   registry: LoadedStepPluginRegistry;
-  /** The entry file's path relative to `storeDir` — the root run's `workflow_path` provenance (ADR 0006). */
+  /** The entry file's path relative to `storeDir` — the root run's `workflow_path` provenance (ADR
+   * 0006). */
   storeRelativePath(storeDir: string): string;
 }
 
@@ -51,10 +53,11 @@ export async function loadWorkflowTree(entryPath: string): Promise<LoadResult> {
   const files = new Map<string, WorkflowFile>();
   const errors: string[] = [];
 
-  // The one freeze point (ADR 0019 sub-15): scan the plugin folder into a registry and build the file
-  // schema once, before the first parse. A broken plugin folder fails the whole load naming the folder
-  // and the reason (ADR 0019 sub-16) rather than becoming a per-file error, because a skipped plugin is
-  // indistinguishable from a genuinely absent type. `RunOptions.registry` is the same frozen registry.
+  // The one freeze point (ADR 0019 sub-15): scan the plugin folder into a registry and build the
+  // file schema once, before the first parse. A broken plugin folder fails the whole load naming
+  // the folder and the reason (ADR 0019 sub-16) rather than becoming a per-file error, because a
+  // skipped plugin is indistinguishable from a genuinely absent type. `RunOptions.registry` is the
+  // same frozen registry.
   const registry = await scanStepPlugins();
   const schema = makeWorkflowFileSchema(registry);
 

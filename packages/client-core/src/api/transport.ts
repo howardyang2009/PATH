@@ -6,8 +6,8 @@ export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>
 /** The default transport: the ambient global `fetch`, wrapped rather than passed by reference. */
 export const defaultFetch: FetchLike = (input, init) => fetch(input, init);
 
-/** A non-2xx response from the server, carrying its parsed `{ error: { message, details? } }` envelope
- * (server-api-v0.md §1).
+/** A non-2xx response from the server, carrying its parsed `{ error: { message, details? } }`
+ * envelope (server-api-v0.md §1).
  */
 export class PathApiError extends Error {
   constructor(
@@ -44,8 +44,8 @@ export class HttpTransport {
     return `${this.baseUrl}${path}`;
   }
 
-  /** Sends `method` to `path` with a JSON `body` when given, handing back the raw reply whatever its status. The lock
-   * doors use it directly, because a `409` there is an ordinary answer.
+  /** Sends `method` to `path` with a JSON `body` when given, handing back the raw reply whatever
+   * its status. The lock doors use it directly, because a `409` there is an ordinary answer.
    */
   async send(path: string, options: RequestOptions = {}): Promise<Reply> {
     const { method = "GET", body, headers = {} } = options;
@@ -65,8 +65,8 @@ export class HttpTransport {
     return { status: res.status, text: await res.text(), headers: res.headers };
   }
 
-  /** `send`, with any non-2xx raised as the server's error envelope. The reply body is not parsed: a caller that needs
-   * nothing back cannot fail on an empty or non-JSON 2xx.
+  /** `send`, with any non-2xx raised as the server's error envelope. The reply body is not parsed:
+   * a caller that needs nothing back cannot fail on an empty or non-JSON 2xx.
    */
   async request(path: string, options?: RequestOptions): Promise<Reply> {
     const reply = await this.send(path, options);
@@ -86,7 +86,8 @@ export function ifMatchHeader(ifMatch: string | undefined): Record<string, strin
   return ifMatch === undefined ? {} : { "If-Match": ifMatch };
 }
 
-/** Parse a reply body the server promised is JSON, keeping `PathApiError` the client's only failure. */
+/** Parse a reply body the server promised is JSON, keeping `PathApiError` the client's only
+ * failure. */
 export function parseReply<T>(status: number, text: string): T {
   try {
     return JSON.parse(text) as T;

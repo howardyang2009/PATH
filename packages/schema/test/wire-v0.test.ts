@@ -41,9 +41,10 @@ type _WireCarriesEveryRecordField = Assert<
   Equal<keyof WireRunRecord, CamelToSnake<keyof RunRecord>>
 >;
 
-// The summary's projection list is the one statement of which record fields it carries, so its snake
-// spelling must be exactly the summary's keys: a field added to the list without a summary key (or a
-// summary key with no list entry) fails here rather than producing a summary that silently omits it.
+// The summary's projection list is the one statement of which record fields it carries, so its
+// snake spelling must be exactly the summary's keys: a field added to the list without a summary
+// key (or a summary key with no list entry) fails here rather than producing a summary that
+// silently omits it.
 type _SummaryProjectionMatchesSummary = Assert<
   Equal<
     CamelToSnake<keyof typeof ROOT_RUN_SUMMARY_FIELDS>,
@@ -158,9 +159,10 @@ describe("the v0 wire record", () => {
   });
 
   it("carries a resolved reuse row's provenance and synthesized refs across, non-null (#257)", () => {
-    // As `run-archive.resolveReuseRow` hands it over: the reuse pointer plus the source-tree root and
-    // the refs that address the source's blobs. The encoder must ship these through as non-null so no
-    // wire consumer mistakes a reuse row (which has I/O, via the source) for one that has none.
+    // As `run-archive.resolveReuseRow` hands it over: the reuse pointer plus the source-tree root
+    // and the refs that address the source's blobs. The encoder must ship these through as non-null
+    // so no wire consumer mistakes a reuse row (which has I/O, via the source) for one that has
+    // none.
     const reuseRow: RunRecord = {
       ...emptyRecord,
       status: "succeeded",
@@ -205,8 +207,8 @@ describe("the v0 wire record", () => {
   });
 
   // "carries no field the domain record does not have, and drops none it does" used to be asserted
-  // here by comparing key counts against the fixture above. `_WireCarriesEveryRecordField` states it
-  // at compile time instead, over the types themselves — so it no longer depends on this file's
+  // here by comparing key counts against the fixture above. `_WireCarriesEveryRecordField` states
+  // it at compile time instead, over the types themselves — so it no longer depends on this file's
   // fixture being complete, and it fails in both directions rather than only when a field is added.
 });
 
@@ -250,8 +252,8 @@ describe("toRootRunSummary", () => {
     const summary = toRootRunSummary(record, ["apiKey"]) as unknown as Record<string, unknown>;
     const wire = toWireRunRecord(record) as unknown as Record<string, unknown>;
     for (const key of Object.keys(summary)) {
-      // `launch_secret_keys` is the one summary-only field (ADR 0046): it rides the summary, not the
-      // record, because the masked secret names live in the tree's frozen launch facts.
+      // `launch_secret_keys` is the one summary-only field (ADR 0046): it rides the summary, not
+      // the record, because the masked secret names live in the tree's frozen launch facts.
       if (key === "launch_secret_keys") continue;
       expect(summary[key]).toEqual(wire[key]);
     }

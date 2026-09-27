@@ -5,8 +5,8 @@ import { passFirstNode, passWalkStart, recordedPasses } from "../src/goto-pass.j
 import type { ContinueState } from "../src/run-context.js";
 
 /**
- * The goto pass module (`goto-pass.ts`) through its own interface: where a top-level walk starts for a
- * launch, a Resume and a Complete (ADR 0060), over in-memory rows and no store.
+ * The goto pass module (`goto-pass.ts`) through its own interface: where a top-level walk starts
+ * for a launch, a Resume and a Complete (ADR 0060), over in-memory rows and no store.
  */
 
 function run(

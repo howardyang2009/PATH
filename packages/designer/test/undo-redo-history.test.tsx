@@ -5,9 +5,9 @@ import { describe, expect, it } from "vitest";
 import { App } from "../src/app.js";
 
 /**
- * #389 — the keyboard surface: Backspace-delete (withheld before for want of an undo) is unlocked, and the
- * toolbar Undo restores it. This is the acceptance-criteria Backspace round-trip driven through the real
- * app, not the hook.
+ * #389 — the keyboard surface: Backspace-delete (withheld before for want of an undo) is unlocked,
+ * and the toolbar Undo restores it. This is the acceptance-criteria Backspace round-trip driven
+ * through the real app, not the hook.
  */
 
 function uuid(n: number): string {

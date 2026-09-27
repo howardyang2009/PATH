@@ -10,10 +10,10 @@ export interface NarrativeProps {
 }
 
 /**
- * The live-narrative surface: the run tree's log-event stream as a dense, `seq`-ordered list. `seq` is
- * monotonic per root run and *is* the ordering truth — timestamps collide under parallelism
- * (CONTEXT.md, *Log event*) — so the row leads with it. Ordering, dedupe and `Last-Event-ID` replay all
- * live in `@path/client-core`; this component formats and follows.
+ * The live-narrative surface: the run tree's log-event stream as a dense, `seq`-ordered list. `seq`
+ * is monotonic per root run and *is* the ordering truth — timestamps collide under parallelism
+ * (CONTEXT.md, *Log event*) — so the row leads with it. Ordering, dedupe and `Last-Event-ID` replay
+ * all live in `@path/client-core`; this component formats and follows.
  */
 export function Narrative({ events, stream }: NarrativeProps) {
   const listRef = useRef<HTMLOListElement>(null);
@@ -35,8 +35,8 @@ export function Narrative({ events, stream }: NarrativeProps) {
   };
 
   const follow = (): void => {
-    // Setting the flag is not enough on its own: if the list is re-pinned while no new event arrives
-    // the effect has nothing to react to, so scroll directly.
+    // Setting the flag is not enough on its own: if the list is re-pinned while no new event
+    // arrives the effect has nothing to react to, so scroll directly.
     setFollowing(true);
     const list = listRef.current;
     if (list) list.scrollTop = list.scrollHeight;
@@ -79,8 +79,8 @@ export function Narrative({ events, stream }: NarrativeProps) {
 
 /**
  * One event: `seq`, time of day, then the message led by the status glyph the event implies. The
- * glyph is what keeps the row's status legible without hue — `data-status` only tints what the glyph
- * and the message already say.
+ * glyph is what keeps the row's status legible without hue — `data-status` only tints what the
+ * glyph and the message already say.
  */
 function EventRow({ event }: { event: LogEvent }) {
   const outcome = eventOutcome(event);
@@ -139,7 +139,8 @@ const STREAM_LABEL: Record<StreamPhase, string> = {
   failed: "stream lost",
 };
 
-/** The seq range, not just a count: it says whether the narrative starts at the run's first event. */
+/** The seq range, not just a count: it says whether the narrative starts at the run's first
+ * event. */
 function countLabel(events: readonly LogEvent[]): string {
   const first = events[0];
   const last = events.at(-1);

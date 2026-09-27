@@ -160,7 +160,8 @@ describe("PathApiClient", () => {
   );
 
   // One 409 is enough — the client cannot tell an already-terminal run from one this server process
-  // is not executing, and does not try to; that the route sends both is `server.test.ts`'s to prove.
+  // is not executing, and does not try to; that the route sends both is `server.test.ts`'s to
+  // prove.
   it.each([
     [404, "an unknown run", `no run found with id "r1"`],
     [409, "a run that cannot be cancelled", `run "r1" already finished with status "succeeded"`],

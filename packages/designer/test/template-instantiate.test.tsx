@@ -7,9 +7,10 @@ import { App } from "../src/app.js";
 
 /**
  * #578 — insert a Template into an open workflow. Selecting a template card fetches
- * `GET /v0/templates/:id` and arms its body; the canvas opens only the grammar-legal sockets for it, and
- * a place runs Instantiation (fresh ids, names uniquified on collision) and splices the nodes in — a
- * 2+-node body at a single-node slot wrapped in a fresh `sequence`. The inserted nodes are ordinary.
+ * `GET /v0/templates/:id` and arms its body; the canvas opens only the grammar-legal sockets for
+ * it, and a place runs Instantiation (fresh ids, names uniquified on collision) and splices the
+ * nodes in — a 2+-node body at a single-node slot wrapped in a fresh `sequence`. The inserted nodes
+ * are ordinary.
  */
 
 function uuid(n: number): string {

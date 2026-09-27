@@ -19,17 +19,21 @@ import { cloneWithFreshIdentity, createArm, createNode, usedNames } from "./node
 import type { Armed } from "./use-armed.js";
 
 /**
- * The canvas's edit surface (designer-spec § Adding): it binds the palette's **armed** value to the pure
- * `edit-tree` ops over the active file. "Placing" mints the arriving node(s), applies the edit, and
- * disarms; an armed Template runs Instantiation over its body (ADR 0049), shaped for the socket. Where
- * the grammar refuses the armed value the tree renders no socket, so an illegal drop is unreachable.
+ * The canvas's edit surface (designer-spec § Adding): it binds the palette's **armed** value to the
+ * pure `edit-tree` ops over the active file. "Placing" mints the arriving node(s), applies the
+ * edit, and disarms; an armed Template runs Instantiation over its body (ADR 0049), shaped for the
+ * socket. Where the grammar refuses the armed value the tree renders no socket, so an illegal drop
+ * is unreachable.
  */
 export interface EditorApi {
-  /** What a socket says it adds — the armed node kind or the armed template's name — or `null` when unarmed. */
+  /** What a socket says it adds — the armed node kind or the armed template's name — or `null` when
+   * unarmed. */
   armedLabel: string | null;
-  /** Is `ownerId`'s socket of `flavor` an open drop target right now — armed, admitted, ancestor chain included? */
+  /** Is `ownerId`'s socket of `flavor` an open drop target right now — armed, admitted, ancestor
+   * chain included? */
   socketOpen(flavor: SocketFlavor, ownerId: string | null): boolean;
-  /** Place the armed node(s) at the tail of a list socket: the file body (`null`), a `sequence`, or a `parallel`. */
+  /** Place the armed node(s) at the tail of a list socket: the file body (`null`), a `sequence`, or
+   * a `parallel`. */
   placeIntoList(ownerId: string | null): void;
   /** Swap a single-node slot's occupant for the armed node (never emptying the slot). */
   swapSingle(target: SingleSlot): void;
@@ -55,8 +59,8 @@ export interface EditorApi {
 
 /**
  * Build the edit surface over the active `file`. `applyEdit` commits a new file (marking the buffer
- * edited); `disarm` clears the palette selection after a place. `defaultLeaf` is the leaf step type a
- * block's auto-filled occupants take — the palette's first Steps entry, else `prompt`.
+ * edited); `disarm` clears the palette selection after a place. `defaultLeaf` is the leaf step type
+ * a block's auto-filled occupants take — the palette's first Steps entry, else `prompt`.
  */
 export function createEditor(
   file: WorkflowFile,
@@ -67,7 +71,8 @@ export function createEditor(
 ): EditorApi {
   const mint = (kind: string): WorkflowNode => createNode(kind, usedNames(file.body), defaultLeaf);
 
-  /** The node(s) the armed value lands as in a socket of `flavor`. A single slot always gets exactly one. */
+  /** The node(s) the armed value lands as in a socket of `flavor`. A single slot always gets
+   * exactly one. */
   const arrivals = (armed: Armed, flavor: SocketFlavor): WorkflowNode[] =>
     armed.kind === "node"
       ? [mint(armed.type)]
@@ -76,7 +81,8 @@ export function createEditor(
           socket: bodyInsertSocket(flavor),
         });
 
-  /** The flavour of a list socket: the file body (`null`) is a sequence; an owner reports its own. */
+  /** The flavour of a list socket: the file body (`null`) is a sequence; an owner reports its
+   * own. */
   const listFlavor = (ownerId: string | null): SocketFlavor => {
     const owner = ownerId === null ? null : findById(file.body, ownerId);
     return (owner && childSocketFlavor(owner)) ?? "sequence";

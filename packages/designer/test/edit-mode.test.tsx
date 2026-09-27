@@ -333,7 +333,8 @@ describe("Workflow | Template edit-mode switch", () => {
 
     await waitFor(() => expect(calls.put).toHaveLength(1));
     const { workflow_path, workflow } = calls.put[0]!.body;
-    // An exclusive create in the source file's directory; the copy is a new workflow with its new name.
+    // An exclusive create in the source file's directory; the copy is a new workflow with its new
+    // name.
     expect(calls.put[0]!.ifMatch).toBeNull();
     expect(workflow_path).toBe("flows/other.workflow.json");
     expect(workflow.name).toBe("other");

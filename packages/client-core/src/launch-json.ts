@@ -1,7 +1,7 @@
 import type { JsonValue } from "@path/schema";
 
-/** The result of gating one raw-JSON launch field (`input`/`config`); `empty` separates "blank, and that is fine"
- * (send nothing) from "blank, and not allowed" (block).
+/** The result of gating one raw-JSON launch field (`input`/`config`); `empty` separates "blank, and
+ * that is fine" (send nothing) from "blank, and not allowed" (block).
  */
 export type JsonFieldResult =
   | { ok: true; empty: true; value: undefined }
@@ -9,13 +9,14 @@ export type JsonFieldResult =
   | { ok: false; empty: boolean; message: string };
 
 export interface ParseJsonFieldOptions {
-  /** Whether blank text is a valid "omit this field" (`input`/`config` are both optional on the wire). */
+  /** Whether blank text is a valid "omit this field" (`input`/`config` are both optional on the
+   * wire). */
   allowEmpty: boolean;
 }
 
-/** Parse and shape-check one launch field client-side, deliberately shallow: valid JSON, and the object the wire
- * declares. The server stays the real validator (a rejected `$env` override, ADR 0012) and its `400` is what
- * surfaces.
+/** Parse and shape-check one launch field client-side, deliberately shallow: valid JSON, and the
+ * object the wire declares. The server stays the real validator (a rejected `$env` override, ADR
+ * 0012) and its `400` is what surfaces.
  */
 export function parseJsonField(
   text: string,

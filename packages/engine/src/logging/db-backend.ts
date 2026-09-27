@@ -3,13 +3,13 @@ import type Database from "better-sqlite3";
 import type { LogBackend } from "./log-backend.js";
 
 /**
- * The db log backend (mvp spec §8.2): one row per event in `log_events`, stamped with the root run id
- * captured from `open()`. Shares the project's synchronous, single-connection `Database` handle.
+ * The db log backend (mvp spec §8.2): one row per event in `log_events`, stamped with the root run
+ * id captured from `open()`. Shares the project's synchronous, single-connection `Database` handle.
  *
- * The SQL lives here so `write` is the only way a row reaches `log_events`: the engine assembles the
- * envelope, `seq` and masking before the seam, and an insert around the sink could carry an event none
- * of that was applied to. Envelope columns are denormalized; the whole event is also stored as JSON so
- * a read round-trips through `LogEventSchema`.
+ * The SQL lives here so `write` is the only way a row reaches `log_events`: the engine assembles
+ * the envelope, `seq` and masking before the seam, and an insert around the sink could carry an
+ * event none of that was applied to. Envelope columns are denormalized; the whole event is also
+ * stored as JSON so a read round-trips through `LogEventSchema`.
  */
 export function createDbLogBackend(db: Database.Database): LogBackend {
   let rootRunId: string | null = null;
@@ -54,8 +54,9 @@ export function maxLogSeqForRoot(db: Database.Database, rootRunId: string): numb
   return row.maxSeq ?? 0;
 }
 
-// Reads one root run's narrative back in `seq` order, revalidating each stored event. The fallback when
-// a run has no `run.log` to replay; events were masked before `write`, so what comes back is masked.
+// Reads one root run's narrative back in `seq` order, revalidating each stored event. The fallback
+// when a run has no `run.log` to replay; events were masked before `write`, so what comes back is
+// masked.
 export function getLogEventsForRoot(db: Database.Database, rootRunId: string): LogEvent[] {
   const rows = db
     .prepare(`SELECT event FROM log_events WHERE root_run_id = @rootRunId ORDER BY seq`)
@@ -63,8 +64,9 @@ export function getLogEventsForRoot(db: Database.Database, rootRunId: string): L
   return rows.map((row) => LogEventSchema.parse(JSON.parse(row.event)));
 }
 
-// One reuse-marker as the `rm` guard reads it: which successor root run holds it, and which run in the
-// *original* tree its data lives in — what `runs rm` resolves to see if a live successor still needs it.
+// One reuse-marker as the `rm` guard reads it: which successor root run holds it, and which run in
+// the *original* tree its data lives in — what `runs rm` resolves to see if a live successor still
+// needs it.
 export function reuseMarkerReferences(
   db: Database.Database,
 ): { holderRootRunId: string; originalRunId: string }[] {

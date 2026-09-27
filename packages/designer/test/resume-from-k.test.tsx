@@ -12,7 +12,8 @@ import { App } from "../src/app.js";
 import { openWorkflowFile } from "../src/open-workflow.js";
 import { canonicalSerialize } from "../src/serialize.js";
 
-/** Canonical on-disk bytes, so a re-open reads clean (ADR 0030) — the same helper the run-surfaces test uses. */
+/** Canonical on-disk bytes, so a re-open reads clean (ADR 0030) — the same helper the run-surfaces
+ * test uses. */
 function canonicalBytes(file: Record<string, unknown>): string {
   const result = openWorkflowFile(JSON.stringify(file), DEFAULT_PLUGINS);
   if (result.status !== "opened") throw new Error(`fixture did not open: ${result.status}`);
@@ -28,7 +29,8 @@ const WF_ID = uuid(1);
 const STEP1_ID = uuid(2);
 const STEP2_ID = uuid(3);
 
-/** A clean, fully-id'd two-step root: `draft` then `review`, so `review` is a legal K with `draft` before it. */
+/** A clean, fully-id'd two-step root: `draft` then `review`, so `review` is a legal K with `draft`
+ * before it. */
 function twoStepFile(): Record<string, unknown> {
   return {
     format: FORMAT_VERSION,
@@ -41,7 +43,8 @@ function twoStepFile(): Record<string, unknown> {
   };
 }
 
-/** A run row carrying the fields the tree + the eager legal-K check read; the rest are inert nulls. */
+/** A run row carrying the fields the tree + the eager legal-K check read; the rest are inert
+ * nulls. */
 function wireRun(p: {
   run_id: string;
   status: string;
@@ -73,7 +76,8 @@ function wireRun(p: {
   };
 }
 
-/** A root-run summary row for the rail, at the given status, carrying any recorded launch-secret paths. */
+/** A root-run summary row for the rail, at the given status, carrying any recorded launch-secret
+ * paths. */
 function summary(status: string, launchSecretKeys?: string[]): Record<string, unknown> {
   return {
     run_id: "root-1",
@@ -91,13 +95,15 @@ function openDock(): void {
   fireEvent.click(screen.getByTestId("run-dock-toggle"));
 }
 
-/** Render the App on the two-step file with the given rail + tree, then open the dock and watch root-1. */
+/** Render the App on the two-step file with the given rail + tree, then open the dock and watch
+ * root-1. */
 async function renderWatching(
   opts: {
     rootStatus: string;
     treeRuns: Record<string, unknown>[];
     onResumeRun?: StubServerOptions["onResumeRun"];
-    /** The root summary's recorded `$secret` paths (ADR 0046), so the resume card asks for them again. */
+    /** The root summary's recorded `$secret` paths (ADR 0046), so the resume card asks for them
+     * again. */
     launchSecretKeys?: string[];
   },
   calls?: StubCalls,
@@ -161,7 +167,8 @@ describe("Designer Resume-from-K button (#447)", () => {
     fireEvent.click(await screen.findByTestId("tree-row-r-step2"));
     const submit = await screen.findByTestId("resume-from-submit");
     await waitFor(() => expect(submit).toBeEnabled());
-    // Once a legal K is selected the label carries its identity; the full run id is the hover title.
+    // Once a legal K is selected the label carries its identity; the full run id is the hover
+    // title.
     expect(submit).toHaveTextContent("Resume from review(r-step2)");
     expect(submit).toHaveAttribute("title", "Resume from review (r-step2)");
     expect(screen.queryByTestId("resume-from-reason")).not.toBeInTheDocument();
@@ -226,8 +233,8 @@ describe("Designer Resume-from-K button (#447)", () => {
       ],
     });
 
-    // On a succeeded run plain Resume (cancelled/failed only) is greyed but kept, not hidden; the live
-    // resume path is Resume from …, which stands alongside it.
+    // On a succeeded run plain Resume (cancelled/failed only) is greyed but kept, not hidden; the
+    // live resume path is Resume from …, which stands alongside it.
     expect(await screen.findByTestId("resume-button")).toBeDisabled();
     expect(await screen.findByTestId("resume-from-submit")).toBeInTheDocument();
 
@@ -263,8 +270,8 @@ describe("Designer Resume-from-K button (#447)", () => {
 
     fireEvent.click(await screen.findByTestId("tree-row-r-step2"));
     const submit = await screen.findByTestId("resume-from-submit");
-    // K is legal, so the label carries its identity — but the frozen secret is still blank, so the verb
-    // is greyed and the card names the path the engine would refuse to continue with.
+    // K is legal, so the label carries its identity — but the frozen secret is still blank, so the
+    // verb is greyed and the card names the path the engine would refuse to continue with.
     await waitFor(() => expect(submit).toBeDisabled());
     expect(submit).toHaveTextContent("Resume from review(r-step2)");
     expect(screen.getByTestId("resume-secret-error")).toHaveTextContent('"DEEPSEEK_API_KEY"');

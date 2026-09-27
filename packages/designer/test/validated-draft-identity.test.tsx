@@ -10,9 +10,9 @@ import {
 } from "../src/validated-draft.js";
 
 /**
- * The draft protocol's own seam: the identity a field passes is what re-seeds it, so a caller can no
- * longer forget the React `key` that used to be the only thing making the reset happen (#389). These
- * drive the hooks directly, with an identity the test changes the way the pane changes node.
+ * The draft protocol's own seam: the identity a field passes is what re-seeds it, so a caller can
+ * no longer forget the React `key` that used to be the only thing making the reset happen (#389).
+ * These drive the hooks directly, with an identity the test changes the way the pane changes node.
  */
 
 function DraftField({ owner }: { owner: string }): JSX.Element {
@@ -26,8 +26,8 @@ function DraftField({ owner }: { owner: string }): JSX.Element {
 }
 
 /**
- * A structured draft — the `ConditionField` shape — over the protocol's core rather than over text: the
- * draft is what the author typed, the committed value is the validated form of it.
+ * A structured draft — the `ConditionField` shape — over the protocol's core rather than over text:
+ * the draft is what the author typed, the committed value is the validated form of it.
  */
 function StructuredField({
   owner,
@@ -86,7 +86,8 @@ describe("useValidatedDraft — the identity re-seeds the draft", () => {
     fireEvent.change(draft, { target: { value: "typed" } });
     expect(draft.value).toBe("typed");
 
-    // The pane's node selection changes: the field must show the new node's text, not the typed draft.
+    // The pane's node selection changes: the field must show the new node's text, not the typed
+    // draft.
     rerender(<DraftField owner="b" />);
     expect((screen.getByLabelText("draft") as HTMLInputElement).value).toBe("seeded-b");
 

@@ -16,11 +16,13 @@ import { useDraft } from "./validated-draft.js";
 /**
  * The typed `Condition` builder. It edits the structured AST — an operator picked from a menu, its
  * operands in typed controls — never free text, so an ill-typed or unparseable condition is
- * **unrepresentable**. One `ConditionField` governs each of the three condition sites: a branch arm's
- * `when`, a `while-do`'s `condition`, and a `checkpoint`'s assertion, each inside a labelled fieldset.
+ * **unrepresentable**. One `ConditionField` governs each of the three condition sites: a branch
+ * arm's `when`, a `while-do`'s `condition`, and a `checkpoint`'s assertion, each inside a labelled
+ * fieldset.
  *
- * A sub-condition is committed only when the **whole** condition validates (`validateCondition`), so a
- * half-typed dot-path never reaches the file. `identity` re-seeds the draft when the selection moves.
+ * A sub-condition is committed only when the **whole** condition validates (`validateCondition`),
+ * so a half-typed dot-path never reaches the file. `identity` re-seeds the draft when the selection
+ * moves.
  */
 export function ConditionField({
   label,
@@ -57,7 +59,8 @@ export function ConditionField({
   );
 }
 
-/** One condition row: the operator menu, then the operands the chosen operator needs (recursive for combinators). */
+/** One condition row: the operator menu, then the operands the chosen operator needs (recursive for
+ * combinators). */
 function ConditionNode({
   value,
   suggestions,
@@ -81,9 +84,9 @@ function ConditionNode({
       ))}
     </select>
   );
-  // A leaf predicate reads infix — `path <operator> operand` — on one control row, each control under its
-  // label (§ ADR 0022, condition row). A combinator (`all`/`any`/`not`) keeps the operator as a prefix
-  // above its indented children, so the tree structure still reads top-down.
+  // A leaf predicate reads infix — `path <operator> operand` — on one control row, each control
+  // under its label (§ ADR 0022, condition row). A combinator (`all`/`any`/`not`) keeps the
+  // operator as a prefix above its indented children, so the tree structure still reads top-down.
   if (isLeafConditionType(value.type)) {
     return (
       <div className="cond-node cond-leaf">
@@ -109,7 +112,8 @@ function ConditionNode({
   );
 }
 
-/** The operand controls for a condition, dispatched by operator. Every control writes a valid operand. */
+/** The operand controls for a condition, dispatched by operator. Every control writes a valid
+ * operand. */
 function ConditionOperands({
   value,
   suggestions,
@@ -119,7 +123,8 @@ function ConditionOperands({
   value: Condition;
   suggestions: string[];
   onChange: (next: Condition) => void;
-  /** The operator select, rendered infix right after the path for a leaf predicate; `null` for a combinator. */
+  /** The operator select, rendered infix right after the path for a leaf predicate; `null` for a
+   * combinator. */
   operator: ReactNode;
 }): JSX.Element {
   switch (value.type) {
@@ -224,7 +229,8 @@ function ConditionOperands({
   }
 }
 
-/** The `all` / `any` child list, each an editable sub-condition, with add and remove (keeps at least one). */
+/** The `all` / `any` child list, each an editable sub-condition, with add and remove (keeps at
+ * least one). */
 function CombinatorChildren({
   value,
   suggestions,
@@ -269,7 +275,8 @@ function CombinatorChildren({
   );
 }
 
-/** A leaf predicate's dot-path, with autocomplete against the file's referenceable `context.`/`output.` paths. */
+/** A leaf predicate's dot-path, with autocomplete against the file's referenceable
+ * `context.`/`output.` paths. */
 function PathField({
   path,
   suggestions,
@@ -299,7 +306,8 @@ function PathField({
   );
 }
 
-/** A typed JSON-scalar operand: a kind menu (`string`/`number`/`boolean`/`null`) and the value control. */
+/** A typed JSON-scalar operand: a kind menu (`string`/`number`/`boolean`/`null`) and the value
+ * control. */
 function ScalarField({
   value,
   onChange,
@@ -329,7 +337,8 @@ function ScalarField({
   );
 }
 
-/** The value control matched to a scalar kind: text, number, a boolean menu, or nothing for `null`. */
+/** The value control matched to a scalar kind: text, number, a boolean menu, or nothing for
+ * `null`. */
 function ScalarValue({
   kind,
   value,

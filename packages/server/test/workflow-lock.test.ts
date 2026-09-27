@@ -20,7 +20,8 @@ afterEach(async () => {
 
 const MARKER = "draft.workflow.json.editing";
 
-/** The lease JSON the server authors and returns (typed so `noUncheckedIndexedAccess` reads fields as `string`). */
+/** The lease JSON the server authors and returns (typed so `noUncheckedIndexedAccess` reads fields
+ * as `string`). */
 interface LeaseJson {
   session_id: string;
   acquired_at: string;

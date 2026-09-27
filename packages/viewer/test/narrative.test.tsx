@@ -51,7 +51,8 @@ describe("Narrative", () => {
 
     const rows = screen.getAllByRole("listitem");
     expect(rows.map((row) => row.getAttribute("data-seq"))).toEqual(["1", "2", "3"]);
-    // The row names the node by both its human name and its id (here the fixture uses one value for both).
+    // The row names the node by both its human name and its id (here the fixture uses one value for
+    // both).
     expect(rows[2]).toHaveTextContent("step-a (step-a) succeeded");
   });
 

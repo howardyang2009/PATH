@@ -1,11 +1,12 @@
 import type { JsonValue } from "./json-value.js";
 
 /**
- * What every `$`-prefixed config wrapper shares: the sole-key rule and the deep descent, shared because `$secret`
- * and `$env` compose.
+ * What every `$`-prefixed config wrapper shares: the sole-key rule and the deep descent, shared
+ * because `$secret` and `$env` compose.
  */
 
-/** A wrapper's marker must be the object's only key; a multi-key object carrying `$secret` is plain config. */
+/** A wrapper's marker must be the object's only key; a multi-key object carrying `$secret` is plain
+ * config. */
 export function hasOnlyKey<K extends string>(value: object, key: K): value is Record<K, JsonValue> {
   return soleKey(value) === key;
 }
@@ -25,8 +26,8 @@ function childPath(path: string, segment: string | number): string {
 }
 
 /**
- * Deep-walks a value replacing every wrapper `match` claims; a wrapper may sit at any depth, so the whole tree is
- * walked.
+ * Deep-walks a value replacing every wrapper `match` claims; a wrapper may sit at any depth, so the
+ * whole tree is walked.
  */
 export function mapWrappers(
   value: JsonValue,

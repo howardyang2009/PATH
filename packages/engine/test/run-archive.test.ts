@@ -378,8 +378,8 @@ describe("run archive — listRoots", () => {
   });
 
   it("filters by source-workflow name and GUID, and records identity root-only (#202)", () => {
-    // Two roots sharing a human name but distinct GUIDs, plus a third — the segmentation #202 exists
-    // for. Each `seedTree` also writes a child row, which must never pick up the identity.
+    // Two roots sharing a human name but distinct GUIDs, plus a third — the segmentation #202
+    // exists for. Each `seedTree` also writes a child row, which must never pick up the identity.
     insertRun(db, {
       runId: "acc-1",
       rootRunId: "acc-1",
@@ -499,8 +499,8 @@ describe("run archive — remove and prune", () => {
   });
 });
 
-/** A reuse-marker as a resumed tree writes it: the successor's log, pointing at a run in the original
- * tree. `holderRootRunId` is what `writeDbLog` stamps as the row's `root_run_id`. */
+/** A reuse-marker as a resumed tree writes it: the successor's log, pointing at a run in the
+ * original tree. `holderRootRunId` is what `writeDbLog` stamps as the row's `root_run_id`. */
 function reuseMarker(seq: number, originalRunId: string): LogEvent {
   return {
     type: "reuse-marker",

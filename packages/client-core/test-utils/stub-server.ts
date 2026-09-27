@@ -26,7 +26,8 @@ export const DEFAULT_PLUGINS: WireStepPlugin[] = [
   },
 ];
 
-/** Every write/lock request body the stub saw, for assertions in the edit-lock + save tests (#371). */
+/** Every write/lock request body the stub saw, for assertions in the edit-lock + save tests
+ * (#371). */
 export interface StubCalls {
   lock: { workflow_path: string; session_id: string; takeover?: boolean }[];
   heartbeat: { workflow_path: string; session_id: string }[];
@@ -35,7 +36,8 @@ export interface StubCalls {
     body: { workflow_path: string; workflow: Record<string, unknown> };
     ifMatch: string | null;
   }[];
-  /** The `GET /v0/runs` query strings the run list sent (`?...`), for the `workflow_id`-scope assertions (#372). */
+  /** The `GET /v0/runs` query strings the run list sent (`?...`), for the `workflow_id`-scope
+   * assertions (#372). */
   listRuns: string[];
   /** Every `POST /v0/runs` launch body, for the save-first launch assertions (#372). */
   startRun: {
@@ -54,7 +56,8 @@ export interface StubCalls {
   deletes: { url: string; ifMatch: string | null }[];
 }
 
-/** One recorded template write: the verb, the URL id (`null` for a POST), the JSON body, and `If-Match`. */
+/** One recorded template write: the verb, the URL id (`null` for a POST), the JSON body, and
+ * `If-Match`. */
 export interface TemplateWrite {
   method: "POST" | "PUT";
   id: string | null;
@@ -62,8 +65,8 @@ export interface TemplateWrite {
   ifMatch: string | null;
 }
 
-/** An SSE body that stays open until aborted, like the real one — a stream that ends early spins the
- * core's reconnect loop. Used by the run-surface tests; a silent stream is the default. */
+/** An SSE body that stays open until aborted, like the real one — a stream that ends early spins
+ * the core's reconnect loop. Used by the run-surface tests; a silent stream is the default. */
 export class EventStreamStub {
   private controller: ReadableStreamDefaultController<Uint8Array> | null = null;
 
@@ -90,13 +93,15 @@ export class EventStreamStub {
 }
 
 export interface StubServerOptions {
-  /** The registry snapshot for `GET /v0/step-plugins`. Defaults to the built-in `prompt`/`binary` pair. */
+  /** The registry snapshot for `GET /v0/step-plugins`. Defaults to the built-in `prompt`/`binary`
+   * pair. */
   plugins?: WireStepPlugin[];
   /** Status for the registry response, for the failure path. */
   pluginsStatus?: number;
   /** Answer a `DELETE` (workflow file or template) instead of the default `204`. */
   onDelete?: (url: string) => Response;
-  /** Raw file bodies keyed by relative path, for `GET /v0/workflows/file`. A path the map lacks answers 404. */
+  /** Raw file bodies keyed by relative path, for `GET /v0/workflows/file`. A path the map lacks
+   * answers 404. */
   files?: Record<string, string>;
   /** A recorder the caller passes in; the stub pushes every write/lock body into it. */
   calls?: StubCalls;
@@ -115,13 +120,16 @@ export interface StubServerOptions {
   treeStatus?: number;
   /** Supply one to push live events into the open SSE stream; omitted means a silent stream. */
   stream?: EventStreamStub;
-  /** Bodies for `GET /v0/runs/:root/blobs/:run/:name`, keyed `"<run_id>/<name>"`. A missing key 404s. */
+  /** Bodies for `GET /v0/runs/:root/blobs/:run/:name`, keyed `"<run_id>/<name>"`. A missing key
+   * 404s. */
   blobs?: Record<string, unknown>;
   /** Override `POST /v0/runs` per call (the launch). Default: 202 with a fresh `root_run_id`. */
   onStartRun?: (body: { workflow_path: string; input?: unknown; config?: unknown }) => Response;
-  /** Override `POST /v0/runs/:id/resume` per call — e.g. a legal-K `refusal`. Default: 202 successor. */
+  /** Override `POST /v0/runs/:id/resume` per call — e.g. a legal-K `refusal`. Default: 202
+   * successor. */
   onResumeRun?: (call: { rootRunId: string; body: unknown }) => Response;
-  /** Body for `GET /v0/workflows` — discovery, the new-file dialog's directory source (#390). Default: empty. */
+  /** Body for `GET /v0/workflows` — discovery, the new-file dialog's directory source (#390).
+   * Default: empty. */
   workflows?: unknown;
   /** Body for `GET /v0/templates` — the palette's template list (#577). Default: empty. */
   templates?: unknown;
@@ -130,13 +138,14 @@ export interface StubServerOptions {
   /** Bodies for `GET /v0/templates/:id`, keyed by template id (#578). A missing id answers 404. */
   templateBodies?: Record<string, unknown>;
   /**
-   * Override a template write per call (#580). Default: a `POST` creates (`201`); a `PUT` answers `403`
-   * for an id whose `templateBodies` envelope is `read_only`, the server's shipped-template refusal, else `200`.
+   * Override a template write per call (#580). Default: a `POST` creates (`201`); a `PUT` answers
+   * `403` for an id whose `templateBodies` envelope is `read_only`, the server's shipped-template
+   * refusal, else `200`.
    */
   onTemplateWrite?: (write: TemplateWrite) => Response;
   /**
-   * Canned reply for `POST /v0/runs/:step_run_id/complete`. Omitted, the route answers a `202` with a
-   * `{ step_run_id, root_run_id }` echo. `completeBodies` records each request's parsed body.
+   * Canned reply for `POST /v0/runs/:step_run_id/complete`. Omitted, the route answers a `202` with
+   * a `{ step_run_id, root_run_id }` echo. `completeBodies` records each request's parsed body.
    */
   complete?: { status: number; body: unknown };
   completeBodies?: unknown[];
@@ -340,7 +349,8 @@ function json(body: unknown, status: number): Response {
   });
 }
 
-/** A `POST /v0/templates` or `PUT /v0/templates/:id` as a recorded write, or `null` for any other request. */
+/** A `POST /v0/templates` or `PUT /v0/templates/:id` as a recorded write, or `null` for any other
+ * request. */
 function templateWriteOf(url: string, init: RequestInit | undefined): TemplateWrite | null {
   const method = init?.method;
   const ifMatch = (init?.headers as Record<string, string>)?.["If-Match"] ?? null;

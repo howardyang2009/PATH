@@ -16,9 +16,9 @@ import {
 } from "./run-observer.js";
 
 /**
- * The run-scoped producer of `RunEvent`s: one per workflow-run, stamping the envelope (`run_id`, `node_id`,
- * `node_name`, `ts`, the root run id) so a call site supplies only what its log event adds. It composes; `emit`
- * masks (§8.3).
+ * The run-scoped producer of `RunEvent`s: one per workflow-run, stamping the envelope (`run_id`,
+ * `node_id`, `node_name`, `ts`, the root run id) so a call site supplies only what its log event
+ * adds. It composes; `emit` masks (§8.3).
  */
 
 /** The identity an event names its node by — the node's own `id`/`name`. */
@@ -28,8 +28,9 @@ export interface NodeRef {
 }
 
 /**
- * What a call site supplies: a `LogEvent` minus the envelope the emitter stamps. Lifecycle events are excluded:
- * only the lifecycle methods emit them, so a stray one cannot finish a row or close the log.
+ * What a call site supplies: a `LogEvent` minus the envelope the emitter stamps. Lifecycle events
+ * are excluded: only the lifecycle methods emit them, so a stray one cannot finish a row or close
+ * the log.
  */
 export type EventBody = DistributiveOmit<
   Exclude<LogEvent, { type: "step-started" | "step-finished" | "run-cancelled" }>,
@@ -41,15 +42,16 @@ type LifecycleBody = DistributiveOmit<
   "seq" | "ts" | "run_id" | "node_id" | "node_name"
 >;
 
-/** A `step-finished` a step reaches on its own (not by cancellation): succeeded with output, or failed. */
+/** A `step-finished` a step reaches on its own (not by cancellation): succeeded with output, or
+ * failed. */
 type StepFinish = Exclude<RunOutcome, { status: "cancelled" }>;
 
 /** The standalone payloads: persistence records them with no log event. */
 type RecordOnly = Extract<RunPayload, { kind: "stderr" | "usage" | "context" }>;
 
 /**
- * A single leaf step run's events, all under one minted run id: `started`, then any `record`/`emit`, then exactly one
- * terminal — `finished`, or `cancelled`.
+ * A single leaf step run's events, all under one minted run id: `started`, then any
+ * `record`/`emit`, then exactly one terminal — `finished`, or `cancelled`.
  */
 export interface StepEmitter {
   /** This step run's own minted id — the `causeRunId` its failure hands its cancelling siblings. */
@@ -59,18 +61,21 @@ export interface StepEmitter {
   emit(body: EventBody): Promise<void>;
   record(payload: RecordOnly): Promise<void>;
   finished(outcome: StepFinish): Promise<void>;
-  /** The kill pair (§5.6): `run-cancelled` carrying the cause, then a `cancelled` `step-finished`. */
+  /** The kill pair (§5.6): `run-cancelled` carrying the cause, then a `cancelled`
+   * `step-finished`. */
   cancelled(args: {
     cause: "sibling-failed" | "sibling-succeeded" | "operator";
     causeRunId: string | null;
   }): Promise<void>;
 }
 
-/** The run-tier surface: this workflow-run's own lifecycle and the control-node events it narrates. */
+/** The run-tier surface: this workflow-run's own lifecycle and the control-node events it
+ * narrates. */
 export interface Emitter {
   /**
-   * This workflow-run begins, narrated as its implicit root step's `step-started`. The source-workflow trio, the
-   * launch facts and the rerun path are root-only, gated on `isRoot`; a nested run passes them and they are dropped.
+   * This workflow-run begins, narrated as its implicit root step's `step-started`. The
+   * source-workflow trio, the launch facts and the rerun path are root-only, gated on `isRoot`; a
+   * nested run passes them and they are dropped.
    */
   runStarted(args: {
     input: JsonValue;
@@ -86,20 +91,23 @@ export interface Emitter {
   emit(node: NodeRef | null, body: EventBody): Promise<void>;
   record(payload: RecordOnly): Promise<void>;
   /**
-   * Open a step-scoped sub-emitter, minting a fresh run id. A Complete replay (ADR 0041) passes the **existing**
-   * parked leaf's id, so its `step-finished` transitions that row in place.
+   * Open a step-scoped sub-emitter, minting a fresh run id. A Complete replay (ADR 0041) passes the
+   * **existing** parked leaf's id, so its `step-finished` transitions that row in place.
    */
   step(node: NodeRef, existingRunId?: string): StepEmitter;
-  /** The emitter for a nested workflow-run over this tree's same masking sink, enveloped by its own `identity`. */
+  /** The emitter for a nested workflow-run over this tree's same masking sink, enveloped by its own
+   * `identity`. */
   child(identity: RunIdentity): Emitter;
 }
 
-/** Build the emitter for one workflow-run over the tree's masking `emit`; `identity` fixes its envelope. */
+/** Build the emitter for one workflow-run over the tree's masking `emit`; `identity` fixes its
+ * envelope. */
 export function createEmitter(identity: RunIdentity, emit: Emit): Emitter {
   const { runId, rootRunId, parentRunId, nodeId, nodeName, iteration, pass } = identity;
   const isRoot = isRootRun(identity);
 
-  // Stamps one run's envelope onto a body; a `cancelled` or bare `failed` finish carries no `error`.
+  // Stamps one run's envelope onto a body; a `cancelled` or bare `failed` finish carries no
+  // `error`.
   function send(
     run: string,
     node: { id: string | null; name: string | null },
@@ -175,7 +183,8 @@ export function createEmitter(identity: RunIdentity, emit: Emit): Emitter {
       return send(runId, self, null, payload);
     },
     step(node, existingRunId): StepEmitter {
-      // Minted once and shared across the step's events; a Complete replay reuses the parked leaf's id.
+      // Minted once and shared across the step's events; a Complete replay reuses the parked leaf's
+      // id.
       const stepRunId = existingRunId ?? randomUUID();
       return {
         runId: stepRunId,

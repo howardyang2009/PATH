@@ -16,26 +16,26 @@ import type { HttpTransport } from "./transport.js";
 export interface ListRunsQuery {
   limit?: number;
   status?: RunStatus;
-  /** Scope to one workflow's `id` (ADR 0015 identity, not path); a server-side filter past the latest-N window, so it
-   * returns that workflow's complete history.
+  /** Scope to one workflow's `id` (ADR 0015 identity, not path); a server-side filter past the
+   * latest-N window, so it returns that workflow's complete history.
    */
   workflowId?: string;
 }
 
-/** The camelCase, domain-shaped input to `startRun`, translated to the snake_case `StartRunRequest` body at the
- * boundary (ADR 0013); only `workflowPath` is required.
+/** The camelCase, domain-shaped input to `startRun`, translated to the snake_case `StartRunRequest`
+ * body at the boundary (ADR 0013); only `workflowPath` is required.
  */
 export interface StartRunOptions {
   /** Path to the root workflow file, resolved against the server's fixed project root. */
   workflowPath: string;
-  /** A root-context **override**: omitted means the server falls back to the file's own top-level `input` seed, then
-   * `{}`.
+  /** A root-context **override**: omitted means the server falls back to the file's own top-level
+   * `input` seed, then `{}`.
    */
   input?: JsonValue;
   /** Operator config overrides (`RunOptions.operatorConfig`); server-validated. */
   config?: ConfigObject;
-  /** The run-wide launch worker-default table (ADR 0044): `{ <type>: <name> }`, sent as the wire body's **top-level**
-   * `worker_defaults`, never within `config`. Frozen with the run.
+  /** The run-wide launch worker-default table (ADR 0044): `{ <type>: <name> }`, sent as the wire
+   * body's **top-level** `worker_defaults`, never within `config`. Frozen with the run.
    */
   workerDefaults?: { [stepType: string]: string };
   /** Which log backends to write. Omitted: the project's settings, else `["db", "ndjson"]`. */

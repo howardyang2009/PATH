@@ -10,7 +10,8 @@ const ENVELOPE = {
   node_name: "step-a",
 } as const;
 
-/** The trace type as it rides the event stream; derived rather than re-declared so it cannot drift. */
+/** The trace type as it rides the event stream; derived rather than re-declared so it cannot
+ * drift. */
 type Trace = Extract<LogEvent, { type: "checkpoint-passed" }>["trace"];
 
 /** A condition trace stands in for the real one — neither the row nor the outcome renders it. */
@@ -41,7 +42,8 @@ describe("eventOutcome", () => {
   it("counts the engine constructs that stop a run as failures", () => {
     expect(eventOutcome({ ...ENVELOPE, type: "checkpoint-failed", trace: TRACE })).toBe("failed");
     expect(eventOutcome({ ...ENVELOPE, type: "branch-no-match", traces: [TRACE] })).toBe("failed");
-    // A while-do that exceeds its mandatory max-iterations bound fails the run (CONTEXT.md, Controller).
+    // A while-do that exceeds its mandatory max-iterations bound fails the run (CONTEXT.md,
+    // Controller).
     expect(
       eventOutcome({
         ...ENVELOPE,

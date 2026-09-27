@@ -13,8 +13,8 @@ export default defineConfig({
   test: {
     ...baseConfig.test,
     // Not `vmThreads`: that pool would build one jsdom per worker, but the live-stream tests push
-    // frames through a `ReadableStream` built in `@path/client-core/test-utils`, and under `node:vm`
-    // those events never reach the component. `threads` keeps them green.
+    // frames through a `ReadableStream` built in `@path/client-core/test-utils`, and under
+    // `node:vm` those events never reach the component. `threads` keeps them green.
     pool: "threads",
     // Under `pnpm -r run test` the suites share the machine, which pushes slow cases past vitest's
     // 5000ms default.

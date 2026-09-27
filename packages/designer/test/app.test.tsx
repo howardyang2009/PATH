@@ -12,7 +12,8 @@ function uuid(n: number): string {
 const ROOT_PATH = "flows/main.workflow.json";
 const CHILD_PATH = "flows/sub/child.workflow.json";
 
-/** A whole valid `@3` root file exercising every block shape, plus a `workflow` ref to a child file. */
+/** A whole valid `@3` root file exercising every block shape, plus a `workflow` ref to a child
+ * file. */
 function rootFile(): Record<string, unknown> {
   return {
     format: FORMAT_VERSION,
@@ -93,8 +94,8 @@ describe("Designer shell (the tracer bullet, still true)", () => {
     render(<App client={stubClient()} />);
     const palette = screen.getByRole("region", { name: "Palette" });
     const steps = within(palette).getByRole("region", { name: "Step" });
-    // Steps are registry-driven (#368): the stub ships `binary` + `prompt`, and `workflow` is always
-    // offered as a leaf-step entry. They land once `GET /v0/step-plugins` resolves.
+    // Steps are registry-driven (#368): the stub ships `binary` + `prompt`, and `workflow` is
+    // always offered as a leaf-step entry. They land once `GET /v0/step-plugins` resolves.
     expect(await within(steps).findByText("Prompt")).toBeInTheDocument();
     for (const label of ["Binary", "Workflow"]) {
       expect(within(steps).getByText(label)).toBeInTheDocument();
@@ -130,9 +131,9 @@ describe("Designer open + render", () => {
     // Leaf chips: LLM for a prompt, COMMAND for a binary.
     expect(within(canvas).getAllByText("LLM").length).toBeGreaterThan(0);
     expect(within(canvas).getByText("COMMAND")).toBeInTheDocument();
-    // Node names across nested blocks. A parallel branch's name shows twice — once as the block's own
-    // name, once as the branch caption (spec: each branch is captioned by its own node name) — so match
-    // one-or-more rather than exactly one.
+    // Node names across nested blocks. A parallel branch's name shows twice — once as the block's
+    // own name, once as the branch caption (spec: each branch is captioned by its own node name) —
+    // so match one-or-more rather than exactly one.
     for (const name of [
       "draft",
       "fan",
@@ -177,8 +178,9 @@ describe("Designer open + render", () => {
   });
 
   it("keeps the root run's status badge on the root crumb after descending into a child", async () => {
-    // The workflow-level status belongs to the watched run's own file (w1), not to whichever crumb is
-    // active. Descending into a nested ref (w2) must read "w1 succeeded / w2", never "w1 / w2 succeeded".
+    // The workflow-level status belongs to the watched run's own file (w1), not to whichever crumb
+    // is active. Descending into a nested ref (w2) must read "w1 succeeded / w2", never "w1 / w2
+    // succeeded".
     const runRow = {
       run_id: "root-1",
       workflow_name: "root-flow",
@@ -203,7 +205,8 @@ describe("Designer open + render", () => {
     render(<App client={client} initialPath={ROOT_PATH} />);
     await screen.findByText("draft");
 
-    // Watch the root run from the dock: its succeeded status badges the root file's workflow-name crumb.
+    // Watch the root run from the dock: its succeeded status badges the root file's workflow-name
+    // crumb.
     fireEvent.click(screen.getByTestId("run-dock-toggle"));
     fireEvent.click(await screen.findByTestId("run-row-root-1"));
     const badge = await screen.findByTestId("workflow-run-badge");
@@ -211,8 +214,8 @@ describe("Designer open + render", () => {
       within(badge.closest(".crumb-wrap") as HTMLElement).getByText("root-flow"),
     ).toBeInTheDocument();
 
-    // Descend into the child. The badge stays glued to the root crumb — it must not follow the now-active
-    // child crumb.
+    // Descend into the child. The badge stays glued to the root crumb — it must not follow the
+    // now-active child crumb.
     fireEvent.doubleClick(screen.getByText("sub/child.workflow.json").closest('[role="button"]')!);
     await screen.findByText("child-step");
     const wrapAfter = (await screen.findByTestId("workflow-run-badge")).closest(
@@ -223,9 +226,10 @@ describe("Designer open + render", () => {
   });
 
   it("badges a descent crumb with the descended workflow node's own run status", async () => {
-    // The trail should read "w1 failed / w2 failed": the child crumb badges the run of the `workflow` node
-    // it descended through (uuid(12), "sub"), whose folded status is the sub-workflow's own verdict — not
-    // the root run's. So both crumbs carry a badge, each its own level's status.
+    // The trail should read "w1 failed / w2 failed": the child crumb badges the run of the
+    // `workflow` node it descended through (uuid(12), "sub"), whose folded status is the
+    // sub-workflow's own verdict — not the root run's. So both crumbs carry a badge, each its own
+    // level's status.
     const rootRow = {
       run_id: "root-1",
       workflow_name: "root-flow",
@@ -250,8 +254,8 @@ describe("Designer open + render", () => {
             node_id: null,
             node_name: null,
           },
-          // The `workflow` node's sub-run: keyed by the node's id, so it projects onto that node — and onto
-          // the crumb descended through it.
+          // The `workflow` node's sub-run: keyed by the node's id, so it projects onto that node —
+          // and onto the crumb descended through it.
           {
             ...rootRow,
             run_id: "sub-1",
@@ -275,7 +279,8 @@ describe("Designer open + render", () => {
     fireEvent.doubleClick(screen.getByText("sub/child.workflow.json").closest('[role="button"]')!);
     await screen.findByText("child-step");
 
-    // Both crumbs carry a failed badge — the child crumb's own, from the descended node's projection.
+    // Both crumbs carry a failed badge — the child crumb's own, from the descended node's
+    // projection.
     const crumbs = screen.getByRole("navigation", { name: "File breadcrumb" });
     const childWrap = within(crumbs).getByText("child-flow").closest(".crumb-wrap") as HTMLElement;
     const childBadge = within(childWrap).getByTestId("workflow-run-badge");

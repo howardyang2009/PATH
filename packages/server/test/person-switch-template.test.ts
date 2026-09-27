@@ -19,8 +19,8 @@ import {
 /**
  * The shipped `person-switch` Step-Template (#581, ADR 0052): a `person-activity` ask followed by a
  * `branch` on the chosen label, wrapped in one `sequence`. It is authoring sugar over two existing
- * primitives — no engine type — so the proof is the demo: instantiate it, run it, reach Awaiting at the
- * ask, Complete with a label, and see only the matching arm run.
+ * primitives — no engine type — so the proof is the demo: instantiate it, run it, reach Awaiting at
+ * the ask, Complete with a label, and see only the matching arm run.
  */
 
 let dir: string;
@@ -98,7 +98,8 @@ describe("person-switch step-template (ADR 0052)", () => {
     expect(sequence.type).toBe("sequence");
     expect(sequence.body.map((n) => n.type)).toEqual(["person-activity", "branch"]);
 
-    // The ask's outputSchema is a string enum of exactly the branch's arm labels, one arm per label.
+    // The ask's outputSchema is a string enum of exactly the branch's arm labels, one arm per
+    // label.
     const ask = sequence.body[0] as unknown as {
       outputSchema: { properties: { choice: { enum: string[] } } };
     };

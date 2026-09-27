@@ -1,11 +1,13 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { sendError } from "./http-json.js";
 
-/** CSRF/origin gate for state-changing routes: refuse a cross-origin browser fetch (`Sec-Fetch-Site:
- * cross-site`, or `Origin` ≠ `Host`). No-auth, localhost-bind, so the residual risk is a launch's side
- * effect, not exfiltration; token auth only if remote access becomes real (server-api-v0.md §0). */
+/** CSRF/origin gate for state-changing routes: refuse a cross-origin browser fetch
+ * (`Sec-Fetch-Site: cross-site`, or `Origin` ≠ `Host`). No-auth, localhost-bind, so the residual
+ * risk is a launch's side effect, not exfiltration; token auth only if remote access becomes real
+ * (server-api-v0.md §0). */
 
-/** Duplicate request headers arrive as an array; read the first value. Shared with the write door. */
+/** Duplicate request headers arrive as an array; read the first value. Shared with the write
+ * door. */
 export function firstHeader(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
 }

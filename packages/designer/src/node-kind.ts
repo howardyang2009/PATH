@@ -1,9 +1,11 @@
 /**
- * Per-kind presentation facts — canvas hue, pane explanation, leaf chip glyph — read by the canvas block
- * render and the properties pane, so a kind is described once. An unlisted leaf type takes step defaults.
+ * Per-kind presentation facts — canvas hue, pane explanation, leaf chip glyph — read by the canvas
+ * block render and the properties pane, so a kind is described once. An unlisted leaf type takes
+ * step defaults.
  */
 
-/** The kind-specific presentation facts. A kind not listed falls back to the step defaults below. */
+/** The kind-specific presentation facts. A kind not listed falls back to the step defaults
+ * below. */
 interface KindDescriptor {
   /** Hue-token stem: the block tints from `--k-<hue>` / `--k-<hue>-bg`. */
   hue: string;
@@ -47,17 +49,20 @@ const KIND: Record<string, KindDescriptor> = {
   },
 };
 
-/** The hue-token stem for a node type. A leaf step and any unlisted (registry) type share the step hue. */
+/** The hue-token stem for a node type. A leaf step and any unlisted (registry) type share the step
+ * hue. */
 export function nodeHue(type: string): string {
   return KIND[type]?.hue ?? "step";
 }
 
-/** The one-line explanation of a node kind, shown above the divider. An unlisted type reads as a step. */
+/** The one-line explanation of a node kind, shown above the divider. An unlisted type reads as a
+ * step. */
 export function kindExplanation(type: string): string {
   return KIND[type]?.explanation ?? `A ${type} step.`;
 }
 
-/** The chip label for a leaf step: `LLM` for a prompt, `COMMAND` for a binary, else the type upper-cased. */
+/** The chip label for a leaf step: `LLM` for a prompt, `COMMAND` for a binary, else the type
+ * upper-cased. */
 export function leafChip(type: string): string {
   if (type === "prompt") return "LLM";
   if (type === "binary") return "COMMAND";

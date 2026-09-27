@@ -14,7 +14,8 @@ describe("node-kind descriptor", () => {
   });
 
   it("gives person-activity its own teal hue, a person glyph, and a readable chip (#487)", () => {
-    // A distinct hue and glyph so it reads apart from a generic `--k-step` leaf and from binary/prompt.
+    // A distinct hue and glyph so it reads apart from a generic `--k-step` leaf and from
+    // binary/prompt.
     expect(nodeHue("person-activity")).toBe("person");
     expect(leafGlyph("person-activity")).toBe("👤");
     expect(leafChip("person-activity")).toBe("PERSON");

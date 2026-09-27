@@ -2,17 +2,20 @@ import type { Condition, WorkflowNode } from "@path/schema";
 import { childBodies, uniqueName } from "@path/schema";
 
 /**
- * Minting new nodes for the canvas (designer-spec § Adding; ADR 0015): every node carries a client-minted
- * UUIDv4 `id` and a file-unique `name`, and a block is born with its minimal legal occupants pre-filled
- * by a default leaf. A name handed out is added to `used`, so a block and its occupants never collide.
+ * Minting new nodes for the canvas (designer-spec § Adding; ADR 0015): every node carries a
+ * client-minted UUIDv4 `id` and a file-unique `name`, and a block is born with its minimal legal
+ * occupants pre-filled by a default leaf. A name handed out is added to `used`, so a block and its
+ * occupants never collide.
  */
 
-/** A default placeholder condition for a new `branch` arm, `while-do`, or `checkpoint`; edited later. */
+/** A default placeholder condition for a new `branch` arm, `while-do`, or `checkpoint`; edited
+ * later. */
 function defaultCondition(): Condition {
   return { type: "exists", path: "context.value" };
 }
 
-/** A fresh leaf of `type`, with the type's own required field stubbed empty for the pane to fill. */
+/** A fresh leaf of `type`, with the type's own required field stubbed empty for the pane to
+ * fill. */
 function makeLeaf(type: string, used: Set<string>): WorkflowNode {
   const base = { id: crypto.randomUUID(), name: uniqueName(type, used), type };
   switch (type) {
@@ -23,19 +26,20 @@ function makeLeaf(type: string, used: Set<string>): WorkflowNode {
     case "workflow":
       return { ...base, ref: "" } as WorkflowNode;
     case "person-activity":
-      // Its `description` is the required field; the cast is needed because a plugin leaf sits outside
-      // the core node union.
+      // Its `description` is the required field; the cast is needed because a plugin leaf sits
+      // outside the core node union.
       return { ...base, description: "" } as unknown as WorkflowNode;
     default:
-      // A generic registry leaf (e.g. `api-call`): only the envelope is minted; the engine tolerates the
-      // empty payload, so no field is stubbed here.
+      // A generic registry leaf (e.g. `api-call`): only the envelope is minted; the engine
+      // tolerates the empty payload, so no field is stubbed here.
       return base as unknown as WorkflowNode;
   }
 }
 
 /**
  * A fresh node of `kind`, ready to place. A leaf kind makes a leaf; a block makes its shell with a
- * default leaf occupant (`defaultLeaf`, the palette's first Steps entry, else `prompt`) in each slot.
+ * default leaf occupant (`defaultLeaf`, the palette's first Steps entry, else `prompt`) in each
+ * slot.
  */
 export function createNode(kind: string, used: Set<string>, defaultLeaf = "prompt"): WorkflowNode {
   switch (kind) {
@@ -78,8 +82,8 @@ export function createNode(kind: string, used: Set<string>, defaultLeaf = "promp
         condition: defaultCondition(),
       };
     case "goto":
-      // Born pointing nowhere (`""`): the pane shows it as `missing:` until the author picks one, and
-      // `max_jumps` is mandatory (designer-spec § goto).
+      // Born pointing nowhere (`""`): the pane shows it as `missing:` until the author picks one,
+      // and `max_jumps` is mandatory (designer-spec § goto).
       return {
         id: crypto.randomUUID(),
         name: uniqueName("goto", used),
@@ -92,7 +96,8 @@ export function createNode(kind: string, used: Set<string>, defaultLeaf = "promp
   }
 }
 
-/** A fresh `branch` arm — a default `when` over a default leaf occupant — for the add-arm affordance. */
+/** A fresh `branch` arm — a default `when` over a default leaf occupant — for the add-arm
+ * affordance. */
 export function createArm(
   used: Set<string>,
   defaultLeaf = "prompt",
@@ -101,8 +106,8 @@ export function createArm(
 }
 
 /**
- * A deep clone with fresh identity throughout: new UUIDv4 `id`s and `-copy` names; a copy is never an alias (ADR
- * 0015).
+ * A deep clone with fresh identity throughout: new UUIDv4 `id`s and `-copy` names; a copy is never
+ * an alias (ADR 0015).
  */
 export function cloneWithFreshIdentity(node: WorkflowNode, used: Set<string>): WorkflowNode {
   const clone = structuredClone(node) as WorkflowNode;
@@ -110,7 +115,8 @@ export function cloneWithFreshIdentity(node: WorkflowNode, used: Set<string>): W
   return clone;
 }
 
-/** Walk a cloned subtree, replacing every `id` with a fresh UUIDv4 and every `name` with a free one. */
+/** Walk a cloned subtree, replacing every `id` with a fresh UUIDv4 and every `name` with a free
+ * one. */
 function reidentify(node: WorkflowNode, used: Set<string>): void {
   (node as { id: string }).id = crypto.randomUUID();
   (node as { name: string }).name = uniqueName(`${node.name}-copy`, used);

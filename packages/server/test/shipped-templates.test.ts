@@ -6,9 +6,9 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { DEFAULT_SHIPPED_TEMPLATE_DIR, discoverTemplates } from "../src/template-store.js";
 
 /**
- * The templates shipped in `packages/server/template/` (#578, #579) are read-only source every project sees,
- * so a broken one is a broken palette card for everyone. Pin that each one is valid against the
- * registry the Server really loads.
+ * The templates shipped in `packages/server/template/` (#578, #579) are read-only source every
+ * project sees, so a broken one is a broken palette card for everyone. Pin that each one is valid
+ * against the registry the Server really loads.
  */
 
 let projectDir: string;

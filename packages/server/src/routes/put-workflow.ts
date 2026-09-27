@@ -22,7 +22,8 @@ import type { ApiRequest } from "./route-context.js";
 
 /**
  * The write envelope (server-api-v0.md §7): the resource path travels in the body, so a `/`-bearing
- * `workflow_path` needs no `%2F` encoding. `workflow`'s shape is validated against `@path/schema` below.
+ * `workflow_path` needs no `%2F` encoding. `workflow`'s shape is validated against `@path/schema`
+ * below.
  */
 const PutWorkflowBodySchema = z
   .object({
@@ -59,11 +60,12 @@ export async function handlePutWorkflow({ req, res, ctx }: ApiRequest): Promise<
     return;
   }
 
-  // Serialize the *raw* object, not zod's parsed copy, so the author's key order survives (ADR 0016).
+  // Serialize the *raw* object, not zod's parsed copy, so the author's key order survives (ADR
+  // 0016).
   const rawWorkflow = (body.raw as { workflow: unknown }).workflow;
 
-  // Path confinement (404) before schema (400): a path that escapes the root or traverses a symlink is
-  // refused regardless of what the body says.
+  // Path confinement (404) before schema (400): a path that escapes the root or traverses a symlink
+  // is refused regardless of what the body says.
   const absPath = confineToProjectRoot(resolve(ctx.project.dir), workflowPath, {
     allowMissingTail: true,
   });
@@ -83,8 +85,8 @@ export async function handlePutWorkflow({ req, res, ctx }: ApiRequest): Promise<
     return;
   }
 
-  // Precondition and write are one synchronous block (ADR 0016): `If-Match` present is overwrite-only,
-  // absent is create-only, and every conflict is a `412` here.
+  // Precondition and write are one synchronous block (ADR 0016): `If-Match` present is
+  // overwrite-only, absent is create-only, and every conflict is a `412` here.
   const precondition = checkPrecondition(
     readArtifact(absPath),
     firstHeader(req.headers["if-match"]),
@@ -100,7 +102,8 @@ export async function handlePutWorkflow({ req, res, ctx }: ApiRequest): Promise<
   const { etag } = written;
   const existed = precondition.ok && !precondition.create;
   const relativePath = relative(resolve(ctx.project.dir), absPath);
-  // The reply is the shared wire shape the client decodes, so a renamed field is a compile error here.
+  // The reply is the shared wire shape the client decodes, so a renamed field is a compile error
+  // here.
   const reply: WirePutWorkflowResponse = {
     relative_path: relativePath,
     id: validation.file.id,

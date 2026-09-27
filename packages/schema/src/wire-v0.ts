@@ -6,8 +6,9 @@ import { type RerunFromNodePathEntry, RUN_RECORD_FIELDS, type RunRecord } from "
 import type { RunStatus } from "./run-status.js";
 
 /**
- * The wire shapes of the `@path/server` v0 HTTP contract (docs/api/server-api-v0.md), shared by both ends
- * so a field renamed on one side cannot type-check on both and break only at runtime (ADR 0013).
+ * The wire shapes of the `@path/server` v0 HTTP contract (docs/api/server-api-v0.md), shared by
+ * both ends so a field renamed on one side cannot type-check on both and break only at runtime (ADR
+ * 0013).
  */
 
 /** One `RunRecord` on the wire (server-api-v0.md §4), snake_case. */
@@ -17,9 +18,11 @@ export interface WireRunRecord {
   parent_run_id: string | null;
   node_id: string | null;
   node_name: string | null;
-  /** Null for a workflow-run's own row; a leaf step run carries its worker's *name* (ADR 0021 sub-14). */
+  /** Null for a workflow-run's own row; a leaf step run carries its worker's *name* (ADR 0021
+   * sub-14). */
   worker_name: string | null;
-  /** The 1-based ordinal of a `while-do` iteration container (ADR 0037), null on every other kind. */
+  /** The 1-based ordinal of a `while-do` iteration container (ADR 0037), null on every other
+   * kind. */
   iteration: number | null;
   /** The 1-based ordinal of a goto pass container (ADR 0054), null on every other kind. */
   pass: number | null;
@@ -31,7 +34,8 @@ export interface WireRunRecord {
   usage: JsonValue | null;
   estimated_cost_usd: number | null;
   resumed_from_root_run_id: string | null;
-  /** The rerun boundary (K) descent path this successor root run resumed from (ADR 0032); null on plain Resume. */
+  /** The rerun boundary (K) descent path this successor root run resumed from (ADR 0032); null on
+   * plain Resume. */
   rerun_from_node_path: RerunFromNodePathEntry[] | null;
   /** Set only on a reuse row: the source run whose output it reuses, direct-to-source. */
   reused_from_run_id: string | null;
@@ -42,7 +46,8 @@ export interface WireRunRecord {
   workflow_path: string | null;
 }
 
-/** The operator's frozen launch facts on the wire (ADR 0046), carried once per tree on `RunTreeResponse`. */
+/** The operator's frozen launch facts on the wire (ADR 0046), carried once per tree on
+ * `RunTreeResponse`. */
 export interface WireLaunchFacts {
   input?: JsonValue;
   config?: ConfigObject;
@@ -56,8 +61,8 @@ export interface RunTreeResponse {
   output: JsonValue | null;
   runs: WireRunRecord[];
   /**
-   * What the run was launched with (ADR 0046); `config` is masked, so a `$secret` reads as its `[secret:<key>]`
-   * token.
+   * What the run was launched with (ADR 0046); `config` is masked, so a `$secret` reads as its
+   * `[secret:<key>]` token.
    */
   launch_facts?: WireLaunchFacts;
 }
@@ -71,7 +76,8 @@ export interface RootRunSummary {
   status: RunStatus;
   started_at: string | null;
   finished_at: string | null;
-  /** The launch config keys recorded as secrets (ADR 0046) — names only; present only when the launch had them. */
+  /** The launch config keys recorded as secrets (ADR 0046) — names only; present only when the
+   * launch had them. */
   launch_secret_keys?: string[];
 }
 
@@ -80,8 +86,8 @@ export interface ListRunsResponse {
 }
 
 /**
- * `POST /v0/runs` request body (server-api-v0.md §2), snake_case; shared so client-encode and server-decode cannot
- * drift.
+ * `POST /v0/runs` request body (server-api-v0.md §2), snake_case; shared so client-encode and
+ * server-decode cannot drift.
  */
 export interface StartRunRequest {
   workflow_path: string;
@@ -102,8 +108,8 @@ export interface StartRunResponse {
 }
 
 /**
- * `POST /v0/runs/:step_run_id/complete` body (server-api-v0.md §4.4): the person's `output` and an optional `config`
- * override.
+ * `POST /v0/runs/:step_run_id/complete` body (server-api-v0.md §4.4): the person's `output` and an
+ * optional `config` override.
  */
 export interface CompleteRunRequest {
   output: JsonValue;
@@ -116,9 +122,9 @@ export interface CompleteRunResponse {
 }
 
 /**
- * The edit lease's JSON (`POST /v0/workflows/lock` and heartbeat replies, and the `.editing` marker on
- * disk), server-authored snake_case (server-api-v0.md §7.2, ADR 0017). `expires_at` is server-computed,
- * never read from the client — a client-set expiry could pin a lease forever.
+ * The edit lease's JSON (`POST /v0/workflows/lock` and heartbeat replies, and the `.editing` marker
+ * on disk), server-authored snake_case (server-api-v0.md §7.2, ADR 0017). `expires_at` is
+ * server-computed, never read from the client — a client-set expiry could pin a lease forever.
  */
 export interface WireWorkflowLease {
   session_id: string;
@@ -131,7 +137,8 @@ export interface WireWorkflowLease {
 export interface WireLockRequest {
   workflow_path: string;
   session_id: string;
-  /** `true` overwrites a live marker held by another session — gated behind an explicit user confirm. */
+  /** `true` overwrites a live marker held by another session — gated behind an explicit user
+   * confirm. */
   takeover?: boolean;
 }
 
@@ -141,7 +148,8 @@ export interface WireLeaseOpRequest {
 }
 
 /**
- * The `409` a lock acquire returns when a live marker is held by another session (ADR 0017): envelope plus expiry.
+ * The `409` a lock acquire returns when a live marker is held by another session (ADR 0017):
+ * envelope plus expiry.
  */
 export interface WireLockHeldBody extends WireError {
   held_by_other: true;
@@ -169,8 +177,8 @@ export interface WireError {
 }
 
 /**
- * One discovered workflow file (`GET /v0/workflows`, server-api-v0.md §6). `is_root` is a presentation
- * hint, not a launchability gate (ADR 0011).
+ * One discovered workflow file (`GET /v0/workflows`, server-api-v0.md §6). `is_root` is a
+ * presentation hint, not a launchability gate (ADR 0011).
  */
 export interface WorkflowSummary {
   relative_path: string;
@@ -186,8 +194,8 @@ export interface ListWorkflowsResponse {
 }
 
 /**
- * One discovered authoring template (`GET /v0/templates`, server-api-v0.md §10.1, ADR 0050): the thin summary, no
- * `body`.
+ * One discovered authoring template (`GET /v0/templates`, server-api-v0.md §10.1, ADR 0050): the
+ * thin summary, no `body`.
  */
 export interface TemplateSummary {
   id: string | null;
@@ -205,8 +213,8 @@ export interface ListTemplatesResponse {
 }
 
 /**
- * `GET /v0/templates/:id` (server-api-v0.md §10.2, ADR 0050): parsed envelope; `body` stays `unknown` for an invalid
- * template.
+ * `GET /v0/templates/:id` (server-api-v0.md §10.2, ADR 0050): parsed envelope; `body` stays
+ * `unknown` for an invalid template.
  */
 export interface GetTemplateResponse extends Omit<TemplateSummary, "id"> {
   id: string;
@@ -216,7 +224,8 @@ export interface GetTemplateResponse extends Omit<TemplateSummary, "id"> {
 }
 
 /**
- * `POST /v0/templates` — save-as (server-api-v0.md §10.3, ADR 0050): the full object carrying the client-minted `id`.
+ * `POST /v0/templates` — save-as (server-api-v0.md §10.3, ADR 0050): the full object carrying the
+ * client-minted `id`.
  */
 export interface WirePostTemplateRequest {
   kind: "step";
@@ -225,26 +234,29 @@ export interface WirePostTemplateRequest {
   body: Record<string, unknown>;
 }
 
-/** The `POST /v0/templates` (`201`) and `PUT /v0/templates/:id` (`200`) reply: id, written path, new ETag. */
+/** The `POST /v0/templates` (`201`) and `PUT /v0/templates/:id` (`200`) reply: id, written path,
+ * new ETag. */
 export interface WireTemplateWriteResponse {
   id: string;
   relative_path: string;
   etag: string;
 }
 
-/** A blob name addressable via the blob route (server-api-v0.md §4.3): a run's input, output, or context. */
+/** A blob name addressable via the blob route (server-api-v0.md §4.3): a run's input, output, or
+ * context. */
 export type BlobName = "input" | "output" | "context";
 
 /**
- * A camelCase field's snake_case wire name; the wire vocabulary is exactly the record's mechanical snake spelling.
+ * A camelCase field's snake_case wire name; the wire vocabulary is exactly the record's mechanical
+ * snake spelling.
  */
 function camelToSnake(key: string): string {
   return key.replace(/[A-Z]/g, (upper) => `_${upper.toLowerCase()}`);
 }
 
 /**
- * Domain record → wire, and back: both iterate `RUN_RECORD_FIELDS`, a pure rename the `as` casts carry past the
- * compiler.
+ * Domain record → wire, and back: both iterate `RUN_RECORD_FIELDS`, a pure rename the `as` casts
+ * carry past the compiler.
  */
 export function toWireRunRecord(row: RunRecord): WireRunRecord {
   const wire = {} as Record<string, unknown>;
@@ -263,8 +275,8 @@ export function fromWireRunRecord(wire: WireRunRecord): RunRecord {
 }
 
 /**
- * Every `LaunchFacts` field, as a set: a field added to the interface is a compile error here, not one that silently
- * never crosses.
+ * Every `LaunchFacts` field, as a set: a field added to the interface is a compile error here, not
+ * one that silently never crosses.
  */
 const LAUNCH_FACT_FIELDS: Record<keyof LaunchFacts, true> = {
   input: true,
@@ -274,8 +286,8 @@ const LAUNCH_FACT_FIELDS: Record<keyof LaunchFacts, true> = {
 };
 
 /**
- * Domain → wire, and back: `undefined` fields are omitted, so a JSON response carries no null-ish key for a fact that
- * does not exist.
+ * Domain → wire, and back: `undefined` fields are omitted, so a JSON response carries no null-ish
+ * key for a fact that does not exist.
  */
 export function toWireLaunchFacts(facts: LaunchFacts): WireLaunchFacts {
   const wire: Record<string, unknown> = {};
@@ -297,7 +309,8 @@ export function fromWireLaunchFacts(wire: WireLaunchFacts): LaunchFacts {
 
 /**
  * Which `RunRecord` fields the root-run summary carries — the one statement of the projection.
- * `RootRunSummary` stays hand-written so a domain rename cannot silently rename a published v0 field.
+ * `RootRunSummary` stays hand-written so a domain rename cannot silently rename a published v0
+ * field.
  */
 export const ROOT_RUN_SUMMARY_FIELDS = {
   runId: true,
@@ -310,7 +323,8 @@ export const ROOT_RUN_SUMMARY_FIELDS = {
 } as const satisfies Partial<Record<keyof RunRecord, true>>;
 
 /**
- * The root-run summary `GET /v0/runs` returns — a projection of the full record, plus the run's masked secret keys.
+ * The root-run summary `GET /v0/runs` returns — a projection of the full record, plus the run's
+ * masked secret keys.
  */
 export function toRootRunSummary(row: RunRecord, launchSecretKeys?: string[]): RootRunSummary {
   const summary: Record<string, unknown> = {};

@@ -8,12 +8,12 @@ import type { RunEvent } from "../src/run-observer.js";
 import { flat } from "./fake-observer.js";
 
 /**
- * The engine-owned mapping from a worker's `StepResult` to a leaf step's terminal outcome, tested on
- * its own seam (#349's class) — no worker, no semaphore, no registry, no pipeline. A real `StepEmitter`
- * over a recording sink is what proves the events the mapping emits, in order, are the shapes
- * persistence and logging read. What a worker self-reports is its business (an SDK "success"
- * frame it judges an error is failed at the worker); what the engine does with whatever came back is
- * this, and it is one place.
+ * The engine-owned mapping from a worker's `StepResult` to a leaf step's terminal outcome, tested
+ * on its own seam (#349's class) — no worker, no semaphore, no registry, no pipeline. A real
+ * `StepEmitter` over a recording sink is what proves the events the mapping emits, in order, are
+ * the shapes persistence and logging read. What a worker self-reports is its business (an SDK
+ * "success" frame it judges an error is failed at the worker); what the engine does with whatever
+ * came back is this, and it is one place.
  */
 
 const IDENTITY: RunIdentity = {
@@ -26,7 +26,8 @@ const IDENTITY: RunIdentity = {
 const NODE = { id: "step-node-guid", name: "do-thing" };
 
 // A real step emitter over a recording sink: `seen` is every event the mapping produced, flattened,
-// and `step.runId` is the minted id a failure names itself by (a cancelling sibling's `causeRunId`).
+// and `step.runId` is the minted id a failure names itself by (a cancelling sibling's
+// `causeRunId`).
 function harness(): { step: StepEmitter; seen: ReturnType<typeof flat>[] } {
   const seen: ReturnType<typeof flat>[] = [];
   const emit = async (e: RunEvent): Promise<void> => void seen.push(flat(e));
@@ -295,8 +296,9 @@ describe("settleStepResult — awaiting parks and tears down (ADR 0039/0041)", (
       signal: controller.signal,
     });
 
-    // The signal-derived cancel outranks the worker's awaiting verdict: no `step-awaiting` is emitted,
-    // and the kill pair lands instead. This is what makes Cancel work on an awaiting-bound step.
+    // The signal-derived cancel outranks the worker's awaiting verdict: no `step-awaiting` is
+    // emitted, and the kill pair lands instead. This is what makes Cancel work on an awaiting-bound
+    // step.
     expect(outcome).toEqual({ status: "cancelled" });
     expect(seen.map((o) => o.type)).toEqual(["run-cancelled", "step-finished"]);
   });

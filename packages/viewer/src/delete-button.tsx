@@ -4,7 +4,8 @@ import { errorMessage } from "./load-state.js";
 
 export interface DeleteButtonProps {
   client: PathApiClient;
-  /** The run to delete — its identity is shown on the confirm step so the operator sees what goes. */
+  /** The run to delete — its identity is shown on the confirm step so the operator sees what
+   * goes. */
   run: RootRunSummary;
   /** Called once the delete succeeds, so the parent can drop the selection and re-read the list. */
   onDeleted: (rootRunId: string) => void;
@@ -14,13 +15,13 @@ type Phase = "idle" | "confirming" | "sending";
 
 /**
  * Delete a root run permanently — the console's destructive verb, expanded under a run row the way
- * Resume is. Unlike Resume (a one-click recovery), a delete removes the run's rows and blobs with no
- * undo, so it is two-step: the confirm step spells out exactly which run will go (its id and its source
- * workflow's name / id / file), and only the confirm sends. "Keep" returns to idle for free.
+ * Resume is. Unlike Resume (a one-click recovery), a delete removes the run's rows and blobs with
+ * no undo, so it is two-step: the confirm step spells out exactly which run will go (its id and its
+ * source workflow's name / id / file), and only the confirm sends. "Keep" returns to idle for free.
  *
- * On success the parent clears the selection and re-reads the list; a `409` (still running, or a live
- * successor reuses its data) or `404` (already gone) surfaces here as an alert without collapsing the
- * confirm, so the operator can read the reason.
+ * On success the parent clears the selection and re-reads the list; a `409` (still running, or a
+ * live successor reuses its data) or `404` (already gone) surfaces here as an alert without
+ * collapsing the confirm, so the operator can read the reason.
  */
 export function DeleteButton({ client, run, onDeleted }: DeleteButtonProps) {
   const [phase, setPhase] = useState<Phase>("idle");

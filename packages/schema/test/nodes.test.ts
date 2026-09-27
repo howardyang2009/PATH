@@ -4,8 +4,9 @@ import { makeNodeSchema } from "../src/nodes.js";
 import { builtinRegistry } from "./builtin-registry.js";
 
 // The closed `NodeSchema`/`NodeArraySchema` consts are gone (#337): a node is validated against the
-// open union a registry builds. These tests exercise the built-in `binary`/`prompt` grammar, so they
-// build the union from the built-in registry fixture — the same grammar the deleted consts encoded.
+// open union a registry builds. These tests exercise the built-in `binary`/`prompt` grammar, so
+// they build the union from the built-in registry fixture — the same grammar the deleted consts
+// encoded.
 const NodeSchema = makeNodeSchema(builtinRegistry);
 const NodeArraySchema = z.array(NodeSchema).min(1);
 
@@ -64,7 +65,8 @@ describe("step nodes", () => {
     if (!promptResult.success) {
       expect(JSON.stringify(promptResult.error.issues)).toContain("anthropic");
     }
-    // `binary` ships `spawn`, not `anthropic` — a step type's worker names are its own (the pair is the identity).
+    // `binary` ships `spawn`, not `anthropic` — a step type's worker names are its own (the pair is
+    // the identity).
     expect(
       NodeSchema.safeParse({
         type: "binary",
@@ -129,10 +131,11 @@ describe("step nodes", () => {
 
   it("does not root-validate interpolation in a registry leaf's string field (plain z.string)", () => {
     // The closed union typed `command` as `interpolableString(STEP_ROOTS)`, which rejected a
-    // disallowed root at load. A registry leaf declares its fields as plain zod (`command: z.string()`
-    // in the `binary` folder), so a bad interpolation root is no longer a load error for a leaf field —
-    // the engine still interpolates it at run time (#337). Root-scoped positions the *core* grammar
-    // owns (a `while-do` `max_iterations`, the file `output` map) are still validated.
+    // disallowed root at load. A registry leaf declares its fields as plain zod (`command:
+    // z.string()` in the `binary` folder), so a bad interpolation root is no longer a load error
+    // for a leaf field — the engine still interpolates it at run time (#337). Root-scoped positions
+    // the *core* grammar owns (a `while-do` `max_iterations`, the file `output` map) are still
+    // validated.
     expect(
       NodeSchema.safeParse({ type: "binary", id: ID, name: "gather", command: "${output.cmd}" })
         .success,

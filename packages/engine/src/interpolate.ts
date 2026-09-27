@@ -9,7 +9,8 @@ import {
 /** The `config`/`context`/`output` values a `${dot.path}` resolves against (format doc §5). */
 export type InterpolationScope = { [root: string]: JsonValue };
 
-// Thrown rather than returned as a Result: callers catch it and translate it into their own outcome.
+// Thrown rather than returned as a Result: callers catch it and translate it into their own
+// outcome.
 export class InterpolationError extends Error {}
 
 /**
@@ -60,8 +61,9 @@ export function interpolateString(value: string, scope: InterpolationScope): Jso
     return resolveDotPath(scope, wholePath);
   }
 
-  // The grammar is @path/schema's (tokenizeInterpolation); this only decides what each token becomes.
-  // An `unclosed` token is an error: a string can reach here from an unvalidated workflow file too.
+  // The grammar is @path/schema's (tokenizeInterpolation); this only decides what each token
+  // becomes. An `unclosed` token is an error: a string can reach here from an unvalidated workflow
+  // file too.
   let result = "";
   for (const token of tokenizeInterpolation(value)) {
     switch (token.kind) {
@@ -91,7 +93,8 @@ export function interpolateString(value: string, scope: InterpolationScope): Jso
 }
 
 // Positions like `command`/`cwd`/`args` (format doc §5) must end up as strings even where the
-// whole-string typing rule would hand back a number/boolean; a non-scalar can never be a command/path.
+// whole-string typing rule would hand back a number/boolean; a non-scalar can never be a
+// command/path.
 export function interpolateToString(value: string, scope: InterpolationScope): string {
   const resolved = interpolateString(value, scope);
   if (typeof resolved === "string") return resolved;

@@ -1,5 +1,5 @@
-/** Workflow mode's **Save as…** first asks: a copy as `*.workflow.json`, or a new template of its body.
- * Each choice opens its own dialog; Cancel closes this one and saves nothing. */
+/** Workflow mode's **Save as…** first asks: a copy as `*.workflow.json`, or a new template of its
+ * body. Each choice opens its own dialog; Cancel closes this one and saves nothing. */
 export function SaveAsChoiceDialog({
   onWorkflow,
   onTemplate,

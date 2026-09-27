@@ -2,8 +2,8 @@ import type { parseJsonField } from "@path/client-core";
 
 /**
  * One raw-JSON textarea with its live client-side lint line, shared by the launch form's `input`/
- * `config` fields and the resume form's `config` override. The parse/shape gate is `parseJsonField`;
- * this only renders the text, hint and invalid state.
+ * `config` fields and the resume form's `config` override. The parse/shape gate is
+ * `parseJsonField`; this only renders the text, hint and invalid state.
  *
  * Pass `labelledBy` when an existing title already names the field, so words are not printed twice.
  */

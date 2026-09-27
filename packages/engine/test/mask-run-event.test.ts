@@ -87,9 +87,9 @@ const PAYLOADS: { [K in RunPayload["kind"]]: Extract<RunPayload, { kind: K }> } 
 };
 
 /**
- * The events that provably cannot carry a secret: every field is an id, name, count, context key or an
- * enum value the engine chose — never a config value. Naming them stops the sweep below from passing
- * vacuously: any *other* member whose sample does not really hold a secret proves nothing.
+ * The events that provably cannot carry a secret: every field is an id, name, count, context key or
+ * an enum value the engine chose — never a config value. Naming them stops the sweep below from
+ * passing vacuously: any *other* member whose sample does not really hold a secret proves nothing.
  */
 const CANNOT_CARRY_A_SECRET = new Set<UnsequencedLogEvent["type"]>([
   "step-started",

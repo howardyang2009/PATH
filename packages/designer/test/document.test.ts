@@ -17,9 +17,9 @@ import {
 } from "../src/session-reducer.js";
 
 /**
- * The open document (`document.ts`) through its own interface: the session policy the toolbar and the
- * lease read, and the one write whose refusals read the same across both doors — with a fake client and
- * no App.
+ * The open document (`document.ts`) through its own interface: the session policy the toolbar and
+ * the lease read, and the one write whose refusals read the same across both doors — with a fake
+ * client and no App.
  */
 
 function uuid(n: number): string {
@@ -110,7 +110,8 @@ describe("documentPolicy", () => {
   });
 });
 
-/** A client whose three write calls resolve, or reject with `error`, recording what they were sent. */
+/** A client whose three write calls resolve, or reject with `error`, recording what they were
+ * sent. */
 function fakeClient(error?: Error) {
   const calls: { method: string; input: unknown }[] = [];
   const answer = (method: string) => async (input: unknown) => {

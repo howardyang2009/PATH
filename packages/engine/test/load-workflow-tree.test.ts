@@ -83,7 +83,8 @@ describe("loadWorkflowTree — what the load already knows", () => {
     const result = await loadWorkflowTree(entry);
     expect(result.success).toBe(true);
     if (!result.success) return;
-    // `path run` with no `-C`: the store is the file's own directory, so provenance is the filename.
+    // `path run` with no `-C`: the store is the file's own directory, so provenance is the
+    // filename.
     expect(result.workflow.storeRelativePath(fixtures)).toBe("parent-with-child.workflow.json");
     // A relocated `-C` store one level up: the path keeps the segment that tells two same-named
     // workflows apart (#202, ADR 0006).
@@ -101,9 +102,9 @@ describe("loadWorkflowTree — what the load already knows", () => {
  * and that it does so for a nested ref as readily as for the entry file.
  *
  * These files are written to a temp dir rather than checked in beside the other fixtures on
- * purpose: `scripts/archive/migrate-workflow-format-v2.ts` discovers every `*.workflow.json` in the repo, so
- * a checked-in `@1` fixture would be silently migrated to `@2` by the next codemod run and the test
- * would pass for the wrong reason.
+ * purpose: `scripts/archive/migrate-workflow-format-v2.ts` discovers every `*.workflow.json` in the
+ * repo, so a checked-in `@1` fixture would be silently migrated to `@2` by the next codemod run and
+ * the test would pass for the wrong reason.
  */
 describe("loadWorkflowTree — superseded format versions", () => {
   let dir: string;
@@ -210,26 +211,27 @@ describe("loadWorkflowTree — superseded format versions", () => {
     const result = await loadWorkflowTree(join(dir, "parent.workflow.json"));
     expect(result.success).toBe(false);
     if (!result.success) {
-      // The parent itself is fine — only the child is named, so the operator knows which file to migrate.
+      // The parent itself is fine — only the child is named, so the operator knows which file to
+      // migrate.
       expect(result.errors).toEqual([`${join(dir, "v1.workflow.json")}: ${V1_REJECTION}`]);
     }
   });
 });
 
-// The file channel of ADR 0044's registry-relative `worker_defaults` validation, at load (#516). The
-// check lives in the schema refinement fed by the scanned registry; here it is exercised through the
-// whole loader, over the real `binary`/`prompt` plugins, to pin the two facts the schema unit test
-// cannot: a bad table fails the *load* (so discovery reports the file invalid), and a bad **child**
-// table names the child file, never the parent — each file is parsed on its own against the one
-// run-wide registry.
+// The file channel of ADR 0044's registry-relative `worker_defaults` validation, at load (#516).
+// The check lives in the schema refinement fed by the scanned registry; here it is exercised
+// through the whole loader, over the real `binary`/`prompt` plugins, to pin the two facts the
+// schema unit test cannot: a bad table fails the *load* (so discovery reports the file invalid),
+// and a bad **child** table names the child file, never the parent — each file is parsed on its own
+// against the one run-wide registry.
 describe("loadWorkflowTree — worker_defaults registry validation (ADR 0044, #516)", () => {
   let dir: string;
 
   beforeAll(() => {
     dir = mkdtempSync(join(tmpdir(), "path-worker-defaults-load-"));
 
-    // A valid parent (`prompt` really ships `anthropic`) whose nested ref points at a child whose own
-    // `worker_defaults` is bad two ways: an unknown type, and a worker `prompt` does not ship.
+    // A valid parent (`prompt` really ships `anthropic`) whose nested ref points at a child whose
+    // own `worker_defaults` is bad two ways: an unknown type, and a worker `prompt` does not ship.
     writeFileSync(
       join(dir, "wd-parent.workflow.json"),
       JSON.stringify({
