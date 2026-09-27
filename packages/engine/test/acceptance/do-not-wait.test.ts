@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { type CliIo, main } from "../../src/cli.js";
 import { loadWorkflowTree } from "../../src/load-workflow-tree.js";
 import { openProject } from "../../src/project.js";
-import type { Observation, RunObserver } from "../../src/run-observer.js";
+import type { RunEvent, RunObserver } from "../../src/run-observer.js";
 
 /**
  * The synthetic `do-not-wait` acceptance workflow (issue #216, spec `docs/spec/do-not-wait-join.md`
@@ -210,8 +210,8 @@ describe("acceptance: do-not-wait failure isolation (issue #216, spec §5, ADR 0
  */
 async function killWithBranchInFlight(): Promise<string> {
   const controller = new AbortController();
-  // `step-finished` carries no `nodeName` (run-observer.ts) — only a `runId`. So the main-path step's
-  // run id is captured off its `step-started`, and the abort is armed when *that* run finishes.
+  // The main-path step's run id is captured off its `step-started`, and the abort is armed when *that*
+  // run finishes.
   let afterRunId: string | undefined;
   // The branch fires its side effect from its own freshly spawned process, so `after` finishing can
   // beat that write on a starved runner — and the cancel then lands on a branch that never fired.
@@ -225,9 +225,9 @@ async function killWithBranchInFlight(): Promise<string> {
     controller.abort();
   };
   const abortOnAfterFinished: RunObserver = {
-    observe(o: Observation) {
-      if (o.type === "step-started" && o.nodeName === "after") afterRunId = o.runId;
-      if (o.type === "step-finished" && o.runId === afterRunId) void abortOnceBranchFired();
+    observe({ runId, event }: RunEvent) {
+      if (event?.type === "step-started" && event.node_name === "after") afterRunId = runId;
+      if (event?.type === "step-finished" && runId === afterRunId) void abortOnceBranchFired();
     },
   };
 

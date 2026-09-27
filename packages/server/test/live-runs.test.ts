@@ -305,7 +305,7 @@ describe("LiveRuns — stream", () => {
  * subscriber hanging, because a subscriber's end is wired to the channel's close.
  *
  * Reproduced by standing in for the engine: drive the observers and backends the way a real run's
- * `run-started` does, then reject without ever emitting a terminal event.
+ * start does, then reject without ever emitting a terminal event.
  */
 describe("LiveRuns — a run that rejects without a terminal event", () => {
   const CRASHED_ROOT = "crashed-root-1";
@@ -319,13 +319,18 @@ describe("LiveRuns — a run that rejects without a terminal event", () => {
         }
         for (const observer of opts.extraObservers ?? []) {
           await observer.observe({
-            type: "run-started",
             runId: CRASHED_ROOT,
             rootRunId: CRASHED_ROOT,
-            parentRunId: null,
-            nodeId: null,
-            nodeName: null,
-            input: {},
+            event: {
+              type: "step-started",
+              ts: new Date().toISOString(),
+              run_id: CRASHED_ROOT,
+              node_id: null,
+              node_name: null,
+              step_type: "workflow",
+              worker_name: "workflow",
+            },
+            payload: { kind: "started", parentRunId: null, input: {} },
           });
         }
         throw new Error("engine bug");

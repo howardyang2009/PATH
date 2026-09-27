@@ -30,7 +30,7 @@ export async function runCheckpointNode(
     output: incomingOutput,
   });
   const passed = outcome === "true";
-  await run.emitter.checkpointEvaluated(node, { passed, trace });
+  await run.emitter.emit(node, { type: passed ? "checkpoint-passed" : "checkpoint-failed", trace });
   if (!passed) {
     return {
       status: "failed",
@@ -61,16 +61,16 @@ export async function runBranchNode(
       };
     }
     if (outcome === "true") {
-      await run.emitter.branchTaken(node, { arm: index, trace });
+      await run.emitter.emit(node, { type: "branch-taken", arm: index, trace });
       // The arm's occupant is a single node (`@2` §4.3), run as a one-node sequence.
       return exec.walk(run, [arm.node], incomingOutput, exec);
     }
   }
   if (node.else) {
-    await run.emitter.branchTaken(node, { arm: "else", trace: null });
+    await run.emitter.emit(node, { type: "branch-taken", arm: "else", trace: null });
     return exec.walk(run, [node.else], incomingOutput, exec);
   }
-  await run.emitter.branchNoMatch(node, { traces });
+  await run.emitter.emit(node, { type: "branch-no-match", traces });
   return {
     status: "failed",
     error: `branch "${node.name}": no arm matched and there is no else (spec §5.2)`,
@@ -102,7 +102,7 @@ async function runLoopIteration(
   });
   // The loop body is a single node (`@2` §4.3), run as a one-node sequence inside the container.
   const outcome = await exec.walk(container.run, [node.node], iterationInput, exec);
-  // The body parked at an awaiting leaf: the container stays `running` (no `run-finished`) and the loop
+  // The body parked at an awaiting leaf: the container stays `running` (no `step-finished`) and the loop
   // propagates `awaiting` up; a Complete replay re-enters this container and drives it on.
   if (outcome.status === "awaiting") return outcome;
   // The load placement rule refuses a goto under `while-do`, so a jump never reaches an iteration.
@@ -138,19 +138,29 @@ export async function runWhileDoNode(
       };
     }
     if (outcome === "false") {
-      await run.emitter.loopExited(node, { reason: "condition-false", iterations, trace });
+      await run.emitter.emit(node, {
+        type: "loop-exited",
+        reason: "condition-false",
+        iterations,
+        trace,
+      });
       return { status: "succeeded", output: iterationOutput };
     }
     // Condition true but the cap is reached: fail — post-loop nodes may assume it resolved false.
     if (iterations >= maxIterations) {
-      await run.emitter.loopExited(node, { reason: "max-iterations-exceeded", iterations, trace });
+      await run.emitter.emit(node, {
+        type: "loop-exited",
+        reason: "max-iterations-exceeded",
+        iterations,
+        trace,
+      });
       return {
         status: "failed",
         error: `while-do "${node.name}": condition still true after max_iterations (${maxIterations}) — the run fails (spec §5.2)`,
       };
     }
     iterations += 1;
-    await run.emitter.iterationStarted(node, { iteration: iterations, trace });
+    await run.emitter.emit(node, { type: "iteration-started", iteration: iterations, trace });
     const bodyOutcome = await runLoopIteration(run, node, iterations, iterationOutput, exec);
     if (bodyOutcome.status !== "succeeded") return bodyOutcome;
     iterationOutput = bodyOutcome.output;

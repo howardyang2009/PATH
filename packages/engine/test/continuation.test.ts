@@ -15,7 +15,7 @@ import { openDb } from "../src/persistence/db.js";
 import { runBlobDir } from "../src/persistence/paths.js";
 import { insertReuseRun, insertRun } from "../src/persistence/run-store.js";
 import type { ContinueState, RunContext } from "../src/run-context.js";
-import type { Observation } from "../src/run-observer.js";
+import type { RunEvent } from "../src/run-observer.js";
 
 /**
  * The continuation recipe Resume and Complete share (#architecture-deepening). These pin the four
@@ -171,14 +171,19 @@ describe("continuationRunOptions", () => {
 });
 
 describe("successorCapture", () => {
-  const started = (runId: string, parentRunId: string | null): Observation => ({
-    type: "run-started",
+  const started = (runId: string, parentRunId: string | null): RunEvent => ({
     runId,
     rootRunId: parentRunId === null ? runId : "root-2",
-    parentRunId,
-    nodeId: null,
-    nodeName: null,
-    input: {},
+    event: {
+      type: "step-started",
+      ts: "2026-01-01T00:00:00.000Z",
+      run_id: runId,
+      node_id: null,
+      node_name: null,
+      step_type: "workflow",
+      worker_name: "workflow",
+    },
+    payload: { kind: "started", parentRunId, input: {} },
   });
 
   it("captures the successor's own root run, ignoring a nested run's start", () => {
@@ -191,7 +196,7 @@ describe("successorCapture", () => {
   });
 
   it("throws rather than returning an id it never saw", () => {
-    expect(() => successorCapture().rootRunId()).toThrow(/emitted no root run-started/);
+    expect(() => successorCapture().rootRunId()).toThrow(/emitted no root start/);
   });
 });
 

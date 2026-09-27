@@ -1,72 +1,71 @@
-import { type Mock, vi } from "vitest";
-import type { Observation, RunObserver } from "../src/run-observer.js";
+import type {
+  RunEvent,
+  RunObserver,
+  RunPayload,
+  UnsequencedLogEvent,
+} from "../src/run-observer.js";
 
-/**
- * Every `Observation` type, checked against the union at compile time. `OBSERVATION_TYPES` is what
- * makes the fake below total: it is built by mapping this list, so a member added to `Observation`
- * without being added here fails to compile rather than going unrecorded.
- *
- * That property is the point (#62). The double this replaced listed six hooks by hand — the same six
- * the masking wrapper happened to implement — so the test could not have caught the eight it dropped.
- */
-export const OBSERVATION_TYPES = [
-  "run-started",
-  "step-started",
-  "step-awaiting",
-  "step-stderr",
-  "step-usage",
-  "step-finished",
-  "context-changed",
-  "step-context",
-  "join-applied",
-  "run-cancelled",
-  "run-finished",
-  "checkpoint-evaluated",
-  "branch-taken",
-  "branch-no-match",
-  "iteration-started",
-  "loop-exited",
-  "pass-started",
-  "goto-taken",
-  "goto-exhausted",
-  "reuse-marker",
-] as const satisfies readonly Observation["type"][];
+type EventType = UnsequencedLogEvent["type"];
 
-// Fails to compile if the union grows a member the list above is missing.
-type _Exhaustive =
-  Exclude<Observation["type"], (typeof OBSERVATION_TYPES)[number]> extends never
-    ? true
-    : [
-        "OBSERVATION_TYPES is missing",
-        Exclude<Observation["type"], (typeof OBSERVATION_TYPES)[number]>,
-      ];
-
-/** The payload of one observation type, minus the discriminant. */
-type PayloadOf<K extends Observation["type"]> = Omit<Extract<Observation, { type: K }>, "type">;
-
-export type FakeObserver = RunObserver & {
-  [K in Observation["type"]]: Mock<(payload: PayloadOf<K>) => void>;
-} & {
-  /** Every observation in arrival order, discriminants intact. */
-  all: () => Observation[];
+/** A `RunEvent` narrating one log event of type `T`, its payload and root id still beside it. */
+export type Narrated<T extends EventType = EventType> = RunEvent & {
+  event: Extract<UnsequencedLogEvent, { type: T }>;
 };
 
-/**
- * A `RunObserver` that records through the real seam and fans each observation out to a per-type
- * mock, so a test can assert on `observer["step-finished"]` with the payload alone.
- */
+/** A `RunEvent` carrying one payload of kind `K`. */
+export type Recorded<K extends RunPayload["kind"] = RunPayload["kind"]> = RunEvent & {
+  payload: Extract<RunPayload, { kind: K }>;
+};
+
+export interface FakeObserver extends RunObserver {
+  /** Every event in arrival order. */
+  all(): RunEvent[];
+  /** Call `listener` on each event as it arrives, after recording it. */
+  onEvent(listener: (e: RunEvent) => void): void;
+  /** The events narrating a log event of `type`, in order. */
+  of<T extends EventType>(type: T): Narrated<T>[];
+  /** The events carrying a payload of `kind`, in order. */
+  records<K extends RunPayload["kind"]>(kind: K): Recorded<K>[];
+  /** Workflow-run starts: a `step-started` with the reserved `workflow` step type. */
+  runStarts(): Narrated<"step-started">[];
+  /** Leaf step starts: every other `step-started`. */
+  stepStarts(): Narrated<"step-started">[];
+  /** The `step-finished` events of workflow-runs. */
+  runFinishes(): Narrated<"step-finished">[];
+  /** The `step-finished` events of leaf step runs. */
+  stepFinishes(): Narrated<"step-finished">[];
+}
+
+/** A `RunObserver` that records through the real seam and answers queries over what it saw. */
 export function fakeObserver(): FakeObserver {
-  const all: Observation[] = [];
-  const mocks = Object.fromEntries(OBSERVATION_TYPES.map((type) => [type, vi.fn()])) as {
-    [K in Observation["type"]]: Mock<(payload: PayloadOf<K>) => void>;
-  };
+  const all: RunEvent[] = [];
+  const listeners: ((e: RunEvent) => void)[] = [];
+  const of = <T extends EventType>(type: T) =>
+    all.filter((e): e is Narrated<T> => e.event?.type === type);
+  const isWorkflowRun = (runId: string) =>
+    of("step-started").some((e) => e.runId === runId && e.event.step_type === "workflow");
   return {
-    ...mocks,
-    all: () => all,
-    observe(o: Observation) {
-      all.push(o);
-      const { type, ...payload } = o;
-      (mocks[type] as Mock)(payload);
+    observe(e) {
+      all.push(e);
+      for (const listener of listeners) listener(e);
     },
+    all: () => all,
+    onEvent: (listener) => void listeners.push(listener),
+    of,
+    records: <K extends RunPayload["kind"]>(kind: K) =>
+      all.filter((e): e is Recorded<K> => e.payload?.kind === kind),
+    runStarts: () => of("step-started").filter((e) => e.event.step_type === "workflow"),
+    stepStarts: () => of("step-started").filter((e) => e.event.step_type !== "workflow"),
+    runFinishes: () => of("step-finished").filter((e) => isWorkflowRun(e.runId)),
+    stepFinishes: () => of("step-finished").filter((e) => !isWorkflowRun(e.runId)),
   };
+}
+
+/**
+ * One event flattened for assertions: its `run_id`, the log event's fields, then the payload's. A
+ * record-only fact has no log event, so its `type` is its payload kind (`stderr`, `usage`, `context`).
+ */
+export function flat(e: RunEvent): { type: string; [field: string]: unknown } {
+  const { kind, ...payload } = e.payload ?? { kind: undefined };
+  return { run_id: e.runId, ...e.event, ...payload, type: e.event?.type ?? String(kind) };
 }

@@ -1,32 +1,34 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   composeObservers,
-  type Observation,
   ObserverError,
+  type RunEvent,
   type RunObserver,
 } from "../src/run-observer.js";
 
-const started: Observation = {
-  type: "run-started",
+const env = { ts: "2026-01-01T00:00:00.000Z", run_id: "r" };
+const started: RunEvent = {
   runId: "r",
   rootRunId: "r",
-  parentRunId: null,
-  nodeId: null,
-  nodeName: null,
-  input: {},
+  event: {
+    type: "step-started",
+    ...env,
+    node_id: null,
+    node_name: null,
+    step_type: "workflow",
+    worker_name: "workflow",
+  },
+  payload: { kind: "started", parentRunId: null, input: {} },
 };
-const finished: Observation = {
-  type: "step-finished",
+const finished: RunEvent = {
   runId: "r",
   rootRunId: "r",
-  nodeId: "n",
-  nodeName: "n",
-  status: "succeeded",
-  output: {},
+  event: { type: "step-finished", ...env, node_id: "n", node_name: "n", status: "succeeded" },
+  payload: { kind: "output", output: {} },
 };
 
 describe("composeObservers", () => {
-  it("fans every observation out to every observer, in argument order", async () => {
+  it("fans every event out to every observer, in argument order", async () => {
     const calls: string[] = [];
     const a: RunObserver = { observe: () => void calls.push("a") };
     const b: RunObserver = { observe: () => void calls.push("b") };
@@ -36,7 +38,7 @@ describe("composeObservers", () => {
     expect(calls).toEqual(["a", "b", "a", "b"]);
   });
 
-  it("delivers the observation unchanged to each member", async () => {
+  it("delivers the event unchanged to each member", async () => {
     const seen = vi.fn();
     await composeObservers({ observe: seen }, { observe: seen }).observe(started);
     expect(seen).toHaveBeenCalledTimes(2);

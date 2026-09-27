@@ -38,9 +38,9 @@ export function childIdentity(
 /** An opened container run: the context its body walks under, and the door that closes it. */
 export interface ContainerRun {
   run: RunContext;
-  /** `true` for a fresh container, `false` for a re-entered one (no `run-started` was emitted). */
+  /** `true` for a fresh container, `false` for a re-entered one (no start was emitted). */
   started: boolean;
-  /** Emit this container's `run-finished`. Not called for an `awaiting` outcome — the container stays `running`. */
+  /** Emit this container's `step-finished`. Not called for an `awaiting` outcome — the container stays `running`. */
   finish(outcome: RunOutcome): Promise<void>;
 }
 

@@ -5,12 +5,22 @@ import type { ConfigObject, WorkflowFile } from "@path/schema";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { StepRequest, StepResult, WorkerDescriptor } from "../src/plugin-seam/seam.js";
 import { DEFAULT_PROCESSOR_CONCURRENCY } from "../src/processor-semaphore.js";
-import type { Observation } from "../src/run-observer.js";
+import type { RunEvent } from "../src/run-observer.js";
 import { runWorkflow, type WorkerOverrides } from "../src/run-workflow.js";
-import { type FakeObserver, fakeObserver } from "./fake-observer.js";
+import { type FakeObserver, fakeObserver, flat } from "./fake-observer.js";
 import { stampGuids, stampNames } from "./stamp-names.js";
 
 const fixturesDir = join(dirname(fileURLToPath(import.meta.url)), "fixtures");
+const TS = expect.any(String);
+
+/** The envelope of an event about the root run itself: no node. */
+const rootEnvelope = (runId: string) => ({ ts: TS, run_id: runId, node_id: null, node_name: null });
+
+/** A workflow-run's context changes: `context` records under a run that started as a workflow-run. */
+function contextChanges(observer: FakeObserver): RunEvent[] {
+  const runIds = new Set(observer.runStarts().map((e) => e.runId));
+  return observer.records("context").filter((e) => runIds.has(e.runId));
+}
 
 // The fixtures are known-valid `@3` files and `runWorkflow` takes the object directly (it does not
 // re-validate), so a bare parse + cast is enough here — schema validation lives at the load boundary.
@@ -127,26 +137,26 @@ describe("runWorkflow — walking-skeleton basics (ticket #16, still true under 
     expect(result.status).toBe("succeeded");
     expect(result.output).toEqual({ answer: "FAST" });
 
-    const all = observer.all();
+    const all = observer.all().map(flat);
     // The join names the winner (by human name) and lands only its key.
     expect(all.find((o) => o.type === "join-applied")).toMatchObject({
-      nodeName: "race",
+      node_name: "race",
       branches: ["fast"],
-      publishedKeys: ["answer"],
+      published_keys: ["answer"],
       winner: "fast",
     });
     // The longer branch was cancelled best-effort, with the new cause and no cause run behind it.
     const cancelled = all.find((o) => o.type === "run-cancelled");
     expect(cancelled).toMatchObject({
-      nodeName: "sluggish",
+      node_name: "sluggish",
       cause: "sibling-succeeded",
-      causeRunId: null,
+      cause_run_id: null,
     });
     // And it ends `cancelled`, a distinct status from `failed`, so nothing of its lands.
     expect(
       all.some(
         (o) =>
-          o.type === "step-finished" && o.status === "cancelled" && o.runId === cancelled!.runId,
+          o.type === "step-finished" && o.status === "cancelled" && o.run_id === cancelled!.run_id,
       ),
     ).toBe(true);
   });
@@ -207,23 +217,23 @@ describe("runWorkflow — walking-skeleton basics (ticket #16, still true under 
     expect(result.error).not.toMatch(/\b7\b/);
     expect(result.error).not.toMatch(/\b9\b/);
 
-    const all = observer.all();
+    const all = observer.all().map(flat);
     // No winner, so no join lands (§8)...
-    expect(observer["join-applied"]).not.toHaveBeenCalled();
+    expect(observer.of("join-applied")).toHaveLength(0);
     // ...and nothing was cancelled sibling-succeeded — each branch died on its own (§2).
     expect(all.some((o) => o.type === "run-cancelled" && o.cause === "sibling-succeeded")).toBe(
       false,
     );
 
-    // Each branch's own failure is still recorded on its own run row (nodeId lands on step-started,
-    // so map each arm's node to its run and assert that run's step-finished is `failed`).
+    // Each branch's own failure is still recorded on its own run row: map each arm's node to its run
+    // and assert that run's step-finished is `failed`.
     const failedRunIds = new Set(
-      all.filter((o) => o.type === "step-finished" && o.status === "failed").map((o) => o.runId),
+      all.filter((o) => o.type === "step-finished" && o.status === "failed").map((o) => o.run_id),
     );
     for (const nodeId of ["boom-a", "boom-b"]) {
-      const started = all.find((o) => o.type === "step-started" && o.nodeId === nodeId);
+      const started = all.find((o) => o.type === "step-started" && o.node_id === nodeId);
       expect(started, `step-started for ${nodeId}`).toBeDefined();
-      expect(failedRunIds.has(started!.runId)).toBe(true);
+      expect(failedRunIds.has(started!.run_id)).toBe(true);
     }
   });
 
@@ -343,13 +353,13 @@ describe("runWorkflow — do-not-wait launch-and-continue (ticket #213)", () => 
     expect(result.status).toBe("succeeded");
     expect(result.output).toEqual({ seen: "{}" });
 
-    const all = observer.all();
+    const all = observer.all().map(flat);
     const runIdOf = (nodeName: string) =>
-      all.find((o) => o.type === "step-started" && o.nodeName === nodeName)!.runId;
+      all.find((o) => o.type === "step-started" && o.node_name === nodeName)!.run_id;
     const finishedOf = (nodeName: string) =>
-      all.find((o) => o.type === "step-finished" && o.runId === runIdOf(nodeName))!;
+      all.find((o) => o.type === "step-finished" && o.run_id === runIdOf(nodeName))!;
     const finishedIndexOf = (nodeName: string) =>
-      all.findIndex((o) => o.type === "step-finished" && o.runId === runIdOf(nodeName));
+      all.findIndex((o) => o.type === "step-finished" && o.run_id === runIdOf(nodeName));
 
     // Launch-and-continue: the successor finished before the 1s branch, so it did not wait on it. The
     // wide margin keeps the ordering deterministic even when a loaded CI runner slows the successor's
@@ -360,7 +370,7 @@ describe("runWorkflow — do-not-wait launch-and-continue (ticket #213)", () => 
     // the run never returned with the branch still live.
     expect(finishedOf("slow-notify")).toMatchObject({ status: "succeeded" });
     const rootFinishedIndex = all.findIndex(
-      (o) => o.type === "run-finished" && o.runId === o.rootRunId,
+      (o) => o.type === "step-finished" && o.run_id === observer.runStarts()[0]!.runId,
     );
     expect(finishedIndexOf("slow-notify")).toBeLessThan(rootFinishedIndex);
   });
@@ -402,20 +412,21 @@ describe("runWorkflow — do-not-wait launch-and-continue (ticket #213)", () => 
     const result = await runWorkflow(file, fixturesDir, { observer });
     expect(result.status).toBe("succeeded");
 
-    const join = observer.all().find((o) => o.type === "join-applied");
+    const join = observer.of("join-applied")[0]?.event;
     // The join marks only that the block resolved: the launched branch is named, nothing landed, and
     // there is no winner (that field is wait-one-only).
-    expect(join).toMatchObject({ nodeName: "fire", branches: ["notify"], publishedKeys: [] });
+    expect(join).toMatchObject({ node_name: "fire", branches: ["notify"], published_keys: [] });
     expect(join).not.toHaveProperty("winner");
   });
 });
 
 describe("runWorkflow — do-not-wait failure isolation (ticket #214, ADR 0008)", () => {
   // Map a node name to the run row the engine minted for it, via `step-started`.
-  const runIdOf = (all: Observation[], nodeName: string) =>
-    all.find((o) => o.type === "step-started" && o.nodeName === nodeName)!.runId;
-  const finishedOf = (all: Observation[], nodeName: string) =>
-    all.find((o) => o.type === "step-finished" && o.runId === runIdOf(all, nodeName))!;
+  type Flat = ReturnType<typeof flat>;
+  const runIdOf = (all: Flat[], nodeName: string) =>
+    all.find((o) => o.type === "step-started" && o.node_name === nodeName)!.run_id;
+  const finishedOf = (all: Flat[], nodeName: string) =>
+    all.find((o) => o.type === "step-finished" && o.run_id === runIdOf(all, nodeName))!;
 
   it("acceptance: a failed detached branch does not fail the run — the row is `failed`, the run ends `succeeded`", async () => {
     // The demoable case (§5, ADR 0008): a detached branch exits non-zero while the main path
@@ -466,14 +477,13 @@ describe("runWorkflow — do-not-wait failure isolation (ticket #214, ADR 0008)"
     // A run may end `succeeded` with a `failed` do-not-wait descendant in its subtree.
     expect(result.status).toBe("succeeded");
 
-    const all = observer.all();
+    const all = observer.all().map(flat);
     // The failure is auditable, not hidden: the branch's own run row ends `failed`.
     expect(finishedOf(all, "boom")).toMatchObject({ status: "failed" });
     // Isolation is about propagation, not cancellation — the failure cancelled nothing.
     expect(all.some((o) => o.type === "run-cancelled")).toBe(false);
     // And the root run itself ended `succeeded`.
-    const rootFinished = all.find((o) => o.type === "run-finished" && o.runId === o.rootRunId)!;
-    expect(rootFinished).toMatchObject({ status: "succeeded" });
+    expect(observer.runFinishes().at(-1)?.event).toMatchObject({ status: "succeeded" });
   });
 
   it("a detached branch failure cancels neither its siblings nor the main path (§5, §6)", async () => {
@@ -538,7 +548,7 @@ describe("runWorkflow — do-not-wait failure isolation (ticket #214, ADR 0008)"
 
     expect(result.status).toBe("succeeded");
 
-    const all = observer.all();
+    const all = observer.all().map(flat);
     // The failing branch is `failed`; the in-flight sibling survived to `succeeded`, not cancelled.
     expect(finishedOf(all, "boom")).toMatchObject({ status: "failed" });
     expect(finishedOf(all, "slow-ok")).toMatchObject({ status: "succeeded" });
@@ -598,17 +608,13 @@ describe("runWorkflow — do-not-wait failure isolation (ticket #214, ADR 0008)"
     controller.abort();
     await pending;
 
-    const all = observer.all();
+    const cancels = observer.of("run-cancelled").map((e) => e.event);
     // The operator abort reached the detached branch's leaf, under the pre-existing cause `operator`.
-    const branchCancel = all.find(
-      (o) => o.type === "run-cancelled" && o.nodeName === "detached-work",
-    );
-    expect(branchCancel).toMatchObject({ cause: "operator", causeRunId: null });
+    const branchCancel = cancels.find((o) => o.node_name === "detached-work");
+    expect(branchCancel).toMatchObject({ cause: "operator", cause_run_id: null });
     // No new cancel cause: every cancellation on this path is `operator` — do-not-wait added no
     // sibling-driven path, so nothing here reads `sibling-failed`, `sibling-succeeded`, or anything else.
-    const causes = all
-      .filter((o) => o.type === "run-cancelled")
-      .map((o) => (o as Extract<Observation, { type: "run-cancelled" }>).cause);
+    const causes = cancels.map((o) => o.cause);
     expect(causes.length).toBeGreaterThan(0);
     expect(causes.every((c) => c === "operator")).toBe(true);
   });
@@ -672,20 +678,18 @@ describe("runWorkflow — do-not-wait failure isolation (ticket #214, ADR 0008)"
 
     expect(result.status).toBe("succeeded");
 
-    const all = observer.all();
+    const all = observer.all().map(flat);
     // The failed branch's spend is present on its own leaf run — status-blind accounting.
-    const usageIdx = all.findIndex(
-      (o) => o.type === "step-usage" && o.runId === runIdOf(all, "emit"),
-    );
+    const usageIdx = all.findIndex((o) => o.type === "usage" && o.run_id === runIdOf(all, "emit"));
     expect(usageIdx).toBeGreaterThanOrEqual(0);
-    expect((all[usageIdx] as Extract<Observation, { type: "step-usage" }>).usage).toEqual({
+    expect(all[usageIdx]!.usage).toEqual({
       input_tokens: 11,
       output_tokens: 7,
     });
     expect(finishedOf(all, "emit")).toMatchObject({ status: "failed" });
     // The barrier guarantees the spend landed before the run returned: usage precedes run-finished.
     const rootFinishedIdx = all.findIndex(
-      (o) => o.type === "run-finished" && o.runId === o.rootRunId,
+      (o) => o.type === "step-finished" && o.run_id === observer.runStarts()[0]!.runId,
     );
     expect(usageIdx).toBeLessThan(rootFinishedIdx);
   });
@@ -999,11 +1003,9 @@ describe("runWorkflow — $env resolution at run start (ticket #116)", () => {
     expect(result.error).toContain("PATH_TEST_MISSING_B");
     // Recorded as a run, not swallowed: a caller watching this run has one to watch, and it ends
     // failed without any step having run.
-    expect(observer["run-started"]).toHaveBeenCalledTimes(1);
-    expect(observer["step-started"]).not.toHaveBeenCalled();
-    expect(observer["run-finished"]).toHaveBeenCalledWith(
-      expect.objectContaining({ status: "failed" }),
-    );
+    expect(observer.runStarts()).toHaveLength(1);
+    expect(observer.stepStarts()).toHaveLength(0);
+    expect(observer.runFinishes()[0]?.event).toMatchObject({ status: "failed" });
   });
 
   it("still cancels a run whose signal was already aborted, unset variables notwithstanding", async () => {
@@ -1510,53 +1512,74 @@ describe("runWorkflow — RunObserver hooks (ticket #18 seam)", () => {
     });
 
     expect(result.status).toBe("succeeded");
-    expect(observer["run-started"]).toHaveBeenCalledTimes(1);
-    const { runId } = observer["run-started"].mock.calls[0]![0];
-    expect(observer["run-started"]).toHaveBeenCalledWith({
+    expect(observer.runStarts()).toHaveLength(1);
+    const { runId } = observer.runStarts()[0]!;
+    expect(observer.runStarts()[0]).toEqual({
       runId,
       rootRunId: runId, // the root run is its own root
-      parentRunId: null,
-      nodeId: null,
-      nodeName: null,
-      input: { seed: 1 },
-      // Source-workflow identity is stamped on the root run-started (#202): the file's own GUID + name.
+      event: {
+        type: "step-started",
+        ts: TS,
+        run_id: runId,
+        node_id: null,
+        node_name: null,
+        step_type: "workflow",
+        worker_name: "workflow",
+      },
+      // Source-workflow identity is stamped on the root start (#202): the file's own GUID + name.
       // No `workflowPath` here — this caller passed no `sourceWorkflowPath`.
-      workflowId: "wf-id",
-      workflowName: "observed",
+      payload: {
+        kind: "started",
+        parentRunId: null,
+        input: { seed: 1 },
+        workflowId: "wf-id",
+        workflowName: "observed",
+      },
     });
 
-    expect(observer["step-started"]).toHaveBeenCalledTimes(1);
-    const stepCall = observer["step-started"].mock.calls[0]![0];
-    expect(stepCall.parentRunId).toBe(runId);
+    expect(observer.stepStarts()).toHaveLength(1);
+    const stepCall = observer.stepStarts()[0]!;
+    expect(stepCall.payload).toMatchObject({ kind: "started", parentRunId: runId });
     expect(stepCall.rootRunId).toBe(runId);
-    expect(stepCall.nodeId).toBe("greet");
-    expect(stepCall.stepType).toBe("binary");
-    expect(stepCall.workerName).toBe("spawn");
+    expect(stepCall.event).toMatchObject({
+      node_id: "greet",
+      step_type: "binary",
+      worker_name: "spawn",
+    });
     expect(stepCall.runId).not.toBe(runId); // the step run is distinct from the root run
 
-    expect(observer["step-stderr"]).toHaveBeenCalledWith({
-      runId: stepCall.runId,
-      rootRunId: runId,
-      nodeId: "greet",
-      nodeName: "greet",
-      stderr: "",
-    });
-    expect(observer["step-finished"]).toHaveBeenCalledWith({
-      runId: stepCall.runId,
-      rootRunId: runId,
-      nodeId: "greet",
-      nodeName: "greet",
-      status: "succeeded",
-      output: "hi",
-    });
-    expect(observer["run-finished"]).toHaveBeenCalledWith({
-      runId,
-      rootRunId: runId,
-      nodeId: null,
-      nodeName: null,
-      status: "succeeded",
-      output: {},
-    });
+    const env = { ts: TS, run_id: stepCall.runId, node_id: "greet", node_name: "greet" };
+    expect(observer.records("stderr")).toEqual([
+      {
+        runId: stepCall.runId,
+        rootRunId: runId,
+        event: null,
+        payload: { kind: "stderr", stderr: "" },
+      },
+    ]);
+    expect(observer.stepFinishes()).toEqual([
+      {
+        runId: stepCall.runId,
+        rootRunId: runId,
+        event: { type: "step-finished", ...env, status: "succeeded" },
+        payload: { kind: "output", output: "hi" },
+      },
+    ]);
+    expect(observer.runFinishes()).toEqual([
+      {
+        runId,
+        rootRunId: runId,
+        event: {
+          type: "step-finished",
+          ts: TS,
+          run_id: runId,
+          node_id: null,
+          node_name: null,
+          status: "succeeded",
+        },
+        payload: { kind: "output", output: {} },
+      },
+    ]);
   });
 
   it("reports stepFinished failed and runFinished failed on a non-zero exit, without a stepFinished-succeeded call", async () => {
@@ -1579,21 +1602,26 @@ describe("runWorkflow — RunObserver hooks (ticket #18 seam)", () => {
     const result = await runWorkflow(stampNames(file), fixturesDir, { observer });
 
     expect(result.status).toBe("failed");
-    const { runId } = observer["run-started"].mock.calls[0]![0];
-    const stepCall = observer["step-started"].mock.calls[0]![0];
-    expect(observer["step-finished"]).toHaveBeenCalledWith({
+    const stepCall = observer.stepStarts()[0]!;
+    expect(observer.stepFinishes()[0]).toEqual({
       runId: stepCall.runId,
-      rootRunId: runId,
-      nodeId: "boom",
-      nodeName: "boom",
-      status: "failed",
-      error: expect.stringMatching(/exited with code 2/),
+      rootRunId: observer.runStarts()[0]!.runId,
+      event: {
+        type: "step-finished",
+        ts: TS,
+        run_id: stepCall.runId,
+        node_id: "boom",
+        node_name: "boom",
+        status: "failed",
+        error: expect.stringMatching(/exited with code 2/),
+      },
     });
-    expect(observer["run-finished"]).toHaveBeenCalledWith({
-      runId,
-      rootRunId: runId,
-      nodeId: null,
-      nodeName: null,
+    expect(observer.runFinishes()[0]?.event).toEqual({
+      type: "step-finished",
+      ts: TS,
+      run_id: observer.runStarts()[0]!.runId,
+      node_id: null,
+      node_name: null,
       status: "failed",
       error: expect.stringMatching(/exited with code 2/),
     });
@@ -1610,19 +1638,15 @@ describe("runWorkflow — RunObserver hooks (ticket #18 seam)", () => {
 
     await runWorkflow(stampNames(file), fixturesDir, { observer });
 
-    expect(observer["step-started"]).not.toHaveBeenCalled();
-    const { runId } = observer["run-started"].mock.calls[0]![0];
-    expect(observer["run-finished"]).toHaveBeenCalledWith({
-      runId,
-      rootRunId: runId,
-      nodeId: null,
-      nodeName: null,
+    expect(observer.stepStarts()).toHaveLength(0);
+    expect(observer.runFinishes()[0]?.event).toMatchObject({
+      node_id: null,
       status: "failed",
       error: expect.stringMatching(/unknown step type "telepathy"/),
     });
   });
 
-  it("reports contextChanged with the root run's id after a publish lands", async () => {
+  it("records a context change with the root run's id after a publish lands", async () => {
     const observer = fakeObserver();
     const file: WorkflowFile = {
       format: "path/workflow@5",
@@ -1642,13 +1666,12 @@ describe("runWorkflow — RunObserver hooks (ticket #18 seam)", () => {
 
     await runWorkflow(stampNames(file), fixturesDir, { observer });
 
-    const { runId } = observer["run-started"].mock.calls[0]![0];
-    expect(observer["context-changed"]).toHaveBeenCalledWith({
+    const { runId } = observer.runStarts()[0]!;
+    expect(observer.records("context")).toContainEqual({
       runId,
       rootRunId: runId,
-      nodeId: null,
-      nodeName: null,
-      context: { seen: "v" },
+      event: null,
+      payload: { kind: "context", context: { seen: "v" } },
     });
   });
 });
@@ -1806,13 +1829,14 @@ describe("runWorkflow — external abort of a root run (ticket #52)", () => {
 
   /**
    * Aborts once `nodeId`'s run has started — from a timer, not inline: the engine spawns the child
-   * (and registers its abort listener) synchronously after awaiting `stepStarted`, so a timer is what
+   * (and registers its abort listener) synchronously after awaiting its start, so a timer is what
    * puts the abort *after* the step is genuinely in flight rather than before it ever runs.
    */
   function abortWhenStarted(observer: FakeObserver, nodeId: string): AbortController {
     const controller = new AbortController();
-    observer["step-started"].mockImplementation((info: { nodeId: string }) => {
-      if (info.nodeId === nodeId) setTimeout(() => controller.abort(), 0);
+    observer.onEvent(({ event }) => {
+      if (event?.type === "step-started" && event.node_id === nodeId)
+        setTimeout(() => controller.abort(), 0);
     });
     return controller;
   }
@@ -1843,38 +1867,24 @@ describe("runWorkflow — external abort of a root run (ticket #52)", () => {
 
     // The root run ends cancelled — not failed (the workflow did not break), and not left running.
     expect(result.status).toBe("cancelled");
-    const root = observer["run-started"].mock.calls[0]![0];
-    expect(observer["run-finished"]).toHaveBeenCalledWith({
-      runId: root.runId,
-      rootRunId: root.runId,
-      nodeId: null,
-      nodeName: null,
-      status: "cancelled",
-    });
+    const root = observer.runStarts()[0]!;
+    expect(observer.runFinishes().map((e) => e.event)).toEqual([
+      { ...rootEnvelope(root.runId), type: "step-finished", status: "cancelled" },
+    ]);
 
     // The killed step's cancellation names its cause: the operator, with no cause run behind it.
-    const sleeper = observer["step-started"].mock.calls
-      .map((c) => c[0])
-      .find((s) => s.nodeId === "sleeper")!;
-    expect(observer["run-cancelled"]).toHaveBeenCalledWith({
-      runId: sleeper.runId,
-      rootRunId: root.runId,
-      nodeId: "sleeper",
-      nodeName: "sleeper",
-      cause: "operator",
-      causeRunId: null,
-    });
-    expect(observer["step-finished"]).toHaveBeenCalledWith({
-      runId: sleeper.runId,
-      rootRunId: root.runId,
-      nodeId: "sleeper",
-      nodeName: "sleeper",
-      status: "cancelled",
-    });
+    const sleeper = observer.stepStarts().find((e) => e.event.node_id === "sleeper")!;
+    const env = { ts: TS, run_id: sleeper.runId, node_id: "sleeper", node_name: "sleeper" };
+    expect(observer.of("run-cancelled").map((e) => e.event)).toEqual([
+      { type: "run-cancelled", ...env, cause: "operator", cause_run_id: null },
+    ]);
+    expect(observer.stepFinishes().map((e) => e.event)).toEqual([
+      { type: "step-finished", ...env, status: "cancelled" },
+    ]);
 
     // Nothing downstream of the abort runs, and the cancelled step's publish never lands (#24).
-    expect(observer["step-started"].mock.calls.map((c) => c[0].nodeId)).toEqual(["sleeper"]);
-    expect(observer["context-changed"]).not.toHaveBeenCalled();
+    expect(observer.stepStarts().map((e) => e.event.node_id)).toEqual(["sleeper"]);
+    expect(contextChanges(observer)).toHaveLength(0);
   });
 
   it("cancels a prompt step in flight through the worker seam", async () => {
@@ -1913,26 +1923,23 @@ describe("runWorkflow — external abort of a root run (ticket #52)", () => {
     });
 
     expect(result.status).toBe("cancelled");
-    const root = observer["run-started"].mock.calls[0]![0];
-    const ask = observer["step-started"].mock.calls
-      .map((c) => c[0])
-      .find((s) => s.nodeId === "ask")!;
-    expect(observer["run-cancelled"]).toHaveBeenCalledWith({
-      runId: ask.runId,
-      rootRunId: root.runId,
-      nodeId: "ask",
-      nodeName: "ask",
-      cause: "operator",
-      causeRunId: null,
-    });
-    expect(observer["run-finished"]).toHaveBeenCalledWith({
-      runId: root.runId,
-      rootRunId: root.runId,
-      nodeId: null,
-      nodeName: null,
-      status: "cancelled",
-    });
-    expect(observer["context-changed"]).not.toHaveBeenCalled();
+    const root = observer.runStarts()[0]!;
+    const ask = observer.stepStarts().find((e) => e.event.node_id === "ask")!;
+    expect(observer.of("run-cancelled").map((e) => e.event)).toEqual([
+      {
+        type: "run-cancelled",
+        ts: TS,
+        run_id: ask.runId,
+        node_id: "ask",
+        node_name: "ask",
+        cause: "operator",
+        cause_run_id: null,
+      },
+    ]);
+    expect(observer.runFinishes().map((e) => e.event)).toEqual([
+      { ...rootEnvelope(root.runId), type: "step-finished", status: "cancelled" },
+    ]);
+    expect(contextChanges(observer)).toHaveLength(0);
   });
 
   it("runs no step at all when the signal is already aborted at launch", async () => {
@@ -1961,18 +1968,14 @@ describe("runWorkflow — external abort of a root run (ticket #52)", () => {
 
     expect(result.status).toBe("cancelled");
     // The run row still exists and lands cancelled: an already-aborted signal is not a special case.
-    expect(observer["run-started"]).toHaveBeenCalledTimes(1);
-    const root = observer["run-started"].mock.calls[0]![0];
-    expect(observer["run-finished"]).toHaveBeenCalledWith({
-      runId: root.runId,
-      rootRunId: root.runId,
-      nodeId: null,
-      nodeName: null,
-      status: "cancelled",
-    });
+    expect(observer.runStarts()).toHaveLength(1);
+    const root = observer.runStarts()[0]!;
+    expect(observer.runFinishes().map((e) => e.event)).toEqual([
+      { ...rootEnvelope(root.runId), type: "step-finished", status: "cancelled" },
+    ]);
     // No step ran, so there is no killed run to narrate.
-    expect(observer["step-started"]).not.toHaveBeenCalled();
-    expect(observer["run-cancelled"]).not.toHaveBeenCalled();
+    expect(observer.stepStarts()).toHaveLength(0);
+    expect(observer.of("run-cancelled")).toHaveLength(0);
   });
 
   it("cancels a nested workflow-run's step too, ending the whole tree cancelled", async () => {
@@ -2008,30 +2011,24 @@ describe("runWorkflow — external abort of a root run (ticket #52)", () => {
 
     expect(result.status).toBe("cancelled");
     // Both workflow-runs end cancelled — the root's own row included.
-    const [root, nested] = observer["run-started"].mock.calls.map((c) => c[0]) as [
-      (typeof observer)["run-started"]["mock"]["calls"][number][0],
-      (typeof observer)["run-started"]["mock"]["calls"][number][0],
-    ];
-    expect(observer["run-finished"]).toHaveBeenCalledWith({
-      runId: nested.runId,
-      rootRunId: root.runId,
-      nodeId: "call-child",
-      nodeName: "call-child",
-      status: "cancelled",
-    });
-    expect(observer["run-finished"]).toHaveBeenCalledWith({
-      runId: root.runId,
-      rootRunId: root.runId,
-      nodeId: null,
-      nodeName: null,
-      status: "cancelled",
-    });
-    expect(observer["run-cancelled"]).toHaveBeenCalledWith(
+    const [root, nested] = observer.runStarts() as [RunEvent, RunEvent];
+    expect(observer.runFinishes().map((e) => e.event)).toEqual([
+      {
+        type: "step-finished",
+        ts: TS,
+        run_id: nested.runId,
+        node_id: "call-child",
+        node_name: "call-child",
+        status: "cancelled",
+      },
+      { ...rootEnvelope(root.runId), type: "step-finished", status: "cancelled" },
+    ]);
+    expect(observer.of("run-cancelled").map((e) => e.event)).toContainEqual(
       expect.objectContaining({
-        nodeId: "sleeper",
-        nodeName: "sleeper",
+        node_id: "sleeper",
+        node_name: "sleeper",
         cause: "operator",
-        causeRunId: null,
+        cause_run_id: null,
       }),
     );
   });
@@ -2094,15 +2091,13 @@ describe("runWorkflow — external abort of a root run (ticket #52)", () => {
     const result = await runWorkflow(stampNames(file), fixturesDir, { observer });
 
     expect(result.status).toBe("failed");
-    const kaboom = observer["step-started"].mock.calls
-      .map((c) => c[0])
-      .find((s) => s.nodeId === "kaboom")!;
-    expect(observer["run-cancelled"]).toHaveBeenCalledWith(
+    const kaboom = observer.stepStarts().find((e) => e.event.node_id === "kaboom")!;
+    expect(observer.of("run-cancelled").map((e) => e.event)).toContainEqual(
       expect.objectContaining({
-        nodeId: "deep",
-        nodeName: "deep",
+        node_id: "deep",
+        node_name: "deep",
         cause: "sibling-failed",
-        causeRunId: kaboom.runId,
+        cause_run_id: kaboom.runId,
       }),
     );
   });
@@ -2135,12 +2130,12 @@ describe("runWorkflow — external abort of a root run (ticket #52)", () => {
 
     expect(result.status).toBe("cancelled");
     // No sibling failed, so neither branch's cancellation points at a cause run.
-    const causes = observer["run-cancelled"].mock.calls.map((c) => c[0]);
+    const causes = observer.of("run-cancelled").map((e) => e.event);
     expect(causes.length).toBeGreaterThan(0);
     for (const cancelled of causes) {
-      expect(cancelled).toMatchObject({ cause: "operator", causeRunId: null });
+      expect(cancelled).toMatchObject({ cause: "operator", cause_run_id: null });
     }
-    expect(observer["join-applied"]).not.toHaveBeenCalled();
+    expect(observer.of("join-applied")).toHaveLength(0);
   });
 });
 
@@ -2171,8 +2166,8 @@ describe("runWorkflow — run-start config validation (ADR 0022 sub-3)", () => {
     expect(result.error).toMatch(/step "ask"/);
     expect(result.error).toMatch(/model/);
     // The run exists and never started a step — the failure is at the gate, before the first node.
-    expect(observer["run-started"]).toHaveBeenCalled();
-    expect(observer["step-started"]).not.toHaveBeenCalled();
+    expect(observer.runStarts()).toHaveLength(1);
+    expect(observer.stepStarts()).toHaveLength(0);
   });
 
   it("aggregates every offending step in one failure", async () => {

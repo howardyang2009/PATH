@@ -5,7 +5,7 @@ import { isPassRun, type RunRecord, type WorkflowFile } from "@path/schema";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { WorkerDescriptor } from "../src/plugin-seam/seam.js";
 import { openProject, type Project } from "../src/project.js";
-import type { Observation, RunObserver } from "../src/run-observer.js";
+import type { RunEvent, RunObserver } from "../src/run-observer.js";
 import { stampNames } from "./stamp-names.js";
 
 /**
@@ -93,10 +93,10 @@ function loop(
   } as unknown as WorkflowFile);
 }
 
-function capture(): { observer: RunObserver; all: Observation[] } {
-  const all: Observation[] = [];
+function capture(): { observer: RunObserver; all: RunEvent[] } {
+  const all: RunEvent[] = [];
   return {
-    observer: { observe: async (o: Observation) => void all.push(o) } as unknown as RunObserver,
+    observer: { observe: async (e: RunEvent) => void all.push(e) },
     all,
   };
 }
@@ -136,12 +136,12 @@ async function parkedInPass2(project: Project, file: WorkflowFile, ran: string[]
   return rootRunId;
 }
 
-/** The goto events of one observation stream, as short lines. */
-function gotoEvents(all: Observation[]): string[] {
-  return all.flatMap((o) => {
-    if (o.type === "pass-started") return [`pass-started ${o.pass}`];
-    if (o.type === "goto-taken") return [`goto-taken ${o.jump}/${o.maxJumps} pass ${o.pass}`];
-    if (o.type === "goto-exhausted") return [`goto-exhausted ${o.maxJumps} pass ${o.pass}`];
+/** The goto events of one event stream, as short lines. */
+function gotoEvents(all: RunEvent[]): string[] {
+  return all.flatMap(({ event: o }) => {
+    if (o?.type === "pass-started") return [`pass-started ${o.pass}`];
+    if (o?.type === "goto-taken") return [`goto-taken ${o.jump}/${o.max_jumps} pass ${o.pass}`];
+    if (o?.type === "goto-exhausted") return [`goto-exhausted ${o.max_jumps} pass ${o.pass}`];
     return [];
   });
 }

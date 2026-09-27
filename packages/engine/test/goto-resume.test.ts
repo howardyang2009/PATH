@@ -5,7 +5,7 @@ import { isPassRun, type RunRecord, type WorkflowFile } from "@path/schema";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { WorkerDescriptor } from "../src/plugin-seam/seam.js";
 import { openProject, type Project } from "../src/project.js";
-import type { Observation, RunObserver } from "../src/run-observer.js";
+import type { RunEvent, RunObserver } from "../src/run-observer.js";
 import { stampNames } from "./stamp-names.js";
 
 /**
@@ -89,10 +89,10 @@ function file(body: unknown[]): WorkflowFile {
 }
 
 /** The observations a successor emits, captured by an observer appended after the built-in pair. */
-function capture(): { observer: RunObserver; all: Observation[] } {
-  const all: Observation[] = [];
+function capture(): { observer: RunObserver; all: RunEvent[] } {
+  const all: RunEvent[] = [];
   return {
-    observer: { observe: async (o: Observation) => void all.push(o) } as unknown as RunObserver,
+    observer: { observe: async (e: RunEvent) => void all.push(e) },
     all,
   };
 }
@@ -379,13 +379,11 @@ describe("goto — Resume pairs passes (spec §8.1)", () => {
       });
       if (!result.found) throw new Error("expected found:true");
 
-      const gotoEvents = all.flatMap((o) => {
-        if (o.type === "pass-started")
-          return [`${o.runId === result.rootRunId ? "own" : "other"} pass-started ${o.pass}`];
-        if (o.type === "goto-taken")
-          return [
-            `${o.runId === result.rootRunId ? "own" : "other"} goto-taken ${o.jump}/${o.maxJumps} pass ${o.pass}`,
-          ];
+      const gotoEvents = all.flatMap(({ runId, event: o }) => {
+        const whose = runId === result.rootRunId ? "own" : "other";
+        if (o?.type === "pass-started") return [`${whose} pass-started ${o.pass}`];
+        if (o?.type === "goto-taken")
+          return [`${whose} goto-taken ${o.jump}/${o.max_jumps} pass ${o.pass}`];
         return [];
       });
       expect(gotoEvents).toEqual([

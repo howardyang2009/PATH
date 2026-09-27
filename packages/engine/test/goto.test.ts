@@ -3,20 +3,30 @@ import { fileURLToPath } from "node:url";
 import type { JsonValue, WorkflowFile } from "@path/schema";
 import { describe, expect, it } from "vitest";
 import type { WorkerDescriptor } from "../src/plugin-seam/seam.js";
-import type { Observation } from "../src/run-observer.js";
+import type { RunEvent, UnsequencedLogEvent } from "../src/run-observer.js";
 import { type RunOptions, runWorkflow } from "../src/run-workflow.js";
 import { fakeObserver } from "./fake-observer.js";
 import { stampNames } from "./stamp-names.js";
 
 /**
  * `goto` execution (docs/spec/goto.md §3–§6, §11 rows G-E-01 to G-E-11, G-E-19), driven through
- * `runWorkflow` and read back from the observations: the run tree is what `run-started` /
- * `step-started` record, so every assertion is about the tree a reader would see.
+ * `runWorkflow` and read back from its events: the run tree is what each run's start records, so
+ * every assertion is about the tree a reader would see.
  */
 
 const fixturesDir = join(dirname(fileURLToPath(import.meta.url)), "fixtures");
 
-type Started = Extract<Observation, { type: "run-started" | "step-started" }>;
+/** One run's start, flattened: its log event's node plus the row facts its payload carries. */
+interface Started {
+  runId: string;
+  rootRunId: string;
+  isWorkflowRun: boolean;
+  nodeId: string | null;
+  nodeName: string | null;
+  parentRunId: string | null;
+  input: JsonValue;
+  pass?: number;
+}
 
 /**
  * A scripted `prompt` worker: each prompt text is a step, and its answer is `<prompt>-<visit>`, the
@@ -69,19 +79,30 @@ async function run(workflow: WorkflowFile, options: RunOptions = {}) {
     ...options,
   });
   const all = observer.all();
-  const started = all.filter(
-    (o): o is Started => o.type === "run-started" || o.type === "step-started",
-  );
+  const started: Started[] = observer
+    .of("step-started")
+    .map(({ runId, rootRunId, event, payload }) => {
+      const { parentRunId, input, pass } = payload as Extract<
+        RunEvent["payload"],
+        { kind: "started" }
+      >;
+      return {
+        runId,
+        rootRunId,
+        isWorkflowRun: event.step_type === "workflow",
+        nodeId: event.node_id,
+        nodeName: event.node_name,
+        parentRunId,
+        input,
+        ...(pass !== undefined ? { pass } : {}),
+      };
+    });
   const finished = (runId: string) =>
-    all.find(
-      (o) => (o.type === "run-finished" || o.type === "step-finished") && o.runId === runId,
-    ) as Extract<Observation, { type: "run-finished" }> | undefined;
+    observer.of("step-finished").find((e) => e.runId === runId)?.event;
   const root = started.find((o) => o.parentRunId === null)!;
   const childrenOf = (runId: string) => started.filter((o) => o.parentRunId === runId);
   const passes = (parentRunId = root.runId) =>
-    childrenOf(parentRunId).filter(
-      (o) => o.type === "run-started" && o.pass !== undefined,
-    ) as Extract<Observation, { type: "run-started" }>[];
+    childrenOf(parentRunId).filter((o) => o.isWorkflowRun && o.pass !== undefined);
   return { result, all, started, inputs, root, childrenOf, passes, finished };
 }
 
@@ -125,9 +146,9 @@ describe("goto — the top-level walk and its passes", () => {
       "succeeded",
     ]);
     // Every node run sits under a pass, never directly under the workflow-run.
-    expect(
-      r.childrenOf(r.root.runId).every((o) => o.type === "run-started" && o.pass !== undefined),
-    ).toBe(true);
+    expect(r.childrenOf(r.root.runId).every((o) => o.isWorkflowRun && o.pass !== undefined)).toBe(
+      true,
+    );
     expect(passes.map((p) => r.childrenOf(p.runId).map((o) => o.nodeName))).toEqual([
       ["a", "b"],
       ["b"],
@@ -295,7 +316,7 @@ describe("goto — the top-level walk and its passes", () => {
     );
     expect(r.result).toMatchObject({ status: "succeeded" });
     expect(r.passes()).toHaveLength(2);
-    expect(r.all.filter((o) => o.type === "join-applied")).toHaveLength(2);
+    expect(r.all.filter((e) => e.event?.type === "join-applied")).toHaveLength(2);
   });
 
   it("G-E-11: an interpolated max_jumps resolves against config and bounds the loop", async () => {
@@ -345,15 +366,21 @@ describe("goto — the top-level walk and its passes", () => {
 });
 
 describe("goto — audit events (spec §7, ADR 0061)", () => {
-  type GotoEvent = Extract<Observation, { type: "pass-started" | "goto-taken" | "goto-exhausted" }>;
-  const gotoEvents = (all: Observation[]) =>
-    all.filter(
-      (o): o is GotoEvent =>
-        o.type === "pass-started" || o.type === "goto-taken" || o.type === "goto-exhausted",
-    );
+  type GotoEvent = Extract<
+    UnsequencedLogEvent,
+    { type: "pass-started" | "goto-taken" | "goto-exhausted" }
+  >;
+  const gotoEvents = (all: RunEvent[]) =>
+    all
+      .map((e) => e.event)
+      .filter(
+        (o): o is GotoEvent =>
+          o?.type === "pass-started" || o?.type === "goto-taken" || o?.type === "goto-exhausted",
+      );
+  const TS = expect.any(String);
 
   /**
-   * The observations in arrival order — the order the logging observer stamps `seq` in — as short
+   * The events in arrival order — the order the logging observer stamps `seq` in — as short
    * labels, with pass runs named `pass N` and node runs by their node name.
    */
   function narrative(r: Awaited<ReturnType<typeof run>>): string[] {
@@ -364,22 +391,22 @@ describe("goto — audit events (spec §7, ADR 0061)", () => {
         : runId === r.root.runId
           ? "workflow"
           : nodeName;
-    return r.all.flatMap((o) => {
-      switch (o.type) {
-        case "run-started":
+    return r.all.flatMap(({ runId, event: o }) => {
+      switch (o?.type) {
         case "step-started":
-          return o.parentRunId === null ? [] : [`started ${who(o.runId, o.nodeName)}`];
-        case "run-finished":
+          return runId === r.root.runId ? [] : [`started ${who(runId, o.node_name)}`];
         case "step-finished":
-          return [`finished ${who(o.runId, o.nodeName)} ${o.status}`];
+          return [`finished ${who(runId, o.node_name)} ${o.status}`];
         case "pass-started":
           return [`pass-started ${o.pass}`];
         case "goto-taken":
           return [
-            `goto-taken ${o.nodeName}→${o.targetNodeName} ${o.jump}/${o.maxJumps} pass ${o.pass}`,
+            `goto-taken ${o.node_name}→${o.target_node_name} ${o.jump}/${o.max_jumps} pass ${o.pass}`,
           ];
         case "goto-exhausted":
-          return [`goto-exhausted ${o.nodeName}→${o.targetNodeName} ${o.maxJumps} pass ${o.pass}`];
+          return [
+            `goto-exhausted ${o.node_name}→${o.target_node_name} ${o.max_jumps} pass ${o.pass}`,
+          ];
         default:
           return [];
       }
@@ -402,10 +429,10 @@ describe("goto — audit events (spec §7, ADR 0061)", () => {
     expect(gotoEvents(r.all)).toEqual([
       {
         type: "pass-started",
-        runId: r.root.runId,
-        rootRunId: r.root.rootRunId,
-        nodeId: null,
-        nodeName: null,
+        ts: TS,
+        run_id: r.root.runId,
+        node_id: null,
+        node_name: null,
         pass: 1,
       },
     ]);
@@ -424,14 +451,14 @@ describe("goto — audit events (spec §7, ADR 0061)", () => {
     expect(taken).toEqual([
       {
         type: "goto-taken",
-        runId: r.root.runId,
-        rootRunId: r.root.rootRunId,
-        nodeId: "check",
-        nodeName: "check",
-        targetNodeId: "c",
-        targetNodeName: "c",
+        ts: TS,
+        run_id: r.root.runId,
+        node_id: "check",
+        node_name: "check",
+        target_node_id: "c",
+        target_node_name: "c",
         jump: 1,
-        maxJumps: 1,
+        max_jumps: 1,
         pass: 2,
       },
     ]);
@@ -441,11 +468,11 @@ describe("goto — audit events (spec §7, ADR 0061)", () => {
     const r = await run(file(backwardLoop(3)));
     expect(r.result).toMatchObject({ status: "succeeded" });
     // Every goto event is attributed to the workflow-run, never a pass container.
-    expect(gotoEvents(r.all).every((o) => o.runId === r.root.runId)).toBe(true);
+    expect(gotoEvents(r.all).every((o) => o.run_id === r.root.runId)).toBe(true);
     expect(
       gotoEvents(r.all)
         .filter((o) => o.type === "pass-started")
-        .map((o) => [o.pass, o.nodeName]),
+        .map((o) => [o.pass, o.node_name]),
     ).toEqual([
       [1, null],
       [2, "check"],
@@ -498,13 +525,13 @@ describe("goto — audit events (spec §7, ADR 0061)", () => {
     expect(events.map((o) => o.type)).toEqual(["goto-taken", "goto-taken", "goto-exhausted"]);
     expect(events[2]).toEqual({
       type: "goto-exhausted",
-      runId: r.root.runId,
-      rootRunId: r.root.rootRunId,
-      nodeId: "check",
-      nodeName: "check",
-      targetNodeId: "b",
-      targetNodeName: "b",
-      maxJumps: 2,
+      ts: TS,
+      run_id: r.root.runId,
+      node_id: "check",
+      node_name: "check",
+      target_node_id: "b",
+      target_node_name: "b",
+      max_jumps: 2,
       pass: 3,
     });
     expect(narrative(r).slice(-4)).toEqual([
@@ -520,7 +547,7 @@ describe("goto — audit events (spec §7, ADR 0061)", () => {
       file(backwardLoop("${config.n}"), { config: { model: "claude-sonnet-5", n: 4 } }),
     );
     const taken = gotoEvents(r.all).filter((o) => o.type === "goto-taken");
-    expect(taken.map((o) => [o.jump, o.maxJumps, o.pass])).toEqual([
+    expect(taken.map((o) => [o.jump, o.max_jumps, o.pass])).toEqual([
       [1, 4, 2],
       [2, 4, 3],
     ]);

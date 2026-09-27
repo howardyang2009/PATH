@@ -20,7 +20,7 @@ import { blobRef, dbFilePath, pathDir, rootRunTreeDir } from "../src/persistence
 import { getLaunchWorkerDefaults } from "../src/persistence/run-store.js";
 import type { WorkerDescriptor } from "../src/plugin-seam/seam.js";
 import { openProject, type Project } from "../src/project.js";
-import type { Observation, RunObserver } from "../src/run-observer.js";
+import type { RunEvent, RunObserver } from "../src/run-observer.js";
 import { stampGuids, stampNames } from "./stamp-names.js";
 
 let dir: string;
@@ -183,15 +183,15 @@ describe("Project.run — observer assembly", () => {
     try {
       const rowsWhenSeen: number[] = [];
       const spy: RunObserver = {
-        observe(o: Observation) {
-          if (o.type !== "run-started") return;
-          rowsWhenSeen.push(project.archive.tree(o.rootRunId)?.runs.length ?? 0);
+        observe({ rootRunId, event }: RunEvent) {
+          if (event?.type !== "step-started" || event.step_type !== "workflow") return;
+          rowsWhenSeen.push(project.archive.tree(rootRunId)?.runs.length ?? 0);
         },
       };
 
       await project.run(oneStep, dir, { extraObservers: [spy] });
 
-      // By the time the extra observer sees `run-started`, persistence has already inserted the row.
+      // By the time the extra observer sees the root's start, persistence has already inserted the row.
       expect(rowsWhenSeen).toEqual([1]);
     } finally {
       project.close();

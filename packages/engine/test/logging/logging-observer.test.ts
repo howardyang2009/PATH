@@ -2,6 +2,9 @@ import { type LogEvent, LogEventSchema } from "@path/schema";
 import { describe, expect, it, vi } from "vitest";
 import type { LogBackend } from "../../src/logging/log-backend.js";
 import { createLoggingObserver } from "../../src/logging/logging-observer.js";
+import type { RunIdentity } from "../../src/run-context.js";
+import { createEmitter, type Emitter } from "../../src/run-emitter.js";
+import type { RunObserver } from "../../src/run-observer.js";
 
 function recordingBackend(): {
   backend: LogBackend;
@@ -33,45 +36,30 @@ function recordingBackend(): {
   };
 }
 
-async function driveOneStepRun(observer: ReturnType<typeof createLoggingObserver>): Promise<void> {
-  await observer.observe({
-    type: "run-started",
-    runId: "root-1",
-    rootRunId: "root-1",
-    parentRunId: null,
-    nodeId: null,
-    nodeName: null,
-    input: {},
+const ROOT: RunIdentity = {
+  runId: "root-1",
+  rootRunId: "root-1",
+  parentRunId: null,
+  nodeId: null,
+  nodeName: null,
+};
+
+/** The root run's emitter, feeding `observer` exactly as the engine's masking sink does. */
+function rootEmitter(observer: RunObserver): Emitter {
+  return createEmitter(ROOT, async (e) => {
+    await observer.observe(e);
   });
-  await observer.observe({
-    type: "step-started",
-    runId: "step-1",
-    rootRunId: "root-1",
-    parentRunId: "root-1",
-    nodeId: "greet",
-    nodeName: "greet",
-    stepType: "binary",
-    workerName: "spawn",
-    input: "hi",
-  });
-  await observer.observe({
-    type: "step-finished",
-    runId: "step-1",
-    rootRunId: "root-1",
-    nodeId: "greet",
-    nodeName: "greet",
-    status: "succeeded",
-    output: "hi",
-  });
-  await observer.observe({
-    type: "run-finished",
-    runId: "root-1",
-    rootRunId: "root-1",
-    nodeId: null,
-    nodeName: null,
-    status: "succeeded",
-    output: {},
-  });
+}
+
+const node = (id: string) => ({ id, name: id });
+
+async function driveOneStepRun(observer: RunObserver): Promise<void> {
+  const root = rootEmitter(observer);
+  await root.runStarted({ input: {} });
+  const step = root.step(node("greet"), "step-1");
+  await step.started({ stepType: "binary", workerName: "spawn", input: "hi" });
+  await step.finished({ status: "succeeded", output: "hi" });
+  await root.runFinished({ status: "succeeded", output: {} });
 }
 
 describe("createLoggingObserver", () => {
@@ -84,56 +72,38 @@ describe("createLoggingObserver", () => {
     expect(rec.events.map((e) => [e.type, e.run_id, e.node_id])).toEqual([
       ["step-started", "root-1", null], // root is the implicit root workflow-step
       ["step-started", "step-1", "greet"],
-      ["step-finished", "step-1", "greet"], // the step-finished carries its node, not a recovered one
+      ["step-finished", "step-1", "greet"],
       ["step-finished", "root-1", null],
     ]);
     expect(rec.events.map((e) => e.seq)).toEqual([1, 2, 3, 4]);
   });
 
+  it("skips a fact only persistence records, without spending a seq", async () => {
+    const rec = recordingBackend();
+    const observer = createLoggingObserver([rec.backend]);
+    const root = rootEmitter(observer);
+    await root.runStarted({ input: {} });
+    await root.record({ kind: "context", context: { k: 1 } });
+    await root.runFinished({ status: "succeeded", output: {} });
+
+    expect(rec.events.map((e) => [e.type, e.seq])).toEqual([
+      ["step-started", 1],
+      ["step-finished", 2],
+    ]);
+  });
+
   it("carries step_type and worker_name on step-started and the error message on a failed step-finished", async () => {
     const rec = recordingBackend();
     const observer = createLoggingObserver([rec.backend]);
-    await observer.observe({
-      type: "run-started",
-      runId: "root-1",
-      rootRunId: "root-1",
-      parentRunId: null,
-      nodeId: null,
-      nodeName: null,
-      input: {},
-    });
-    await observer.observe({
-      type: "step-started",
-      runId: "step-1",
-      rootRunId: "root-1",
-      parentRunId: "root-1",
-      nodeId: "boom",
-      nodeName: "boom",
-      stepType: "binary",
-      workerName: "anthropic",
-      input: {},
-    });
-    await observer.observe({
-      type: "step-finished",
-      runId: "step-1",
-      rootRunId: "root-1",
-      nodeId: "boom",
-      nodeName: "boom",
-      status: "failed",
-      error: 'step "boom" exited with code 3',
-    });
-    await observer.observe({
-      type: "run-finished",
-      runId: "root-1",
-      rootRunId: "root-1",
-      nodeId: null,
-      nodeName: null,
-      status: "failed",
-      error: 'step "boom" exited with code 3',
-    });
+    const root = rootEmitter(observer);
+    await root.runStarted({ input: {} });
+    const step = root.step(node("boom"), "step-1");
+    await step.started({ stepType: "binary", workerName: "anthropic", input: {} });
+    await step.finished({ status: "failed", error: 'step "boom" exited with code 3' });
+    await root.runFinished({ status: "failed", error: 'step "boom" exited with code 3' });
 
-    const step = rec.events.find((e) => e.run_id === "step-1" && e.type === "step-started");
-    expect(step).toMatchObject({ step_type: "binary", worker_name: "anthropic" });
+    const started = rec.events.find((e) => e.run_id === "step-1" && e.type === "step-started");
+    expect(started).toMatchObject({ step_type: "binary", worker_name: "anthropic" });
     const finished = rec.events.find((e) => e.run_id === "step-1" && e.type === "step-finished");
     expect(finished).toMatchObject({ status: "failed", error: 'step "boom" exited with code 3' });
   });
@@ -154,19 +124,10 @@ describe("createLoggingObserver", () => {
       }),
       close: vi.fn(async () => {}),
     };
-    const observer = createLoggingObserver([failing]);
     // The very first event (the root step-started) can't be written → the hook rejects so
     // runWorkflow fails the run.
     await expect(
-      observer.observe({
-        type: "run-started",
-        runId: "root-1",
-        rootRunId: "root-1",
-        parentRunId: null,
-        nodeId: null,
-        nodeName: null,
-        input: {},
-      }),
+      rootEmitter(createLoggingObserver([failing])).runStarted({ input: {} }),
     ).rejects.toThrow(/disk full/);
   });
 
@@ -180,39 +141,14 @@ describe("createLoggingObserver", () => {
       },
       async close() {},
     };
-    const observer = createLoggingObserver([failing, survivor.backend]);
-    await observer.observe({
-      type: "run-started",
-      runId: "root-1",
-      rootRunId: "root-1",
-      parentRunId: null,
-      nodeId: null,
-      nodeName: null,
-      input: {},
-    });
+    const root = rootEmitter(createLoggingObserver([failing, survivor.backend]));
+    await root.runStarted({ input: {} });
     // the run is now failing; runWorkflow drives the terminal event next
-    await Promise.resolve(
-      observer.observe({
-        type: "step-started",
-        runId: "step-1",
-        rootRunId: "root-1",
-        parentRunId: "root-1",
-        nodeId: "greet",
-        nodeName: "greet",
-        stepType: "binary",
-        workerName: "spawn",
-        input: {},
-      }),
-    ).catch(() => {});
-    await observer.observe({
-      type: "run-finished",
-      runId: "root-1",
-      rootRunId: "root-1",
-      nodeId: null,
-      nodeName: null,
-      status: "failed",
-      error: "log backend write failed",
-    });
+    await root
+      .step(node("greet"), "step-1")
+      .started({ stepType: "binary", workerName: "spawn", input: {} })
+      .catch(() => {});
+    await root.runFinished({ status: "failed", error: "log backend write failed" });
 
     // The survivor got everything up to and including the terminal root step-finished, and closed.
     expect(survivor.closed).toBe(1);
@@ -223,44 +159,18 @@ describe("createLoggingObserver", () => {
 
   it("narrates a nested workflow-run as step lifecycle events without reopening or closing backends early (#22)", async () => {
     const rec = recordingBackend();
-    const observer = createLoggingObserver([rec.backend]);
-    await observer.observe({
-      type: "run-started",
-      runId: "root-1",
-      rootRunId: "root-1",
-      parentRunId: null,
-      nodeId: null,
-      nodeName: null,
-      input: {},
-    });
-    // a nested workflow-step's run arrives via runStarted with the `workflow` node's id
-    await observer.observe({
-      type: "run-started",
+    const root = rootEmitter(createLoggingObserver([rec.backend]));
+    await root.runStarted({ input: {} });
+    const child = root.child({
       runId: "child-1",
       rootRunId: "root-1",
       parentRunId: "root-1",
       nodeId: "invoke-child",
       nodeName: "invoke-child",
-      input: {},
     });
-    await observer.observe({
-      type: "run-finished",
-      runId: "child-1",
-      rootRunId: "root-1",
-      nodeId: "invoke-child",
-      nodeName: "invoke-child",
-      status: "succeeded",
-      output: {},
-    });
-    await observer.observe({
-      type: "run-finished",
-      runId: "root-1",
-      rootRunId: "root-1",
-      nodeId: null,
-      nodeName: null,
-      status: "succeeded",
-      output: {},
-    });
+    await child.runStarted({ input: {} });
+    await child.runFinished({ status: "succeeded", output: {} });
+    await root.runFinished({ status: "succeeded", output: {} });
 
     expect(rec.opened).toEqual(["root-1"]); // backends live per root run: opened once
     expect(rec.closed).toBe(1); // and closed only at the root's end, not the child's
@@ -272,114 +182,39 @@ describe("createLoggingObserver", () => {
     ]);
   });
 
-  it("labels an observation that arrives with nothing before it — the observer keeps no per-run state", async () => {
+  it("labels an event that arrives with nothing before it — the observer keeps no per-run state", async () => {
     const rec = recordingBackend();
-    const observer = createLoggingObserver([rec.backend]);
-    await observer.observe({
-      type: "run-started",
-      runId: "root-1",
-      rootRunId: "root-1",
-      parentRunId: null,
-      nodeId: null,
-      nodeName: null,
-      input: {},
-    });
+    const root = rootEmitter(createLoggingObserver([rec.backend]));
+    await root.runStarted({ input: {} });
     // A Complete re-invocation (ADR 0041) re-enters a parked leaf and drives it straight to its finish;
-    // nothing earlier in *this* stream ever named that leaf's node. The old observer's node map had
-    // nothing to read and wrote null here — the emitter stamps the pair, so the record labels itself.
-    await observer.observe({
-      type: "step-finished",
-      runId: "step-9",
-      rootRunId: "root-1",
-      nodeId: "review",
-      nodeName: "review",
-      status: "succeeded",
-      output: "ok",
-    });
-    await observer.observe({
-      type: "run-finished",
-      runId: "child-9",
-      rootRunId: "root-1",
-      nodeId: "invoke-child",
-      nodeName: "invoke-child",
-      status: "succeeded",
-      output: {},
-    });
+    // nothing earlier in *this* stream ever named that leaf's node — the emitter stamps the pair.
+    await root.step(node("review"), "step-9").finished({ status: "succeeded", output: "ok" });
 
     expect(rec.events.find((e) => e.run_id === "step-9")).toMatchObject({
       type: "step-finished",
       node_id: "review",
       node_name: "review",
     });
-    expect(rec.events.find((e) => e.run_id === "child-9")).toMatchObject({
-      node_id: "invoke-child",
-      node_name: "invoke-child",
-    });
   });
 
   it("emits join-applied and run-cancelled as control events, carrying the parallel node id (#24)", async () => {
     const rec = recordingBackend();
-    const observer = createLoggingObserver([rec.backend]);
-    await observer.observe({
-      type: "run-started",
-      runId: "root-1",
-      rootRunId: "root-1",
-      parentRunId: null,
-      nodeId: null,
-      nodeName: null,
-      input: {},
-    });
+    const root = rootEmitter(createLoggingObserver([rec.backend]));
+    await root.runStarted({ input: {} });
 
     // A control event: run_id is the enclosing workflow-run, node_id the `parallel` node itself.
-    await observer.observe({
+    await root.emit(node("fanout"), {
       type: "join-applied",
-      runId: "root-1",
-      rootRunId: "root-1",
-      nodeId: "fanout",
-      nodeName: "fanout",
       branches: ["a", "b"],
-      publishedKeys: ["ka", "kb"],
+      published_keys: ["ka", "kb"],
     });
 
     // A cancelled step: its run-cancelled points at the failing sibling, and its step-finished carries
     // the cancelled status with no error.
-    await observer.observe({
-      type: "step-started",
-      runId: "step-slow",
-      rootRunId: "root-1",
-      parentRunId: "root-1",
-      nodeId: "slow",
-      nodeName: "slow",
-      stepType: "binary",
-      workerName: "spawn",
-      input: {},
-    });
-    await observer.observe({
-      type: "run-cancelled",
-      runId: "step-slow",
-      rootRunId: "root-1",
-      nodeId: "slow",
-      nodeName: "slow",
-      cause: "sibling-failed",
-      causeRunId: "step-boom",
-    });
-    await observer.observe({
-      type: "step-finished",
-      runId: "step-slow",
-      rootRunId: "root-1",
-      nodeId: "slow",
-      nodeName: "slow",
-      status: "cancelled",
-    });
-    await observer.observe({
-      type: "run-finished",
-      runId: "root-1",
-      rootRunId: "root-1",
-      nodeId: null,
-      nodeName: null,
-      status: "failed",
-      error: "a branch failed",
-    });
+    const slow = root.step(node("slow"), "step-slow");
+    await slow.started({ stepType: "binary", workerName: "spawn", input: {} });
+    await slow.cancelled({ cause: "sibling-failed", causeRunId: "step-boom" });
+    await root.runFinished({ status: "failed", error: "a branch failed" });
 
     const join = rec.events.find((e) => e.type === "join-applied");
     expect(join).toMatchObject({
@@ -400,37 +235,13 @@ describe("createLoggingObserver", () => {
     expect(finished).not.toHaveProperty("error");
   });
 
-  it("runFinished is idempotent — a second call emits nothing and does not re-close", async () => {
+  it("the root's finish is idempotent — a second one emits nothing and does not re-close", async () => {
     const rec = recordingBackend();
-    const observer = createLoggingObserver([rec.backend]);
-    await observer.observe({
-      type: "run-started",
-      runId: "root-1",
-      rootRunId: "root-1",
-      parentRunId: null,
-      nodeId: null,
-      nodeName: null,
-      input: {},
-    });
-    await observer.observe({
-      type: "run-finished",
-      runId: "root-1",
-      rootRunId: "root-1",
-      nodeId: null,
-      nodeName: null,
-      status: "failed",
-      error: "x",
-    });
+    const root = rootEmitter(createLoggingObserver([rec.backend]));
+    await root.runStarted({ input: {} });
+    await root.runFinished({ status: "failed", error: "x" });
     const eventCount = rec.events.length;
-    await observer.observe({
-      type: "run-finished",
-      runId: "root-1",
-      rootRunId: "root-1",
-      nodeId: null,
-      nodeName: null,
-      status: "failed",
-      error: "x",
-    });
+    await root.runFinished({ status: "failed", error: "x" });
     expect(rec.events).toHaveLength(eventCount);
     expect(rec.closed).toBe(1);
   });

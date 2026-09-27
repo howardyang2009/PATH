@@ -88,16 +88,16 @@ describe("acceptance: registry-driven load + dispatch (#337)", () => {
 
     // Each leaf dispatched to its type's default worker — one `(type, worker-name)` lookup, no worker
     // key in the file. The audit records the resolved worker name for each.
-    const started = observer["step-started"].mock.calls.map((c) => c[0]);
-    const gather = started.find((s) => s.nodeName === "gather")!;
-    const summarize = started.find((s) => s.nodeName === "summarize")!;
-    expect(gather.workerName).toBe("spawn");
-    expect(gather.stepType).toBe("binary");
-    expect(summarize.workerName).toBe("anthropic");
-    expect(summarize.stepType).toBe("prompt");
+    const started = observer.stepStarts().map((s) => s.event);
+    const gather = started.find((s) => s.node_name === "gather")!;
+    const summarize = started.find((s) => s.node_name === "summarize")!;
+    expect(gather.worker_name).toBe("spawn");
+    expect(gather.step_type).toBe("binary");
+    expect(summarize.worker_name).toBe("anthropic");
+    expect(summarize.step_type).toBe("prompt");
 
     // Only the metering worker's spend is recorded: `anthropic` meters, `spawn` does not.
-    const usage = observer["step-usage"].mock.calls.map((c) => c[0]);
+    const usage = observer.records("usage").map((r) => r.payload);
     expect(usage).toHaveLength(1);
     expect(usage[0]).toMatchObject({ usage: { input_tokens: 5 }, estimatedCostUsd: 0.01 });
   });

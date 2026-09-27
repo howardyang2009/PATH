@@ -32,9 +32,10 @@ async function landWaitOneWinner(
   exec: NodeExecContext,
 ): Promise<SeqOutcome> {
   const publishedKeys = await landAtJoin(exec, winner.buffer);
-  await run.emitter.joinApplied(node, {
+  await run.emitter.emit(node, {
+    type: "join-applied",
     branches: [winner.branch.name],
-    publishedKeys,
+    published_keys: publishedKeys,
     winner: winner.branch.name,
   });
   return {
@@ -93,9 +94,10 @@ async function launchDoNotWait(
     const branchRun = exec.walk(run, [branch], seedInput, branchView(exec).exec).then(() => {});
     run.detached.push(branchRun);
   }
-  await run.emitter.joinApplied(node, {
+  await run.emitter.emit(node, {
+    type: "join-applied",
     branches: node.branches.map((branch) => branch.name),
-    publishedKeys: [],
+    published_keys: [],
   });
   return { status: "succeeded", output: {} };
 }
@@ -207,9 +209,10 @@ export async function runParallelNode(
     exec,
     Object.assign({}, ...branchResults.map((r) => r.buffer)),
   );
-  await run.emitter.joinApplied(node, {
+  await run.emitter.emit(node, {
+    type: "join-applied",
     branches: branchResults.map((r) => r.branch.name),
-    publishedKeys,
+    published_keys: publishedKeys,
   });
 
   // Collect output: keyed by branch name in declaration order, deterministic regardless of completion
