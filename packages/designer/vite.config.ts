@@ -1,7 +1,7 @@
 /// <reference types="vitest/config" />
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
-import { consoleConfig } from "../../vite.base.js";
+import { consoleConfig } from "../../vite.base.mjs";
 
 const baseConfig = consoleConfig("/designer/");
 
