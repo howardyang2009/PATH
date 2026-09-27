@@ -73,6 +73,7 @@ An Architecture Decision Record (ADR) records one decision PATH has made: the sh
 | [0067](0067-a-container-body-walk-cannot-take-a-jump.md) | A container body's walk cannot take a jump | accepted |
 | [0068](0068-the-run-entry-options-are-two-arms.md) | The run entry options are two arms: a launch and a continuation | accepted |
 | [0069](0069-the-api-clients-endpoint-groups-are-implementation.md) | The API client's endpoint groups are implementation, not a seam | accepted |
+| [0070](0070-every-run-door-addresses-its-run-through-one-lookup.md) | Every run door addresses its run through one lookup | accepted |
 
 ## Superseded decisions
 

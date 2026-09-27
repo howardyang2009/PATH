@@ -2,6 +2,7 @@ import { type ConfigObject, ConfigObjectSchema, type JsonValue } from "@path/sch
 import { z } from "zod";
 import { readRequestBody, sendError, sendJson } from "../http-json.js";
 import { operatorConfigEnvError, prepareRunWorkflow } from "../launch.js";
+import { resolveLeaf } from "./resolve-run.js";
 import type { ApiRequest } from "./route-context.js";
 
 /**
@@ -42,13 +43,12 @@ export async function handleCompleteRun({
   }
 
   // Resolve the leaf's tree from one read; unknown id is a 404 before any file work.
-  const rootRunId = ctx.project.archive.rootRunIdOf(stepRunId);
-  const tree = rootRunId === null ? null : ctx.project.archive.tree(rootRunId);
-  const leaf = tree?.runs.find((r) => r.runId === stepRunId);
-  if (rootRunId === null || tree === null || leaf === undefined) {
-    sendError(res, 404, `no step run found with id "${stepRunId}"`);
+  const address = resolveLeaf(ctx, stepRunId);
+  if (!address.ok) {
+    sendError(res, address.status, address.message);
     return;
   }
+  const { rootRunId, leaf } = address;
 
   // The compare half of the leaf CAS, checked before reload/lease so an ordinary double-submit
   // never contends. The engine repeats it under the lease to close the concurrent-submit race.
@@ -57,7 +57,7 @@ export async function handleCompleteRun({
     return;
   }
 
-  const root = tree.root;
+  const { root } = address;
   if (!root) {
     sendError(res, 409, `run "${rootRunId}" has no recorded workflow path and cannot be completed`);
     return;

@@ -1,5 +1,6 @@
 import type { RunBlobName } from "@path/engine";
 import { sendError, sendJson } from "../http-json.js";
+import { resolveTree } from "./resolve-run.js";
 import type { ApiRequest } from "./route-context.js";
 
 /** The only blob names this route serves — a fixed set, so `name` is never a raw filename. */
@@ -26,11 +27,12 @@ export function handleGetRunBlob({
   }
 
   // An unknown root or a run_id outside it is the other 404 — asked separately from "no such blob".
-  const tree = ctx.project.archive.tree(rootRunId);
-  if (!tree?.has(runId)) {
+  const address = resolveTree(ctx, rootRunId);
+  if (!address.ok || !address.tree.has(runId)) {
     sendError(res, 404, `no run "${runId}" under root "${rootRunId}"`);
     return;
   }
+  const { tree } = address;
 
   const blob = tree.blob(runId, blobName);
   if (blob === undefined) {

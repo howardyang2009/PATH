@@ -3,6 +3,7 @@ import { z } from "zod";
 import { readRequestBody, sendError, sendJson } from "../http-json.js";
 import { operatorConfigEnvError, prepareRunWorkflow } from "../launch.js";
 import { ResumeNotFound, ResumeRefused, type StartedRun } from "../live-runs.js";
+import { resolveRun } from "./resolve-run.js";
 import type { ApiRequest } from "./route-context.js";
 
 /** Optional `config` override, and `rerun_from_run_id` — the rerun boundary K's source run id (ADR
@@ -34,11 +35,12 @@ export async function handleResumeRun({
   }
 
   // The predecessor's root row — never another row whose status could disagree with the root's.
-  const root = ctx.project.archive.tree(rootRunId)?.root;
-  if (!root) {
-    sendError(res, 404, `no run found with id "${rootRunId}"`);
+  const address = resolveRun(ctx, rootRunId);
+  if (!address.ok) {
+    sendError(res, address.status, address.message);
     return;
   }
+  const { root } = address;
 
   // A still-running run has nothing to resume yet; a succeeded run has nothing left to do.
   if (!isTerminal(root.status)) {
