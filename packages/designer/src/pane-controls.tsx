@@ -3,7 +3,7 @@ import { type KeyboardEvent as ReactKeyboardEvent, useState } from "react";
 /**
  * The properties pane's generic, schema-blind field vocabulary: the label/input/select/textarea atoms,
  * the id row, and the Tab-fills-placeholder handler. A field that carries schema validation
- * (max-iterations, the raw-JSON floor, the keyed-row editors) stays in `properties-pane.tsx`.
+ * (max-iterations, the raw-JSON floor, the keyed-row editors) stays in `pane/`.
  */
 
 /**
