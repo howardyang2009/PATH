@@ -6,7 +6,15 @@
     "useIgnoreFile": true
   },
   "files": {
-    "includes": ["**/*.ts", "**/*.tsx", "**/*.mts", "**/*.cts"]
+    "includes": [
+      "**/*.ts",
+      "**/*.tsx",
+      "**/*.mts",
+      "**/*.cts",
+      "**/*.js",
+      "**/*.json",
+      "**/*.css"
+    ]
   },
   "formatter": {
     "enabled": true,
@@ -26,11 +34,30 @@
       }
     }
   },
+  "overrides": [
+    {
+      "includes": [
+        "**/*.css"
+      ],
+      "linter": {
+        "rules": {
+          "style": {
+            "noDescendingSpecificity": "off"
+          }
+        }
+      }
+    }
+  ],
   "assist": {
     "actions": {
       "source": {
         "organizeImports": "on"
       }
+    }
+  },
+  "json": {
+    "formatter": {
+      "expand": "always"
     }
   },
   "javascript": {

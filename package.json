@@ -10,6 +10,7 @@
     "test": "pnpm -r run test",
     "typecheck": "pnpm -r run typecheck",
     "lint": "biome check --error-on-warnings .",
+    "lint:ci": "biome ci --error-on-warnings .",
     "format": "biome check --write .",
     "sandcastle": "tsx .sandcastle/main.mts",
     "path": "tsx packages/engine/bin/path.ts",
