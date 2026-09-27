@@ -1,1 +1,3 @@
-{ "greeting": "config-file-value" }
+{
+  "greeting": "config-file-value"
+}

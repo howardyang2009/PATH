@@ -10,8 +10,14 @@
       "description": "a person reviews and submits an approval decision",
       "outputSchema": {
         "type": "object",
-        "properties": { "approved": { "type": "boolean" } },
-        "required": ["approved"],
+        "properties": {
+          "approved": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "approved"
+        ],
         "additionalProperties": false
       },
       "publish": {
@@ -23,7 +29,10 @@
       "id": "f599b76c-2230-4eca-8020-5d1287aa13e9",
       "name": "finalize",
       "command": "node",
-      "args": ["-e", "process.stdout.write('finalized')"]
+      "args": [
+        "-e",
+        "process.stdout.write('finalized')"
+      ]
     }
   ],
   "output": {

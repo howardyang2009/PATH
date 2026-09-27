@@ -1,1 +1,3 @@
-{ "greeting": "context-file-value" }
+{
+  "greeting": "context-file-value"
+}
