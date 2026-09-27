@@ -1,5 +1,5 @@
 import { createInterface } from "node:readline/promises";
-import type { WorkerOverrides } from "../run-workflow.js";
+import type { WorkerOverrides } from "../run-options.js";
 
 export interface CliIo {
   log(message: string): void;

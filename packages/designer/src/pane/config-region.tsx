@@ -19,9 +19,8 @@ import {
 } from "../node-edit.js";
 import { SelectField } from "../pane-controls.js";
 import { useKeyedRows, validateInputDraft } from "../validated-draft.js";
-import { JsonDraftField, KeyedRowField } from "./fields.js";
+import { JsonDraftField, KeyedRowField, PaneSection } from "./fields.js";
 import { keyedRowsOf } from "./file-properties.js";
-import { PaneSection } from "./properties-pane.js";
 
 // ── The step envelope: config inheritance, input wiring, and context writes ────────────────────────
 

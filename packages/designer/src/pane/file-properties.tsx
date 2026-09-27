@@ -7,9 +7,8 @@ import { referenceablePaths } from "../interp-suggest.js";
 import { fillPlaceholderOnTab, IdRow, ReadOnlyRow, TextField } from "../pane-controls.js";
 import { type KeyedRow, useKeyedRows, validateFileInputDraft } from "../validated-draft.js";
 import { ConfigEditor } from "./config-region.js";
-import { JsonDraftField, KeyedRowField } from "./fields.js";
+import { JsonDraftField, KeyedRowField, PaneSection } from "./fields.js";
 import { ReferenceList } from "./node-properties.js";
-import { PaneSection } from "./properties-pane.js";
 
 // ── The file's own properties ──────────────────────────────────────────────────────────────────────
 

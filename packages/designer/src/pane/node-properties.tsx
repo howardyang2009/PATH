@@ -18,14 +18,13 @@ import { referenceablePaths } from "../interp-suggest.js";
 import { kindExplanation } from "../node-kind.js";
 import { fillPlaceholderOnTab, IdRow, SelectField, TextField } from "../pane-controls.js";
 import { StepEnvelopeFields } from "./config-region.js";
-import { MaxIterationsField } from "./fields.js";
+import { MaxIterationsField, PaneSection } from "./fields.js";
 import {
   LeafPayloadEditor,
   PersonActivityEditor,
   PromptEditor,
   WorkflowRefEditor,
 } from "./leaf-editors.js";
-import { PaneSection } from "./properties-pane.js";
 
 // ── A selected node's properties ─────────────────────────────────────────────────────────────────
 

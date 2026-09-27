@@ -1,5 +1,5 @@
 import { checkInterpolationSyntax, type InterpolationRoot } from "@path/schema";
-import { useId } from "react";
+import { type ReactNode, useId, useState } from "react";
 import type { EditKey } from "../edit-key.js";
 import {
   type DraftResult,
@@ -165,4 +165,39 @@ export function FieldError({ error }: { error: string | null }): JSX.Element | n
       {error}
     </p>
   ) : null;
+}
+
+/**
+ * One collapsible region: its title is the toggle, and the body mounts only while open. The caller
+ * picks the default — field sections expanded (`defaultOpen`), payload regions collapsed — so a closed
+ * region is not in the DOM and cannot be tabbed into.
+ */
+export function PaneSection({
+  title,
+  className,
+  defaultOpen = false,
+  children,
+}: {
+  title: string;
+  className?: string;
+  defaultOpen?: boolean;
+  children: ReactNode;
+}): JSX.Element {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className={className === undefined ? "pane-section" : `pane-section ${className}`}>
+      <button
+        type="button"
+        className="pane-section-toggle"
+        aria-expanded={open}
+        onClick={() => setOpen((shown) => !shown)}
+      >
+        <span className="pane-section-caret" aria-hidden="true">
+          {open ? "▾" : "▸"}
+        </span>
+        <span className="pane-section-title">{title}</span>
+      </button>
+      {open ? <div className="pane-section-body">{children}</div> : null}
+    </div>
+  );
 }

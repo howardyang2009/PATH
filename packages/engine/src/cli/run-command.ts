@@ -13,6 +13,7 @@ import {
   type ProjectRunOptions,
   type ResumeResult,
 } from "../project.js";
+import type { RunResult } from "../run-options.js";
 import {
   type RunReport,
   renderListEligible,
@@ -20,7 +21,6 @@ import {
   renderRunOutcome,
   SIGINT_EXIT_CODE,
 } from "../run-report.js";
-import type { RunResult } from "../run-workflow.js";
 import type { CliIo, RunOverrides } from "./io.js";
 import { parseRunInvocation } from "./parse-run.js";
 
