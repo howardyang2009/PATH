@@ -1,6 +1,7 @@
 import type { IncomingMessage } from "node:http";
 import { encodeEventFrame } from "@path/schema";
 import { sendError } from "../http-json.js";
+import { resolveTree } from "./resolve-run.js";
 import type { ApiRequest } from "./route-context.js";
 
 const SSE_HEADERS = {
@@ -30,8 +31,9 @@ export function handleGetRunEvents({
   params: [rootRunId],
 }: ApiRequest<[string]>): void {
   // Unknown root run → 404. A run row exists the moment `POST /v0/runs` returns.
-  if (!ctx.project.archive.tree(rootRunId)) {
-    sendError(res, 404, `no run found with id "${rootRunId}"`);
+  const address = resolveTree(ctx, rootRunId);
+  if (!address.ok) {
+    sendError(res, address.status, address.message);
     return;
   }
 

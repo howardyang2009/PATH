@@ -1,10 +1,5 @@
 import { resolve } from "node:path";
-import {
-  checkPrecondition,
-  deleteArtifact,
-  PRECONDITION_FAILED,
-  readArtifact,
-} from "../artifact-file.js";
+import { conditionalDelete, PRECONDITION_FAILED } from "../artifact-file.js";
 import { confineToProjectRoot } from "../confine.js";
 import { editLease } from "../edit-lease.js";
 import { sendError } from "../http-json.js";
@@ -39,28 +34,22 @@ export function handleDeleteWorkflow({ req, res, ctx, query }: ApiRequest): void
     return;
   }
 
-  // Read-decide-delete is one synchronous block (no `await`), the write door's concurrency stance.
-  const currentBytes = readArtifact(absPath);
-  if (currentBytes === undefined) {
-    sendError(res, 404, "not found");
-    return;
-  }
-  const precondition = checkPrecondition(
-    currentBytes,
-    firstHeader(req.headers["if-match"]),
-    "overwrite",
-  );
-  if (!precondition.ok) {
-    sendError(res, 412, PRECONDITION_FAILED[precondition.conflict]);
-    return;
-  }
-
+  // The lease first: another session editing the file outranks a stale token, and either way the
+  // file is untouched.
   if (lease.heldByOther(sessionId)) {
     sendError(res, 409, "workflow is being edited in another session");
     return;
   }
 
-  deleteArtifact(absPath);
+  // One call reads, decides and removes — the write door's concurrency stance.
+  const removed = conditionalDelete(absPath, firstHeader(req.headers["if-match"]));
+  if (!removed.ok) {
+    // A file that is already gone is this route's `404`; a missing or stale token is the `412`.
+    if (removed.conflict === "missing") sendError(res, 404, "not found");
+    else sendError(res, 412, PRECONDITION_FAILED[removed.conflict]);
+    return;
+  }
+
   lease.remove();
   res.writeHead(204);
   res.end();

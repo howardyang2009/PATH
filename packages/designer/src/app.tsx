@@ -179,12 +179,7 @@ export function App({
   const { sessionId, leases, takeover, reacquire } = useEditLeases(client, policy.leasedPaths);
   // Delete removes the root file from disk (`planDelete`): always confirmed, since it cannot be
   // undone.
-  const deletePlan = planDelete({
-    mode: session.mode,
-    frames: session.frames,
-    activeIndex: session.activeIndex,
-    saveState: session.saveState,
-  });
+  const deletePlan = planDelete(session);
   const onDelete = (): void => {
     if (!deletePlan) return;
     const target =

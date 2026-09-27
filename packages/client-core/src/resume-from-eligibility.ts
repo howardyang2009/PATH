@@ -1,24 +1,21 @@
 import {
-  type BoundaryLevel,
   type ControlBlockKind,
-  classifyLevelK,
-  type LegalKLevelReason,
-  must,
+  type LegalKBoundaryReason,
+  type LegalKBoundaryRefusal,
+  legalKBoundary,
   type RunRecord,
-  selectBoundary,
   type WorkflowFile,
 } from "@path/schema";
 
-/** Client half of the engine's one legal-K rule (`resume-legal-k.ts`): the button computes
- * eligibility eagerly from the run tree + open root file so an illegal pick greys it before a
- * round-trip. A nested K's since-deleted/in-body/prefix reasons are left to the engine's `refusal`
- * on click.
+/** The Designer's half of the one legal-K verdict (`@path/schema`'s `legalKBoundary`, whose engine
+ * door is `resume-legal-k.ts`): the button computes eligibility eagerly from the run tree + open
+ * root file, so an illegal pick greys before a round-trip. It reads only the root level's body — a
+ * nested K sits in a file the Designer does not hold — so the shared verdict judges the levels past
+ * its reach on their own run status alone, and the engine's `refusal` on click stays the last word.
  */
 export type ResumeFromReasonCode =
   | "no-selection" // spec rule 1 — nothing selected, or the root row (never a K)
-  | "pass-run" // a goto pass container row (ADR 0054 §3); K is a node inside it
-  // engine rules 2–5, the per-level taxonomy shared with the engine (`classifyLevelK`)
-  | LegalKLevelReason
+  | LegalKBoundaryReason // every reason the shared verdict can give
   | "dirty-buffer"; // spec rule 3 — a legal K, but the open file is not saved
 
 /** The innermost enclosing controller named in an `in-body` reason (`loop` is `while-do`), as the
@@ -50,88 +47,66 @@ export function shortRunId(runId: string): string {
 /** Compute the button's one state: enabled, or disabled with the highest-precedence reason —
  * no selection, then an illegal K, then a legal K over a dirty buffer. */
 export function resumeFromEligibility(args: ResumeFromEligibilityArgs): ResumeFromEligibility {
-  const { rootRunId, runs, rootFile, selectedRunId, dirty } = args;
+  const { runs, rootFile, selectedRunId, dirty } = args;
 
   // (1) Nothing selected — the button's rest state. The root row folds in here: it owns no node, so
   // it is never a K.
   if (selectedRunId === null) return noSelection();
-  const selection = selectBoundary(runs.values(), selectedRunId);
-  if (selection.kind === "not-in-tree" || selection.kind === "root-run") return noSelection();
-  if (selection.kind === "pass-run") {
+
+  // (2) The shared verdict, scoped to the one level this surface can see.
+  const verdict = legalKBoundary(
+    runs.values(),
+    selectedRunId,
+    rootFile === null ? { bodies: [] } : { bodies: [rootFile.body] },
+  );
+  if (!verdict.ok) {
+    const { reason } = verdict.refusal;
+    // The tree's own facts are the button's rest state, not a reason to show.
+    if (reason === "not-in-tree" || reason === "root-run") return noSelection();
     return {
       ok: false,
-      reason: "pass-run",
-      message: `Pass ${selection.pass} is a goto pass, not a node; select a node inside it.`,
+      reason,
+      message: shortMessage(verdict.refusal),
+      ...(verdict.refusal.container ? { container: verdict.refusal.container } : {}),
     };
   }
-  const { run: selected, levels } = selection;
-
-  // (2) An illegal K. A root-level K is located in the open file's body — the exact engine mirror.
-  // A nested K sits in a file the Designer does not hold, so only its own success is checked here.
-  const nodeName = selected.nodeName ?? selected.nodeId;
-  const onlyLevel = levels.length === 1 ? levels[0] : undefined;
-  const topLevel =
-    onlyLevel !== undefined && (onlyLevel.passRun ?? onlyLevel.run).parentRunId === rootRunId;
-  if (topLevel && rootFile !== null) {
-    const illegal = classifyTopLevel(rootFile, runs, onlyLevel, selected, nodeName);
-    if (illegal) return illegal;
-  } else if (selected.status !== "succeeded") {
-    // A nested K whose own run did not succeed is illegal on any level (engine rule 4).
-    return { ok: false, reason: "not-succeeded", message: `“${nodeName}” did not succeed.` };
-  }
+  const { run, nodeName } = verdict;
 
   // (3) A legal K over an unsaved file — Launch's save-first gate, last in precedence.
   if (dirty) {
     return { ok: false, reason: "dirty-buffer", message: "Save to enable." };
   }
 
-  return { ok: true, runId: selected.runId, nodeName, shortRunId: shortRunId(selected.runId) };
+  return { ok: true, runId: run.runId, nodeName, shortRunId: shortRunId(run.runId) };
 }
 
 function noSelection(): ResumeFromEligibility {
   return { ok: false, reason: "no-selection", message: "Select a node in the run tree." };
 }
 
-/** The shared `classifyLevelK` predicate (`@path/schema`) run over the open root file at the root
- * scope (K's pass run under a goto, earlier passes as prefix), returning the first illegal
- * reason. */
-function classifyTopLevel(
-  rootFile: WorkflowFile,
-  runs: ReadonlyMap<string, RunRecord>,
-  { scopeRunId, earlierPassRunIds }: BoundaryLevel<RunRecord>,
-  selected: RunRecord,
-  nodeName: string,
-): Extract<ResumeFromEligibility, { ok: false }> | null {
-  const level = classifyLevelK({
-    body: rootFile.body,
-    rows: runs.values(),
-    scopeRunId,
-    nodeId: must(selected.nodeId, "node id of the selected run"),
-    leafStatus: selected.status,
-    earlierPassRunIds,
-  });
-  if (level.ok) return null;
-  switch (level.reason) {
+/** The button's own copy of a refusal: the reason is the shared verdict's, the sentence is the
+ * surface's (the engine prints its longer, CLI-shaped wording). */
+function shortMessage(refusal: LegalKBoundaryRefusal): string {
+  const { nodeName: label = refusal.runId } = refusal;
+  switch (refusal.reason) {
+    case "pass-run":
+      return `Pass ${refusal.pass} is a goto pass, not a node; select a node inside it.`;
     case "not-in-file":
-      return {
-        ok: false,
-        reason: "not-in-file",
-        message: `“${nodeName}” is no longer in the workflow.`,
-      };
+      return `“${label}” is no longer in the workflow.`;
     case "in-body":
-      return {
-        ok: false,
-        reason: "in-body",
-        message: `“${nodeName}” is inside a ${level.container ?? "loop, parallel, or branch"} body and cannot be a rerun boundary.`,
-        ...(level.container ? { container: level.container } : {}),
-      };
+      return `“${label}” is inside a ${refusal.container ?? "loop, parallel, or branch"} body and cannot be a rerun boundary.`;
     case "not-succeeded":
-      return { ok: false, reason: "not-succeeded", message: `“${nodeName}” did not succeed.` };
+      return `“${label}” did not succeed.`;
     case "prefix-unsucceeded":
-      return {
-        ok: false,
-        reason: "prefix-unsucceeded",
-        message: `A node before “${nodeName}” did not succeed; the whole prefix must succeed to reuse it.`,
-      };
+      return `A node before “${label}” did not succeed; the whole prefix must succeed to reuse it.`;
+    // A nested `ref` cannot be judged from here, so these two are the engine's to refuse; the
+    // switch still accounts for them.
+    case "not-workflow":
+      return `“${label}” is no longer a nested workflow.`;
+    case "ref-unresolved":
+      return `“${label}” references a file that is no longer in the workflow.`;
+    case "not-in-tree":
+    case "root-run":
+      return "Select a node in the run tree.";
   }
 }

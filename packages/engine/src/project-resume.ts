@@ -14,7 +14,7 @@ import {
   successorCapture,
 } from "./continuation.js";
 import { getLaunchFacts, getRunsForRoot } from "./persistence/run-store.js";
-import type { ProjectCore, ProjectRunOptions } from "./project.js";
+import type { ProjectCore, ProjectResumeOptions } from "./project.js";
 import { type LegalKContainer, type LegalKReasonCode, resolveLegalK } from "./resume-legal-k.js";
 import type { ContinuationInput } from "./run-options.js";
 
@@ -114,7 +114,7 @@ export async function resumeProjectRun(
   rootFile: WorkflowFile,
   rootRunId: string,
   workflowDir: string,
-  opts: ProjectRunOptions,
+  opts: ProjectResumeOptions,
 ): Promise<ResumeResult> {
   // The raw predecessor tree, read once. `getRunsForRoot` keys on `root_run_id`, so an unknown or
   // child id yields no rows — the `found: false` case.
@@ -163,8 +163,7 @@ export async function resumeProjectRun(
     workflowDir,
     // Launch facts are identity-defining like `input` (ADR 0046): a resume recovers the
     // predecessor's frozen config and worker defaults; the file tier stays live.
-    continuationRunOptions(runOpts, getLaunchFacts(db, rootRunId)),
-    continuation,
+    { ...continuationRunOptions(runOpts, getLaunchFacts(db, rootRunId)), continuation },
     [capture.observer],
   );
 

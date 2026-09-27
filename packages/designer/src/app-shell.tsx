@@ -1,5 +1,5 @@
+import { usePaneWidths } from "@path/viewer";
 import { type ReactNode, useRef } from "react";
-import { usePaneWidths } from "./use-pane-resize.js";
 
 /** Persisted `[palette, properties]` rail widths in px; the canvas stage fills the rest. */
 const RAILS_KEY = "path.designer.shell-rails";

@@ -8,7 +8,7 @@ import {
   getRun,
   getRunsForRoot,
 } from "./persistence/run-store.js";
-import type { ProjectCore, ProjectRunOptions } from "./project.js";
+import type { ProjectContinuationOptions, ProjectCore } from "./project.js";
 import type { ContinuationInput } from "./run-options.js";
 
 /**
@@ -38,7 +38,7 @@ export async function completeProjectStep(
   stepRunId: string,
   output: JsonValue,
   workflowDir: string,
-  opts: ProjectRunOptions,
+  opts: ProjectContinuationOptions,
 ): Promise<CompleteResult> {
   // An unknown id is `not-found` (404); a leaf not `awaiting` — already succeeded, or a
   // double-submit — is `not-awaiting` (409).
@@ -120,8 +120,7 @@ export async function completeProjectStep(
       workflowDir,
       // A Complete replays the same tree, so it restores that tree's recorded launch facts: the
       // launch config (with any supplied secret merged over it) and its worker defaults.
-      runOptions,
-      continuation,
+      { ...runOptions, continuation },
       [],
     );
     return {

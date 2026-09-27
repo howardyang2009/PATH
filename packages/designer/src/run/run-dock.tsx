@@ -1,9 +1,14 @@
 import type { PathApiClient, WireStepPlugin } from "@path/client-core";
 import type { WorkflowFile } from "@path/schema";
-import { NodeIo, RunDetail, RunsList, type RunViewLoad } from "@path/viewer";
+import {
+  NodeIo,
+  RunDetail,
+  RunsList,
+  type RunViewLoad,
+  useDragSize,
+  usePaneWidths,
+} from "@path/viewer";
 import { useRef, useState } from "react";
-import { useDragSize } from "../drag-size.js";
-import { usePaneWidths } from "../use-pane-resize.js";
 import { RunLaunch } from "./run-launch.js";
 
 /** Persisted open-dock height, in px; the panes inside scroll. */

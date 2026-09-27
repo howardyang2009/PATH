@@ -90,9 +90,14 @@ export {
   boundaryLevels,
   type ClassifyLevelKArgs,
   classifyLevelK,
+  type LegalKBoundary,
+  type LegalKBoundaryReason,
+  type LegalKBoundaryRefusal,
   type LegalKLevelReason,
   type LegalKLevelResult,
   type LegalKLevelRun,
+  type LegalKScope,
+  legalKBoundary,
   selectBoundary,
 } from "./legal-k.js";
 export { LOG_BACKEND_IDS, type LogBackendId } from "./log-backend-id.js";

@@ -100,13 +100,11 @@ async function runLoopIteration(
     input: iterationInput,
   });
   // The loop body is a single node (`@2` §4.3), run as a one-node sequence inside the container.
-  const outcome = await exec.walk(container.run, [node.node], iterationInput, exec);
+  // `bodyWalk` is the jump-free walk: load refuses a goto under a `while-do`.
+  const outcome = await exec.bodyWalk(container.run, [node.node], iterationInput, exec);
   // The body parked at an awaiting leaf: the container stays `running` (no `step-finished`) and the
   // loop propagates `awaiting` up; a Complete replay re-enters this container and drives it on.
   if (outcome.status === "awaiting") return outcome;
-  // The load placement rule refuses a goto under `while-do`, so a jump never reaches an iteration.
-  if (outcome.status === "goto")
-    throw new Error(`while-do "${node.name}": a goto jumped out of its body`);
   await container.finish(outcome);
   return outcome;
 }

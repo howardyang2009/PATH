@@ -1,3 +1,4 @@
+import { must } from "./must.js";
 import type { WorkflowNode } from "./node-type.js";
 import {
   type ControlBlockKind,
@@ -168,4 +169,141 @@ export function selectBoundary<T extends BoundaryLevelRun>(
     run: selected as T & { nodeId: string },
     levels: boundaryLevels(all, selectedRunId),
   };
+}
+
+// ── The whole verdict ───────────────────────────────────────────────────────────────────────────
+
+/** Why a selected run cannot be the rerun boundary (K): the §5 taxonomy's reasons, the three
+ * selection facts, and the two ways a nested `ref` can stop the descent. One union for every door,
+ * so a new reason is a compile error in each of them. */
+export type LegalKBoundaryReason =
+  /** The run id names no row of the source tree. */
+  | "not-in-tree"
+  /** The root run owns no node (invariant 2). */
+  | "root-run"
+  /** A goto pass is a container, not a node (ADR 0054 §3). */
+  | "pass-run"
+  | LegalKLevelReason
+  /** An intermediate path node is no longer a nested `workflow` to descend into. */
+  | "not-workflow"
+  /** Its `ref` names a file the loaded tree does not hold. */
+  | "ref-unresolved";
+
+/** A refused K, as data: what went wrong, and the facts a door needs to word it its own way. */
+export interface LegalKBoundaryRefusal {
+  reason: LegalKBoundaryReason;
+  /** The selected run id, verbatim. */
+  runId: string;
+  /** The offending node's human name, on the reasons that name one. */
+  nodeName?: string;
+  /** The goto pass's 1-based ordinal, on `pass-run`. */
+  pass?: number;
+  /** The innermost enclosing controller, on `in-body`. */
+  container?: ControlBlockKind;
+  /** The intermediate node's `ref`, on `ref-unresolved`. */
+  ref?: string;
+}
+
+/** The fields the whole verdict reads from a run row: the boundary-level tree and kind facts, plus
+ * the status and human name a node-level reason names. A `RunRecord` or a client `RunNodeState`
+ * fits. */
+export interface LegalKBoundaryRun extends BoundaryLevelRun, LegalKLevelRun {
+  nodeName: string | null;
+}
+
+/** A legal K: the node-id descent path root→…→K and, level for level, the goto pass each path-node
+ * sits in (ADR 0054 §6), `null` where the file holds no goto; or the one reason it is refused. */
+export type LegalKBoundary<T extends LegalKBoundaryRun> =
+  | { ok: true; nodePath: string[]; passes: (number | null)[]; nodeName: string; run: T }
+  | { ok: false; refusal: LegalKBoundaryRefusal };
+
+/**
+ * How much of the root→…→K descent the caller can see: one file body per path level, and where a
+ * nested `ref` stopped it. The engine descends its loaded ref tree and passes every level it
+ * reached; a surface that holds only the root file passes that one body, and a level past the end is
+ * judged on its own run status alone — the honest difference between a door with the file tree and
+ * one without it.
+ */
+export interface LegalKScope {
+  bodies: readonly (readonly WorkflowNode[])[];
+  /** Where the descent stopped, when it did: the level index and which miss it was. */
+  stoppedAt?: { index: number; reason: "not-workflow" | "ref-unresolved" };
+}
+
+/**
+ * The one legal-K verdict (spec §5, ADR 0032/0036/0054/0064): classify the selection, then each
+ * level of the descent in order — locus in serial order, the leaf's own success, the prefix's —
+ * under the scope the caller can see. Doors map a refusal's `reason` to their own transport and
+ * wording; none of them re-derives the order.
+ */
+export function legalKBoundary<T extends LegalKBoundaryRun>(
+  rows: Iterable<T>,
+  selectedRunId: string,
+  scope: LegalKScope,
+): LegalKBoundary<T> {
+  // One read of the rows: an iterable may be single-use, and the selection, the level test and the
+  // prefix all query them.
+  const all = [...rows];
+  const selection = selectBoundary(all, selectedRunId);
+  if (selection.kind === "not-in-tree")
+    return refused({ reason: "not-in-tree", runId: selectedRunId });
+  if (selection.kind === "pass-run")
+    return refused({ reason: "pass-run", runId: selectedRunId, pass: selection.pass });
+  if (selection.kind === "root-run") return refused({ reason: "root-run", runId: selectedRunId });
+
+  const { run, levels } = selection;
+  const nodePath = levels.map((level) => must(level.run.nodeId, "node id of a boundary level"));
+  const passes = levels.map((level) => level.passRun?.pass ?? null);
+  const nodeName = run.nodeName ?? run.nodeId;
+
+  for (const [level, entry] of levels.entries()) {
+    const nodeId = must(entry.run.nodeId, "node id of a boundary level");
+    const label = entry.run.nodeName ?? nodeId;
+    const isLeaf = level === levels.length - 1;
+    const body = scope.bodies[level];
+
+    // Past the caller's reach: only the leaf's own status is knowable, and it must have succeeded.
+    if (body === undefined) {
+      if (isLeaf && entry.run.status !== "succeeded")
+        return refused({ reason: "not-succeeded", runId: selectedRunId, nodeName: label });
+      continue;
+    }
+
+    const levelResult = classifyLevelK({
+      body: [...body],
+      rows: all,
+      scopeRunId: entry.scopeRunId,
+      nodeId,
+      leafStatus: isLeaf ? entry.run.status : null,
+      earlierPassRunIds: entry.earlierPassRunIds,
+    });
+    if (!levelResult.ok) {
+      return refused({
+        reason: levelResult.reason,
+        runId: selectedRunId,
+        nodeName: label,
+        ...(levelResult.container ? { container: levelResult.container } : {}),
+      });
+    }
+
+    // An intermediate node must still be a nested `workflow` whose `ref` resolves; the descent says
+    // which of the two failed.
+    const stopped = scope.stoppedAt;
+    if (!isLeaf && stopped?.index === level) {
+      const node = serialOrder([...body]).find((candidate) => candidate.id === nodeId);
+      const ref = node && node.type === "workflow" ? node.ref : undefined;
+      return refused({
+        reason: stopped.reason,
+        runId: selectedRunId,
+        nodeName: label,
+        ...(ref === undefined ? {} : { ref }),
+      });
+    }
+  }
+
+  return { ok: true, nodePath, passes, nodeName, run };
+}
+
+function refused(refusal: LegalKBoundaryRefusal): { ok: false; refusal: LegalKBoundaryRefusal } {
+  return { ok: false, refusal };
 }

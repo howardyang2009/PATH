@@ -17,7 +17,7 @@ import { createProcessorSemaphore } from "../src/processor-semaphore.js";
 import type { ContinueState, NodeExecContext, RunContext } from "../src/run-context.js";
 import { createEmitter } from "../src/run-emitter.js";
 import type { RunEvent } from "../src/run-observer.js";
-import { runNode, runSequence } from "../src/run-workflow.js";
+import { runContainerBody, runNode, runSequence } from "../src/run-workflow.js";
 import { flat } from "./fake-observer.js";
 
 /**
@@ -123,7 +123,7 @@ function makeRun(overrides: Partial<RunContext> = {}): {
 }
 
 function makeExec(context: { [key: string]: JsonValue } = {}): NodeExecContext {
-  return { context, onPublish: async () => {}, walk: runSequence };
+  return { context, onPublish: async () => {}, walk: runSequence, bodyWalk: runContainerBody };
 }
 
 /**
@@ -356,6 +356,34 @@ describe("runNode — while-do", () => {
     expect(outcome.status).toBe("failed");
     expect(observed.find((o) => o.type === "loop-exited")).toMatchObject({
       reason: "max-iterations-exceeded",
+    });
+  });
+
+  // Load refuses a goto under a while-do; a file that skipped load must fail loudly rather than
+  // have the jump swallowed by the iteration.
+  it("fails the run when a goto escapes its body (a skipped load)", async () => {
+    const fileWithTarget: WorkflowFile = {
+      ...file,
+      body: [
+        {
+          type: "checkpoint",
+          id: "target",
+          name: "target",
+          condition: { type: "exists", path: "context.count" },
+        },
+      ],
+    };
+    const { run } = makeRun({ file: fileWithTarget });
+    const jumping: WhileDoNode = {
+      ...loop,
+      node: { type: "goto", id: "jump", name: "jump", target: "target", max_jumps: 3 },
+    };
+
+    const outcome = await runNode(run, jumping, {}, makeExec({ count: 0 }));
+
+    expect(outcome).toEqual({
+      status: "failed",
+      error: 'goto "jump": a jump may not leave a while-do or parallel body',
     });
   });
 

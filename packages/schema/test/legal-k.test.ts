@@ -3,7 +3,10 @@ import {
   type BoundaryLevelRun,
   boundaryLevels,
   classifyLevelK,
+  type LegalKBoundaryRefusal,
+  type LegalKBoundaryRun,
   type LegalKLevelRun,
+  legalKBoundary,
   selectBoundary,
 } from "../src/legal-k.js";
 import type { WorkflowNode } from "../src/node-type.js";
@@ -434,5 +437,142 @@ describe("selectBoundary — only a node's run is a candidate rerun boundary", (
       run: rows[3],
       levels: boundaryLevels(rows, "r-a"),
     });
+  });
+});
+
+// ── The whole verdict ───────────────────────────────────────────────────────────────────────────
+
+/** A boundary row: the level taxonomy's fields plus the identity and name the verdict reads. */
+function boundaryRun(
+  nodeId: string,
+  status: RunStatus,
+  over: Partial<LegalKBoundaryRun> = {},
+): LegalKBoundaryRun {
+  return {
+    runId: `run-${nodeId}`,
+    parentRunId: "scope",
+    nodeId,
+    nodeName: nodeId,
+    pass: null,
+    status,
+    ...over,
+  };
+}
+
+/** The tree's root row: the scope the top level's rows hang under, and never a boundary itself. */
+const scopeRow: LegalKBoundaryRun = {
+  runId: "scope",
+  parentRunId: null,
+  nodeId: null,
+  nodeName: null,
+  pass: null,
+  status: "running",
+};
+
+/** The scope the engine's door builds: every level's body, and where a nested `ref` stopped it. */
+const scopeOf = (...bodies: WorkflowNode[][]) => ({ bodies });
+
+/** A verdict's refusal, asserted present. */
+function refusalOf(verdict: ReturnType<typeof legalKBoundary>): LegalKBoundaryRefusal {
+  if (verdict.ok) throw new Error("expected a refusal");
+  return verdict.refusal;
+}
+
+describe("legalKBoundary — the one verdict", () => {
+  it("accepts a top-level, succeeded K with a fully-succeeded prefix", () => {
+    const selected = boundaryRun("b", "succeeded");
+    const rows = [scopeRow, boundaryRun("a", "succeeded"), selected];
+
+    expect(legalKBoundary(rows, "run-b", scopeOf(body))).toEqual({
+      ok: true,
+      nodePath: ["b"],
+      passes: [null],
+      nodeName: "b",
+      run: selected,
+    });
+  });
+
+  it("refuses the three selections that are never a boundary, as data", () => {
+    const root = boundaryRun("a", "succeeded", { runId: "root", parentRunId: null, nodeId: null });
+    const pass = boundaryRun("a", "succeeded", { runId: "pass-2", parentRunId: "scope", pass: 2 });
+
+    expect(legalKBoundary([], "nope", scopeOf(body)).ok).toBe(false);
+    expect(legalKBoundary([root], "root", scopeOf(body))).toMatchObject({
+      ok: false,
+      refusal: { reason: "root-run", runId: "root" },
+    });
+    expect(legalKBoundary([scopeRow, pass], "pass-2", scopeOf(body))).toMatchObject({
+      ok: false,
+      refusal: { reason: "pass-run", pass: 2 },
+    });
+  });
+
+  it("names the enclosing controller on an in-body locus", () => {
+    const rows = [scopeRow, boundaryRun("inner", "succeeded")];
+
+    expect(legalKBoundary(rows, "run-inner", scopeOf([loop("spin", step("inner"))]))).toMatchObject(
+      {
+        ok: false,
+        refusal: { reason: "in-body", container: "loop", nodeName: "inner" },
+      },
+    );
+  });
+
+  // The honest difference between a door that holds the file tree and one that does not: past the
+  // scope's reach only the run's own status is knowable, and it still gates.
+  it("judges a level past the scope on its own status alone", () => {
+    const rows = [
+      scopeRow,
+      boundaryRun("wf", "succeeded", { runId: "mid", parentRunId: "scope" }),
+      boundaryRun("inner", "failed", { runId: "leaf", parentRunId: "mid" }),
+    ];
+
+    expect(refusalOf(legalKBoundary(rows, "leaf", scopeOf()))).toEqual({
+      reason: "not-succeeded",
+      runId: "leaf",
+      nodeName: "inner",
+    });
+    const succeeded = rows.map((r) => ({ ...r, status: "succeeded" as const }));
+    expect(legalKBoundary(succeeded, "leaf", scopeOf())).toMatchObject({
+      ok: true,
+      nodePath: ["wf", "inner"],
+      passes: [null, null],
+    });
+  });
+
+  it("refuses a descent stopped at an intermediate node, with the miss's own reason", () => {
+    const rows = [
+      scopeRow,
+      boundaryRun("wf", "succeeded", { runId: "mid", parentRunId: "scope" }),
+      boundaryRun("inner", "succeeded", { runId: "leaf", parentRunId: "mid" }),
+    ];
+    const notWorkflow = {
+      ...scopeOf([step("wf")]),
+      stoppedAt: { index: 0, reason: "not-workflow" as const },
+    };
+    const unresolved = {
+      ...scopeOf([
+        { type: "workflow", id: "wf", name: "wf", ref: "gone.workflow.json" } as WorkflowNode,
+      ]),
+      stoppedAt: { index: 0, reason: "ref-unresolved" as const },
+    };
+
+    expect(legalKBoundary(rows, "leaf", notWorkflow)).toMatchObject({
+      ok: false,
+      refusal: { reason: "not-workflow", nodeName: "wf" },
+    });
+    expect(legalKBoundary(rows, "leaf", unresolved)).toMatchObject({
+      ok: false,
+      refusal: { reason: "ref-unresolved", nodeName: "wf", ref: "gone.workflow.json" },
+    });
+  });
+
+  it("reads its rows once, so a single-use iterable is enough", () => {
+    const rows = [scopeRow, boundaryRun("a", "succeeded"), boundaryRun("b", "succeeded")];
+    function* once(): Generator<LegalKBoundaryRun> {
+      yield* rows;
+    }
+
+    expect(legalKBoundary(once(), "run-b", scopeOf(body)).ok).toBe(true);
   });
 });

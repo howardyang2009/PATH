@@ -6,7 +6,7 @@ import {
   type WireTemplateWriteResponse,
 } from "@path/schema";
 import { z } from "zod";
-import { writeArtifact } from "../artifact-file.js";
+import { conditionalWrite } from "../artifact-file.js";
 import { readRequestBody, sendError } from "../http-json.js";
 import { kindDirFor, suffixFor, userTemplateRoot } from "../template-store.js";
 import type { ApiRequest } from "./route-context.js";
@@ -47,8 +47,12 @@ export async function handlePostTemplates({ req, res, ctx }: ApiRequest): Promis
   const projectDir = resolve(ctx.project.dir);
   const absPath = join(userTemplateRoot(projectDir), kindDirFor(kind), `${name}${suffixFor(kind)}`);
   // Create-only (`wx`): an existing name is never a blind overwrite (ADR 0050), and is this door's
-  // `409`.
-  const written = writeArtifact(absPath, rawBody, { create: true });
+  // `409`. One call reads, decides and writes.
+  const written = conditionalWrite(absPath, {
+    ifMatch: undefined,
+    rule: "create-or-overwrite",
+    payload: rawBody,
+  });
   if (!written.ok) {
     sendError(res, 409, `a ${kind} template named "${name}" already exists`);
     return;

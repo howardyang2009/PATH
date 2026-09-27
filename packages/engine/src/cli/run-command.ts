@@ -10,7 +10,7 @@ import { mergeConfig } from "../merge-config.js";
 import {
   type ListEligibleResult,
   openProject,
-  type ProjectRunOptions,
+  type ProjectSharedOptions,
   type ResumeResult,
 } from "../project.js";
 import type { RunResult } from "../run-options.js";
@@ -224,7 +224,7 @@ export async function runRunCommand(
   // Backends, observer order and settings precedence belong to the project; here the CLI owns only
   // the parsed flags, the signal, and where warnings go. `input` is the fresh-run context seed
   // only.
-  const projectOptions: ProjectRunOptions = {
+  const projectOptions: ProjectSharedOptions = {
     operatorConfig: operatorConfig.config,
     // The validated launch worker-default table; `undefined` when none was passed, so a flagless
     // run resolves through the file tier unchanged.

@@ -19,13 +19,16 @@ import type { RunOptions, RunResult } from "./run-options.js";
 import { analyzeRunStart, resolveExecutorRegistry } from "./run-start.js";
 import { maskRunEvent } from "./secret-mask.js";
 
-export { runNode, runSequence } from "./run-node.js";
+export { runContainerBody, runNode, runSequence } from "./run-node.js";
 export type {
   ContinuationInput,
+  ContinuationRunOptions,
   ContinueInput,
+  LaunchRunOptions,
   ResumeInput,
   RunOptions,
   RunResult,
+  RunSeams,
   WorkerOverrides,
 } from "./run-options.js";
 

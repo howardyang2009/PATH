@@ -2,9 +2,15 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { strongEtag } from "./etag.js";
 
-/** One versioned JSON artifact file on disk as the write doors see it (server-api-v0.md §7, §10):
- * read, check `If-Match` against the strong ETag, then write create-only (`wx`) or overwrite —
- * synchronously. */
+/**
+ * One versioned JSON artifact file on disk as the write doors see it (server-api-v0.md §7, §10).
+ *
+ * The only way a door writes is {@link conditionalWrite} / {@link conditionalDelete}: each reads the
+ * current bytes, decides `If-Match` against their strong ETag, and writes or removes — all inside
+ * one **synchronous** call. That matters because the check and the write must have no suspension
+ * point between them: an `await` there turns the ETag compare-and-swap into a TOCTOU race, and the
+ * caller cannot see the hazard in the types. Keeping the read private is what makes it unmissable.
+ */
 
 /** The `412` wording per precondition conflict, at every artifact door; `required` arises only
  * under `overwrite`. */
@@ -24,8 +30,8 @@ export type ArtifactConflict =
   | "required";
 
 /** What a door lets `If-Match` mean: `create-or-overwrite` — present overwrites a matching file,
- * absent creates (the workflow upsert); `overwrite` — required and must match (template update, any
- * delete). */
+ * absent creates (the workflow upsert and a template save-as); `overwrite` — required and must match
+ * (template update, any delete). */
 export type PreconditionRule = "create-or-overwrite" | "overwrite";
 
 /** The current bytes of an artifact file, or `undefined` when it does not exist. */
@@ -39,7 +45,7 @@ export function readArtifact(absPath: string): Buffer | undefined {
 
 /** Check `ifMatch` against `current`. No `If-Match: *` wildcard: `*` fails the exact match like any
  * stale value, since no header spells a blind last-writer-wins overwrite. */
-export function checkPrecondition(
+function checkPrecondition(
   current: Buffer | undefined,
   ifMatch: string | undefined,
   rule: PreconditionRule,
@@ -56,17 +62,7 @@ export function checkPrecondition(
 /** Serialize `raw` deterministically (`JSON.stringify(raw, null, 2)` + newline, the client's key
  * order kept) and write it. A create uses `wx`, so a file that raced into existence fails
  * `exists`. */
-export function writeArtifact(
-  absPath: string,
-  raw: unknown,
-  opts: { create: false },
-): { ok: true; etag: string };
-export function writeArtifact(
-  absPath: string,
-  raw: unknown,
-  opts: { create: boolean },
-): { ok: true; etag: string } | { ok: false; conflict: "exists" };
-export function writeArtifact(
+function writeArtifact(
   absPath: string,
   raw: unknown,
   opts: { create: boolean },
@@ -83,7 +79,42 @@ export function writeArtifact(
   return { ok: true, etag: strongEtag(Buffer.from(serialized, "utf8")) };
 }
 
-/** Remove an artifact file whose precondition already passed. */
-export function deleteArtifact(absPath: string): void {
+export interface ConditionalWrite {
+  /** The `If-Match` the door received, verbatim. */
+  ifMatch: string | undefined;
+  rule: PreconditionRule;
+  /** The parsed value to serialize; the door passes the **raw** request object so the author's key
+   * order survives (ADR 0016). */
+  payload: unknown;
+}
+
+export type ConditionalWriteResult =
+  | { ok: true; etag: string; created: boolean }
+  | { ok: false; conflict: ArtifactConflict };
+
+/**
+ * Read, decide and write in one call. `created` is the `201`-vs-`200` fact for a door that
+ * distinguishes them; every refusal is the conflict the door maps to its own status.
+ */
+export function conditionalWrite(absPath: string, write: ConditionalWrite): ConditionalWriteResult {
+  const precondition = checkPrecondition(readArtifact(absPath), write.ifMatch, write.rule);
+  if (!precondition.ok) return precondition;
+  const written = writeArtifact(absPath, write.payload, { create: precondition.create });
+  if (!written.ok) return written;
+  return { ok: true, etag: written.etag, created: precondition.create };
+}
+
+export type ConditionalDeleteResult = { ok: true } | { ok: false; conflict: ArtifactConflict };
+
+/** Read, decide and remove in one call: `overwrite`'s rule, so an absent `If-Match` is `required`
+ * and a file that is already gone is `missing` (its own `404`, not the `412` the other conflicts
+ * take). */
+export function conditionalDelete(
+  absPath: string,
+  ifMatch: string | undefined,
+): ConditionalDeleteResult {
+  const precondition = checkPrecondition(readArtifact(absPath), ifMatch, "overwrite");
+  if (!precondition.ok) return precondition;
   rmSync(absPath);
+  return { ok: true };
 }

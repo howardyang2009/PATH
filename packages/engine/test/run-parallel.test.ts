@@ -10,7 +10,7 @@ import { createProcessorSemaphore } from "../src/processor-semaphore.js";
 import type { NodeExecContext, RunContext } from "../src/run-context.js";
 import { createEmitter } from "../src/run-emitter.js";
 import type { RunEvent } from "../src/run-observer.js";
-import { runNode, runSequence } from "../src/run-workflow.js";
+import { runContainerBody, runNode, runSequence } from "../src/run-workflow.js";
 import { flat } from "./fake-observer.js";
 
 /**
@@ -96,7 +96,7 @@ function makeRun(overrides: Partial<RunContext> = {}): {
 }
 
 function makeExec(context: { [key: string]: JsonValue } = {}): NodeExecContext {
-  return { context, onPublish: async () => {}, walk: runSequence };
+  return { context, onPublish: async () => {}, walk: runSequence, bodyWalk: runContainerBody };
 }
 
 /** An echo step whose output is its literal input, so a sequence's chaining is visible. */
@@ -132,9 +132,9 @@ describe("runNode — parallel", () => {
     const walked: string[] = [];
     const exec: NodeExecContext = {
       ...makeExec(),
-      walk: (r, nodes, seedInput, inner) => {
+      bodyWalk: (r, nodes, seedInput, inner) => {
         walked.push(...nodes.map((n) => n.name));
-        return runSequence(r, nodes, seedInput, inner);
+        return runContainerBody(r, nodes, seedInput, inner);
       },
     };
 
@@ -143,6 +143,24 @@ describe("runNode — parallel", () => {
     expect(outcome).toEqual({ status: "succeeded", output: { left: "L", right: "R" } });
     // Both branches (each one node) ran through the handed-in walk, in declaration order.
     expect(walked).toEqual(["left", "right"]);
+  });
+
+  // Load refuses a goto under a parallel; a branch body that skipped load must fail the block
+  // rather than have the join report success over a dropped jump (its output map would read null).
+  it("fails the block when a goto escapes a branch (a skipped load)", async () => {
+    const target: Node = {
+      type: "checkpoint",
+      id: "target",
+      name: "target",
+      condition: { type: "exists", path: "context.count" },
+    };
+    const { run } = makeRun({ file: { ...file, body: [target] } });
+    const jump: Node = { type: "goto", id: "jump", name: "jump", target: "target", max_jumps: 3 };
+
+    const outcome = await runNode(run, parallel([jump]), "seed", makeExec());
+
+    expect(outcome.status).toBe("failed");
+    expect(outcome.status === "failed" && outcome.error).toMatch(/goto "jump".*parallel body/);
   });
 
   it("keys its output by branch id in declaration order, whatever order they finish in", async () => {

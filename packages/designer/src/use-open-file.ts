@@ -1,27 +1,25 @@
 import type { PathApiClient, WireStepPlugin } from "@path/client-core";
-import { instantiateWorkflow, must, type WorkflowFile } from "@path/schema";
+import type { WorkflowFile } from "@path/schema";
 import { errorMessage } from "@path/viewer";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { type DocumentWrite, loadDocument, writeDocument } from "./document.js";
+import { loadDocument, writeDocument } from "./document.js";
 import type { EditCommit, EditKey } from "./edit-key.js";
 import { canonicalSerialize } from "./serialize.js";
 import {
   type EditMode,
+  type FetchRequest,
   type Frame,
-  IDLE,
   initialSessionState,
   planDelete,
-  planNewFileSave,
-  planNewTemplateSave,
-  planSave,
-  planTemplateSaveAs,
-  planWorkflowSaveAs,
+  planWrite,
   reduceSession,
+  type SaveAsIntent,
   type SaveState,
   type SessionAction,
+  type SessionOutcome,
   type SessionState,
-  stemName,
   type TemplateSource,
+  type WritePlan,
 } from "./session-reducer.js";
 
 export type {
@@ -30,6 +28,7 @@ export type {
   FrameState,
   History,
   OpenedResult,
+  SaveAsIntent,
   SaveState,
   SessionAction,
   SessionState,
@@ -61,19 +60,6 @@ export type RegistryLoad =
   | { phase: "loading" }
   | { phase: "error"; message: string }
   | { phase: "ready"; plugins: WireStepPlugin[] };
-
-/**
- * One **Save as…** of the active buffer — every door that writes it to a document it does not yet
- * have. A workflow copy mints fresh workflow and node ids via Instantiation (ADR 0006); a new
- * template is a new identity (ADR 0049 decision 8) with only its `id` minted, since Instantiation
- * re-stamps node ids; `workflow-as-template` (ADR 0063) leaves the workflow open and unchanged.
- */
-export type SaveAsIntent =
-  | { kind: "new-file"; path: string }
-  | { kind: "workflow-copy"; path: string }
-  | { kind: "new-template"; name: string; description: string }
-  | { kind: "template-copy"; name: string; description: string }
-  | { kind: "workflow-as-template"; name: string; description: string };
 
 /**
  * The outcome of a Save as…: `created` (path `null` for a template), `exists` — target taken, the
@@ -143,18 +129,6 @@ export interface OpenSession {
   saveState: SaveState;
 }
 
-/**
- * The frame a just-applied loading action put in flight, when it is the one this request is for:
- * the reducer's verdict read back as I/O intent. A `descend` that re-entered the frame ahead leaves
- * no frame awaiting `seq`, so there is nothing to fetch. Module scope, so naming it never
- * invalidates a caller.
- */
-function pendingFetch(state: SessionState, seq: number): { frame: Frame; depth: number } | null {
-  const depth = state.activeIndex;
-  const frame = state.frames[depth];
-  return frame && frame.loadSeq === seq ? { frame, depth } : null;
-}
-
 export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSession {
   const [registry, setRegistry] = useState<RegistryLoad>({ phase: "loading" });
   const [session, setSession] = useState<SessionState>(initialSessionState);
@@ -167,19 +141,14 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
   // The registry plugins, so an open callback reads them without waiting on a state read.
   const pluginsRef = useRef<WireStepPlugin[] | null>(null);
 
-  /** Apply one session action and return the state it produced, so the hook reads the reducer's
-   * verdict directly. */
-  const apply = useCallback((action: SessionAction): SessionState => {
-    const next = reduceSession(sessionRef.current, action);
-    sessionRef.current = next;
-    setSession(next);
-    return next;
+  /** Apply one session action and return what it produced: the next state, and the read it asks for
+   * (if any). The reducer resolves both, so the hook performs I/O and decides nothing. */
+  const apply = useCallback((action: SessionAction): SessionOutcome => {
+    const outcome = reduceSession(sessionRef.current, action);
+    sessionRef.current = outcome.state;
+    setSession(outcome.state);
+    return outcome;
   }, []);
-
-  // The number each fetch carries. Minted here because only the hook knows a request was made; what
-  // the number *means* — a landing is stale unless the frame still awaits it — is the reducer's
-  // (`Frame.loadSeq`).
-  const loadSeq = useRef(0);
 
   useEffect(() => {
     let alive = true;
@@ -198,36 +167,43 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
     };
   }, [client]);
 
-  /** Fetch the frame at `depth`, which the reducer has just put into its loading state. */
+  /** Perform the read the reducer asked for, echoing its token back so a landing the author has
+   * since outrun is dropped. */
   const fetchFrame = useCallback(
-    (frame: Frame, depth: number, seq: number): void => {
+    (request: FetchRequest): void => {
       const plugins = pluginsRef.current;
       if (!plugins) return;
+      const { frame, depth, token } = request;
       void loadDocument(client, frame, plugins).then((loaded) => {
-        if (loaded) apply({ type: "loadLanded", depth, path: frame.path, loadSeq: seq, ...loaded });
+        if (loaded) apply({ type: "loadLanded", depth, path: frame.path, token, ...loaded });
       });
     },
     [apply, client],
   );
 
+  /** Apply an action and run whatever read it asked for — the whole shape of an I/O step. */
+  const applyAndFetch = useCallback(
+    (action: SessionAction): void => {
+      const { fetch } = apply(action);
+      if (fetch) fetchFrame(fetch);
+    },
+    [apply, fetchFrame],
+  );
+
   const open = useCallback(
     (path: string): void => {
       if (!pluginsRef.current) return;
-      const seq = ++loadSeq.current;
-      const next = apply({ type: "openLoading", path, loadSeq: seq });
-      fetchFrame(must(next.frames[next.activeIndex], "opened frame"), next.activeIndex, seq);
+      applyAndFetch({ type: "openLoading", path });
     },
-    [apply, fetchFrame],
+    [applyAndFetch],
   );
 
   const openTemplate = useCallback(
     (template: TemplateSource): void => {
       if (!pluginsRef.current) return;
-      const seq = ++loadSeq.current;
-      const next = apply({ type: "openTemplateLoading", template, loadSeq: seq });
-      fetchFrame(must(next.frames[next.activeIndex], "opened frame"), next.activeIndex, seq);
+      applyAndFetch({ type: "openTemplateLoading", template });
     },
-    [apply, fetchFrame],
+    [applyAndFetch],
   );
 
   const newFile = useCallback((): void => {
@@ -250,12 +226,10 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
     (ref: string, nodeId: string): void => {
       // A descent needs a file open and the registry ready to parse what comes back.
       if (!pluginsRef.current) return;
-      const seq = ++loadSeq.current;
-      const next = apply({ type: "descend", ref, nodeId, loadSeq: seq });
-      const pending = pendingFetch(next, seq);
-      if (pending) fetchFrame(pending.frame, pending.depth, seq);
+      // Re-entering the frame ahead asks for no read; the reducer's outcome says so.
+      applyAndFetch({ type: "descend", ref, nodeId });
     },
-    [apply, fetchFrame],
+    [applyAndFetch],
   );
 
   const descendNewUnbound = useCallback(
@@ -314,95 +288,52 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
 
   const reloadActive = useCallback((): void => {
     if (!pluginsRef.current) return;
-    const seq = ++loadSeq.current;
-    const next = apply({ type: "reload", loadSeq: seq });
-    // An unwritten buffer leaves no frame awaiting this fetch, so it is never thrown away for a
-    // 404.
-    const pending = pendingFetch(next, seq);
-    if (pending) fetchFrame(pending.frame, pending.depth, seq);
-  }, [apply, fetchFrame]);
+    // An unwritten buffer asks for no read, so it is never thrown away for a 404.
+    applyAndFetch({ type: "reload" });
+  }, [applyAndFetch]);
 
   /**
-   * The persist-and-advance-the-save-point spine behind `save` and `saveAs`: set `saving`, write,
-   * and dispatch the caller's success action, so the save-point advance and the `saved` phase never
-   * tear (ADR 0016, ADR 0030).
+   * The persist-and-advance-the-save-point spine behind `save` and `saveAs`: set `saving`, write
+   * the plan, and dispatch the action the plan lands, so the save-point advance and the `saved`
+   * phase never tear (ADR 0016, ADR 0030).
    */
   const commitSave = useCallback(
-    async (
-      write: DocumentWrite,
-      successAction: (
-        result: { etag: string; relativePath: string; id: string },
-        savedBytes: string,
-      ) => SessionAction,
-    ) => {
+    async (plan: WritePlan) => {
       apply({ type: "saveStarted" });
-      const outcome = await writeDocument(client, write);
+      const outcome = await writeDocument(client, plan.write);
       // `savedBytes` is the canonical serialization of the exact buffer written; the buffer is
       // clean iff it still equals it, so an edit during the in-flight save stays dirty against the
       // new baseline.
-      if (outcome.ok) apply(successAction(outcome, canonicalSerialize(write.file)));
+      if (outcome.ok) apply(plan.landed(outcome, canonicalSerialize(plan.write.file)));
       return outcome;
     },
     [apply, client],
   );
 
   const save = useCallback((): void => {
-    // The door is the reducer's choice (`planSave`): `null` for a from-scratch root, otherwise an
-    // overwrite under the frame's `If-Match` ETag, an exclusive create at a create-new child's
-    // path, or author mode's write-back.
-    const plan = planSave(sessionRef.current);
-    if (!plan) return;
-    const write: DocumentWrite =
-      plan.kind === "template"
-        ? {
-            to: "template",
-            id: plan.id,
-            ifMatch: plan.ifMatch,
-            description: plan.template.description,
-            file: plan.file,
-          }
-        : { to: "workflow", path: plan.path, ifMatch: plan.ifMatch, file: plan.file };
-    void commitSave(write, (result, savedBytes) =>
-      plan.kind === "template"
-        ? { type: "templateSaved", depth: plan.depth, id: plan.id, etag: result.etag, savedBytes }
-        : { type: "saved", depth: plan.depth, path: plan.path, etag: result.etag, savedBytes },
-    ).then((outcome) => {
-      if (outcome.ok) return;
-      // A refused overwrite is the stale-write conflict the author reloads from; a create-new
-      // child's refusal is a collision resolved by retargeting the reference.
-      const saveState: SaveState =
-        outcome.conflict === null
-          ? { phase: "error", message: outcome.message }
-          : plan.kind === "create"
-            ? {
-                phase: "error",
-                message: `A workflow already exists at ${plan.path}. Choose a different target for the reference.`,
-              }
-            : { phase: "conflict", message: outcome.message };
-      apply({ type: "setSaveState", saveState });
+    const plan = planWrite(sessionRef.current, { kind: "save" });
+    // No plan: nothing is open, or the buffer has no identity yet and a dialog owns its first save.
+    if (!plan.ok) return;
+    void commitSave(plan).then((outcome) => {
+      if (!outcome.ok) apply({ type: "setSaveState", saveState: plan.refused(outcome) });
     });
   }, [apply, commitSave]);
 
   const saveAs = useCallback(
     async (intent: SaveAsIntent): Promise<SaveAsResult> => {
-      const request = saveAsRequest(sessionRef.current, intent);
-      if (typeof request === "string") return { status: "error", message: request };
-      const outcome = await commitSave(request.write, request.successAction);
+      const plan = planWrite(sessionRef.current, intent);
+      if (!plan.ok) return { status: "error", message: plan.message };
+      const outcome = await commitSave(plan);
       if (outcome.ok)
         return {
           status: "created",
-          path: request.write.to === "workflow" ? outcome.relativePath : null,
+          path: plan.write.to === "workflow" ? outcome.relativePath : null,
         };
-      // A taken name is the dialog's to show, not the toolbar's: drop back to idle for it.
-      if (outcome.conflict === "exists") {
-        apply({ type: "setSaveState", saveState: IDLE });
-        return { status: "exists" };
-      }
-      apply({
-        type: "setSaveState",
-        saveState: intent.kind === "new-file" ? { phase: "error", message: outcome.message } : IDLE,
-      });
-      return { status: "error", message: outcome.message };
+      apply({ type: "setSaveState", saveState: plan.refused(outcome) });
+      // A taken name is the dialog's to show: its own "choose another" result, not a message.
+      return outcome.conflict === "exists"
+        ? { status: "exists" }
+        : { status: "error", message: outcome.message };
     },
     [apply, commitSave],
   );
@@ -438,102 +369,4 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
     deleteActive,
     saveState,
   };
-}
-
-/**
- * The write and success action one Save as… runs, from the reducer's plan — or the error message.
- */
-function saveAsRequest(
-  state: SessionState,
-  intent: SaveAsIntent,
-):
-  | string
-  | {
-      write: DocumentWrite;
-      successAction: (
-        result: { etag: string; relativePath: string; id: string },
-        savedBytes: string,
-      ) => SessionAction;
-    } {
-  switch (intent.kind) {
-    case "new-file": {
-      // Only a from-scratch **root** buffer picks its path here; the server echoes the resolved
-      // `relative_path`, which the frame adopts and the parent ref is back-filled from.
-      const plan = planNewFileSave(state);
-      if (!plan) return "No new-file buffer to save.";
-      return {
-        write: { to: "workflow", path: intent.path, ifMatch: undefined, file: plan.file },
-        successAction: (result, savedBytes) => ({
-          type: "newFileSaved",
-          depth: plan.depth,
-          etag: result.etag,
-          savedBytes,
-          relativePath: result.relativePath,
-        }),
-      };
-    }
-    case "workflow-copy": {
-      const plan = planWorkflowSaveAs(state);
-      if (!plan) return "No workflow to save.";
-      const file: WorkflowFile = { ...instantiateWorkflow(plan.file), name: stemName(intent.path) };
-      return {
-        write: { to: "workflow", path: intent.path, ifMatch: undefined, file },
-        successAction: (result) => ({
-          type: "detachedSaved",
-          depth: plan.depth,
-          fromId: plan.file.id,
-          file,
-          relativePath: result.relativePath,
-          etag: result.etag,
-        }),
-      };
-    }
-    case "workflow-as-template": {
-      const plan = planWorkflowSaveAs(state);
-      if (!plan) return "No workflow to save.";
-      // Only the body survives; the workflow-level fields are dropped.
-      const file: WorkflowFile = {
-        format: plan.file.format,
-        id: crypto.randomUUID(),
-        name: intent.name,
-        body: plan.file.body,
-      };
-      return {
-        write: { to: "new-template", name: intent.name, description: intent.description, file },
-        successAction: () => ({
-          type: "setSaveState",
-          saveState: { phase: "saved-as-template", name: intent.name },
-        }),
-      };
-    }
-    case "new-template":
-    case "template-copy": {
-      const copy = intent.kind === "template-copy" ? planTemplateSaveAs(state) : null;
-      const plan = intent.kind === "template-copy" ? copy : planNewTemplateSave(state);
-      if (!plan)
-        return intent.kind === "new-template"
-          ? "No new template to save."
-          : "No template source to save.";
-      const fromId = copy?.template.id ?? null;
-      const file: WorkflowFile = { ...plan.file, id: crypto.randomUUID() };
-      const template: TemplateSource = {
-        id: file.id,
-        kind: "step",
-        name: intent.name,
-        description: intent.description,
-        readOnly: false,
-      };
-      return {
-        write: { to: "new-template", name: intent.name, description: intent.description, file },
-        successAction: (result) => ({
-          type: "templateSavedAs",
-          depth: plan.depth,
-          fromId,
-          template: { ...template, id: result.id },
-          file,
-          etag: result.etag,
-        }),
-      };
-    }
-  }
 }

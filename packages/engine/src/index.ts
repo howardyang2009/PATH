@@ -3,6 +3,19 @@ export { LOG_BACKEND_IDS, type LogBackendId } from "./logging/backends.js";
 export { LOG_FORMAT, type LogBackend, type LogFormat } from "./logging/log-backend.js";
 export { readNdjsonLog } from "./logging/ndjson-backend.js";
 export { openDb, SchemaVersionError } from "./persistence/db.js";
+export {
+  acquireMarkerLease,
+  DEFAULT_MARKER_CODEC,
+  type MarkerCodec,
+  type MarkerLeaseGrant,
+  type MarkerLeaseMarker,
+  type MarkerLeaseRequest,
+  type MarkerLeaseResult,
+  readMarkerLease,
+  releaseMarkerLease,
+  removeMarkerLease,
+  renewMarkerLease,
+} from "./persistence/marker-lease.js";
 export { dbFilePath, pathDir, rootRunTreeDir } from "./persistence/paths.js";
 export { type LoadedStepPluginRegistry, loadStepPluginRegistry } from "./plugin-seam/scan.js";
 export {
@@ -13,6 +26,9 @@ export {
   type OpenProjectResult,
   openProject,
   type Project,
+  type ProjectContinuationOptions,
+  type ProjectLaunchOptions,
+  type ProjectResumeOptions,
   type ProjectRunOptions,
   type ResumeResult,
 } from "./project.js";
@@ -33,7 +49,9 @@ export {
 } from "./run-observer.js";
 export {
   type ContinuationInput,
+  type ContinuationRunOptions,
   type ContinueInput,
+  type LaunchRunOptions,
   type ResumeInput,
   type RunOptions,
   type RunResult,

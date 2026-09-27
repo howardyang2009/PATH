@@ -70,6 +70,15 @@ An Architecture Decision Record (ADR) records one decision PATH has made: the sh
 | [0064](0064-a-sequence-body-is-transparent-to-the-rerun-boundary.md) | A sequence body is transparent to the rerun boundary | accepted |
 | [0065](0065-comments-state-what-and-why-decisions-live-in-adrs.md) | Source comments state what and why; decisions live in ADRs | accepted |
 | [0066](0066-the-log-event-is-the-only-event-vocabulary.md) | The log event is the only event vocabulary | accepted |
+| [0067](0067-a-container-body-walk-cannot-take-a-jump.md) | A container body's walk cannot take a jump | accepted |
+| [0068](0068-the-run-entry-options-are-two-arms.md) | The run entry options are two arms: a launch and a continuation | accepted |
+| [0069](0069-the-api-clients-endpoint-groups-are-implementation.md) | The API client's endpoint groups are implementation, not a seam | accepted |
+| [0070](0070-every-run-door-addresses-its-run-through-one-lookup.md) | Every run door addresses its run through one lookup | accepted |
+| [0071](0071-the-artifact-write-door-decides-and-writes-in-one-call.md) | The artifact write door decides and writes in one call | accepted |
+| [0072](0072-one-expiring-marker-lease-primitive.md) | One expiring-marker lease primitive, two policies over it | accepted |
+| [0073](0073-the-designers-write-decision-is-one-plan.md) | The Designer's write decision is one plan | accepted |
+| [0074](0074-the-session-reducer-hands-out-the-read-it-asks-for.md) | The session reducer hands out the read it asks for | accepted |
+| [0075](0075-one-legal-k-verdict-two-reachabilities.md) | One legal-K verdict, two reachabilities | accepted |
 
 ## Superseded decisions
 

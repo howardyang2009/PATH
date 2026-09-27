@@ -1,13 +1,24 @@
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { resolve } from "node:path";
+import {
+  acquireMarkerLease,
+  type MarkerCodec,
+  type MarkerLeaseGrant,
+  type MarkerLeaseMarker,
+  readMarkerLease,
+  releaseMarkerLease,
+  removeMarkerLease,
+  renewMarkerLease,
+} from "@path/engine";
 import type { WireLockHeldBody, WireWorkflowLease } from "@path/schema";
 import { confineToProjectRoot } from "./confine.js";
 
 /**
- * The Designer **edit lease** (ADR 0017): an expiring marker `<name>.workflow.json.editing` beside
- * the workflow — Designer-to-Designer exclusion, complementing the write door's `If-Match`
- * precondition. The marker file *is* the state, so a restart loses nothing; all operations are
- * synchronous.
+ * The Designer **edit lease** (ADR 0017), over the marker-lease primitive: an expiring marker
+ * `<name>.workflow.json.editing` beside the workflow — Designer-to-Designer exclusion,
+ * complementing the write door's `If-Match` precondition. This module owns what is the Designer's:
+ * the marker's path beside its workflow, the TTL, the wire shape, and the takeover affordance. The
+ * file-state protocol — is the marker live, the `wx` race, holder-scoped release — is the
+ * primitive's.
  */
 
 /** TTL 30s (ADR 0017): a live tab heartbeats every 10s; a crashed one frees the marker within
@@ -41,6 +52,48 @@ export interface EditLease {
   remove(): void;
 }
 
+/** The wire shape of one grant: the holder is the client's `session_id`, and every window instant
+ * comes from the grant's own stamp. */
+function toWire(
+  sessionId: string,
+  grant: Pick<MarkerLeaseGrant, "acquiredAt" | "grantedAt" | "expiresAt">,
+): Lease {
+  return {
+    session_id: sessionId,
+    acquired_at: grant.acquiredAt,
+    heartbeat_at: grant.grantedAt,
+    expires_at: grant.expiresAt,
+  };
+}
+
+/**
+ * The marker's JSON **is** the wire lease (ADR 0017): an operator who reads the file sees the same
+ * four server-stamped fields the Designer got back, and a hand-authored marker is honored. That
+ * shape is this door's policy; the lease protocol underneath is the primitive's.
+ */
+const EDIT_LEASE_CODEC: MarkerCodec = {
+  encode: (marker: MarkerLeaseMarker) =>
+    `${JSON.stringify(toWire(marker.holder, marker), null, 2)}\n`,
+  decode: (text: string) => {
+    let raw: unknown;
+    try {
+      raw = JSON.parse(text);
+    } catch {
+      return undefined;
+    }
+    const parsed = (typeof raw === "object" && raw !== null ? raw : {}) as Record<string, unknown>;
+    if (typeof parsed.session_id !== "string" || typeof parsed.expires_at !== "string")
+      return undefined;
+    const acquiredAt = typeof parsed.acquired_at === "string" ? parsed.acquired_at : "";
+    return {
+      holder: parsed.session_id,
+      acquiredAt,
+      grantedAt: typeof parsed.heartbeat_at === "string" ? parsed.heartbeat_at : acquiredAt,
+      expiresAt: parsed.expires_at,
+    };
+  },
+};
+
 /**
  * The edit lease of `workflowPath`, or `undefined` when its marker would escape the project root or
  * traverse a symlink (ADR 0017 decision 7).
@@ -55,106 +108,53 @@ export function editLease(
   });
   if (markerPath === undefined) return undefined;
 
-  const isLive = (lease: Lease | undefined): lease is Lease =>
-    lease !== undefined && now() <= Date.parse(lease.expires_at);
-  const window = (at: number) => ({
-    heartbeat_at: new Date(at).toISOString(),
-    expires_at: new Date(at + TTL_MS).toISOString(),
+  /** The refusal the Designer reads: the live holder's expiry, so it can offer a takeover. */
+  const held = (message: string, expiresAt: string | null): AcquireResult => ({
+    ok: false,
+    held: {
+      error: { message },
+      held_by_other: true,
+      expires_at: expiresAt as string,
+    },
   });
 
   return {
     acquire(sessionId, takeover) {
-      const { fileExists, lease } = readLease(markerPath);
-      const live = isLive(lease);
-      if (live && lease.session_id !== sessionId && !takeover) {
-        return {
-          ok: false,
-          held: {
-            error: { message: "workflow is being edited in another session" },
-            held_by_other: true,
-            expires_at: lease.expires_at,
-          },
-        };
-      }
-      // Re-acquiring one's own live lease keeps its `acquired_at`; every other grant starts a new
-      // window.
-      const at = now();
-      const granted: Lease = {
-        session_id: sessionId,
-        acquired_at:
-          live && lease.session_id === sessionId ? lease.acquired_at : new Date(at).toISOString(),
-        ...window(at),
-      };
-      // A fresh grant uses `wx`, so a marker another OS process created since the read fails rather
-      // than being clobbered; a reclaim or takeover overwrites.
-      mkdirSync(dirname(markerPath), { recursive: true });
-      try {
-        writeFileSync(markerPath, serializeLease(granted), fileExists ? undefined : { flag: "wx" });
-      } catch (err) {
-        if (fileExists || (err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
-        // Undefined only when the racing marker is unreadable; JSON then omits the field.
-        const raced = readLease(markerPath).lease;
-        return {
-          ok: false,
-          held: {
-            error: { message: "workflow was just locked in another session" },
-            held_by_other: true,
-            expires_at: raced?.expires_at as string,
-          },
-        };
-      }
-      return { ok: true, lease: granted };
+      const result = acquireMarkerLease({
+        path: markerPath,
+        holder: sessionId,
+        ttlMs: TTL_MS,
+        takeover,
+        now,
+        codec: EDIT_LEASE_CODEC,
+      });
+      if (result.ok) return { ok: true, lease: toWire(sessionId, result.grant) };
+      // A marker that raced in between the read and the create could not be read back; say so
+      // rather than reporting a holder the caller never saw.
+      return held(
+        result.holder === null
+          ? "workflow was just locked in another session"
+          : "workflow is being edited in another session",
+        result.expiresAt,
+      );
     },
 
     renew(sessionId) {
-      const { lease } = readLease(markerPath);
-      if (lease === undefined || lease.session_id !== sessionId) return undefined;
-      const renewed: Lease = { ...lease, ...window(now()) };
-      writeFileSync(markerPath, serializeLease(renewed));
-      return renewed;
+      const grant = renewMarkerLease(markerPath, sessionId, TTL_MS, now, EDIT_LEASE_CODEC);
+      return grant === undefined ? undefined : toWire(sessionId, grant);
     },
 
     release(sessionId) {
-      const { lease } = readLease(markerPath);
-      if (lease === undefined || lease.session_id !== sessionId) return false;
-      rmSync(markerPath, { force: true });
-      return true;
+      return releaseMarkerLease(markerPath, sessionId, EDIT_LEASE_CODEC);
     },
 
     heldByOther(sessionId) {
-      const { lease } = readLease(markerPath);
-      return isLive(lease) && lease.session_id !== sessionId;
+      const live = readMarkerLease(markerPath, now, EDIT_LEASE_CODEC);
+      return live !== undefined && live.holder !== sessionId;
     },
 
     remove() {
-      rmSync(markerPath, { force: true });
+      removeMarkerLease(markerPath);
     },
   };
-}
-
-/**
- * Read a marker; `fileExists` tells a bare "no marker" from a present but unparseable one, treated
- * as expired and reclaimable.
- */
-function readLease(absPath: string): { fileExists: boolean; lease?: Lease } {
-  let bytes: string;
-  try {
-    bytes = readFileSync(absPath, "utf8");
-  } catch {
-    return { fileExists: false };
-  }
-  try {
-    const parsed = JSON.parse(bytes) as Partial<Lease>;
-    if (typeof parsed.session_id === "string" && typeof parsed.expires_at === "string") {
-      return { fileExists: true, lease: parsed as Lease };
-    }
-  } catch {
-    // a hand-mangled or truncated marker is not a valid lease
-  }
-  return { fileExists: true };
-}
-
-/** Deterministic serialization, matching the write door: 2-space indent, trailing newline. */
-function serializeLease(lease: Lease): string {
-  return `${JSON.stringify(lease, null, 2)}\n`;
 }

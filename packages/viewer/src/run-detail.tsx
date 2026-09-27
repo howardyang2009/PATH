@@ -1,6 +1,7 @@
 import { isTerminal, type PathApiClient, type WorkflowFile } from "@path/client-core";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useRef } from "react";
 import { CancelButton } from "./cancel-button.js";
+import { useDragSize } from "./drag-size.js";
 import { Narrative } from "./narrative.js";
 import { PaneError, PaneLoading } from "./pane-note.js";
 import { RunTree } from "./run-tree.js";
@@ -13,12 +14,6 @@ const DEFAULT_TREE_HEIGHT = 220;
 const MIN_TREE_HEIGHT = 80;
 /** Leave at least this much for the narrative so the tree can never swallow the whole pane. */
 const MIN_NARRATIVE = 120;
-
-function loadTreeHeight(): number {
-  if (typeof localStorage === "undefined") return DEFAULT_TREE_HEIGHT;
-  const raw = Number(localStorage.getItem(TREE_HEIGHT_KEY));
-  return raw >= MIN_TREE_HEIGHT ? raw : DEFAULT_TREE_HEIGHT;
-}
 
 export interface RunDetailProps {
   client: PathApiClient;
@@ -53,66 +48,18 @@ export function RunDetail({
   workflowFiles = [],
 }: RunDetailProps) {
   const detailRef = useRef<HTMLDivElement>(null);
-  const [treeHeight, setTreeHeight] = useState<number>(loadTreeHeight);
-  const dragRef = useRef<{ startY: number; startHeight: number } | null>(null);
-
-  useEffect(() => {
-    if (typeof localStorage === "undefined") return;
-    try {
-      localStorage.setItem(TREE_HEIGHT_KEY, String(Math.round(treeHeight)));
-    } catch {
-      /* storage blocked — resize still works this session */
-    }
-  }, [treeHeight]);
-
-  const clampTree = useCallback((px: number) => {
-    // Never let the tree grow past what leaves the narrative its floor, nor below its own floor.
-    const cap = (detailRef.current?.clientHeight ?? Infinity) - MIN_NARRATIVE;
-    return Math.max(MIN_TREE_HEIGHT, Math.min(cap, px));
-  }, []);
-
-  const onPointerMove = useCallback(
-    (e: PointerEvent) => {
-      const drag = dragRef.current;
-      if (!drag) return;
-      setTreeHeight(clampTree(drag.startHeight + (e.clientY - drag.startY)));
-    },
-    [clampTree],
-  );
-
-  const endDrag = useCallback(() => {
-    dragRef.current = null;
-    document.body.style.removeProperty("cursor");
-    document.body.style.removeProperty("user-select");
-    window.removeEventListener("pointermove", onPointerMove);
-    window.removeEventListener("pointerup", endDrag);
-  }, [onPointerMove]);
-
-  const startDrag = useCallback(
-    (e: React.PointerEvent) => {
-      e.preventDefault();
-      dragRef.current = { startY: e.clientY, startHeight: treeHeight };
-      document.body.style.cursor = "row-resize";
-      document.body.style.userSelect = "none";
-      window.addEventListener("pointermove", onPointerMove);
-      window.addEventListener("pointerup", endDrag);
-    },
-    [treeHeight, onPointerMove, endDrag],
-  );
-
-  const onResizerKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      const step = e.shiftKey ? 32 : 8;
-      if (e.key === "ArrowUp") {
-        e.preventDefault();
-        setTreeHeight((h) => clampTree(h - step));
-      } else if (e.key === "ArrowDown") {
-        e.preventDefault();
-        setTreeHeight((h) => clampTree(h + step));
-      }
-    },
-    [clampTree],
-  );
+  // The tree/narrative split: the handle sits below the tree, so dragging down (+1) grows it, and
+  // the narrative keeps its floor.
+  const { size: treeHeight, handleProps: treeHandleProps } = useDragSize({
+    storageKey: TREE_HEIGHT_KEY,
+    defaultSize: DEFAULT_TREE_HEIGHT,
+    min: MIN_TREE_HEIGHT,
+    max: () => (detailRef.current?.clientHeight ?? Infinity) - MIN_NARRATIVE,
+    axis: "y",
+    grow: 1,
+    cursor: "row-resize",
+    ariaOrientation: "horizontal",
+  });
 
   if (load.phase === "idle" || load.phase === "loading") return <PaneLoading what="run" />;
   if (load.phase === "error") return <PaneError what="run" message={load.message} />;
@@ -171,16 +118,7 @@ export function RunDetail({
         />
       </section>
 
-      <hr
-        className="row-resizer"
-        aria-orientation="horizontal"
-        aria-label="Resize run tree"
-        aria-valuenow={Math.round(treeHeight)}
-        aria-valuemin={MIN_TREE_HEIGHT}
-        tabIndex={0}
-        onPointerDown={startDrag}
-        onKeyDown={onResizerKeyDown}
-      />
+      <hr className="row-resizer" aria-label="Resize run tree" {...treeHandleProps} />
 
       <Narrative events={state.narrative} stream={state.stream} />
     </div>

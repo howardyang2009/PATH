@@ -1,20 +1,21 @@
 import { isTerminal } from "@path/schema";
 import { sendError, sendJson } from "../http-json.js";
+import { resolveRun } from "./resolve-run.js";
 import type { ApiRequest } from "./route-context.js";
 
 /** `POST /v0/runs/:root_run_id/cancel` (server-api-v0.md §4.2): answer 202 as soon as the abort is
  * signalled — the client learns the real terminal status from the SSE stream it already watches. */
 export function handleCancelRun({ res, ctx, params: [rootRunId] }: ApiRequest<[string]>): void {
-  // Use the root row, never a child: a child can read `succeeded` while the tree is still running,
+  // The tree's own root row answers: a child can read `succeeded` while the tree is still running,
   // and a 409 taken from it would refuse a live cancel.
-  const rootRow = ctx.project.archive.tree(rootRunId)?.root;
-  if (!rootRow) {
-    sendError(res, 404, `no run found with id "${rootRunId}"`);
+  const address = resolveRun(ctx, rootRunId);
+  if (!address.ok) {
+    sendError(res, address.status, address.message);
     return;
   }
 
-  if (isTerminal(rootRow.status)) {
-    sendError(res, 409, `run "${rootRunId}" already finished with status "${rootRow.status}"`);
+  if (isTerminal(address.root.status)) {
+    sendError(res, 409, `run "${rootRunId}" already finished with status "${address.root.status}"`);
     return;
   }
 

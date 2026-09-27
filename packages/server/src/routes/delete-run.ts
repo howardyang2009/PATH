@@ -1,5 +1,6 @@
 import { isTerminal } from "@path/schema";
 import { sendError, sendJson } from "../http-json.js";
+import { resolveRun } from "./resolve-run.js";
 import type { ApiRequest } from "./route-context.js";
 
 /**
@@ -16,14 +17,18 @@ export function handleDeleteRun({
   const force = query.get("force") === "true";
 
   // The root row specifically: a child can read terminal while the tree still runs.
-  const rootRow = ctx.project.archive.tree(rootRunId)?.root;
-  if (!rootRow) {
-    sendError(res, 404, `no run found with id "${rootRunId}"`);
+  const address = resolveRun(ctx, rootRunId);
+  if (!address.ok) {
+    sendError(res, address.status, address.message);
     return;
   }
 
-  if (!isTerminal(rootRow.status)) {
-    sendError(res, 409, `run "${rootRunId}" is still ${rootRow.status}; cancel it before deleting`);
+  if (!isTerminal(address.root.status)) {
+    sendError(
+      res,
+      409,
+      `run "${rootRunId}" is still ${address.root.status}; cancel it before deleting`,
+    );
     return;
   }
 

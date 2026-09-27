@@ -8,6 +8,7 @@ import {
   type RerunFromNodePathEntry,
   type RunRecord,
   type WorkflowFile,
+  walkNodes,
 } from "@path/schema";
 import { childIdentity } from "./child-run.js";
 import type { Continuation } from "./continuation.js";
@@ -23,6 +24,7 @@ import { finishSucceeded, type LeafStepNode, runLeafStep, type StepContext } fro
 import { resolveChildRef } from "./ref-tree.js";
 import { type EnvSource, effectiveConfig } from "./resolve-env.js";
 import type {
+  BodyOutcome,
   Cancellation,
   NodeExecContext,
   RunContext,
@@ -172,6 +174,7 @@ export async function executeWorkflowRun(params: WorkflowRunParams): Promise<Run
         await emitter.record({ kind: "context", context });
       },
       walk: runSequence,
+      bodyWalk: runContainerBody,
     });
     // The run parked at a person-activity leaf (ADR 0039/0041): no terminal `step-finished`, the
     // row stays `running`, and its detached branches keep running until a later Complete settles
@@ -409,4 +412,25 @@ export async function runSequence(
   }
 
   return { status: "succeeded", output: previous };
+}
+
+/**
+ * A container body's walk (`while-do` iteration, `parallel` branch): load refuses a `goto` under
+ * either (ADR 0058), so a jump that reaches here is a skipped load. It fails the run, naming the
+ * node, rather than escaping into a container that has nowhere to land it.
+ */
+export async function runContainerBody(
+  run: RunContext,
+  nodes: WorkflowFile["body"],
+  seedInput: JsonValue,
+  exec: NodeExecContext,
+): Promise<BodyOutcome> {
+  const outcome = await runSequence(run, nodes, seedInput, exec);
+  if (outcome.status !== "goto") return outcome;
+  // The jump may sit under a `sequence` or a `branch`, so name it by its own id.
+  const jumped = [...walkNodes(nodes)].find((node) => node.id === outcome.goto);
+  return {
+    status: "failed",
+    error: `goto "${jumped?.name ?? outcome.goto}": a jump may not leave a while-do or parallel body`,
+  };
 }
