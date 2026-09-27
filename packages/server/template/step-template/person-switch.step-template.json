@@ -9,7 +9,6 @@
       "name": "person-switch",
       "body": [
         {
-          "type": "person-activity",
           "id": "cc6a8e62-d739-4e17-8a63-b0ed9d8fab3e",
           "name": "choose",
           "description": "Pick which option runs next.",
@@ -30,7 +29,8 @@
               "choice"
             ],
             "additionalProperties": false
-          }
+          },
+          "type": "person-activity"
         },
         {
           "type": "branch",
@@ -44,13 +44,13 @@
                 "value": "option-a"
               },
               "node": {
-                "type": "binary",
                 "id": "5c347a16-6774-4927-a2b4-0631b8f55e18",
                 "name": "option-a",
                 "command": "echo",
                 "args": [
                   "option-a"
-                ]
+                ],
+                "type": "binary"
               }
             },
             {
@@ -60,13 +60,13 @@
                 "value": "option-b"
               },
               "node": {
-                "type": "binary",
                 "id": "5d84996e-3b27-40cd-8222-c90f3719c968",
                 "name": "option-b",
                 "command": "echo",
                 "args": [
                   "option-b"
-                ]
+                ],
+                "type": "binary"
               }
             }
           ]
