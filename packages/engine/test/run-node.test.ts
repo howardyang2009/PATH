@@ -10,10 +10,11 @@ import type {
   WorkflowFile,
 } from "@path/schema";
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { completeContinuation, noContinuation } from "../src/continuation.js";
 import { type LoadedStepPluginRegistry, scanStepPlugins } from "../src/plugin-seam/scan.js";
 import type { StepRequest, WorkerDescriptor } from "../src/plugin-seam/seam.js";
 import { createProcessorSemaphore } from "../src/processor-semaphore.js";
-import type { NodeExecContext, RunContext } from "../src/run-context.js";
+import type { ContinueState, NodeExecContext, RunContext } from "../src/run-context.js";
 import { createEmitter } from "../src/run-emitter.js";
 import type { RunEvent } from "../src/run-observer.js";
 import { runNode, runSequence } from "../src/run-workflow.js";
@@ -114,6 +115,7 @@ function makeRun(overrides: Partial<RunContext> = {}): {
       // An empty environment by default: a test about `$env` resolution hands over its own (#116).
       env: {},
       runtime: { registry, semaphore: createProcessorSemaphore(1) },
+      continuation: noContinuation(),
       detached: [],
       ...overrides,
     },
@@ -153,6 +155,11 @@ function existingRow(
     workflowPath: null,
     ...over,
   };
+}
+
+/** A Complete continuation over this fixture's root run, so a test states only the recorded rows. */
+function completeRun(state: ContinueState): RunContext["continuation"] {
+  return completeContinuation(state, file, "run-1");
 }
 
 /** A `prompt` node with a worker that would run if the node were not reused — the execution
@@ -1156,7 +1163,7 @@ describe("runNode — workflow step", () => {
     const reads: string[] = [];
     const { run, observed } = makeRun({
       files: new Map([[childPath(), child]]),
-      continue: {
+      continuation: completeRun({
         // The parked tree's nested run is still `running` (ADR 0038: awaiting does not propagate),
         // so the replay re-drives it under the identity its parked descendants already carry.
         existingRuns: [existingRow({ runId: "child-run", nodeId: "nested", status: "running" })],
@@ -1166,7 +1173,7 @@ describe("runNode — workflow step", () => {
           return filename === "context.json" ? { name: "world" } : {};
         },
         target: { stepRunId: "a-parked-leaf-deeper-down", output: null },
-      },
+      }),
     });
     const node: Node = {
       type: "workflow",
@@ -1191,7 +1198,7 @@ describe("runNode — a node's own recorded row decides the walk (ADR 0041)", ()
   it("reuses the recorded output of a succeeded row in the tree being Completed, running nothing", async () => {
     const requests: StepRequest[] = [];
     const { run, observed } = makeRun({
-      continue: {
+      continuation: completeRun({
         existingRuns: [
           existingRow({
             runId: "done-run",
@@ -1202,7 +1209,7 @@ describe("runNode — a node's own recorded row decides the walk (ADR 0041)", ()
         ],
         readBlob: () => "recorded-output",
         target: { stepRunId: "some-other-leaf", output: null },
-      },
+      }),
       runtime: promptRuntime(recordingWorker(requests)),
     });
 
@@ -1216,11 +1223,11 @@ describe("runNode — a node's own recorded row decides the walk (ADR 0041)", ()
 
   it("transitions the parked leaf being Completed in place, under its own run id", async () => {
     const { run, observed } = makeRun({
-      continue: {
+      continuation: completeRun({
         existingRuns: [existingRow({ runId: "parked-run", nodeId: "ask", status: "awaiting" })],
         readBlob: () => null,
         target: { stepRunId: "parked-run", output: "the person's answer" },
-      },
+      }),
     });
 
     const outcome = await runNode(run, askNode(), "seed", makeExec());
@@ -1237,11 +1244,11 @@ describe("runNode — a node's own recorded row decides the walk (ADR 0041)", ()
   it("parks again on a still-parked sibling, re-driving nothing (park-at-join)", async () => {
     const requests: StepRequest[] = [];
     const { run, observed } = makeRun({
-      continue: {
+      continuation: completeRun({
         existingRuns: [existingRow({ runId: "other-parked", nodeId: "ask", status: "awaiting" })],
         readBlob: () => null,
         target: { stepRunId: "a-different-leaf", output: null },
-      },
+      }),
       runtime: promptRuntime(recordingWorker(requests)),
     });
 
@@ -1253,11 +1260,11 @@ describe("runNode — a node's own recorded row decides the walk (ADR 0041)", ()
   it("runs fresh when the only recorded row is terminal — a cancelled row is not re-entered", async () => {
     const requests: StepRequest[] = [];
     const { run, observed } = makeRun({
-      continue: {
+      continuation: completeRun({
         existingRuns: [existingRow({ runId: "cancelled-run", nodeId: "ask", status: "cancelled" })],
         readBlob: () => null,
         target: { stepRunId: "some-other-leaf", output: null },
-      },
+      }),
       runtime: promptRuntime(recordingWorker(requests)),
     });
 

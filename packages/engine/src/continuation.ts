@@ -1,10 +1,14 @@
 import {
   type ConfigObject,
+  type GotoNode,
+  isPassRun,
   isReuseRow,
   type JsonValue,
   type LaunchFacts,
+  pathToRoot,
   type RerunFromNodePathEntry,
   type RunRecord,
+  serialOrder,
   type WorkflowFile,
 } from "@path/schema";
 import type Database from "better-sqlite3";
@@ -13,16 +17,28 @@ import { recoverLaunchConfig, wrapSecretsAtPaths } from "./launch-facts.js";
 import { readJsonBlob } from "./persistence/blob-store.js";
 import { RUN_BLOB_FILE, runBlobDir } from "./persistence/paths.js";
 import { getRun } from "./persistence/run-store.js";
-import { recordedChild } from "./resume-plan.js";
-import type { ContinueState, RunContext } from "./run-context.js";
+import { pickReusedWaitOneWinner, recordedChild } from "./plan-reuse.js";
+import {
+  enterIteration,
+  enterNested,
+  passResumer,
+  type ResumeEntry,
+  type RunResume,
+  resolveResume,
+  resumeSeed,
+} from "./resume-plan.js";
+import type { ChildRunKey, ContinueState, RunIdentity } from "./run-context.js";
 import type { RunObserver } from "./run-observer.js";
 
-// A node of a workflow body; a disposition is asked for one node of one file's body.
+/** A node of a workflow body; a disposition is asked for one node of one file's body. */
 type WorkflowNode = WorkflowFile["body"][number];
+type ParallelNode = Extract<WorkflowNode, { type: "parallel" }>;
+type ParallelBranch = ParallelNode["branches"][number];
 
 /**
- * One continuation of an existing run tree: swap each reuse row for its source record, read blobs
- * from the tree that record belongs to, and restore the Launch facts it recorded.
+ * The continuation recipe Resume and Complete share: swap each reuse row for its source record, read
+ * blobs from the tree that record belongs to, and restore the Launch facts it recorded. The two
+ * **modes** differ only in the {@link Continuation} they hand the walkers.
  */
 
 /**
@@ -110,8 +126,10 @@ export function successorCapture(): SuccessorCapture {
   };
 }
 
-/** What a node's recorded row says about the walk: Resume reads the reuse plan, Complete this
- * tree's own rows. */
+/**
+ * What a node's recorded row says about the walk: Resume reads its reuse plan, Complete this tree's
+ * own rows. The five answers are the whole mode difference a walker sees.
+ */
 export type NodeDisposition =
   /** Do not run the node: Resume reuses the original's output and marks it; Complete reads its own
    * succeeded row. */
@@ -125,43 +143,147 @@ export type NodeDisposition =
   | { kind: "reenter"; existing: RunRecord }
   | { kind: "fresh" };
 
-export interface Continuation {
-  /** The recorded-row verdict for one node; `iteration` scopes it to a `while-do` container
-   * (Complete only). */
-  disposition(node: WorkflowNode, iteration?: number): NodeDisposition;
+/** Where a top-level walk with passes starts. */
+export interface PassWalkStart {
+  pass: number;
+  /** The starting pass's opener; `null` for pass 1. */
+  opener: GotoNode | null;
+  start: number;
+  /** The walk's seed for pass 1, the recorded pass input on a re-entry. */
+  carried: JsonValue;
+  jumpsSpent: Map<string, number>;
+  /** The recorded `running` pass a Complete re-enters in place (same id, no second start). */
+  reentered: RunRecord | undefined;
 }
 
-/** The Resume adapter: a node reuses when the plan holds a succeeded original for its id, else runs
- * fresh. */
-function resumeContinuation(resume: RunContext["resume"]): Continuation {
+/** The parked leaf a diverged Complete still commits (ADR 0060 §2). */
+export interface ParkedLeaf {
+  runId: string;
+  node: { id: string; name: string };
+  output: JsonValue;
+}
+
+/** A Complete whose running pass no longer matches the reloaded file (ADR 0060 §2); a parked leaf
+ * under that pass is still committed first, so a later Resume reuses it instead of asking again. */
+export interface PassDivergence {
+  diverged: RunRecord;
+  error: string;
+  commit: ParkedLeaf | undefined;
+}
+
+/**
+ * One run's view of what is already recorded under it: what each child node means, where a
+ * re-entered run's blackboard starts, and how the answer scopes to a nested run, a loop iteration or
+ * a goto pass. Resume and Complete differ only in the implementation, never in the walker's question.
+ */
+export interface Continuation {
+  /** The recorded-row verdict for one node; `ordinal` scopes a `while-do` container. */
+  disposition(node: WorkflowNode, ordinal?: number): NodeDisposition;
+  /** The seed a re-entered workflow-run replays from (Resume root, ADR 0062), or `undefined` to
+   * take the run's own interpolated input. */
+  seed(): { [key: string]: JsonValue } | undefined;
+  /** The row this run re-enters in place, with the parked blackboard it restores (Complete); its
+   * presence is why a re-entry skips its `step-started`. */
+  reentry(): { existing: RunRecord; context: { [key: string]: JsonValue } } | undefined;
+  /** The continuation for a child run opened under this one: a nested `workflow` step, a `while-do`
+   * iteration container or a goto pass container. `file` is the child run's file. */
+  enter(key: ChildRunKey, file: WorkflowFile, identity: RunIdentity): Continuation;
+  /** The starting state of this run's **top-level walk**, or the divergence a Complete fails on. */
+  passWalk(
+    gotos: ReadonlyMap<string, GotoNode>,
+    seedInput: JsonValue,
+  ): PassWalkStart | PassDivergence;
+  /** The already-decided `wait-one` winner to replay without running the losers, if any. */
+  decidedRaceWinner(node: ParallelNode): ParallelBranch | undefined;
+}
+
+/** A launch's continuation: nothing is recorded, so every node runs fresh. */
+const FRESH: Continuation = {
+  disposition: () => ({ kind: "fresh" }),
+  seed: () => undefined,
+  reentry: () => undefined,
+  enter: () => FRESH,
+  decidedRaceWinner: () => undefined,
+  passWalk: (_gotos, seedInput) => freshPassWalk(seedInput),
+};
+
+/** The continuation a run with no predecessor walks with. */
+export function noContinuation(): Continuation {
+  return FRESH;
+}
+
+/** The Resume adapter: a successor tree that reuses the plan's succeeded originals. */
+export function resumeContinuation(
+  entry: ResumeEntry,
+  file: WorkflowFile,
+  isRoot: boolean,
+): Continuation {
+  return resumeFromResume(resolveResume(entry, file), file, isRoot);
+}
+
+function resumeFromResume(resume: RunResume, file: WorkflowFile, isRoot: boolean): Continuation {
+  // One pairing cursor for this run's goto passes, asked in walk order.
+  const resumer = passResumer(resume, file);
   return {
-    disposition(node, iteration) {
-      // Iteration containers pair through the plan's own `enterIteration`, never this node-id
-      // lookup.
-      if (iteration !== undefined) return { kind: "fresh" };
-      const original = resume?.plan.get(node.id);
-      if (!resume || !original) return { kind: "fresh" };
+    disposition(node, ordinal) {
+      // Iteration containers pair through `enterIteration`, never this node-id lookup.
+      if (ordinal !== undefined) return { kind: "fresh" };
+      const original = resume.plan.get(node.id);
+      if (!original) return { kind: "fresh" };
       return {
         kind: "reuse",
         output: () => resume.input.readBlob(original, RUN_BLOB_FILE.output),
         reusedFrom: original.runId,
       };
     },
+    seed() {
+      return resumeSeed(resume, isRoot);
+    },
+    reentry: () => undefined,
+    enter(key, childFile) {
+      if (key.iteration !== undefined) {
+        const iteration = enterIteration(resume, file, key.owner!.id, key.iteration);
+        return iteration ? resumeFromResume(iteration, childFile, false) : FRESH;
+      }
+      if (key.pass !== undefined) {
+        return resumeFromResume(resumer(key.pass, key.owner?.id ?? null), childFile, false);
+      }
+      const nested = enterNested(resume, file, key.owner!.id);
+      return nested ? resumeContinuation(nested, childFile, false) : FRESH;
+    },
+    decidedRaceWinner(node) {
+      return pickReusedWaitOneWinner(node, resume.plan);
+    },
+    passWalk: (_gotos, seedInput) => freshPassWalk(seedInput),
   };
 }
 
-/**
- * The Complete adapter: the one existing row under this parent matching the node id (and a loop's
- * ordinal) directs the walk. Only a nested `workflow` step or a loop container re-enters a
- * non-terminal row; a leaf runs fresh.
- */
-function completeContinuation(state: ContinueState, parentRunId: string): Continuation {
+/** The Complete adapter: this same tree, replayed in place over its own cached rows. */
+export function completeContinuation(
+  state: ContinueState,
+  file: WorkflowFile,
+  rootRunId: string,
+): Continuation {
+  return completeFromScope(state, file, rootRunId, ownRow(state, rootRunId));
+}
+
+/** This run's own recorded row, or `undefined` for a run opened fresh inside the tree. */
+function ownRow(state: ContinueState, runId: string): RunRecord | undefined {
+  return state.existingRuns.find((run) => run.runId === runId);
+}
+
+function completeFromScope(
+  state: ContinueState,
+  file: WorkflowFile,
+  parentRunId: string,
+  ownRun: RunRecord | undefined,
+): Continuation {
   return {
-    disposition(node, iteration) {
+    disposition(node, ordinal) {
       // One row under this parent answers the node; more than one is a corrupt tree and runs fresh.
       const existing = recordedChild(state.existingRuns, parentRunId, {
         nodeId: node.id,
-        iteration,
+        iteration: ordinal,
       });
       if (!existing) return { kind: "fresh" };
       if (existing.status === "succeeded")
@@ -171,32 +293,102 @@ function completeContinuation(state: ContinueState, parentRunId: string): Contin
           ? { kind: "complete", runId: existing.runId, output: state.target.output }
           : { kind: "park" };
       }
-      if (node.type === "workflow" || iteration !== undefined) return { kind: "reenter", existing };
+      if (node.type === "workflow" || ordinal !== undefined) return { kind: "reenter", existing };
       return { kind: "fresh" };
     },
+    seed: () => undefined,
+    reentry() {
+      if (ownRun === undefined) return undefined;
+      return {
+        existing: ownRun,
+        context: state.readBlob(ownRun, RUN_BLOB_FILE.context) as { [key: string]: JsonValue },
+      };
+    },
+    enter(_key, childFile, identity) {
+      return completeFromScope(state, childFile, identity.runId, ownRow(state, identity.runId));
+    },
+    decidedRaceWinner: () => undefined,
+    passWalk: (gotos, seedInput) => completePassWalk(state, file, parentRunId, gotos, seedInput),
   };
 }
 
-/** Select the adapter for one workflow-run; `continue` and `resume` are mutually exclusive by
- * construction. */
-export function continuationOf(
-  run: Pick<RunContext, "continue" | "resume" | "identity">,
-): Continuation {
-  return run.continue
-    ? completeContinuation(run.continue, run.identity.runId)
-    : resumeContinuation(run.resume);
+function freshPassWalk(seedInput: JsonValue): PassWalkStart {
+  return {
+    pass: 1,
+    opener: null,
+    start: 0,
+    carried: seedInput,
+    jumpsSpent: new Map(),
+    reentered: undefined,
+  };
 }
 
-export function targetLeafUnder(state: ContinueState, ancestorRunId: string): boolean {
-  const byId = new Map(state.existingRuns.map((r) => [r.runId, r]));
-  for (
-    let run = byId.get(state.target.stepRunId);
-    run;
-    run = run.parentRunId === null ? undefined : byId.get(run.parentRunId)
-  ) {
-    if (run.parentRunId === ancestorRunId) return true;
+/**
+ * A Complete's pass walk (ADR 0060, spec §8.2): closed passes are facts, not re-walked, and the
+ * `running` one re-enters at its opening goto's target, which must be the node it recorded first.
+ */
+function completePassWalk(
+  state: ContinueState,
+  file: WorkflowFile,
+  parentRunId: string,
+  gotos: ReadonlyMap<string, GotoNode>,
+  seedInput: JsonValue,
+): PassWalkStart | PassDivergence {
+  const walk = freshPassWalk(seedInput);
+  const passes = recordedPasses(state.existingRuns, parentRunId);
+  for (const recorded of passes) {
+    if (recorded.nodeId !== null)
+      walk.jumpsSpent.set(recorded.nodeId, (walk.jumpsSpent.get(recorded.nodeId) ?? 0) + 1);
   }
-  return false;
+  const reentered = passes.find((recorded) => recorded.status === "running");
+  if (!reentered) return walk;
+  walk.reentered = reentered;
+  walk.pass = reentered.pass!;
+  walk.carried = state.readBlob(reentered, RUN_BLOB_FILE.input);
+  if (walk.pass === 1) return walk;
+
+  // Pass N starts at its opening goto's target, which must be the node the pass recorded first: a
+  // different tail would no longer match the pass's rows. `existingRuns` is in start order.
+  const body = file.body;
+  const goto = reentered.nodeId === null ? undefined : gotos.get(reentered.nodeId);
+  const target = goto && body.find((candidate) => candidate.name === goto.target);
+  const recordedFirst = state.existingRuns.find((run) => run.parentRunId === reentered.runId);
+  if (!goto || !target || passFirstNode(target)?.id !== recordedFirst?.nodeId) {
+    return {
+      diverged: reentered,
+      error:
+        `Complete replay diverged: pass ${walk.pass} was opened by goto "${goto?.name ?? reentered.nodeName}" ` +
+        `whose target is now "${goto?.target ?? "(none)"}", recorded "${recordedFirst?.nodeName ?? "(none)"}"`,
+      commit: parkedLeafUnder(state, reentered.runId),
+    };
+  }
+  walk.opener = goto;
+  walk.start = body.indexOf(target);
+  return walk;
+}
+
+/** The goto target's first node in serial order — the node a pass opened at (ADR 0064). */
+export function passFirstNode(target: WorkflowNode): WorkflowNode | undefined {
+  return serialOrder([target])[0];
+}
+
+/** The goto pass rows recorded under one workflow-run, in ordinal order. */
+export function recordedPasses(rows: readonly RunRecord[], parentRunId: string): RunRecord[] {
+  return rows
+    .filter((r) => r.parentRunId === parentRunId && isPassRun(r))
+    .sort((a, b) => a.pass! - b.pass!);
+}
+
+/** The parked target leaf, when it sits under a pass row of this tree (ADR 0060 §2). */
+function parkedLeafUnder(state: ContinueState, ancestorRunId: string): ParkedLeaf | undefined {
+  const path = pathToRoot(state.existingRuns, state.target.stepRunId);
+  if (!path.some((run) => run.parentRunId === ancestorRunId)) return undefined;
+  const leaf = path[path.length - 1]!;
+  return {
+    runId: leaf.runId,
+    node: { id: leaf.nodeId!, name: leaf.nodeName! },
+    output: state.target.output,
+  };
 }
 
 /**

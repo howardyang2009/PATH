@@ -130,7 +130,8 @@ describe("Resume-from-K — top-level boundary (ADR 0035)", () => {
     const result = await runWorkflow(abc(), "/tmp", {
       observer,
       workerOverrides: promptOverride(recordingWorker({ b: "FRESH_B", c: "FRESH_C" }, ran)),
-      resume: {
+      continuation: {
+        kind: "resume",
         originalRuns: abcOriginalRuns(),
         readBlob: reader({ "orig-root/input.json": {}, "a-run/output.json": "REUSED_A" }, reads),
         // K = b: a is <K and reuses; b and c are ≥K and re-run.
@@ -180,7 +181,8 @@ describe("Resume-from-K — top-level boundary (ADR 0035)", () => {
       observer,
       files: new Map([[nestedPath, nested]]),
       workerOverrides: promptOverride(recordingWorker({ inner: "FRESH_INNER" }, ran)),
-      resume: {
+      continuation: {
+        kind: "resume",
         originalRuns: [
           run({
             runId: "orig-root",
@@ -240,7 +242,8 @@ describe("Resume-from-K — the superset invariant (spec §4)", () => {
       const result = await runWorkflow(abc(), "/tmp", {
         observer,
         workerOverrides: promptOverride(recordingWorker({ c: "FRESH_C" }, ran)),
-        resume: {
+        continuation: {
+          kind: "resume",
           originalRuns: [
             run({
               runId: "orig-root",
@@ -355,7 +358,8 @@ describe("Resume-from-K — nested boundary (ADR 0036)", () => {
       workerOverrides: promptOverride(
         recordingWorker({ k: "FRESH_K", q: "FRESH_Q", d: "FRESH_D" }, ran),
       ),
-      resume: {
+      continuation: {
+        kind: "resume",
         originalRuns: asubdOriginalRuns(),
         readBlob: reader(
           {
@@ -408,7 +412,8 @@ describe("Resume-from-K — nested boundary (ADR 0036)", () => {
         [sub2Path, nestedP2],
       ]),
       workerOverrides: promptOverride(recordingWorker({ k: "FRESH_K", p2: "FRESH_P2" }, ran)),
-      resume: {
+      continuation: {
+        kind: "resume",
         originalRuns: [
           run({
             runId: "orig-root",
@@ -496,7 +501,8 @@ describe("Resume-from-K — a sequence body is transparent (ADR 0064)", () => {
     const result = await runWorkflow(file, "/tmp", {
       observer,
       workerOverrides: promptOverride(recordingWorker({}, ran)),
-      resume: {
+      continuation: {
+        kind: "resume",
         originalRuns: [
           run({
             runId: "orig-root",
@@ -556,7 +562,8 @@ describe("Resume-from-K — a sequence body is transparent (ADR 0064)", () => {
       observer,
       files: new Map([[NESTED_PATH, nested]]),
       workerOverrides: promptOverride(recordingWorker({}, ran)),
-      resume: {
+      continuation: {
+        kind: "resume",
         originalRuns: [
           run({
             runId: "orig-root",
@@ -628,7 +635,8 @@ describe("Resume-from-K — a sequence body is transparent (ADR 0064)", () => {
       observer,
       files: new Map([[NESTED_PATH, nestedPkq()]]),
       workerOverrides: promptOverride(recordingWorker({}, ran)),
-      resume: {
+      continuation: {
+        kind: "resume",
         originalRuns: asubdOriginalRuns(),
         readBlob: reader(
           {

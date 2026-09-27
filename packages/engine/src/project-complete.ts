@@ -9,7 +9,7 @@ import {
   getRunsForRoot,
 } from "./persistence/run-store.js";
 import type { ProjectCore, ProjectRunOptions } from "./project.js";
-import type { ContinueInput } from "./run-options.js";
+import type { ContinuationInput } from "./run-options.js";
 
 /**
  * The outcome of `Project.complete`: a Result because "no such leaf", "not awaiting" and "lease
@@ -107,7 +107,8 @@ export async function completeProjectStep(
     // The continuation recipe `resume` uses: reuse rows swapped for their source record, so a
     // reused `succeeded` row addresses its own output blob.
     const directRuns = getRunsForRoot(db, rootRunId);
-    const continueInput: ContinueInput = {
+    const continuation: ContinuationInput = {
+      kind: "complete",
       rootRunId,
       existingRuns: sourceRuns(db, directRuns),
       readBlob: continuationBlobReader(absDir),
@@ -120,9 +121,8 @@ export async function completeProjectStep(
       // A Complete replays the same tree, so it restores that tree's recorded launch facts: the
       // launch config (with any supplied secret merged over it) and its worker defaults.
       runOptions,
-      undefined,
+      continuation,
       [],
-      continueInput,
     );
     return {
       ok: true,

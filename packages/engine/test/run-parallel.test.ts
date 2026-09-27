@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { JsonValue, WorkflowFile } from "@path/schema";
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { noContinuation } from "../src/continuation.js";
 import { type LoadedStepPluginRegistry, scanStepPlugins } from "../src/plugin-seam/scan.js";
 import type { WorkerDescriptor } from "../src/plugin-seam/seam.js";
 import { createProcessorSemaphore } from "../src/processor-semaphore.js";
@@ -87,6 +88,7 @@ function makeRun(overrides: Partial<RunContext> = {}): {
       emitter: createEmitter(identity, emit),
       env: {},
       runtime: { registry, semaphore: createProcessorSemaphore(1) },
+      continuation: noContinuation(),
       detached: [],
       ...overrides,
     },

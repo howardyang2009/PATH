@@ -122,7 +122,8 @@ describe("resume — reusing a node's recorded output (#172)", () => {
     const result = await runWorkflow(file, "/tmp", {
       observer,
       workerOverrides: promptOverride(recordingWorker({ b: "FRESH_B" }, ran)),
-      resume: {
+      continuation: {
+        kind: "resume",
         originalRuns: [
           run({
             runId: "orig-root",
@@ -193,7 +194,8 @@ describe("resume — reusing a node's recorded output (#172)", () => {
     const result = await runWorkflow(file, "/tmp", {
       observer,
       workerOverrides: promptOverride(recordingWorker({ b: "FRESH_B" }, ran)),
-      resume: {
+      continuation: {
+        kind: "resume",
         originalRuns: [
           run({
             runId: "orig-root",
@@ -258,7 +260,8 @@ describe("resume — reusing a node's recorded output (#172)", () => {
 
     await runWorkflow(file, "/tmp", {
       workerOverrides: promptOverride(worker),
-      resume: {
+      continuation: {
+        kind: "resume",
         originalRuns: [
           run({
             runId: "orig-root",
@@ -299,7 +302,8 @@ describe("resume — reusing a node's recorded output (#172)", () => {
       observer,
       files: new Map([[nestedPath, nested]]),
       workerOverrides: promptOverride(recordingWorker({}, ran)),
-      resume: {
+      continuation: {
+        kind: "resume",
         originalRuns: [
           run({
             runId: "orig-root",
@@ -365,7 +369,8 @@ describe("resume — reusing a node's recorded output (#172)", () => {
       observer,
       files: new Map([[nestedPath, nested]]),
       workerOverrides: promptOverride(recordingWorker({ y: "FRESH_Y" }, ran)),
-      resume: {
+      continuation: {
+        kind: "resume",
         originalRuns: [
           run({
             runId: "orig-root",
@@ -446,7 +451,11 @@ describe("resume — reusing a node's recorded output (#172)", () => {
     const result = await runWorkflow(file, "/tmp", {
       observer,
       workerOverrides: promptOverride(recordingWorker({ a: "FRESH" }, ran)),
-      resume: { originalRuns: [], readBlob: reader({}, []) },
+      continuation: {
+        kind: "resume",
+        originalRuns: [],
+        readBlob: reader({}, []),
+      },
     });
 
     expect(result.status).toBe("succeeded");
@@ -491,7 +500,8 @@ describe("resume — the original tree is read-only (#172)", () => {
     const result = await runWorkflow(file, newDir, {
       observer,
       workerOverrides: promptOverride(recordingWorker({ b: "FRESH_B" }, ran)),
-      resume: {
+      continuation: {
+        kind: "resume",
         originalRuns: [
           run({
             runId: "orig-root",
@@ -576,7 +586,8 @@ describe("resume — wait-one join re-evaluates and short-circuits the losers (�
     const result = await runWorkflow(raceFile, "/tmp", {
       observer,
       workerOverrides: promptOverride(recordingWorker({}, ran)),
-      resume: {
+      continuation: {
+        kind: "resume",
         originalRuns: [
           run({
             runId: "orig-root",
@@ -681,7 +692,8 @@ describe("resume — wait-one join re-evaluates and short-circuits the losers (�
     const result = await runWorkflow(file, "/tmp", {
       observer,
       workerOverrides: promptOverride(recordingWorker({}, ran)),
-      resume: {
+      continuation: {
+        kind: "resume",
         originalRuns: [
           run({
             runId: "orig-root",
@@ -784,7 +796,8 @@ describe("resume — do-not-wait re-fires a non-`succeeded` detached branch; no 
     const result = await runWorkflow(file, "/tmp", {
       observer,
       workerOverrides: promptOverride(failingBranchWorker(ran)),
-      resume: {
+      continuation: {
+        kind: "resume",
         originalRuns: [
           run({
             runId: "orig-root",

@@ -128,7 +128,8 @@ describe("replay from seed — straight-line file", () => {
     const result = await runWorkflow(xyFile(), "/tmp", {
       observer,
       workerOverrides: promptOverride(recordingWorker({ c: "5" }, ran)),
-      resume: {
+      continuation: {
+        kind: "resume",
         originalRuns: xyOriginalRuns("succeeded", "succeeded"),
         readBlob: reader(
           {
@@ -156,7 +157,8 @@ describe("replay from seed — straight-line file", () => {
     const result = await runWorkflow(xyFile(), "/tmp", {
       observer,
       workerOverrides: promptOverride(recordingWorker({ c: "5" }, ran)),
-      resume: {
+      continuation: {
+        kind: "resume",
         // The original failed at c: a and b reuse and re-publish over the seed, c re-runs.
         originalRuns: xyOriginalRuns("failed", "failed"),
         readBlob: reader(
@@ -212,7 +214,8 @@ describe("replay from seed — while-do", () => {
     const result = await runWorkflow(file, "/tmp", {
       observer: fakeObserver(),
       workerOverrides: promptOverride(recordingWorker({ body: "FRESH" }, ran)),
-      resume: {
+      continuation: {
+        kind: "resume",
         originalRuns: [
           run({
             runId: "orig-root",
@@ -283,7 +286,8 @@ describe("replay from seed — while-do", () => {
     const result = await runWorkflow(file, "/tmp", {
       observer: fakeObserver(),
       workerOverrides: promptOverride(recordingWorker({ late: "LATE" }, ran)),
-      resume: {
+      continuation: {
+        kind: "resume",
         originalRuns: [
           run({
             runId: "orig-root",
@@ -368,7 +372,8 @@ describe("replay from seed — nested workflow step", () => {
       observer: fakeObserver(),
       files: new Map([[nestedPath, nested]]),
       workerOverrides: promptOverride(recordingWorker({ q: "late" }, ran)),
-      resume: {
+      continuation: {
+        kind: "resume",
         originalRuns: [
           run({
             runId: "orig-root",
@@ -458,7 +463,8 @@ describe("replay from seed — parallel joins", () => {
     const result = await runWorkflow(file, "/tmp", {
       observer,
       workerOverrides: promptOverride(recordingWorker({}, [])),
-      resume: {
+      continuation: {
+        kind: "resume",
         originalRuns: [
           run({
             runId: "orig-root",
@@ -531,7 +537,8 @@ describe("replay from seed — parallel joins", () => {
     const result = await runWorkflow(file, "/tmp", {
       observer,
       workerOverrides: promptOverride(recordingWorker({}, [])),
-      resume: {
+      continuation: {
+        kind: "resume",
         originalRuns: [
           run({
             runId: "orig-root",
@@ -579,7 +586,8 @@ describe("replay from seed — secrets", () => {
       observer: fakeObserver(),
       operatorConfig: { apiKey: { $secret: "sk-real" } },
       workerOverrides: promptOverride(recordingWorker({}, ran)),
-      resume: {
+      continuation: {
+        kind: "resume",
         originalRuns: [
           run({
             runId: "orig-root",
@@ -615,7 +623,8 @@ describe("replay from seed — the successor records its seed", () => {
     await runWorkflow(xyFile(), "/tmp", {
       observer,
       workerOverrides: promptOverride(recordingWorker({ c: "5" }, [])),
-      resume: {
+      continuation: {
+        kind: "resume",
         originalRuns: xyOriginalRuns("succeeded", "succeeded"),
         readBlob: reader({ "orig-root/input.json": { y: 0 }, "a-run/output.json": "1" }, []),
         rerunFromNodePath: ["b"],
@@ -650,7 +659,8 @@ describe("replay from seed — secrets in a nested seed", () => {
       files: new Map([[nestedPath, nested]]),
       operatorConfig: { apiKey: { $secret: "sk-real" } },
       workerOverrides: promptOverride(recordingWorker({}, ran)),
-      resume: {
+      continuation: {
+        kind: "resume",
         originalRuns: [
           run({
             runId: "orig-root",

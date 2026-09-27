@@ -1,13 +1,11 @@
 import type { BranchNode, CheckpointNode, GotoNode, JsonValue, WhileDoNode } from "@path/schema";
 import { openContainerRun } from "./child-run.js";
 import { describeConditionFailure, evaluateCondition, type Trace } from "./condition.js";
-import { continuationOf } from "./continuation.js";
 import {
   describeInterpolationError,
   interpolateToString,
   interpolationScope,
 } from "./interpolate.js";
-import { enterIteration } from "./resume-plan.js";
 import type { NodeExecContext, RunContext, SeqOutcome } from "./run-context.js";
 
 /**
@@ -91,16 +89,15 @@ async function runLoopIteration(
   iterationInput: JsonValue,
   exec: NodeExecContext,
 ): Promise<SeqOutcome> {
-  // Complete-continue: the adapter answers what this iteration's recorded row means — a `succeeded`
-  // container is reused read-only, a `running` one is the parked iteration re-entered in place.
-  const disposition = continuationOf(run).disposition(node, iteration);
+  // What this iteration's recorded row means, and what the container's own scope continues from:
+  // both answers come from the run's continuation, so neither mode is spelled here.
+  const disposition = run.continuation.disposition(node, iteration);
   if (disposition.kind === "reuse") return { status: "succeeded", output: disposition.output() };
   // `exec` passes through unchanged, so the body publishes into the loop's own context.
   const container = await openContainerRun(run, {
     key: { owner: node, iteration },
     existingRunId: disposition.kind === "reenter" ? disposition.existing.runId : undefined,
     input: iterationInput,
-    resume: enterIteration(run.resume, run.file, node.id, iteration),
   });
   // The loop body is a single node (`@2` §4.3), run as a one-node sequence inside the container.
   const outcome = await exec.walk(container.run, [node.node], iterationInput, exec);
