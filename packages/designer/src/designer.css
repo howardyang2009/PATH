@@ -1486,10 +1486,26 @@ body {
  * row resizers: a hairline that thickens on hover/focus, and a keyboard-reachable separator. */
 .run-dock-resizer {
   height: 6px;
-  margin-top: -1px;
+  /* Reset the `<hr>` UA box: its `margin: auto` sides shrink it to a 2px sliver in this flex column. */
+  margin: -1px 0 0;
+  border: none;
+  align-self: stretch;
   cursor: row-resize;
   background: none;
   flex: none;
+  touch-action: none;
+  position: relative;
+  overflow: visible;
+}
+
+/* Widen the pointer hit area past the 6px box, as the vertical separators do. */
+.run-dock-resizer::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -5px;
+  bottom: -5px;
 }
 
 .run-dock-resizer::before {

@@ -644,6 +644,8 @@ button.workflow-row:focus-visible {
   flex: none;
   height: 8px;
   margin: -4px 0;
+  /* Drop the `<hr>` UA inset border, which otherwise outlines the whole grab strip in gray. */
+  border: none;
   cursor: row-resize;
   touch-action: none;
   z-index: 1;
