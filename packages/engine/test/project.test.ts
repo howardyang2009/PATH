@@ -18,7 +18,7 @@ import { readNdjsonLog } from "../src/logging/ndjson-backend.js";
 import { openDb } from "../src/persistence/db.js";
 import { blobRef, dbFilePath, pathDir, rootRunTreeDir } from "../src/persistence/paths.js";
 import { getLaunchWorkerDefaults } from "../src/persistence/run-store.js";
-import type { WorkerDescriptor } from "../src/plugin/seam.js";
+import type { WorkerDescriptor } from "../src/plugin-seam/seam.js";
 import { openProject, type Project } from "../src/project.js";
 import type { Observation, RunObserver } from "../src/run-observer.js";
 import { stampGuids, stampNames } from "./stamp-names.js";

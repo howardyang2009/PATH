@@ -3,7 +3,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ConfigObject, WorkflowFile } from "@path/schema";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { StepRequest, StepResult, WorkerDescriptor } from "../src/plugin/seam.js";
+import type { StepRequest, StepResult, WorkerDescriptor } from "../src/plugin-seam/seam.js";
 import { DEFAULT_PROCESSOR_CONCURRENCY } from "../src/processor-semaphore.js";
 import type { Observation } from "../src/run-observer.js";
 import { runWorkflow, type WorkerOverrides } from "../src/run-workflow.js";

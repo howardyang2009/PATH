@@ -2,7 +2,7 @@ import type { ConfigObject, JsonValue } from "@path/schema";
 import { stopCause } from "./cancellation.js";
 import { describeInterpolationError, interpolateValue, interpolationScope } from "./interpolate.js";
 import { OutputParseError, parseStepOutput } from "./parse-output.js";
-import type { StepRequest, StepResult } from "./plugin/seam.js";
+import type { StepRequest, StepResult } from "./plugin-seam/seam.js";
 import type { Cancellation, NodeExecContext, RunContext, SeqOutcome } from "./run-context.js";
 import type { StepEmitter } from "./run-emitter.js";
 

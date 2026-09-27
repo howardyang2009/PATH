@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { WorkflowFile } from "@path/schema";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { StepRequest, StepResult, WorkerDescriptor } from "../../src/plugin/seam.js";
+import type { StepRequest, StepResult, WorkerDescriptor } from "../../src/plugin-seam/seam.js";
 import { runWorkflow } from "../../src/run-workflow.js";
 import { fakeObserver } from "../fake-observer.js";
 

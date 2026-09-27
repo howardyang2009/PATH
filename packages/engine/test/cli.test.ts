@@ -19,7 +19,7 @@ import { LOG_FORMAT } from "../src/logging/log-backend.js";
 import { openDb } from "../src/persistence/db.js";
 import { dbFilePath } from "../src/persistence/paths.js";
 import { finishRun, insertRun } from "../src/persistence/run-store.js";
-import type { StepRequest, StepResult, WorkerDescriptor } from "../src/plugin/seam.js";
+import type { StepRequest, StepResult, WorkerDescriptor } from "../src/plugin-seam/seam.js";
 import type { WorkerOverrides } from "../src/run-workflow.js";
 import { stampGuids } from "./stamp-names.js";
 

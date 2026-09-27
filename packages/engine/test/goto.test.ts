@@ -2,7 +2,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { JsonValue, WorkflowFile } from "@path/schema";
 import { describe, expect, it } from "vitest";
-import type { WorkerDescriptor } from "../src/plugin/seam.js";
+import type { WorkerDescriptor } from "../src/plugin-seam/seam.js";
 import type { Observation } from "../src/run-observer.js";
 import { type RunOptions, runWorkflow } from "../src/run-workflow.js";
 import { fakeObserver } from "./fake-observer.js";

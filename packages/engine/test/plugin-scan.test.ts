@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { makeWorkflowFileSchema } from "@path/schema";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { entryImportUrl, STEP_PLUGINS_DIR, scanStepPlugins } from "../src/plugin/scan.js";
+import { entryImportUrl, STEP_PLUGINS_DIR, scanStepPlugins } from "../src/plugin-seam/scan.js";
 
 // The engine-side plugin discovery scanner (#335, ADR 0019 sub-decisions 7–17). These tests drive it
 // against fixture directories built at run time under `test/`, so a fixture plugin's `index.ts` resolves

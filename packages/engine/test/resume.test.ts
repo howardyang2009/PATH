@@ -9,7 +9,7 @@ import { openDb } from "../src/persistence/db.js";
 import { RUN_BLOB_FILE, runBlobDir } from "../src/persistence/paths.js";
 import { createPersistedObserver } from "../src/persistence/persisted-observer.js";
 import { getRunsForRoot } from "../src/persistence/run-store.js";
-import type { StepRequest, WorkerDescriptor } from "../src/plugin/seam.js";
+import type { StepRequest, WorkerDescriptor } from "../src/plugin-seam/seam.js";
 import type { Observation } from "../src/run-observer.js";
 import { type ResumeInput, runWorkflow } from "../src/run-workflow.js";
 import { type FakeObserver, fakeObserver } from "./fake-observer.js";
