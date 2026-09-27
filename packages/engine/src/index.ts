@@ -23,10 +23,13 @@ export type {
   RunTree,
 } from "./run-archive.js";
 export {
-  type Observation,
   ObserverError,
+  type RunEvent,
   type RunObserver,
   type RunOutcome,
+  type RunPayload,
+  type UnsequencedLogEvent,
+  WORKFLOW_STEP_TYPE,
 } from "./run-observer.js";
 export {
   type ContinueInput,

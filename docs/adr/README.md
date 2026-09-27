@@ -69,6 +69,7 @@ An Architecture Decision Record (ADR) records one decision PATH has made: the sh
 | [0063](0063-the-workflow-template-is-removed-the-step-template-is-the-only-template.md) | The Workflow-Template is removed; the Step-Template is the only template | accepted |
 | [0064](0064-a-sequence-body-is-transparent-to-the-rerun-boundary.md) | A sequence body is transparent to the rerun boundary | accepted |
 | [0065](0065-comments-state-what-and-why-decisions-live-in-adrs.md) | Source comments state what and why; decisions live in ADRs | accepted |
+| [0066](0066-the-log-event-is-the-only-event-vocabulary.md) | The log event is the only event vocabulary | accepted |
 
 ## Superseded decisions
 

@@ -6,7 +6,7 @@ import {
   mapSecrets,
 } from "@path/schema";
 import type { Trace } from "./condition.js";
-import type { Observation } from "./run-observer.js";
+import type { RunEvent, RunPayload, UnsequencedLogEvent } from "./run-observer.js";
 
 /**
  * Secret masking at the persistence boundary (mvp spec §8.3): artifacts are scrubbed *by value*
@@ -109,59 +109,73 @@ function maskTrace(masker: SecretMasker, trace: Trace): Trace {
   };
 }
 
-/** Scrubs one observation before it crosses the seam (mvp spec §8.3); total over the union **by
- * construction** — the `never` guard forces a decision for every new `Observation` member. */
-export function maskObservation(masker: SecretMasker, o: Observation): Observation {
-  switch (o.type) {
-    case "run-started":
-      // The frozen launch facts (ADR 0046) carry the operator's config override, which may hold a secret.
-      return {
-        ...o,
-        input: masker.maskValue(o.input),
-        ...(o.launchFacts === undefined
-          ? {}
-          : {
-              launchFacts: masker.maskValue(o.launchFacts as unknown as JsonValue) as LaunchFacts,
-            }),
-      };
-    case "step-started":
-      return { ...o, input: masker.maskValue(o.input) };
-    case "step-stderr":
-      return { ...o, stderr: masker.maskString(o.stderr) };
-    case "context-changed":
-    case "step-context":
-      return { ...o, context: masker.maskValue(o.context) };
+/** Scrubs one log event; total over `LogEvent` by construction via the `never` guard. */
+function maskEvent(masker: SecretMasker, e: UnsequencedLogEvent): UnsequencedLogEvent {
+  switch (e.type) {
     case "step-finished":
-    case "run-finished":
-      if (o.status === "succeeded") return { ...o, output: masker.maskValue(o.output) };
-      if (o.status === "failed" && o.error !== undefined)
-        return { ...o, error: masker.maskString(o.error) };
-      return o;
-    case "checkpoint-evaluated":
+      return e.error === undefined ? e : { ...e, error: masker.maskString(e.error) };
+    case "checkpoint-passed":
+    case "checkpoint-failed":
     case "iteration-started":
     case "loop-exited":
-      return { ...o, trace: maskTrace(masker, o.trace) };
+      return { ...e, trace: maskTrace(masker, e.trace) };
     case "branch-taken":
-      return o.trace === null ? o : { ...o, trace: maskTrace(masker, o.trace) };
+      return e.trace === null ? e : { ...e, trace: maskTrace(masker, e.trace) };
     case "branch-no-match":
-      return { ...o, traces: o.traces.map((trace) => maskTrace(masker, trace)) };
-    // `usage` is the worker's own report, stored verbatim on the run row (§5.7); scrubbed like any other payload.
-    case "step-usage":
-      return o.usage === null ? o : { ...o, usage: masker.maskValue(o.usage) };
-    // No secret can reach these — every field is an id, count, context key, node id or engine-chosen enum (ADR 0061).
+      return { ...e, traces: e.traces.map((trace) => maskTrace(masker, trace)) };
+    // `assignee` is an interpolated author value that can read `${config.x}`, so scrub it by value too.
+    case "step-awaiting":
+      return e.assignee === null ? e : { ...e, assignee: masker.maskString(e.assignee) };
+    // No secret can reach these — every field is an id, name, count, context key or engine-chosen enum (ADR 0061).
+    case "step-started":
     case "join-applied":
     case "run-cancelled":
     case "reuse-marker":
     case "pass-started":
     case "goto-taken":
     case "goto-exhausted":
-      return o;
-    // `assignee` is an interpolated author value that can read `${config.x}`, so scrub it by value too.
-    case "step-awaiting":
-      return o.assignee === null ? o : { ...o, assignee: masker.maskString(o.assignee) };
+      return e;
     default: {
-      const exhaustive: never = o;
+      const exhaustive: never = e;
       return exhaustive;
     }
   }
+}
+
+function maskPayload(masker: SecretMasker, p: RunPayload): RunPayload {
+  switch (p.kind) {
+    case "started":
+      // The frozen launch facts (ADR 0046) carry the operator's config override, which may hold a secret.
+      return {
+        ...p,
+        input: masker.maskValue(p.input),
+        ...(p.launchFacts === undefined
+          ? {}
+          : {
+              launchFacts: masker.maskValue(p.launchFacts as unknown as JsonValue) as LaunchFacts,
+            }),
+      };
+    case "output":
+      return { ...p, output: masker.maskValue(p.output) };
+    case "stderr":
+      return { ...p, stderr: masker.maskString(p.stderr) };
+    // `usage` is the worker's own report, stored verbatim on the run row (§5.7); scrubbed like any other payload.
+    case "usage":
+      return p.usage === null ? p : { ...p, usage: masker.maskValue(p.usage) };
+    case "context":
+      return { ...p, context: masker.maskValue(p.context) };
+    default: {
+      const exhaustive: never = p;
+      return exhaustive;
+    }
+  }
+}
+
+/** Scrubs one run event, its log event and its payload both, before it crosses the seam (mvp spec §8.3). */
+export function maskRunEvent(masker: SecretMasker, e: RunEvent): RunEvent {
+  return {
+    ...e,
+    event: e.event === null ? null : maskEvent(masker, e.event),
+    ...(e.payload === undefined ? {} : { payload: maskPayload(masker, e.payload) }),
+  };
 }

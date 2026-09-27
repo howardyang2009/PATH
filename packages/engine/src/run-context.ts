@@ -4,13 +4,13 @@ import type { ProcessorSemaphore } from "./processor-semaphore.js";
 import type { EnvSource } from "./resolve-env.js";
 import type { RunResume } from "./resume-plan.js";
 import type { Emitter } from "./run-emitter.js";
-import type { Observation } from "./run-observer.js";
+import type { RunEvent } from "./run-observer.js";
 
 /**
  * The engine's single emit choke point: secrets are masked here (mvp spec §8.3), so no caller can forget to, and a
  * run with no observer emits into a no-op.
  */
-export type Emit = (o: Observation) => Promise<void>;
+export type Emit = (e: RunEvent) => Promise<void>;
 
 /**
  * The step-execution resources one run tree shares: the frozen scanned plugin registry with `workerOverrides` merged
@@ -96,7 +96,7 @@ export interface RunContext {
   fileConfig: ConfigObject;
   identity: RunIdentity;
   /**
-   * This run's producer of observations: every tier goes through it, so no walker respells the envelope or touches
+   * This run's producer of run events: every tier goes through it, so no walker respells the envelope or touches
    * the raw masking sink.
    */
   emitter: Emitter;

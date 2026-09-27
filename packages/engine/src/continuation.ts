@@ -1,7 +1,6 @@
 import {
   type ConfigObject,
   isReuseRow,
-  isRootRun,
   type JsonValue,
   type LaunchFacts,
   type RerunFromNodePathEntry,
@@ -86,23 +85,22 @@ export function continuationRunOptions<
 export interface SuccessorCapture {
   /** The observer to append to a Resume's run — never a Complete's, which keeps its tree's id. */
   observer: RunObserver;
-  /** That id, or a throw: `run-started` precedes every other observation, so its absence is an engine bug. */
+  /** That id, or a throw: the root run's start precedes every other event, so its absence is an engine bug. */
   rootRunId(): string;
 }
 
-/** Learn a successor's root run id from its own `run-started`; a missing root start throws as an engine bug. */
+/** Learn a successor's root run id from its own events; a missing root start throws as an engine bug. */
 export function successorCapture(): SuccessorCapture {
   let rootRunId: string | undefined;
   return {
     observer: {
-      observe(observation) {
-        if (observation.type === "run-started" && isRootRun(observation))
-          rootRunId = observation.runId;
+      observe(e) {
+        if (e.runId === e.rootRunId) rootRunId = e.runId;
       },
     },
     rootRunId() {
       if (rootRunId === undefined)
-        throw new Error("internal error: resumed run emitted no root run-started");
+        throw new Error("internal error: resumed run emitted no root start");
       return rootRunId;
     },
   };

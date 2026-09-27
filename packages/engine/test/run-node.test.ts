@@ -15,8 +15,9 @@ import type { StepRequest, WorkerDescriptor } from "../src/plugin-seam/seam.js";
 import { createProcessorSemaphore } from "../src/processor-semaphore.js";
 import type { NodeExecContext, RunContext } from "../src/run-context.js";
 import { createEmitter } from "../src/run-emitter.js";
-import type { Observation } from "../src/run-observer.js";
+import type { RunEvent } from "../src/run-observer.js";
 import { runNode, runSequence } from "../src/run-workflow.js";
+import { flat } from "./fake-observer.js";
 
 /**
  * The node seam, called directly. Every kind of node a body can hold goes through `runNode`, so
@@ -88,11 +89,11 @@ function answeringWorker(output: string): WorkerDescriptor {
 
 function makeRun(overrides: Partial<RunContext> = {}): {
   run: RunContext;
-  observed: Observation[];
+  observed: ReturnType<typeof flat>[];
 } {
-  const observed: Observation[] = [];
-  // A real emitter over the capturing sink (Q7-b): the walker emits through `run.emitter`, so the
-  // `observed` assertions stay assertions about the wire `Observation`s the emitter produces.
+  const observed: ReturnType<typeof flat>[] = [];
+  // A real emitter over the capturing sink: the walker emits through `run.emitter`, so `observed`
+  // holds the events the emitter produces, flattened.
   const identity: RunContext["identity"] = {
     runId: "run-1",
     rootRunId: "run-1",
@@ -100,7 +101,7 @@ function makeRun(overrides: Partial<RunContext> = {}): {
     nodeId: null,
     nodeName: null,
   };
-  const emit = async (o: Observation): Promise<void> => void observed.push(o);
+  const emit = async (e: RunEvent): Promise<void> => void observed.push(flat(e));
   return {
     observed,
     run: {
@@ -192,8 +193,8 @@ describe("runNode — checkpoint", () => {
     const outcome = await runNode(run, node, { carried: 1 }, makeExec({ ready: true }));
 
     expect(outcome).toEqual({ status: "succeeded", output: { carried: 1 } });
-    expect(observed.map((o) => o.type)).toEqual(["checkpoint-evaluated"]);
-    expect(observed[0]).toMatchObject({ nodeId: "gate", nodeName: "gate", passed: true });
+    expect(observed.map((o) => o.type)).toEqual(["checkpoint-passed"]);
+    expect(observed[0]).toMatchObject({ node_id: "gate", node_name: "gate" });
   });
 
   it("fails the run when the condition does not hold (§5.2), naming the checkpoint", async () => {
@@ -202,7 +203,7 @@ describe("runNode — checkpoint", () => {
 
     expect(outcome.status).toBe("failed");
     expect(outcome.status === "failed" && outcome.error).toMatch(/checkpoint "gate" failed/);
-    expect(observed[0]).toMatchObject({ passed: false });
+    expect(observed[0]).toMatchObject({ type: "checkpoint-failed" });
   });
 
   // Strict semantics: a predicate that could not be evaluated is not "false", but the run stops
@@ -220,9 +221,9 @@ describe("runNode — checkpoint", () => {
 
     expect(outcome.status).toBe("failed");
     expect(observed[0]).toMatchObject({
-      nodeId: "gate",
-      nodeName: "gate",
-      passed: false,
+      type: "checkpoint-failed",
+      node_id: "gate",
+      node_name: "gate",
       trace: expect.objectContaining({ outcome: "error" }),
     });
   });
@@ -246,8 +247,8 @@ describe("runNode — branch", () => {
 
     expect(outcome).toEqual({ status: "succeeded", output: "B" });
     expect(observed.find((o) => o.type === "branch-taken")).toMatchObject({
-      nodeId: "route",
-      nodeName: "route",
+      node_id: "route",
+      node_name: "route",
       arm: 1,
     });
   });
@@ -270,8 +271,8 @@ describe("runNode — branch", () => {
 
     expect(outcome.status).toBe("failed");
     const noMatch = observed.find((o) => o.type === "branch-no-match");
-    expect(noMatch).toMatchObject({ nodeId: "route" });
-    expect(noMatch && "traces" in noMatch && noMatch.traces).toHaveLength(2);
+    expect(noMatch).toMatchObject({ node_id: "route" });
+    expect(noMatch?.traces).toHaveLength(2);
     // No arm was taken, so nothing may narrate one.
     expect(observed.find((o) => o.type === "branch-taken")).toBeUndefined();
   });
@@ -329,11 +330,9 @@ describe("runNode — while-do", () => {
     const outcome = await runNode(run, loop, {}, makeExec({ count: 0 }));
 
     expect(outcome.status).toBe("succeeded");
-    expect(
-      observed
-        .filter((o) => o.type === "iteration-started")
-        .map((o) => "iteration" in o && o.iteration),
-    ).toEqual([1, 2]);
+    expect(observed.filter((o) => o.type === "iteration-started").map((o) => o.iteration)).toEqual([
+      1, 2,
+    ]);
     expect(observed.find((o) => o.type === "loop-exited")).toMatchObject({
       reason: "condition-false",
       iterations: 2,
@@ -458,9 +457,10 @@ describe("runNode — sequence", () => {
       output: "seed-1-2",
     });
     // A controller has no worker, task or run of its own: only its children are narrated.
-    expect(
-      observed.filter((o) => o.type === "step-started").map((o) => "nodeId" in o && o.nodeId),
-    ).toEqual(["one", "two"]);
+    expect(observed.filter((o) => o.type === "step-started").map((o) => o.node_id)).toEqual([
+      "one",
+      "two",
+    ]);
   });
 
   it("chains the same way at any depth, a sequence inside a sequence included", async () => {
@@ -531,9 +531,9 @@ describe("runNode — sequence", () => {
     const outcome = await runNode(run, node, "seed", makeExec());
 
     expect(outcome.status).toBe("failed");
-    expect(
-      observed.filter((o) => o.type === "step-started").map((o) => "nodeId" in o && o.nodeId),
-    ).toEqual(["boom"]);
+    expect(observed.filter((o) => o.type === "step-started").map((o) => o.node_id)).toEqual([
+      "boom",
+    ]);
   });
 });
 
@@ -653,15 +653,15 @@ describe("runNode — prompt step", () => {
 
     expect(outcome).toEqual({ status: "succeeded", output: "hello" });
     expect(prompts).toEqual(["say hi"]);
-    // `step-context` closes the sequence: a succeeded leaf step snapshots its enclosing context under
+    // The context snapshot closes the sequence: a succeeded leaf step snapshots its enclosing context under
     // its own directory, after `step-finished`.
     expect(observed.map((o) => o.type)).toEqual([
       "step-started",
-      "step-usage",
+      "usage",
       "step-finished",
-      "step-context",
+      "context",
     ]);
-    expect(observed.find((o) => o.type === "step-usage")).toMatchObject({ estimatedCostUsd: 0.01 });
+    expect(observed.find((o) => o.type === "usage")).toMatchObject({ estimatedCostUsd: 0.01 });
   });
 
   it("hands the worker the interpolated fields, the config, the step's input, and the file's directory", async () => {
@@ -757,8 +757,8 @@ describe("runNode — prompt step", () => {
 
     expect(outcome.status).toBe("failed");
     expect(outcome.status === "failed" && outcome.error).toMatch(/error_max_turns/);
-    expect(observed.map((o) => o.type)).toEqual(["step-started", "step-usage", "step-finished"]);
-    expect(observed.find((o) => o.type === "step-usage")).toMatchObject({
+    expect(observed.map((o) => o.type)).toEqual(["step-started", "usage", "step-finished"]);
+    expect(observed.find((o) => o.type === "usage")).toMatchObject({
       usage: { input_tokens: 9 },
       estimatedCostUsd: 0.02,
     });
@@ -770,7 +770,7 @@ describe("runNode — prompt step", () => {
     expect((await runNode(run, promptNode, "seed", makeExec({ word: "hi" }))).status).toBe(
       "succeeded",
     );
-    expect(observed.filter((o) => o.type === "step-usage")).toHaveLength(0);
+    expect(observed.filter((o) => o.type === "usage")).toHaveLength(0);
   });
 
   it("spawns a fresh processor per step-run — no conversational state leaks between steps", async () => {
@@ -858,7 +858,7 @@ describe("runNode — prompt step", () => {
     const exec = makeExec();
 
     expect((await runNode(run, node, "seed", exec)).status).toBe("failed");
-    expect(observed.find((o) => o.type === "run-cancelled")).toMatchObject({ nodeId: "ask" });
+    expect(observed.find((o) => o.type === "run-cancelled")).toMatchObject({ node_id: "ask" });
     expect(
       observed.find((o) => o.type === "step-finished" && o.status === "cancelled"),
     ).toBeDefined();
@@ -888,9 +888,9 @@ describe("runNode — worker resolution (file worker_defaults, ADR 0044)", () =>
     };
   }
 
-  function startedWorker(observed: Observation[]): string | undefined {
-    const started = observed.find((o) => o.type === "step-started");
-    return started?.type === "step-started" ? started.workerName : undefined;
+  function startedWorker(observed: ReturnType<typeof flat>[]): string | undefined {
+    const leaf = observed.find((o) => o.type === "step-started" && o.step_type !== "workflow");
+    return leaf?.worker_name as string | undefined;
   }
 
   const unpinned: Node = {
@@ -1001,9 +1001,9 @@ describe("runNode — worker resolution (launch worker-default, ADR 0044)", () =
     };
   }
 
-  function startedWorker(observed: Observation[]): string | undefined {
-    const started = observed.find((o) => o.type === "step-started");
-    return started?.type === "step-started" ? started.workerName : undefined;
+  function startedWorker(observed: ReturnType<typeof flat>[]): string | undefined {
+    const leaf = observed.find((o) => o.type === "step-started" && o.step_type !== "workflow");
+    return leaf?.worker_name as string | undefined;
   }
 
   const unpinned: Node = {
@@ -1122,10 +1122,10 @@ describe("runNode — workflow step", () => {
 
     expect(outcome).toEqual({ status: "succeeded", output: { greeting: "world" } });
     // The nested run is a run of its own, filed under this run and this node (#22).
-    expect(observed.find((o) => o.type === "run-started")).toMatchObject({
+    expect(observed.find((o) => o.step_type === "workflow")).toMatchObject({
       parentRunId: "run-1",
-      nodeId: "nested",
-      nodeName: "nested",
+      node_id: "nested",
+      node_name: "nested",
       input: { name: "world" },
     });
   });
@@ -1173,9 +1173,9 @@ describe("runNode — workflow step", () => {
     const outcome = await runNode(run, node, "seed", makeExec());
 
     expect(outcome).toEqual({ status: "succeeded", output: { greeting: "world" } });
-    // Re-entered, so no second `run-started` row for the child, and its own context was restored.
+    // Re-entered, so no second start row for the child, and its own context was restored.
     expect(
-      observed.find((o) => o.type === "run-started" && o.runId === "child-run"),
+      observed.find((o) => o.type === "step-started" && o.run_id === "child-run"),
     ).toBeUndefined();
     expect(reads).toContain("child-run:context.json");
   });
@@ -1220,9 +1220,9 @@ describe("runNode — a node's own recorded row decides the walk (ADR 0041)", ()
     const outcome = await runNode(run, askNode(), "seed", makeExec());
 
     expect(outcome).toEqual({ status: "succeeded", output: "the person's answer" });
-    // The terminal observation names the parked leaf's own run, so persistence flips that row.
+    // The terminal event names the parked leaf's own run, so persistence flips that row.
     expect(observed.find((o) => o.type === "step-finished")).toMatchObject({
-      runId: "parked-run",
+      run_id: "parked-run",
       status: "succeeded",
       output: "the person's answer",
     });
@@ -1260,7 +1260,7 @@ describe("runNode — a node's own recorded row decides the walk (ADR 0041)", ()
     expect(outcome.status).toBe("succeeded");
     expect(requests).toHaveLength(1);
     // A fresh step run, not the terminal row's id.
-    expect(observed.find((o) => o.type === "step-started")?.runId).not.toBe("cancelled-run");
+    expect(observed.find((o) => o.type === "step-started")?.run_id).not.toBe("cancelled-run");
   });
 });
 
@@ -1325,9 +1325,9 @@ describe("runSequence", () => {
 
     expect(outcome.status).toBe("failed");
     expect(outcome.status === "failed" && outcome.causeRunId).toBeTruthy();
-    expect(
-      observed.filter((o) => o.type === "step-started").map((o) => "nodeId" in o && o.nodeId),
-    ).toEqual(["boom"]);
+    expect(observed.filter((o) => o.type === "step-started").map((o) => o.node_id)).toEqual([
+      "boom",
+    ]);
   });
 
   // Starting a step run only to kill it would put a run in the record that never really ran.

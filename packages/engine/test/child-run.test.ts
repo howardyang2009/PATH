@@ -4,7 +4,7 @@ import { childIdentity, openContainerRun } from "../src/child-run.js";
 import { createProcessorSemaphore } from "../src/processor-semaphore.js";
 import type { RunContext, RunIdentity } from "../src/run-context.js";
 import { createEmitter } from "../src/run-emitter.js";
-import type { Observation } from "../src/run-observer.js";
+import type { RunEvent } from "../src/run-observer.js";
 
 const parentIdentity: RunIdentity = {
   runId: "parent",
@@ -16,7 +16,7 @@ const parentIdentity: RunIdentity = {
 const file: WorkflowFile = { format: "path/workflow@5", id: "wf", name: "wf", body: [] };
 const loop = { id: "loop-id", name: "loop" };
 
-function parentRun(into: Observation[]): RunContext {
+function parentRun(into: RunEvent[]): RunContext {
   return {
     file,
     fileDir: "/tmp",
@@ -58,7 +58,7 @@ describe("childIdentity", () => {
 
 describe("openContainerRun", () => {
   it("starts a fresh container with its input and closes it on finish", async () => {
-    const observed: Observation[] = [];
+    const observed: RunEvent[] = [];
     const container = await openContainerRun(parentRun(observed), {
       key: { owner: loop, iteration: 1 },
       existingRunId: undefined,
@@ -68,16 +68,16 @@ describe("openContainerRun", () => {
     expect(container.started).toBe(true);
     expect(container.run.identity.parentRunId).toBe("parent");
     await container.finish({ status: "succeeded", output: "done" });
-    expect(observed.map((o) => o.type)).toEqual(["run-started", "run-finished"]);
+    expect(observed.map((e) => e.event?.type)).toEqual(["step-started", "step-finished"]);
     expect(observed[0]).toMatchObject({
       runId: container.run.identity.runId,
-      input: { seed: 1 },
-      iteration: 1,
+      event: { step_type: "workflow" },
+      payload: { input: { seed: 1 }, iteration: 1 },
     });
   });
 
-  it("re-enters a running container without a second run-started", async () => {
-    const observed: Observation[] = [];
+  it("re-enters a running container without a second start", async () => {
+    const observed: RunEvent[] = [];
     const container = await openContainerRun(parentRun(observed), {
       key: { owner: null, pass: 3 },
       existingRunId: "running-pass",

@@ -4,13 +4,14 @@ import { type SettleStepResult, settleStepResult } from "../src/leaf-step.js";
 import type { StepResult } from "../src/plugin-seam/seam.js";
 import type { Cancellation, RunIdentity } from "../src/run-context.js";
 import { createEmitter, type StepEmitter } from "../src/run-emitter.js";
-import type { Observation } from "../src/run-observer.js";
+import type { RunEvent } from "../src/run-observer.js";
+import { flat } from "./fake-observer.js";
 
 /**
  * The engine-owned mapping from a worker's `StepResult` to a leaf step's terminal outcome, tested on
  * its own seam (#349's class) — no worker, no semaphore, no registry, no pipeline. A real `StepEmitter`
- * over a recording sink is what proves the *observations* the mapping emits, in order, are the wire
- * shapes persistence and logging read. What a worker self-reports is its business (an SDK "success"
+ * over a recording sink is what proves the events the mapping emits, in order, are the shapes
+ * persistence and logging read. What a worker self-reports is its business (an SDK "success"
  * frame it judges an error is failed at the worker); what the engine does with whatever came back is
  * this, and it is one place.
  */
@@ -24,11 +25,11 @@ const IDENTITY: RunIdentity = {
 };
 const NODE = { id: "step-node-guid", name: "do-thing" };
 
-// A real step emitter over a recording sink: `seen` is every wire `Observation` the mapping produced,
+// A real step emitter over a recording sink: `seen` is every event the mapping produced, flattened,
 // and `step.runId` is the minted id a failure names itself by (a cancelling sibling's `causeRunId`).
-function harness(): { step: StepEmitter; seen: Observation[] } {
-  const seen: Observation[] = [];
-  const emit = async (o: Observation): Promise<void> => void seen.push(o);
+function harness(): { step: StepEmitter; seen: ReturnType<typeof flat>[] } {
+  const seen: ReturnType<typeof flat>[] = [];
+  const emit = async (e: RunEvent): Promise<void> => void seen.push(flat(e));
   const step = createEmitter(IDENTITY, emit).step(NODE);
   return { step, seen };
 }
@@ -54,10 +55,10 @@ describe("settleStepResult — success", () => {
     expect(seen).toEqual([
       {
         type: "step-finished",
-        runId: step.runId,
-        rootRunId: "root-run",
-        nodeId: "step-node-guid",
-        nodeName: "do-thing",
+        ts: expect.any(String),
+        run_id: step.runId,
+        node_id: "step-node-guid",
+        node_name: "do-thing",
         status: "succeeded",
         output: { answer: 42 },
       },
@@ -123,10 +124,10 @@ describe("settleStepResult — failure", () => {
     expect(seen).toEqual([
       {
         type: "step-finished",
-        runId: step.runId,
-        rootRunId: "root-run",
-        nodeId: "step-node-guid",
-        nodeName: "do-thing",
+        ts: expect.any(String),
+        run_id: step.runId,
+        node_id: "step-node-guid",
+        node_name: "do-thing",
         status: "failed",
         error: 'step "do-thing": exited with code 2',
       },
@@ -169,7 +170,7 @@ describe("settleStepResult — cancelled outranks the worker's verdict", () => {
     expect(seen[0]).toMatchObject({
       type: "run-cancelled",
       cause: "sibling-failed",
-      causeRunId: "the-failing-sibling",
+      cause_run_id: "the-failing-sibling",
     });
   });
 
@@ -179,7 +180,7 @@ describe("settleStepResult — cancelled outranks the worker's verdict", () => {
     controller.abort();
     await settle({ step, signal: controller.signal, result: { status: "succeeded", output: "x" } });
 
-    expect(seen[0]).toMatchObject({ type: "run-cancelled", cause: "operator", causeRunId: null });
+    expect(seen[0]).toMatchObject({ type: "run-cancelled", cause: "operator", cause_run_id: null });
   });
 });
 
@@ -189,11 +190,8 @@ describe("settleStepResult — stderr rides every outcome", () => {
     await settle({ step, result: { status: "succeeded", output: "ok", stderr: "a warning" } });
 
     expect(seen[0]).toEqual({
-      type: "step-stderr",
-      runId: step.runId,
-      rootRunId: "root-run",
-      nodeId: "step-node-guid",
-      nodeName: "do-thing",
+      type: "stderr",
+      run_id: step.runId,
       stderr: "a warning",
     });
     expect(seen.at(-1)).toMatchObject({ type: "step-finished", status: "succeeded" });
@@ -209,7 +207,7 @@ describe("settleStepResult — stderr rides every outcome", () => {
       result: { status: "failed", error: "boom", stderr: "the tail" },
     });
 
-    expect(seen.map((o) => o.type)).toEqual(["step-stderr", "run-cancelled", "step-finished"]);
+    expect(seen.map((o) => o.type)).toEqual(["stderr", "run-cancelled", "step-finished"]);
   });
 });
 
@@ -222,9 +220,9 @@ describe("settleStepResult — usage is leaf-only and metering-gated", () => {
       result: { status: "succeeded", output: "ok", usage: { in: 10 }, estimatedCostUsd: 0.01 },
     });
 
-    expect(seen.map((o) => o.type)).toEqual(["step-usage", "step-finished"]);
+    expect(seen.map((o) => o.type)).toEqual(["usage", "step-finished"]);
     expect(seen[0]).toMatchObject({
-      type: "step-usage",
+      type: "usage",
       usage: { in: 10 },
       estimatedCostUsd: 0.01,
     });
@@ -238,8 +236,8 @@ describe("settleStepResult — usage is leaf-only and metering-gated", () => {
       result: { status: "failed", error: "mid-flight", usage: { in: 5 } },
     });
 
-    expect(seen.map((o) => o.type)).toEqual(["step-usage", "step-finished"]);
-    expect(seen[0]).toMatchObject({ type: "step-usage", usage: { in: 5 }, estimatedCostUsd: null });
+    expect(seen.map((o) => o.type)).toEqual(["usage", "step-finished"]);
+    expect(seen[0]).toMatchObject({ type: "usage", usage: { in: 5 }, estimatedCostUsd: null });
   });
 
   it("never emits usage for a non-metering worker, even when the result carries figures", async () => {
@@ -267,10 +265,10 @@ describe("settleStepResult — awaiting parks and tears down (ADR 0039/0041)", (
     // A park that named no assignee carries `assignee: null` on the record (#488).
     expect(seen[0]).toEqual({
       type: "step-awaiting",
-      runId: step.runId,
-      rootRunId: "root-run",
-      nodeId: NODE.id,
-      nodeName: NODE.name,
+      ts: expect.any(String),
+      run_id: step.runId,
+      node_id: NODE.id,
+      node_name: NODE.name,
       assignee: null,
     });
   });

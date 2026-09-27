@@ -32,7 +32,7 @@ export interface PassWalkStart {
   /** The walk's seed for pass 1, the recorded pass input on a re-entry. */
   carried: JsonValue;
   jumpsSpent: Map<string, number>;
-  /** The recorded `running` pass a Complete re-enters in place (same id, no `run-started`). */
+  /** The recorded `running` pass a Complete re-enters in place (same id, no second start). */
   reentered: RunRecord | undefined;
   /** The resume state for each pass as the walk opens it; `undefined` when not resuming. */
   resumeFor: (pass: number, opener: GotoNode | null) => RunResume | undefined;
@@ -141,7 +141,7 @@ export async function runTopLevelWalk(
       input: carried,
       resume: resumeFor(pass, opener),
     });
-    if (container.started) await run.emitter.passStarted(opener, { pass });
+    if (container.started) await run.emitter.emit(opener, { type: "pass-started", pass });
     reentered = undefined;
 
     const outcome = await exec.walk(container.run, body.slice(start), carried, exec);
@@ -164,7 +164,13 @@ export async function runTopLevelWalk(
     const spent = jumpsSpent.get(goto.id) ?? 0;
     // Cause first (ADR 0061 §5): the goto event, then the closing pass's step-finished.
     if (spent >= maxJumps) {
-      await run.emitter.gotoExhausted(goto, { target, maxJumps, pass });
+      await run.emitter.emit(goto, {
+        type: "goto-exhausted",
+        target_node_id: target.id,
+        target_node_name: target.name,
+        max_jumps: maxJumps,
+        pass,
+      });
       const exhausted: SeqOutcome = {
         status: "failed",
         error: `goto "${goto.name}": max_jumps (${maxJumps}) exhausted`,
@@ -173,7 +179,14 @@ export async function runTopLevelWalk(
       return exhausted;
     }
     jumpsSpent.set(goto.id, spent + 1);
-    await run.emitter.gotoTaken(goto, { target, jump: spent + 1, maxJumps, pass: pass + 1 });
+    await run.emitter.emit(goto, {
+      type: "goto-taken",
+      target_node_id: target.id,
+      target_node_name: target.name,
+      jump: spent + 1,
+      max_jumps: maxJumps,
+      pass: pass + 1,
+    });
     await container.finish({ status: "succeeded", output: outcome.output });
 
     pass += 1;

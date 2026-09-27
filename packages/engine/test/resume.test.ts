@@ -10,7 +10,6 @@ import { RUN_BLOB_FILE, runBlobDir } from "../src/persistence/paths.js";
 import { createPersistedObserver } from "../src/persistence/persisted-observer.js";
 import { getRunsForRoot } from "../src/persistence/run-store.js";
 import type { StepRequest, WorkerDescriptor } from "../src/plugin-seam/seam.js";
-import type { Observation } from "../src/run-observer.js";
 import { type ResumeInput, runWorkflow } from "../src/run-workflow.js";
 import { type FakeObserver, fakeObserver } from "./fake-observer.js";
 import { stampNames } from "./stamp-names.js";
@@ -96,17 +95,13 @@ function tree(body: WorkflowFile["body"], output?: WorkflowFile["output"]): Work
   });
 }
 
-function markers(observer: FakeObserver): Extract<Observation, { type: "reuse-marker" }>[] {
-  return observer
-    .all()
-    .filter((o): o is Extract<Observation, { type: "reuse-marker" }> => o.type === "reuse-marker");
+function markers(observer: FakeObserver) {
+  return observer.of("reuse-marker").map((e) => e.event);
 }
 
+/** The node ids of every leaf step run started. */
 function startedNodeIds(observer: FakeObserver): (string | null)[] {
-  return observer
-    .all()
-    .filter((o): o is Extract<Observation, { type: "step-started" }> => o.type === "step-started")
-    .map((o) => o.nodeId);
+  return observer.stepStarts().map((e) => e.event.node_id);
 }
 
 describe("resume — reusing a node's recorded output (#172)", () => {
@@ -162,11 +157,11 @@ describe("resume — reusing a node's recorded output (#172)", () => {
     // Exactly one reuse-marker, for a, pointing at the original run; run_id is this successor's root run.
     const m = markers(observer);
     expect(m).toHaveLength(1);
-    expect(m[0]).toMatchObject({ nodeId: "a", nodeName: "a", originalRunId: "a-run" });
+    expect(m[0]).toMatchObject({ node_id: "a", node_name: "a", original_run_id: "a-run" });
 
     // No step-started/step-finished for the reused node; the executed one has both.
     expect(startedNodeIds(observer)).toEqual(["b"]);
-    expect(observer.all().some((o) => o.type === "step-finished")).toBe(true);
+    expect(observer.of("step-finished").length).toBeGreaterThan(0);
   });
 
   it("reuses a succeeded person-activity across resume — a marker, no execution, no re-await (resume-from-k.md)", async () => {
@@ -233,10 +228,10 @@ describe("resume — reusing a node's recorded output (#172)", () => {
 
     const m = markers(observer);
     expect(m).toHaveLength(1);
-    expect(m[0]).toMatchObject({ nodeId: "gate", nodeName: "gate", originalRunId: "gate-run" });
+    expect(m[0]).toMatchObject({ node_id: "gate", node_name: "gate", original_run_id: "gate-run" });
     // No step-started for the reused gate; no awaiting park anywhere.
     expect(startedNodeIds(observer)).toEqual(["b"]);
-    expect(observer.all().some((o) => o.type === "step-awaiting")).toBe(false);
+    expect(observer.of("step-awaiting")).toHaveLength(0);
   });
 
   it("threads a reused output into the next node's default input just like a produced one", async () => {
@@ -337,7 +332,7 @@ describe("resume — reusing a node's recorded output (#172)", () => {
     // One marker for the reuse decision, not one per descendant.
     const m = markers(observer);
     expect(m).toHaveLength(1);
-    expect(m[0]).toMatchObject({ nodeId: "sub", nodeName: "sub", originalRunId: "sub-run" });
+    expect(m[0]).toMatchObject({ node_id: "sub", node_name: "sub", original_run_id: "sub-run" });
     // The descendant's blob was never touched — the subtree was never walked.
     expect(reads.some((key) => key.startsWith("inner-run/"))).toBe(false);
   });
@@ -410,23 +405,18 @@ describe("resume — reusing a node's recorded output (#172)", () => {
     expect(result.status).toBe("succeeded");
     expect(ran).toEqual(["y"]); // x reused inside the nested run; only y ran fresh
 
-    // The nested run re-entered: there is a run-started for the `sub` node with a fresh run id.
-    const subStarted = observer
-      .all()
-      .find(
-        (o): o is Extract<Observation, { type: "run-started" }> =>
-          o.type === "run-started" && o.nodeId === "sub",
-      );
+    // The nested run re-entered: there is a start for the `sub` node with a fresh run id.
+    const subStarted = observer.runStarts().find((e) => e.event.node_id === "sub");
     expect(subStarted).toBeDefined();
 
     // x's reuse-marker is attributed to the nested run, not the root — the nearest re-entered ancestor.
     const m = markers(observer);
     expect(m).toHaveLength(1);
     expect(m[0]).toMatchObject({
-      nodeId: "x",
-      nodeName: "x",
-      originalRunId: "x-run",
-      runId: subStarted!.runId,
+      node_id: "x",
+      node_name: "x",
+      original_run_id: "x-run",
+      run_id: subStarted!.runId,
     });
 
     // The nested run seeds from its own input (replay from seed, ADR 0062), never from a recorded
@@ -434,12 +424,9 @@ describe("resume — reusing a node's recorded output (#172)", () => {
     // the reused node re-published over that seed.
     expect(reads.some((key) => key.startsWith("sub-run/"))).toBe(false);
     const nestedContexts = observer
-      .all()
-      .filter(
-        (o): o is Extract<Observation, { type: "context-changed" }> =>
-          o.type === "context-changed" && o.runId === subStarted!.runId,
-      )
-      .map((o) => o.context);
+      .records("context")
+      .filter((e) => e.runId === subStarted!.runId)
+      .map((e) => e.payload.context);
     expect(nestedContexts.length).toBeGreaterThan(0);
     expect(nestedContexts.at(-1)).toEqual({ restored: "CTX", fromX: "REUSED_X" });
   });
@@ -618,17 +605,17 @@ describe("resume — wait-one join re-evaluates and short-circuits the losers (�
     expect(result.output).toEqual({ answer: "REUSED_F" });
 
     // The winner reused (one marker), the loser did not reuse and was not started.
-    expect(markers(observer).map((m) => m.nodeId)).toEqual(["f"]);
+    expect(markers(observer).map((m) => m.node_id)).toEqual(["f"]);
     expect(startedNodeIds(observer)).not.toContain("s");
     expect(reads).not.toContain("s-run/output.json");
 
     // The join re-evaluated to a win naming the reused winner; no loser run means no run-cancelled.
-    expect(observer.all().find((o) => o.type === "join-applied")).toMatchObject({
-      nodeId: "race",
-      nodeName: "race",
+    expect(observer.of("join-applied")[0]?.event).toMatchObject({
+      node_id: "race",
+      node_name: "race",
       winner: "fast",
     });
-    expect(observer.all().some((o) => o.type === "run-cancelled")).toBe(false);
+    expect(observer.of("run-cancelled")).toHaveLength(0);
   });
 
   it("reproduces the seq-first winner when a photo-finish left two branches succeeded, not declaration order", async () => {
@@ -722,8 +709,8 @@ describe("resume — wait-one join re-evaluates and short-circuits the losers (�
     expect(result.status).toBe("succeeded");
     // The earlier-finishing (second-declared) branch is the winner, not the first-declared one.
     expect(result.output).toEqual({ answer: "EARLY" });
-    expect(markers(observer).map((m) => m.nodeId)).toEqual(["e"]);
-    expect(observer.all().find((o) => o.type === "join-applied")).toMatchObject({
+    expect(markers(observer).map((m) => m.node_id)).toEqual(["e"]);
+    expect(observer.of("join-applied")[0]?.event).toMatchObject({
       winner: "early",
     });
     // The losing-but-succeeded branch was neither started nor reused.
@@ -824,7 +811,7 @@ describe("resume — do-not-wait re-fires a non-`succeeded` detached branch; no 
 
     // `pre` succeeded → reused (one marker, no execution). The failed detached branch → re-ran on the
     // worker. So exactly the detached branch executed, and only the predecessor reused.
-    const markerIds = markers(observer).map((m) => m.nodeId);
+    const markerIds = markers(observer).map((m) => m.node_id);
     expect(ran).toEqual(["d"]);
     expect(markerIds).toEqual(["pre"]);
 
@@ -832,23 +819,19 @@ describe("resume — do-not-wait re-fires a non-`succeeded` detached branch; no 
     // reused (no marker for `d`) nor short-circuited away (a wait-one loser never starts; this one does).
     expect(startedNodeIds(observer)).toContain("d");
     expect(markerIds).not.toContain("d");
-    const dRunId = observer
-      .all()
-      .find((o) => o.type === "step-started" && o.nodeName === "d")!.runId;
-    expect(
-      observer.all().find((o) => o.type === "step-finished" && o.runId === dRunId),
-    ).toMatchObject({ status: "failed" });
+    const dRunId = observer.stepStarts().find((e) => e.event.node_name === "d")!.runId;
+    expect(observer.of("step-finished").find((e) => e.runId === dRunId)?.event).toMatchObject({
+      status: "failed",
+    });
     // Its recorded output was never read: resume re-executed it rather than restoring it.
     expect(reads).not.toContain("d-run/output.json");
 
     // No wait-one machinery: the join fires (spec §9) but crowns no winner, and nothing was cancelled —
     // there is no reused winner making the branch pointless, so nothing to short-circuit.
-    const joinApplied = observer
-      .all()
-      .find((o) => o.type === "join-applied" && o.nodeName === "fire");
+    const joinApplied = observer.of("join-applied").find((e) => e.event.node_name === "fire");
     expect(joinApplied).toBeDefined();
-    expect(joinApplied).not.toHaveProperty("winner");
-    expect(observer.all().some((o) => o.type === "run-cancelled")).toBe(false);
+    expect(joinApplied!.event).not.toHaveProperty("winner");
+    expect(observer.of("run-cancelled")).toHaveLength(0);
   });
 });
 

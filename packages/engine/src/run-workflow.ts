@@ -11,7 +11,7 @@ import { createEmitter } from "./run-emitter.js";
 import { executeWorkflowRun } from "./run-node.js";
 import type { RunOptions, RunResult } from "./run-options.js";
 import { analyzeRunStart, resolveExecutorRegistry } from "./run-start.js";
-import { maskObservation } from "./secret-mask.js";
+import { maskRunEvent } from "./secret-mask.js";
 
 export { runNode, runSequence } from "./run-node.js";
 export type {
@@ -60,11 +60,11 @@ export async function runWorkflow(
 
   const { observer } = options;
 
-  // The original tree's root run — the predecessor fact stamped on this fresh root's `run-started`.
+  // The original tree's root run — the predecessor fact stamped on this fresh root's start.
   const originalRoot = findRootRun(options.resume?.originalRuns ?? []);
   const emit: Emit = observer
     ? async (o) => {
-        await observer.observe(masker.isEmpty ? o : maskObservation(masker, o));
+        await observer.observe(masker.isEmpty ? o : maskRunEvent(masker, o));
       }
     : async () => {};
 
@@ -104,7 +104,7 @@ export async function runWorkflow(
       },
       // Root Resume: the counterpart is the original tree's root; an empty rerun path is plain Resume (ADR 0036).
       resume: options.resume ? rootResumeEntry(options.resume) : undefined,
-      // Complete-continue: the root re-enters in place, skipping `run-started` (ADR 0041). Exclusive with `resume`.
+      // Complete-continue: the root re-enters in place, skipping its start (ADR 0041). Exclusive with `resume`.
       continue: options.continue
         ? {
             state: {

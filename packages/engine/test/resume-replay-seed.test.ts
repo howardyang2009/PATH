@@ -2,7 +2,6 @@ import { join } from "node:path";
 import type { JsonValue, RunRecord, WorkflowFile } from "@path/schema";
 import { describe, expect, it } from "vitest";
 import type { StepRequest, WorkerDescriptor } from "../src/plugin-seam/seam.js";
-import type { Observation } from "../src/run-observer.js";
 import { type ResumeInput, runWorkflow } from "../src/run-workflow.js";
 import { type FakeObserver, fakeObserver } from "./fake-observer.js";
 import { stampNames } from "./stamp-names.js";
@@ -89,22 +88,13 @@ function tree(body: WorkflowFile["body"], output?: WorkflowFile["output"]): Work
 
 function contextsOf(observer: FakeObserver, runId: string): JsonValue[] {
   return observer
-    .all()
-    .filter(
-      (o): o is Extract<Observation, { type: "context-changed" }> =>
-        o.type === "context-changed" && o.runId === runId,
-    )
-    .map((o) => o.context);
+    .records("context")
+    .filter((e) => e.runId === runId)
+    .map((e) => e.payload.context);
 }
 
 function rootRunId(observer: FakeObserver): string {
-  const started = observer
-    .all()
-    .find(
-      (o): o is Extract<Observation, { type: "run-started" }> =>
-        o.type === "run-started" && o.parentRunId === null,
-    );
-  return started!.runId;
+  return observer.runStarts()[0]!.rootRunId;
 }
 
 // Seed y=0. a publishes x; b records the y it sees; c overwrites y. The original's final context
@@ -500,9 +490,9 @@ describe("replay from seed — parallel joins", () => {
     expect(result.status).toBe("succeeded");
     expect(result.output).toEqual({ both: ["L", "R"] });
     // Landed at the join in branch declaration order, exactly as the original join did.
-    expect(observer.all().find((o) => o.type === "join-applied")).toMatchObject({
-      nodeId: "fan",
-      publishedKeys: ["fromL", "fromR"],
+    expect(observer.of("join-applied")[0]?.event).toMatchObject({
+      node_id: "fan",
+      published_keys: ["fromL", "fromR"],
     });
   });
 
@@ -630,13 +620,8 @@ describe("replay from seed — the successor records its seed", () => {
       },
     });
 
-    const rootStarted = observer
-      .all()
-      .find(
-        (o): o is Extract<Observation, { type: "run-started" }> =>
-          o.type === "run-started" && o.parentRunId === null,
-      );
-    expect(rootStarted!.input).toEqual({ y: 0 });
+    const rootStarted = observer.runStarts().find((e) => e.runId === e.rootRunId);
+    expect(rootStarted!.payload).toMatchObject({ input: { y: 0 } });
   });
 });
 

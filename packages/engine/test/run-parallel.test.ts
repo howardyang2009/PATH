@@ -8,8 +8,9 @@ import type { WorkerDescriptor } from "../src/plugin-seam/seam.js";
 import { createProcessorSemaphore } from "../src/processor-semaphore.js";
 import type { NodeExecContext, RunContext } from "../src/run-context.js";
 import { createEmitter } from "../src/run-emitter.js";
-import type { Observation } from "../src/run-observer.js";
+import type { RunEvent } from "../src/run-observer.js";
 import { runNode, runSequence } from "../src/run-workflow.js";
+import { flat } from "./fake-observer.js";
 
 /**
  * The `parallel` block, driven through the node seam. `runParallelNode` cannot be called in isolation
@@ -62,11 +63,11 @@ function registryWith(
 
 function makeRun(overrides: Partial<RunContext> = {}): {
   run: RunContext;
-  observed: Observation[];
+  observed: ReturnType<typeof flat>[];
 } {
-  const observed: Observation[] = [];
-  // A real emitter over the capturing sink (Q7-b): join-applied and every other observation go
-  // through `run.emitter`, so `observed` stays the wire-`Observation` assertion it always was.
+  const observed: ReturnType<typeof flat>[] = [];
+  // A real emitter over the capturing sink: join-applied and every other event go through
+  // `run.emitter`, so `observed` holds the events the emitter produces, flattened.
   const identity: RunContext["identity"] = {
     runId: "run-1",
     rootRunId: "run-1",
@@ -74,7 +75,7 @@ function makeRun(overrides: Partial<RunContext> = {}): {
     nodeId: null,
     nodeName: null,
   };
-  const emit = async (o: Observation): Promise<void> => void observed.push(o);
+  const emit = async (e: RunEvent): Promise<void> => void observed.push(flat(e));
   return {
     observed,
     run: {
@@ -147,10 +148,10 @@ describe("runNode — parallel", () => {
 
     expect(outcome).toEqual({ status: "succeeded", output: { left: "L", right: "R" } });
     expect(observed.find((o) => o.type === "join-applied")).toMatchObject({
-      nodeId: "fan",
-      nodeName: "fan",
+      node_id: "fan",
+      node_name: "fan",
       branches: ["left", "right"],
-      publishedKeys: ["from_left"],
+      published_keys: ["from_left"],
     });
   });
 
@@ -347,17 +348,17 @@ describe("runNode — parallel", () => {
 
     expect(outcome.status).toBe("failed");
     const started = observed.filter((o) => o.type === "step-started");
-    const sleeper = started.find((o) => "nodeId" in o && o.nodeId === "sleeper")!;
-    const kaboom = started.find((o) => "nodeId" in o && o.nodeId === "kaboom")!;
+    const sleeper = started.find((o) => o.node_id === "sleeper")!;
+    const kaboom = started.find((o) => o.node_id === "kaboom")!;
 
     // The failing branch's step run is the cause the sibling's cancellation points back at — an
     // operator cancel would carry `cause: "operator"` and a null cause run instead (#52).
     expect(observed.find((o) => o.type === "run-cancelled")).toMatchObject({
-      runId: sleeper.runId,
-      nodeId: "sleeper",
-      nodeName: "sleeper",
+      run_id: sleeper.run_id,
+      node_id: "sleeper",
+      node_name: "sleeper",
       cause: "sibling-failed",
-      causeRunId: kaboom.runId,
+      cause_run_id: kaboom.run_id,
     });
     // No join, hence no publishes landed (§5.6).
     expect(observed.filter((o) => o.type === "join-applied")).toHaveLength(0);
@@ -460,18 +461,18 @@ describe("runNode — parallel wait-one", () => {
     });
     expect(exec.context).toEqual({ answer: "FAST" });
     expect(observed.find((o) => o.type === "join-applied")).toMatchObject({
-      nodeId: "race",
-      nodeName: "race",
+      node_id: "race",
+      node_name: "race",
       branches: ["fast"],
-      publishedKeys: ["answer"],
+      published_keys: ["answer"],
       winner: "fast",
     });
     // The loser is cancelled best-effort with the new cause — nothing failed, so it is not sibling-failed.
     expect(observed.find((o) => o.type === "run-cancelled")).toMatchObject({
-      nodeId: "s",
-      nodeName: "s",
+      node_id: "s",
+      node_name: "s",
       cause: "sibling-succeeded",
-      causeRunId: null,
+      cause_run_id: null,
     });
   });
 

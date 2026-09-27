@@ -35,7 +35,7 @@ export interface SettleStepResult {
   /** The node: the name a worker error is prefixed with, and the `parse` applied to a string output. */
   node: { name: string; parse?: "text" | "json" };
   result: StepResult;
-  /** The worker's `meters` flag: a `step-usage` observation is emitted only for a metering worker. */
+  /** The worker's `meters` flag: a `usage` payload is recorded only for a metering worker. */
   meters: boolean;
   /** The step's kill signal — a `parallel` block's or the operator's; `aborted` makes it `cancelled`. */
   signal?: AbortSignal;
@@ -52,7 +52,8 @@ export interface SettleStepResult {
 export async function settleStepResult(args: SettleStepResult): Promise<SeqOutcome> {
   const { step, node, result, meters, signal, cancellation } = args;
 
-  if (result.status !== "awaiting" && result.stderr !== undefined) await step.stderr(result.stderr);
+  if (result.status !== "awaiting" && result.stderr !== undefined)
+    await step.record({ kind: "stderr", stderr: result.stderr });
 
   if (signal?.aborted) {
     await step.cancelled(stopCause(cancellation));
@@ -62,12 +63,13 @@ export async function settleStepResult(args: SettleStepResult): Promise<SeqOutco
   // A worker that returned `awaiting` (person-activity) parks the leaf and tears nothing else down
   // (ADR 0039): the walk stops here and a Complete replay resolves it later through the CAS.
   if (result.status === "awaiting") {
-    await step.awaiting({ assignee: result.assignee ?? null });
+    await step.emit({ type: "step-awaiting", assignee: result.assignee ?? null });
     return { status: "awaiting" };
   }
 
   if (meters && (result.usage !== undefined || result.estimatedCostUsd !== undefined)) {
-    await step.usage({
+    await step.record({
+      kind: "usage",
       usage: result.usage ?? null,
       estimatedCostUsd: result.estimatedCostUsd ?? null,
     });

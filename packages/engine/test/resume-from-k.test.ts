@@ -2,7 +2,6 @@ import { join } from "node:path";
 import type { JsonValue, RunRecord, WorkflowFile } from "@path/schema";
 import { describe, expect, it } from "vitest";
 import type { StepRequest, WorkerDescriptor } from "../src/plugin-seam/seam.js";
-import type { Observation } from "../src/run-observer.js";
 import { type ResumeInput, runWorkflow } from "../src/run-workflow.js";
 import { type FakeObserver, fakeObserver } from "./fake-observer.js";
 import { stampNames } from "./stamp-names.js";
@@ -82,10 +81,8 @@ function tree(body: WorkflowFile["body"], output?: WorkflowFile["output"]): Work
   });
 }
 
-function markers(observer: FakeObserver): Extract<Observation, { type: "reuse-marker" }>[] {
-  return observer
-    .all()
-    .filter((o): o is Extract<Observation, { type: "reuse-marker" }> => o.type === "reuse-marker");
+function markers(observer: FakeObserver) {
+  return observer.of("reuse-marker").map((e) => e.event);
 }
 
 // A three-node all-succeeded original tree over top-level prompts a, b, c.
@@ -145,7 +142,7 @@ describe("Resume-from-K — top-level boundary (ADR 0035)", () => {
     expect(ran).toEqual(["b", "c"]);
     expect(result.output).toEqual({ a: "REUSED_A", b: "FRESH_B", c: "FRESH_C" });
     // Only the <K prefix reused, one marker for a.
-    expect(markers(observer).map((m) => m.nodeId)).toEqual(["a"]);
+    expect(markers(observer).map((m) => m.node_id)).toEqual(["a"]);
   });
 
   it("re-runs a ≥K workflow node's whole subtree entire (no reuse inside it)", async () => {
@@ -223,7 +220,7 @@ describe("Resume-from-K — top-level boundary (ADR 0035)", () => {
     expect(result.status).toBe("succeeded");
     // inner re-executed (subtree entire); a still reused as the <K prefix.
     expect(ran).toEqual(["inner"]);
-    expect(markers(observer).map((m) => m.nodeId)).toEqual(["a"]);
+    expect(markers(observer).map((m) => m.node_id)).toEqual(["a"]);
     // The collapsed subtree's original blob was never read — sub re-ran fresh, it did not reuse.
     expect(reads.some((key) => key.startsWith("sub-run/") || key.startsWith("inner-run/"))).toBe(
       false,
@@ -285,7 +282,7 @@ describe("Resume-from-K — the superset invariant (spec §4)", () => {
           rerunFromNodePath,
         },
       });
-      return { ran, markers: markers(observer).map((m) => m.nodeId), output: result.output };
+      return { ran, markers: markers(observer).map((m) => m.node_id), output: result.output };
     }
 
     // K at the auto-boundary (first non-succeeded top-level node, c) ≡ plain Resume (undefined path).
@@ -377,7 +374,7 @@ describe("Resume-from-K — nested boundary (ADR 0036)", () => {
     expect(result.status).toBe("succeeded");
     expect(ran).toEqual(["k", "q", "d"]);
     // Partial reuse inside the descended child: the inner prefix p reused, one marker per reused node.
-    expect(markers(observer).map((m) => m.nodeId)).toEqual(["a", "p"]);
+    expect(markers(observer).map((m) => m.node_id)).toEqual(["a", "p"]);
     // The inner prefix's blob was read (it reused); K's and Q's originals were not (they re-ran).
     expect(reads).toContain("p-run/output.json");
     expect(reads.some((key) => key.startsWith("k-run/") || key.startsWith("q-run/"))).toBe(false);
@@ -465,7 +462,7 @@ describe("Resume-from-K — nested boundary (ADR 0036)", () => {
     expect(result.status).toBe("succeeded");
     // sub descended → p reused, k re-ran; sub2 re-ran entire → p2 re-ran fresh (no reuse inside it).
     expect(ran).toEqual(["k", "p2"]);
-    expect(markers(observer).map((m) => m.nodeId)).toEqual(["p"]);
+    expect(markers(observer).map((m) => m.node_id)).toEqual(["p"]);
     // The after-B subtree was forced fresh: its collapsed original blob was never read.
     expect(reads.some((key) => key.startsWith("sub2-run/") || key.startsWith("p2-run/"))).toBe(
       false,
@@ -529,7 +526,7 @@ describe("Resume-from-K — a sequence body is transparent (ADR 0064)", () => {
 
     expect(result.status).toBe("succeeded");
     expect(ran).toEqual(["c", "d", "e"]);
-    expect(markers(observer).map((m) => m.nodeId)).toEqual(["a", "b"]);
+    expect(markers(observer).map((m) => m.node_id)).toEqual(["a", "b"]);
   });
 
   it("a workflow node before K in the same sequence reuses whole (not re-run entire)", async () => {
@@ -597,7 +594,7 @@ describe("Resume-from-K — a sequence body is transparent (ADR 0064)", () => {
 
     expect(result.status).toBe("succeeded");
     expect(ran).toEqual(["c"]);
-    expect(markers(observer).map((m) => m.nodeId)).toEqual(["sub"]);
+    expect(markers(observer).map((m) => m.node_id)).toEqual(["sub"]);
   });
 
   it("descends through a sequence: an intermediate workflow path-node inside a sequence", async () => {
@@ -645,6 +642,6 @@ describe("Resume-from-K — a sequence body is transparent (ADR 0064)", () => {
 
     expect(result.status).toBe("succeeded");
     expect(ran).toEqual(["k", "q", "d"]);
-    expect(markers(observer).map((m) => m.nodeId)).toEqual(["a", "p"]);
+    expect(markers(observer).map((m) => m.node_id)).toEqual(["a", "p"]);
   });
 });

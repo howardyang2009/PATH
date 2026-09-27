@@ -1,10 +1,11 @@
-import type {
-  CompleteResult,
-  LoadedStepPluginRegistry,
-  LogBackend,
-  LogBackendId,
-  Project,
-  RunObserver,
+import {
+  type CompleteResult,
+  type LoadedStepPluginRegistry,
+  type LogBackend,
+  type LogBackendId,
+  type Project,
+  type RunObserver,
+  WORKFLOW_STEP_TYPE,
 } from "@path/engine";
 import type { ConfigObject, JsonValue, LogEvent, WorkflowFile } from "@path/schema";
 import { createDeferred } from "./deferred.js";
@@ -13,12 +14,12 @@ import { RunEventHub } from "./run-event-hub.js";
 
 /**
  * The runs this server process is executing. Routes keep what a route owns (request in, status out).
- * Guarantees: `start` resolves once `run-started` has landed (row written, channel open); a started run
+ * Guarantees: `start` resolves once the root run's start has landed (row written, channel open); a started run
  * is cancellable until it settles; `stream` replays then goes live with no gap or duplicate.
  */
 export interface LiveRuns {
   /** Starts one workflow and resolves with its ids once the root run exists — the 202 contract of
-   * `POST /v0/runs` (server-api-v0.md §2). Rejects only if `run-started` never fires. */
+   * `POST /v0/runs` (server-api-v0.md §2). Rejects only if the start never fires. */
   start(rootFile: WorkflowFile, workflowDir: string, options: StartRunOptions): Promise<StartedRun>;
   /** Resumes a prior root run as a **successor** (ADR 0001) and resolves with its own fresh ids; the
    * context is restored from the predecessor, so no `input`/`operatorConfig` is carried. */
@@ -159,7 +160,7 @@ export function createLiveRuns(project: Project): LiveRuns {
     inFlight.add(entry);
   }
 
-  /** The tracking `start` and `resume` share: the `run-started` deferred, the controller filed for
+  /** The tracking `start` and `resume` share: the start deferred, the controller filed for
    * `cancel`, the live-forwarding backend, and the teardown that drops both on any outcome. */
   function beginTracked(): {
     started: ReturnType<typeof createDeferred<StartedRun>>;
@@ -171,20 +172,21 @@ export function createLiveRuns(project: Project): LiveRuns {
     };
     finalize: () => void;
   } {
-    // Resolved on the first `run-started`: the response goes out before the run finishes, not before it starts.
+    // Resolved on the first workflow-run start: the response goes out before the run finishes, not before it starts.
     const started = createDeferred<StartedRun>();
     const controller = new AbortController();
     let registeredRootRunId: string | undefined;
 
     const captureObserver: RunObserver = {
-      observe(o) {
-        if (o.type !== "run-started") return;
+      observe({ runId, rootRunId, event }) {
+        // A workflow-run's start is its implicit root step's `step-started`.
+        if (event?.type !== "step-started" || event.step_type !== WORKFLOW_STEP_TYPE) return;
         // Fires for every run in the tree, all sharing one `rootRunId` — register on the first.
         if (registeredRootRunId === undefined) {
-          registeredRootRunId = o.rootRunId;
-          controllers.set(o.rootRunId, controller);
+          registeredRootRunId = rootRunId;
+          controllers.set(rootRunId, controller);
         }
-        started.resolve({ runId: o.runId, rootRunId: o.rootRunId });
+        started.resolve({ runId, rootRunId });
       },
     };
 
@@ -277,7 +279,7 @@ export function createLiveRuns(project: Project): LiveRuns {
       workflowDir,
       options,
     ): Promise<CompleteResult> {
-      // A Complete re-drives the existing tree (ADR 0041), so no fresh `run-started` exists — file the
+      // A Complete re-drives the existing tree (ADR 0041), so no fresh start exists — file the
       // controller under the known root id so Cancel reaches the tail, and stream the tail live.
       const controller = new AbortController();
       // Own the controller/channel only when no drive is active for this root: a concurrent Complete the

@@ -514,25 +514,24 @@ Rule of thumb: **Config flows in from outside. Context is written from inside.**
 
 ## Audit
 
-- **Observation** — one typed record of run activity that the engine emits to its **observer**. It is
-  the full set and the engine's only audit seam. An observation carries its payload (`input`, `output`,
-  `context`, `stderr`), because persistence writes those to blobs. Three of them (`step-stderr`,
-  `step-usage`, `context-changed`) exist for persistence alone and are never narrated. The engine masks
-  every observation for secrets before it crosses the seam. The engine masks at one emit point. Thus
-  masking is not something an observer or a wrapper can be partial about.
-- **Emitter** — the run-scoped producer of **observations**. The engine builds one per workflow-run
-  from the run's identity. It owns the shared envelope, so a call site declares only what a given
-  observation adds. It holds `run_id` and `root_run_id` for the run tier. It pulls `node_id` and
-  `node_name` off the node for control-node observations. It computes the root-only run-started extras
-  (source-workflow identity, `resumed_from_root_run_id`) from the run's own identity. Thus the code
-  threads the `node_id` and `node_name` audit fields (ADR 0007) here, not at each site. A leaf step
-  takes a **step-scoped** sub-emitter. This sub-emitter mints the step run's own `run_id` once. It
-  carries that id across the step's `step-started`, then `step-usage` and `step-stderr`, then
-  `step-finished`. The emitter sits *above* the mask point (Observation): it composes the record, and
-  the single emit choke point masks it. One emitter, one envelope. Thus an identity-shape change lands
-  in one module, not in every observation literal.
-- **Log event** — a **narrated observation**. It is the append-only subset that reaches a **log
-  backend**, with payloads stripped (they are reachable as blob refs on the run row). The event set
+- **Run event** — one fact a run reports to its **observer**, the engine's only audit seam. It pairs
+  the **log event** it narrates with a **payload** the log must not carry: the start facts and `input`,
+  a succeeded `output`, a leaf's `stderr` and `usage`, and a `context` write. Persistence writes the
+  payload to rows and blobs. Three payloads (`stderr`, `usage`, `context`) stand alone with no log
+  event. The engine masks every run event for secrets before it crosses the seam, at one emit point.
+  Thus masking is not something an observer or a wrapper can be partial about.
+- **Emitter** — the run-scoped producer of **run events**. The engine builds one per workflow-run from
+  the run's identity. It stamps the shared envelope (`run_id`, `node_id`, `node_name`, `ts`, and the
+  root run id), so a call site supplies only what its log event adds. It computes the root-only start
+  facts (source-workflow identity, `resumed_from_root_run_id`) from the run's own identity. Thus the
+  code threads the `node_id` and `node_name` audit fields (ADR 0007) here, not at each site. A leaf
+  step takes a **step-scoped** sub-emitter. This sub-emitter mints the step run's own `run_id` once. It
+  carries that id across the step's `step-started`, its `usage` and `stderr` payloads, then
+  `step-finished`. The emitter sits *above* the mask point: it composes the event, and the single emit
+  choke point masks it.
+- **Log event** — the one event vocabulary, owned by `@path/schema`. The engine emits it inside a **run
+  event**; the append-only stream reaches a **log backend** without payloads (they are reachable as
+  blob refs on the run row). The event set
   covers step lifecycle (`step-started`, `step-awaiting`, `step-finished`) and control-node activity
   (`branch-taken`, `branch-no-match`, `checkpoint-passed` and `checkpoint-failed`, `iteration-started`,
   `loop-exited`, `pass-started`, `goto-taken`, `goto-exhausted`, `join-applied`, `run-cancelled`).
@@ -543,10 +542,9 @@ Rule of thumb: **Config flows in from outside. Context is written from inside.**
   own log event beside `step-finished`. It also carries the leaf's `assignee` (#488) — who the offline
   activity is for, `null` when the node named none — so an `awaiting`/Complete cycle reconstructs from
   the log alone (the Complete's `step-finished` closes it), not only from the mutable workflow file. The shared envelope has `seq` (monotonic per root run, the ordering
-  truth), `ts`, `type` (a flat discriminated union), `run_id`, and `node_id`. The projection is not
-  one-to-one. A workflow-run's own start and a leaf step's start are both `step-started` (invariant 2).
-  The two finishes are alike. One `checkpoint-evaluated` observation becomes `checkpoint-passed` or
-  `checkpoint-failed`. The log stream is the complete chronological narrative of a run tree. Run rows
+  truth, stamped by the logging observer), `ts`, `type` (a flat discriminated union), `run_id`, and
+  `node_id`. A workflow-run's own start and a leaf step's start are both `step-started` (invariant 2);
+  a workflow-run's start carries the reserved step type `workflow`. The two finishes are alike. The log stream is the complete chronological narrative of a run tree. Run rows
   remain the authoritative queryable step record.
 - **Trace** — the per-predicate evaluation record that condition-bearing log events carry. It is the
   condition tree, annotated with each leaf's dot-path, its outcome (`true`, `false`, or `error` plus a
@@ -569,8 +567,8 @@ Rule of thumb: **Config flows in from outside. Context is written from inside.**
   stderr, condition **trace** values) at the persistence boundary. It replaces the value with
   `[secret:<key>]`. A failed run records its error in the log stream alone; the run row carries the
   status and no error. (The text can still reach `stderr.txt`, because a binary step's error is its
-  stderr tail.) That boundary is the engine's emit of an **observation**: one choke point that every
-  observation passes through, not a wrapper that a caller applies. Workers receive real values, because
+  stderr tail.) That boundary is the engine's emit of a **run event**: one choke point that every
+  run event passes through, not a wrapper that a caller applies. Workers receive real values, because
   masking is an audit-surface concern, not a dataflow restriction. What a finished run hands back to its
   caller is scrubbed too; the CLI and the server both print it to a terminal that in CI is a retained
   log. There is one exception, and it is the rule's point. A **succeeded** run's output is the product,
@@ -581,7 +579,7 @@ Rule of thumb: **Config flows in from outside. Context is written from inside.**
   plug. A worker that **mints** a new secret at runtime — an access token exchanged for a `$secret`
   client secret — holds a value the masker never collected, the same class as a transformed secret. And
   a **Worker** is in-process, so whatever it writes to a process stream bypasses the choke point
-  entirely; the sanctioned channel is the `stderr` it returns, which becomes an observation like any
+  entirely; the sanctioned channel is the `stderr` it returns, which becomes a run event like any
   other.
 
 ## Store

@@ -146,7 +146,7 @@ export async function executeWorkflowRun(params: WorkflowRunParams): Promise<Run
   async function runBody(): Promise<RunResult> {
     // Source identity is root-only: the root run *is* the top-level workflow (invariant 2); the
     // emitter drops a nested run's file id. A Complete re-entry (ADR 0041) already has its row and
-    // `context.json`, so it skips `run-started` — a second one would duplicate the row.
+    // `context.json`, so it skips its start — a second one would duplicate the row.
     if (continueReenter === undefined) {
       await emitter.runStarted({
         // The seed, not raw `input`: recording it lets a Resume of this successor replay from it.
@@ -172,11 +172,11 @@ export async function executeWorkflowRun(params: WorkflowRunParams): Promise<Run
       signal: params.signal,
       cancellation: params.cancellation,
       onPublish: async () => {
-        await emitter.contextChanged(context);
+        await emitter.record({ kind: "context", context });
       },
       walk: runSequence,
     });
-    // The run parked at a person-activity leaf (ADR 0039/0041): no terminal `run-finished`, the row
+    // The run parked at a person-activity leaf (ADR 0039/0041): no terminal `step-finished`, the row
     // stays `running`, and its detached branches keep running until a later Complete settles it.
     if (outcome.status === "awaiting") return { status: "awaiting", output: previousOutput };
     // Drain every detached branch before this run reports finished, so the tree stays strictly nested (§1.1/§2).
@@ -310,7 +310,10 @@ export async function runNode(
     // `workflow` node collapses its subtree.
     const output = disposition.output();
     if (disposition.reusedFrom !== undefined)
-      await run.emitter.reuseMarker(node, { originalRunId: disposition.reusedFrom });
+      await run.emitter.emit(node, {
+        type: "reuse-marker",
+        original_run_id: disposition.reusedFrom,
+      });
     outcome = { status: "succeeded", output };
   } else if (disposition.kind === "complete") {
     // The parked leaf transitions `awaiting → succeeded` in place under its own step-run id; publish lands as for a
@@ -369,7 +372,7 @@ export async function runNode(
 
   // Every executed leaf records the context as it stands now, publish included, so it is followable step by step.
   if (leafStep !== undefined) {
-    await leafStep.context(exec.context);
+    await leafStep.record({ kind: "context", context: exec.context });
   }
   return outcome;
 }
