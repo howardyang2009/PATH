@@ -1,12 +1,12 @@
-import { type RefObject, useCallback, useEffect, useRef, useState } from "react";
-import { beginDrag } from "./drag-size.js";
+import type { RefObject } from "react";
+import { type DimensionHandleProps, useResizableDimension } from "./resizable-dimension.js";
 
 /**
  * Drag-set pane widths with one fluid neighbour: two panes carry an explicit px width, the third
  * takes what is left. The two may sit adjacent or on opposite sides — the clamp is the same either
  * way — and `grow` signs which pointer direction widens each. The clamp is coupled (each pane's max
- * reads the other's live width), so it is this hook's own; pointer transport is the shared
- * `beginDrag`.
+ * reads the other's live width), so it is this adapter's model; transport, persistence and keys are
+ * the shared `useResizableDimension`.
  */
 export interface PaneWidthsOptions {
   /** `localStorage` key the two widths persist under, as JSON `[a, b]`. */
@@ -25,15 +25,7 @@ export interface PaneWidthsOptions {
 
 /** The props to spread onto a separator element; the caller adds `className`, `aria-label`,
  * `data-*`. */
-export interface PaneHandleProps {
-  role: "separator";
-  "aria-orientation": "vertical";
-  "aria-valuenow": number;
-  "aria-valuemin": number;
-  tabIndex: 0;
-  onPointerDown: (e: React.PointerEvent) => void;
-  onKeyDown: (e: React.KeyboardEvent) => void;
-}
+export type PaneHandleProps = DimensionHandleProps;
 
 export interface PaneWidths {
   /** The two live widths, in px; feed each to its pane's inline `width`. */
@@ -42,14 +34,14 @@ export interface PaneWidths {
   handleProps: (index: 0 | 1) => PaneHandleProps;
 }
 
+/** The stored pair, or `defaults` when it is absent, malformed or below the floor. */
 function loadWidths(
-  key: string,
+  raw: string | null,
   defaults: readonly [number, number],
   min: number,
 ): [number, number] {
-  if (typeof localStorage === "undefined") return [defaults[0], defaults[1]];
   try {
-    const parsed = JSON.parse(localStorage.getItem(key) ?? "");
+    const parsed = JSON.parse(raw ?? "");
     if (
       Array.isArray(parsed) &&
       parsed.length === 2 &&
@@ -57,7 +49,9 @@ function loadWidths(
     ) {
       return [parsed[0], parsed[1]];
     }
-  } catch {}
+  } catch {
+    /* absent or malformed storage — the defaults below */
+  }
   return [defaults[0], defaults[1]];
 }
 
@@ -72,89 +66,32 @@ export function usePaneWidths(opts: PaneWidthsOptions): PaneWidths {
     containerRef,
     grow,
   } = opts;
-  const [widths, setWidths] = useState<[number, number]>(() =>
-    loadWidths(storageKey, defaults, min),
-  );
-  // Mirror `grow` in a ref: callers commonly pass an inline `[1, -1]` literal, so depending on it
-  // would rebuild the drag callbacks on the first `setWidth` re-render and let the unmount-cleanup
-  // effect tear out the `window` listeners mid-drag.
-  const growRef = useRef(grow);
-  growRef.current = grow;
-  const dragRef = useRef<{ index: 0 | 1; startX: number; startWidth: number } | null>(null);
-  // The active drag's teardown, so an unmount mid-drag can drop its listeners.
-  const stopRef = useRef<(() => void) | null>(null);
 
-  useEffect(() => {
-    if (typeof localStorage === "undefined") return;
-    try {
-      localStorage.setItem(storageKey, JSON.stringify(widths.map(Math.round)));
-    } catch {
-      /* storage blocked — the resize still holds for this session */
-    }
-  }, [storageKey, widths]);
-
-  const setWidth = useCallback(
-    (index: 0 | 1, px: number) => {
-      setWidths((prev) => {
-        const container = containerRef.current?.clientWidth ?? 0;
-        const other = prev[index === 0 ? 1 : 0];
-        const fluid = container > 0 ? container - other - fluidMin - separatorSpan : Infinity;
-        const max = Math.min(ceiling ?? Infinity, Math.max(min, fluid));
-        const width = Math.max(min, Math.min(max, px));
-        const next: [number, number] = [prev[0], prev[1]];
-        next[index] = width;
-        return next;
-      });
+  const dimension = useResizableDimension({
+    storageKey,
+    read: (raw) => loadWidths(raw, defaults, min),
+    write: (values) => JSON.stringify(values.map(Math.round)),
+    // The neighbour's live width bounds this pane: the fluid region must keep its own floor.
+    clamp: (values, index, next) => {
+      const container = containerRef.current?.clientWidth ?? 0;
+      const other = values[index === 0 ? 1 : 0] ?? min;
+      const fluid = container > 0 ? container - other - fluidMin - separatorSpan : Infinity;
+      const max = Math.min(ceiling ?? Infinity, Math.max(min, fluid));
+      const width = Math.max(min, Math.min(max, next));
+      const nextValues: [number, number] = [values[0] ?? defaults[0], values[1] ?? defaults[1]];
+      nextValues[index] = width;
+      return nextValues;
     },
-    [containerRef, min, ceiling, fluidMin, separatorSpan],
-  );
+    grow,
+    min,
+    axis: "x",
+    cursor: "col-resize",
+    ariaOrientation: "vertical",
+  });
 
-  const onPointerMove = useCallback(
-    (e: PointerEvent) => {
-      const drag = dragRef.current;
-      if (!drag) return;
-      setWidth(
-        drag.index,
-        drag.startWidth + (e.clientX - drag.startX) * growRef.current[drag.index],
-      );
-    },
-    [setWidth],
-  );
-
-  // Drop any listeners left over if the tree unmounts mid-drag.
-  useEffect(() => () => stopRef.current?.(), []);
-
-  const handleProps = useCallback(
-    (index: 0 | 1): PaneHandleProps => ({
-      role: "separator",
-      "aria-orientation": "vertical",
-      "aria-valuenow": Math.round(widths[index]),
-      "aria-valuemin": min,
-      tabIndex: 0,
-      onPointerDown: (e) => {
-        e.preventDefault();
-        dragRef.current = { index, startX: e.clientX, startWidth: widths[index] };
-        // The shared transport captures the pointer, holds the cursor, and clears the drag ref on
-        // pointer up.
-        stopRef.current = beginDrag(e, {
-          cursor: "col-resize",
-          onMove: onPointerMove,
-          onEnd: () => (dragRef.current = null),
-        });
-      },
-      onKeyDown: (e) => {
-        const step = (e.shiftKey ? 32 : 8) * growRef.current[index];
-        if (e.key === "ArrowLeft") {
-          e.preventDefault();
-          setWidth(index, widths[index] - step);
-        } else if (e.key === "ArrowRight") {
-          e.preventDefault();
-          setWidth(index, widths[index] + step);
-        }
-      },
-    }),
-    [widths, min, onPointerMove, setWidth],
-  );
-
-  return { widths, handleProps };
+  const widths: [number, number] = [
+    dimension.values[0] ?? defaults[0],
+    dimension.values[1] ?? defaults[1],
+  ];
+  return { widths, handleProps: (index) => dimension.handleProps(index) };
 }
