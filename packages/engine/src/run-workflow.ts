@@ -1,10 +1,8 @@
 import { randomUUID } from "node:crypto";
 import {
   type ConfigObject,
-  type ControllerType,
   findRootRun,
   isPlainObject,
-  isStepType,
   type JsonValue,
   type LaunchFacts,
   type RerunFromNodePathEntry,
@@ -13,20 +11,12 @@ import {
 } from "@path/schema";
 import { rootCancellation } from "./cancellation.js";
 import { childIdentity } from "./child-run.js";
-import { continuationOf, resolveRerunFromNodePath } from "./continuation.js";
-import { runBranchNode, runCheckpointNode, runGotoNode, runWhileDoNode } from "./controllers.js";
+import { resolveRerunFromNodePath } from "./continuation.js";
 import { runTopLevelWalk } from "./goto-pass.js";
-import {
-  describeInterpolationError,
-  InterpolationError,
-  interpolateValue,
-  interpolationScope,
-} from "./interpolate.js";
+import { InterpolationError, interpolateValue, interpolationScope } from "./interpolate.js";
 import { buildLaunchFacts } from "./launch-facts.js";
-import { finishSucceeded, type LeafStepNode, runLeafStep, type StepContext } from "./leaf-step.js";
+import type { StepContext } from "./leaf-step.js";
 import { RUN_BLOB_FILE } from "./persistence/paths.js";
-import type { LoadedStepPluginRegistry } from "./plugin/scan.js";
-import type { WorkerDescriptor } from "./plugin/seam.js";
 import { createProcessorSemaphore, DEFAULT_PROCESSOR_CONCURRENCY } from "./processor-semaphore.js";
 import { resolveChildRef } from "./ref-tree.js";
 import { type EnvSource, effectiveConfig } from "./resolve-env.js";
@@ -41,108 +31,30 @@ import type {
   Cancellation,
   ContinueState,
   Emit,
-  NodeExecContext,
   RunContext,
   RunIdentity,
   RunResume,
   SeqOutcome,
   StepRuntime,
 } from "./run-context.js";
-import { createEmitter, type Emitter, type StepEmitter } from "./run-emitter.js";
-import { ObserverError, type RunObserver } from "./run-observer.js";
-import { runParallelNode, settleDetached } from "./run-parallel.js";
+import { createEmitter, type Emitter } from "./run-emitter.js";
+import { runSequence } from "./run-node.js";
+import { ObserverError } from "./run-observer.js";
+import type { RunOptions, RunResult } from "./run-options.js";
+import { settleDetached } from "./run-parallel.js";
 import { analyzeRunStart, resolveExecutorRegistry } from "./run-start.js";
 import { maskObservation } from "./secret-mask.js";
 
+export { runNode, runSequence } from "./run-node.js";
+export type {
+  ContinueInput,
+  ResumeInput,
+  RunOptions,
+  RunResult,
+  WorkerOverrides,
+} from "./run-options.js";
+
 /** **The Run executor**: `runWorkflow` roots a run tree — one workflow-run per file, one node at a time in order. */
-
-/** Test/host worker overrides (ADR 0021 sub-15): `(type, worker-name)` → descriptor, merged **replace-only**. */
-export type WorkerOverrides = { [type: string]: { [name: string]: WorkerDescriptor } };
-
-export interface RunOptions {
-  input?: { [key: string]: JsonValue };
-  operatorConfig?: ConfigObject;
-  /**
-   * The operator's **override input** as supplied (ADR 0046) — the pre-fallback seed; never re-applied on a
-   * continuation.
-   */
-  operatorInput?: JsonValue;
-  /**
-   * Frozen launch-config secrets the continuation did not supply again (ADR 0046); the run ends before its first step
-   * naming them.
-   */
-  unresolvedLaunchSecrets?: string[];
-  /** The `secretKeys` a continuation inherited (ADR 0046), so its own frozen copy still marks them. */
-  inheritedLaunchSecretKeys?: string[];
-  files?: Map<string, WorkflowFile>;
-  observer?: RunObserver;
-  warn?: (message: string) => void;
-  /** Replace named `(type, worker)` pairs in the scanned registry before dispatch — replace-only (ADR 0021 sub-15). */
-  workerOverrides?: WorkerOverrides;
-  /**
-   * Launch worker-default table (ADR 0044): run-wide, above `file.worker_defaults`, below an explicit `node.worker`
-   * pin.
-   */
-  launchWorkerDefaults?: { [stepType: string]: string };
-  /**
-   * The frozen step-plugin registry this run dispatches against; absent means the run scans the folder (ADR 0019
-   * sub-15).
-   */
-  registry?: LoadedStepPluginRegistry;
-  /** Plugin folder for the self-scan fallback; consulted only when `registry` is absent (ADR 0019 sub-8). */
-  stepPluginsDir?: string;
-  /** Engine-wide Processor cap (mvp spec §5.5), default 4 — one semaphore for the whole run tree. */
-  processorConcurrency?: number;
-  /**
-   * External abort: kills this root run's in-flight leaf steps best-effort, ending it `cancelled`; already-aborted
-   * cancels at once (§5.6).
-   */
-  signal?: AbortSignal;
-  /** Resume a prior tree: reuse every succeeded run whose node id still matches (ADR 0062). */
-  resume?: ResumeInput;
-  /**
-   * Complete an awaiting leaf by replaying the existing tree in place (ADR 0041): same tree and ids, then append
-   * forward.
-   */
-  continue?: ContinueInput;
-  sourceWorkflowPath?: string;
-}
-
-/**
- * What a successor run needs from the original tree: its run rows plus a reader for one blob. The engine core does no
- * I/O.
- */
-export interface ResumeInput {
-  originalRuns: RunRecord[];
-  readBlob: (run: RunRecord, filename: string) => JsonValue;
-  /** The **rerun boundary (K)** as the descent path of node ids (ADR 0032/0036): empty/undefined is plain Resume. */
-  rerunFromNodePath?: string[];
-  /** Beside `rerunFromNodePath`, level for level: the goto pass K's path-node sits in, or `null` (ADR 0054 §6). */
-  rerunFromPasses?: (number | null)[];
-}
-
-/**
- * What a Complete re-invocation needs (ADR 0041): the tree's rows, a blob reader, and the parked leaf to transition.
- */
-export interface ContinueInput {
-  rootRunId: string;
-  existingRuns: RunRecord[];
-  readBlob: (run: RunRecord, filename: string) => JsonValue;
-  target: { stepRunId: string; output: JsonValue };
-}
-
-// A failed run still carries the last-succeeded node's output, so `output` is unconditional.
-export interface RunResult {
-  // `awaiting` is **not** terminal: the run parked at a person-activity leaf and a later Complete reopens it (ADR
-  // 0039/0041).
-  status: "succeeded" | "failed" | "cancelled" | "awaiting";
-  /**
-   * On success the workflow's `output` map (format doc §6.4; absent = `{}`), **real**, secrets included — the run's
-   * product.
-   */
-  output: JsonValue;
-  error?: string;
-}
 
 // Everything a workflow-run needs for one file; incoming config crosses file boundaries, context does not (§8).
 interface WorkflowRunParams {
@@ -169,14 +81,6 @@ interface WorkflowRunParams {
   rerunFromNodePath?: RerunFromNodePathEntry[];
   resumedFromRootRunId?: string;
   sourceWorkflowPath?: string;
-}
-
-type WorkflowNode = WorkflowFile["body"][number];
-type ControlNode = Extract<WorkflowNode, { type: ControllerType }>;
-
-// The engine-evaluated controls the walker owns (CONTEXT invariant 1); derived from `@path/schema`'s `isStepType`.
-function isControlNode(node: WorkflowNode): node is ControlNode {
-  return !isStepType(node.type);
 }
 
 /** Executes one workflow-run: walks the file's body sequentially (mvp spec §5.1) — leaf steps on
@@ -314,7 +218,7 @@ async function executeWorkflowRun(params: WorkflowRunParams): Promise<RunResult>
 
 // A `workflow` step: resolve `ref` against the loaded tree and run the child as a nested run. Context
 // is isolated (fresh seed), the parent's effective config crosses (§8), its output map is this step's.
-async function runWorkflowNode(
+export async function runWorkflowNode(
   node: Extract<WorkflowFile["body"][number], { type: "workflow" }>,
   stepInput: JsonValue,
   ctx: StepContext,
@@ -496,132 +400,4 @@ export async function runWorkflow(
     ...(result.status === "succeeded" ? {} : { output: masker.maskValue(result.output) }),
     ...(result.error !== undefined ? { error: masker.maskString(result.error) } : {}),
   };
-}
-
-/** Runs **one node**, whatever kind: resolves its effective config and input, executes it, and lands
- * its `publish`. `incomingOutput` is the default-input chain's offer (format doc §6.1). */
-export async function runNode(
-  run: RunContext,
-  node: WorkflowNode,
-  incomingOutput: JsonValue,
-  exec: NodeExecContext,
-): Promise<SeqOutcome> {
-  if (isControlNode(node)) {
-    if (node.type === "parallel") return runParallelNode(run, node, incomingOutput, exec);
-    if (node.type === "checkpoint") return runCheckpointNode(run, node, incomingOutput, exec);
-    if (node.type === "branch") return runBranchNode(run, node, incomingOutput, exec);
-    if (node.type === "while-do") return runWhileDoNode(run, node, incomingOutput, exec);
-    // A `sequence` adds no execution rule (`@2` §4.4): it runs its body as a nested node sequence, transparent to `exec`.
-    if (node.type === "sequence") return runSequence(run, node.body, incomingOutput, exec);
-    if (node.type === "goto") return runGotoNode(run, node, incomingOutput);
-    // Compile-time guard: a new control member breaks the build here. An unknown *leaf* type is caught
-    // below, at the registry lookup.
-    const unwalked: never = node;
-    const unknown = unwalked as { type: string; id: string };
-    return {
-      status: "failed",
-      error: `node type "${unknown.type}" (node "${unknown.id}") is not supported by this engine`,
-    };
-  }
-
-  // The second point effective config is materialized (so the second resolving `$env`/`$secret`) — the call the gate
-  // validated against.
-  const stepConfig = effectiveConfig(run.fileConfig, node.config, run.env);
-
-  // The continuation adapter owns what a recorded row means, so every walker agrees without knowing Resume from
-  // Complete.
-  const disposition = continuationOf(run).disposition(node);
-  let outcome: SeqOutcome;
-  // The leaf runner reports its step emitter here, so the post-publish snapshot is attributed to its own run id.
-  let leafStep: StepEmitter | undefined;
-  if (disposition.kind === "reuse") {
-    // The node does not execute: its recorded output threads the input chain and publishes as usual; a reused
-    // `workflow` node collapses its subtree.
-    const output = disposition.output();
-    if (disposition.reusedFrom !== undefined)
-      await run.emitter.reuseMarker(node, { originalRunId: disposition.reusedFrom });
-    outcome = { status: "succeeded", output };
-  } else if (disposition.kind === "complete") {
-    // The parked leaf transitions `awaiting → succeeded` in place under its own step-run id; publish lands as for a
-    // fresh output.
-    const step = run.emitter.step(node, disposition.runId);
-    leafStep = step;
-    outcome = await finishSucceeded(step, node, disposition.output);
-  } else if (disposition.kind === "park") {
-    // A still-parked sibling: the walk parks again; only the last such Complete runs the tail.
-    return { status: "awaiting" };
-  } else {
-    const scope = interpolationScope(stepConfig, exec.context);
-    let stepInput: JsonValue;
-    try {
-      stepInput = node.input !== undefined ? interpolateValue(node.input, scope) : incomingOutput;
-    } catch (err) {
-      return { status: "failed", error: describeInterpolationError(node.name, err) };
-    }
-
-    // One context for every step kind; a `workflow` step runs a nested run, every other type dispatches through the
-    // registry.
-    const step: StepContext = {
-      run,
-      exec,
-      stepConfig,
-      onLeafStep: (emitted) => (leafStep = emitted),
-    };
-    if (node.type === "workflow") {
-      // A `reenter` disposition hands the child its own existing row, so it is re-driven in place (ADR 0041).
-      outcome = await runWorkflowNode(
-        node,
-        stepInput,
-        step,
-        disposition.kind === "reenter" ? disposition.existing : undefined,
-      );
-    } else {
-      outcome = await runLeafStep(node as unknown as LeafStepNode, stepInput, step);
-    }
-  }
-  if (outcome.status !== "succeeded") return outcome;
-
-  if (node.publish) {
-    const publishScope = interpolationScope(stepConfig, exec.context, outcome.output);
-    const updates: { [key: string]: JsonValue } = {};
-    try {
-      for (const [key, expr] of Object.entries(node.publish)) {
-        updates[key] = interpolateValue(expr, publishScope);
-      }
-    } catch (err) {
-      return { status: "failed", error: describeInterpolationError(node.name, err) };
-    }
-    // Every entry resolves before any is written, so the publish lands atomically (§5.3) and only on this run's context.
-    Object.assign(exec.context, updates);
-    await exec.onPublish(updates);
-  }
-
-  // Every executed leaf records the context as it stands now, publish included, so it is followable step by step.
-  if (leafStep !== undefined) {
-    await leafStep.context(exec.context);
-  }
-  return outcome;
-}
-
-/** Walks a node sequence in order (mvp spec §5.1), threading the default-input chain and returning
- * the last output or the first non-success outcome. This one function is the run's walk. */
-export async function runSequence(
-  run: RunContext,
-  nodes: WorkflowFile["body"],
-  seedInput: JsonValue,
-  exec: NodeExecContext,
-): Promise<SeqOutcome> {
-  let previous: JsonValue = seedInput;
-
-  for (const node of nodes) {
-    // An abort arriving between two nodes stops the walk here (mvp spec §5.6): starting a run only to
-    // kill it would record a run that never really ran, and controls have no process to interrupt.
-    if (exec.signal?.aborted) return { status: "cancelled" };
-
-    const outcome = await runNode(run, node, previous, exec);
-    if (outcome.status !== "succeeded") return outcome;
-    previous = outcome.output;
-  }
-
-  return { status: "succeeded", output: previous };
 }
