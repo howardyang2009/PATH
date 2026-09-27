@@ -1,4 +1,9 @@
-import { isTerminal, type PathApiClient, type WorkflowFile } from "@path/client-core";
+import {
+  EMPTY_RUN_FILE_SET,
+  isTerminal,
+  type PathApiClient,
+  type RunFileSet,
+} from "@path/client-core";
 import { useRef } from "react";
 import { CancelButton } from "./cancel-button.js";
 import { useDragSize } from "./drag-size.js";
@@ -25,11 +30,10 @@ export interface RunDetailProps {
   selectedRunId: string | null;
   onSelectRun: (runId: string) => void;
   /**
-   * The watched run's reachable workflow files (root + transitively-ref'd sub-files), for an
-   * awaiting leaf's assignee chip in the rail — the node may sit in a nested file, not only the
-   * root.
+   * The files a run's node ids resolve against, for an awaiting leaf's assignee chip in the rail —
+   * the node may sit in a nested file, not only the root.
    */
-  workflowFiles?: readonly WorkflowFile[];
+  runFiles?: RunFileSet;
 }
 
 /**
@@ -45,7 +49,7 @@ export function RunDetail({
   rootRunId,
   selectedRunId,
   onSelectRun,
-  workflowFiles = [],
+  runFiles = EMPTY_RUN_FILE_SET,
 }: RunDetailProps) {
   const detailRef = useRef<HTMLDivElement>(null);
   // The tree/narrative split: the handle sits below the tree, so dragging down (+1) grows it, and
@@ -114,7 +118,7 @@ export function RunDetail({
           runs={state.runs}
           selectedRunId={selectedRunId}
           onSelectRun={onSelectRun}
-          workflowFiles={workflowFiles}
+          runFiles={runFiles}
         />
       </section>
 

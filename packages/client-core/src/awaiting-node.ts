@@ -48,13 +48,19 @@ export function findAwaitingNode(file: WorkflowFile, nodeId: string): AwaitingNo
   return null;
 }
 
+/** What the awaiting surfaces ask about one run: its status and the node id its row carries. */
+export interface AwaitingRun {
+  status: RunStatus;
+  nodeId: string | null;
+}
+
 /** The one guard the rail (`run-tree`) and the detail panel (`node-io`) both apply: `null` unless
  * the run is `awaiting`, a file holds the node id, and the node is still a `person-activity`.
  * `files` may be the set of reachable files; a hit of the wrong type reads as `null`.
  */
 export function awaitingNodeForRun(
   files: WorkflowFile | readonly WorkflowFile[] | null,
-  run: { status: RunStatus; nodeId: string | null },
+  run: AwaitingRun,
 ): AwaitingNode | null {
   if (run.status !== "awaiting" || files === null || run.nodeId === null) return null;
   const list = Array.isArray(files) ? files : [files as WorkflowFile];

@@ -1,6 +1,7 @@
+import type { WorkflowFile } from "@path/schema";
 import { describe, expect, it } from "vitest";
 import { type FetchLike, PathApiClient } from "../src/api-client.js";
-import { loadReachableWorkflowFiles } from "../src/reachable-workflow-files.js";
+import { EMPTY_RUN_FILE_SET, runFileSetFromDisk, runFileSetOf } from "../src/run-file-set.js";
 
 /**
  * A `fetch` stub serving workflow files from a `path → body` table, recording every requested path.
@@ -28,7 +29,20 @@ function wf(id: string, body: unknown[]): unknown {
   return { format: "path/workflow@5", id, name: id, body };
 }
 
-describe("loadReachableWorkflowFiles", () => {
+/** One file with an awaiting leaf, for the question-shaped assertions. */
+function fileWithAwaitingLeaf(id: string, leafId: string, assignee: string): WorkflowFile {
+  return wf(id, [
+    {
+      id: leafId,
+      type: "person-activity",
+      name: "review",
+      description: "read it",
+      assignee,
+    },
+  ]) as WorkflowFile;
+}
+
+describe("runFileSetFromDisk", () => {
   it("returns the root file first, then every transitively-ref'd sub-file", async () => {
     const { client } = stubClient({
       "main.workflow.json": wf("root", [
@@ -47,9 +61,11 @@ describe("loadReachableWorkflowFiles", () => {
       "three.workflow.json": wf("three", []),
     });
 
-    const files = await loadReachableWorkflowFiles(client, "main.workflow.json");
+    const files = await runFileSetFromDisk(client, "main.workflow.json");
 
-    expect(files.map((f) => f.id)).toEqual(["root", "one", "two", "three"]);
+    expect(files.rootFile?.id).toBe("root");
+    // The awaiting leaf lives in a nested file, so a root-only read would not resolve it.
+    expect(files.awaitingNode({ status: "awaiting", nodeId: "leaf" })?.assignee).toBeNull();
   });
 
   it("resolves a ref relative to the referencing file's own directory", async () => {
@@ -61,7 +77,7 @@ describe("loadReachableWorkflowFiles", () => {
       "three.workflow.json": wf("three", []),
     });
 
-    await loadReachableWorkflowFiles(client, "sub/one.workflow.json");
+    await runFileSetFromDisk(client, "sub/one.workflow.json");
 
     expect(paths).toContain("three.workflow.json");
   });
@@ -73,14 +89,17 @@ describe("loadReachableWorkflowFiles", () => {
       ]),
     });
 
-    const files = await loadReachableWorkflowFiles(client, "main.workflow.json");
+    const files = await runFileSetFromDisk(client, "main.workflow.json");
 
-    expect(files.map((f) => f.id)).toEqual(["root"]);
+    expect(files.rootFile?.id).toBe("root");
   });
 
-  it("yields an empty set when the root file itself cannot be read", async () => {
+  it("yields an unresolved set when the root file itself cannot be read", async () => {
     const { client } = stubClient({});
-    expect(await loadReachableWorkflowFiles(client, "main.workflow.json")).toEqual([]);
+    const files = await runFileSetFromDisk(client, "main.workflow.json");
+
+    expect(files.rootFile).toBeNull();
+    expect(files.awaitingNode({ status: "awaiting", nodeId: "leaf" })).toBeNull();
   });
 
   it("fetches each path once, so a ref cycle terminates", async () => {
@@ -93,9 +112,31 @@ describe("loadReachableWorkflowFiles", () => {
       ]),
     });
 
-    const files = await loadReachableWorkflowFiles(client, "a.workflow.json");
+    const files = await runFileSetFromDisk(client, "a.workflow.json");
 
-    expect(files.map((f) => f.id)).toEqual(["a", "b"]);
+    expect(files.rootFile?.id).toBe("a");
     expect(paths.filter((p) => p === "a.workflow.json")).toHaveLength(1);
+  });
+});
+
+describe("runFileSetOf", () => {
+  it("answers by node id off the files it was handed, and names the first as the root", () => {
+    const set = runFileSetOf([fileWithAwaitingLeaf("root", "leaf", "Ada")]);
+
+    expect(set.rootFile?.id).toBe("root");
+    expect(set.awaitingNode({ status: "awaiting", nodeId: "leaf" })?.assignee).toBe("Ada");
+  });
+
+  it("reads a run that is not awaiting, or names no node, as unresolved", () => {
+    const set = runFileSetOf([fileWithAwaitingLeaf("root", "leaf", "Ada")]);
+
+    expect(set.awaitingNode({ status: "running", nodeId: "leaf" })).toBeNull();
+    expect(set.awaitingNode({ status: "awaiting", nodeId: null })).toBeNull();
+    expect(set.awaitingNode({ status: "awaiting", nodeId: "elsewhere" })).toBeNull();
+  });
+
+  it("has a shared empty set, so a pane with no files states one fact", () => {
+    expect(EMPTY_RUN_FILE_SET.rootFile).toBeNull();
+    expect(EMPTY_RUN_FILE_SET.awaitingNode({ status: "awaiting", nodeId: "leaf" })).toBeNull();
   });
 });

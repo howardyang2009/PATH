@@ -1,12 +1,12 @@
 import {
-  awaitingNodeForRun,
   buildRunTree,
+  EMPTY_RUN_FILE_SET,
   isIterationRun,
   isPassRun,
   nodeLabel,
+  type RunFileSet,
   type RunNodeState,
   type RunTreeNode,
-  type WorkflowFile,
 } from "@path/client-core";
 import { useState } from "react";
 import { AssigneeChip } from "./assignee-chip.js";
@@ -24,10 +24,10 @@ export interface RunTreeProps {
   selectedRunId: string | null;
   onSelectRun: (runId: string) => void;
   /**
-   * The reachable workflow files (root + transitively-ref'd sub-files), for an awaiting leaf's
-   * assignee chip — read from the node by id, which may sit in a nested file, not only the root.
+   * The files a run's node ids resolve against, for an awaiting leaf's assignee chip — the node may
+   * sit in a nested file, not only the root.
    */
-  workflowFiles?: readonly WorkflowFile[];
+  runFiles?: RunFileSet;
 }
 
 export function RunTree({
@@ -35,7 +35,7 @@ export function RunTree({
   runs,
   selectedRunId,
   onSelectRun,
-  workflowFiles = [],
+  runFiles = EMPTY_RUN_FILE_SET,
 }: RunTreeProps) {
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set<string>());
 
@@ -46,7 +46,7 @@ export function RunTree({
     collapsed,
     selectedRunId,
     onSelectRun,
-    workflowFiles,
+    runFiles,
     onToggle: (runId) =>
       setCollapsed((prev) => {
         const next = new Set(prev);
@@ -68,7 +68,7 @@ interface TreeView {
   selectedRunId: string | null;
   onToggle: (runId: string) => void;
   onSelectRun: (runId: string) => void;
-  workflowFiles: readonly WorkflowFile[];
+  runFiles: RunFileSet;
 }
 
 function RunTreeRow({ node, tree }: { node: RunTreeNode; tree: TreeView }) {
@@ -87,7 +87,7 @@ function RunTreeRow({ node, tree }: { node: RunTreeNode; tree: TreeView }) {
       : name;
   // An awaiting leaf shows its assignee as a chip; it lives on the node in the file, not the run
   // row, so it is read by id (CONTEXT.md § Person-activity).
-  const assignee = awaitingNodeForRun(tree.workflowFiles, run)?.assignee ?? null;
+  const assignee = tree.runFiles.awaitingNode(run)?.assignee ?? null;
   // Display status comes off the tree node, computed by `buildRunTree` from the shared snapshot, so
   // a running run with an awaiting run below reads `awaiting` (view-only, ADR 0038). The chip above
   // stays keyed on the real status, so a flipped ancestor gets the pill, not a chip.

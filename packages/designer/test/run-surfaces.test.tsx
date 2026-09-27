@@ -458,11 +458,12 @@ describe("Designer run surfaces (#372)", () => {
 });
 
 /**
- * #487 / ADR 0031: the Designer run dock reuses the Viewer's awaiting surfaces. The dock feeds the
- * open buffer to `RunDetail`/`NodeIo` as their `rootFile`, so an awaiting `person-activity` leaf
- * reads the same assignee chip in the rail and the same schema-built inline Complete form the
- * Viewer draws — no Designer fork. This test would fail if the dock stopped threading `rootFile`
- * (the surface would degrade to the schema-less fallback, showing `awaiting-unresolved`).
+ * #487 / ADR 0031: the Designer run dock reuses the Viewer's awaiting surfaces. The dock reads the
+ * same reachable file set from the store that the Viewer reads, so an awaiting `person-activity`
+ * leaf — in the open file or a nested `ref` — reads the same assignee chip in the rail and the same
+ * schema-built inline Complete form the Viewer draws, built from the bytes the server will validate
+ * at Complete (ADR 0040). This test would fail if the dock stopped threading that set (the surface
+ * would degrade to the schema-less fallback, showing `awaiting-unresolved`).
  */
 describe("Designer run dock reuses the Viewer awaiting/Complete surfaces (#487, ADR 0031)", () => {
   const PERSON_PLUGINS: WireStepPlugin[] = [
@@ -508,9 +509,43 @@ describe("Designer run dock reuses the Viewer awaiting/Complete surfaces (#487, 
     return canonicalSerialize(result.file);
   }
 
-  async function renderAwaiting() {
+  /** The awaiting leaf reached through a nested `workflow` ref: it lives in no open buffer, so
+   * only a reachable file set can resolve it. */
+  function nestedAwaitingFiles(): Record<string, string> {
+    const leaf = {
+      type: "person-activity",
+      id: STEP_ID,
+      name: "review",
+      description: "Review the draft",
+      outputSchema: {
+        type: "object",
+        properties: { approved: { type: "boolean" } },
+        required: ["approved"],
+      },
+      assignee: "editor",
+    };
+    return {
+      [ROOT_PATH]: canonicalWith(
+        {
+          format: FORMAT_VERSION,
+          id: WF_ID,
+          name: "root-flow",
+          body: [{ type: "workflow", id: uuid(3), name: "sub", ref: "sub.workflow.json" }],
+        },
+        PERSON_PLUGINS,
+      ),
+      "flows/sub.workflow.json": canonicalWith(
+        { format: FORMAT_VERSION, id: OTHER_WF_ID, name: "sub-flow", body: [leaf] },
+        PERSON_PLUGINS,
+      ),
+    };
+  }
+
+  async function renderAwaiting(
+    files: Record<string, string> = { [ROOT_PATH]: canonicalWith(awaitingFile(), PERSON_PLUGINS) },
+  ) {
     const client = stubClient({
-      files: { [ROOT_PATH]: canonicalWith(awaitingFile(), PERSON_PLUGINS) },
+      files,
       plugins: PERSON_PLUGINS,
       runs: {
         runs: [
@@ -542,6 +577,18 @@ describe("Designer run dock reuses the Viewer awaiting/Complete surfaces (#487, 
     fireEvent.click(await screen.findByTestId("run-row-root-1"));
   }
 
+  it("resolves an awaiting leaf that lives in a nested ref file, not the open buffer", async () => {
+    await renderAwaiting(nestedAwaitingFiles());
+    const row = await screen.findByTestId("tree-row-r-step");
+    // The chip and the form come from the nested file's node, so a rootFile-only read would show
+    // neither.
+    expect(within(row).getByTestId("assignee-chip")).toHaveTextContent("editor");
+    fireEvent.click(row);
+    const actions = within(await screen.findByTestId("awaiting-actions"));
+    expect(screen.queryByTestId("awaiting-unresolved")).not.toBeInTheDocument();
+    expect(actions.getByTestId("complete-field-approved")).toBeInTheDocument();
+  });
+
   it("shows the awaiting pill and the assignee chip in the run rail", async () => {
     await renderAwaiting();
     const row = await screen.findByTestId("tree-row-r-step");
@@ -562,7 +609,7 @@ describe("Designer run dock reuses the Viewer awaiting/Complete surfaces (#487, 
     await renderAwaiting();
     fireEvent.click(await screen.findByTestId("tree-row-r-step"));
 
-    // The detail-panel awaiting surface resolves the node from the open buffer (rootFile), so it is
+    // The detail-panel awaiting surface resolves the node from the reachable set it read, so it is
     // the real form, never the degraded "could not read this step's form" note.
     const actions = within(await screen.findByTestId("awaiting-actions"));
     expect(screen.queryByTestId("awaiting-unresolved")).not.toBeInTheDocument();

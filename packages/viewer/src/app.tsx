@@ -1,7 +1,8 @@
 import {
-  loadReachableWorkflowFiles,
+  EMPTY_RUN_FILE_SET,
   type PathApiClient,
-  type WorkflowFile,
+  type RunFileSet,
+  runFileSetFromDisk,
 } from "@path/client-core";
 import { useEffect, useState } from "react";
 import { AppShell } from "./app-shell.js";
@@ -26,29 +27,28 @@ export function App({ client }: { client: PathApiClient }) {
   const load = useRunView(client, selectedRootRunId);
 
   // The watched run's reachable workflow files (root + transitively-ref'd), read from disk (a GET,
-  // no lease — ADR 0017). The eager `Resume from …` legal-K check needs the root file (`files[0]`);
-  // the awaiting surface needs the whole set, since a `person-activity` leaf can live in a nested
-  // file. Empty while loading or on a failed read: the checks fall back to run-tree-derivable
-  // reasons.
-  const [workflowFiles, setWorkflowFiles] = useState<readonly WorkflowFile[]>([]);
-  const rootFile = workflowFiles[0] ?? null;
+  // no lease — ADR 0017). The eager `Resume from …` legal-K check needs the root file; the awaiting
+  // surface needs the whole set, since a `person-activity` leaf can live in a nested file. Unresolved
+  // while loading or on a failed read: the checks fall back to run-tree-derivable reasons.
+  const [runFiles, setRunFiles] = useState<RunFileSet>(EMPTY_RUN_FILE_SET);
+  const rootFile = runFiles.rootFile;
   const rootWorkflowPath =
     load.phase === "ready" && selectedRootRunId !== null
       ? (load.value.runs.get(selectedRootRunId)?.workflowPath ?? null)
       : null;
   useEffect(() => {
     if (rootWorkflowPath === null) {
-      setWorkflowFiles([]);
+      setRunFiles(EMPTY_RUN_FILE_SET);
       return;
     }
     let cancelled = false;
-    setWorkflowFiles([]);
-    loadReachableWorkflowFiles(client, rootWorkflowPath)
+    setRunFiles(EMPTY_RUN_FILE_SET);
+    runFileSetFromDisk(client, rootWorkflowPath)
       .then((files) => {
-        if (!cancelled) setWorkflowFiles(files);
+        if (!cancelled) setRunFiles(files);
       })
       .catch(() => {
-        if (!cancelled) setWorkflowFiles([]);
+        if (!cancelled) setRunFiles(EMPTY_RUN_FILE_SET);
       });
     return () => {
       cancelled = true;
@@ -118,7 +118,7 @@ export function App({ client }: { client: PathApiClient }) {
             rootRunId={selectedRootRunId}
             selectedRunId={selectedRunId}
             onSelectRun={setSelectedRunId}
-            workflowFiles={workflowFiles}
+            runFiles={runFiles}
           />
         )
       }
@@ -132,7 +132,7 @@ export function App({ client }: { client: PathApiClient }) {
             // One snapshot feeds the pane: it reads this run's display status and error off the
             // view (ADR 0025).
             view={load.phase === "ready" ? load.value : undefined}
-            workflowFiles={workflowFiles}
+            runFiles={runFiles}
           />
         )
       }

@@ -62,6 +62,7 @@ export {
 export {
   AWAITING_STEP_TYPE,
   type AwaitingNode,
+  type AwaitingRun,
   awaitingNodeForRun,
   findAwaitingNode,
 } from "./awaiting-node.js";
@@ -104,7 +105,6 @@ export {
   secretSkeletonJson,
 } from "./launch-secret-resupply.js";
 export { nodeEventLabel, nodeLabel } from "./node-label.js";
-export { loadReachableWorkflowFiles } from "./reachable-workflow-files.js";
 // The Designer's eager legal-K check (ADR 0033): the client mirror of the engine's one legal-K
 // rule; the engine's `refusal` stays the authority for a race.
 export {
@@ -115,6 +115,12 @@ export {
   resumeFromEligibility,
   shortRunId,
 } from "./resume-from-eligibility.js";
+export {
+  EMPTY_RUN_FILE_SET,
+  type RunFileSet,
+  runFileSetFromDisk,
+  runFileSetOf,
+} from "./run-file-set.js";
 export { buildRunTree, displayStatusByRun, type RunTreeNode } from "./run-tree.js";
 export {
   type RunEventSubscription,

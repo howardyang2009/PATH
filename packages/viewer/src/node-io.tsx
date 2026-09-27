@@ -1,14 +1,14 @@
 import {
-  awaitingNodeForRun,
+  EMPTY_RUN_FILE_SET,
   isReuseRow,
   isRootRun,
   isTerminal,
   nodeLabel,
   type PathApiClient,
+  type RunFileSet,
   type RunNodeState,
   type RunViewFacts,
   runBlobSource,
-  type WorkflowFile,
 } from "@path/client-core";
 import { useState } from "react";
 import { AwaitingActions } from "./awaiting-actions.js";
@@ -29,12 +29,12 @@ export interface NodeIoProps {
    */
   view?: RunViewFacts;
   /**
-   * The watched run's reachable workflow files, parsed structurally. An awaiting leaf's
+   * The files a run's node ids resolve against. An awaiting leaf's
    * `description`/`assignee`/`outputSchema` live on the node in the file that defines it — possibly
-   * a nested one — so the Complete surface resolves them by node id; empty means it degrades to a
-   * schema-less submit.
+   * a nested one — so the Complete surface resolves them by node id; an unresolved run degrades to
+   * a schema-less submit.
    */
-  workflowFiles?: readonly WorkflowFile[];
+  runFiles?: RunFileSet;
 }
 
 /**
@@ -46,7 +46,7 @@ export interface NodeIoProps {
  * `runBlobSource`; this pane keeps only the wiring: three `useRunBlob` calls and their blocks.
  * Context has no ref column, so it is always fetched and its 404 read as "no context recorded".
  */
-export function NodeIo({ client, run, view, workflowFiles = [] }: NodeIoProps) {
+export function NodeIo({ client, run, view, runFiles = EMPTY_RUN_FILE_SET }: NodeIoProps) {
   const [reloadToken, setReloadToken] = useState(0);
   const settled = isTerminal(run.status);
   // Head facts (display status, last error) come off the view's snapshot; everything else stays on
@@ -59,7 +59,7 @@ export function NodeIo({ client, run, view, workflowFiles = [] }: NodeIoProps) {
   const launchFacts = view?.launchFacts;
   // An awaiting leaf is the one actionable run. Its node fields come from the workflow file by id —
   // the file may be nested, so the search spans the whole reachable set; unresolved reads as null.
-  const awaitingNode = awaitingNodeForRun(workflowFiles, run);
+  const awaitingNode = runFiles.awaitingNode(run);
   const inputSource = runBlobSource(run, "input");
   const outputSource = runBlobSource(run, "output");
   const contextSource = runBlobSource(run, "context");
