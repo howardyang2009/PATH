@@ -125,7 +125,7 @@ export async function runParallelNode(
   // A decided race replays its winner and cancels the losers, so a continuation that knows the
   // winner runs only it — cause-blind reuse could re-fire a loser's side effects.
   if (node.join === "wait-one") {
-    const reusedWinner = run.continuation.decidedRaceWinner(node);
+    const reusedWinner = run.continuation.decidedRaceWinner?.(node);
     if (reusedWinner) {
       const view = branchView(exec);
       const outcome = await exec.bodyWalk(run, [reusedWinner], seedInput, view.exec);

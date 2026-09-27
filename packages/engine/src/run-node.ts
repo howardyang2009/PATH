@@ -79,8 +79,9 @@ export async function executeWorkflowRun(params: WorkflowRunParams): Promise<Run
   // Resume replays from the run's **seed**, never the counterpart's final `context.json` — under
   // Resume-from-K that holds keys written after K. Complete re-entry restores its parked blackboard
   // (ADR 0062).
-  const reentry = continuation.reentry();
-  const seed = continuation.seed() ?? input;
+  const start = continuation.start();
+  const reentry = start?.kind === "reentry" ? start : undefined;
+  const seed = start?.kind === "seed" ? (start.seed ?? input) : input;
   const context: { [key: string]: JsonValue } = { ...(reentry?.context ?? seed) }; // format doc §6.3
   let previousOutput: JsonValue = seed;
 
@@ -325,7 +326,7 @@ export async function runNode(
         original_run_id: disposition.reusedFrom,
       });
     outcome = { status: "succeeded", output };
-  } else if (disposition.kind === "complete") {
+  } else if (disposition.kind === "settle") {
     // The parked leaf transitions `awaiting → succeeded` in place under its own step-run id;
     // publish lands as for a fresh output.
     const step = run.emitter.step(node, disposition.runId);
@@ -352,14 +353,9 @@ export async function runNode(
       onLeafStep: (emitted) => (leafStep = emitted),
     };
     if (node.type === "workflow") {
-      // A `reenter` disposition hands the child its own existing row, so it is re-driven in place
+      // A re-entered row hands the child its own existing row, so it is re-driven in place
       // (ADR 0041).
-      outcome = await runWorkflowNode(
-        node,
-        stepInput,
-        step,
-        disposition.kind === "reenter" ? disposition.existing : undefined,
-      );
+      outcome = await runWorkflowNode(node, stepInput, step, disposition.existing);
     } else {
       outcome = await runLeafStep(node as unknown as LeafStepNode, stepInput, step);
     }

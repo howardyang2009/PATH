@@ -269,11 +269,12 @@ describe("resumeContinuation — Resume adapter", () => {
       from: "orig-1",
       file: "output.json",
     });
-    expect(c.disposition(node("b"))).toEqual({ kind: "fresh" });
+    expect(c.disposition(node("b"))).toEqual({ kind: "run" });
   });
 
-  it("answers fresh everywhere for a plain forward run (no continuation)", () => {
-    expect(noContinuation().disposition(node("a"))).toEqual({ kind: "fresh" });
+  it("runs every node for a plain forward run (no continuation)", () => {
+    expect(noContinuation().disposition(node("a"))).toEqual({ kind: "run" });
+    expect(noContinuation().start()).toBeUndefined();
   });
 
   it("seeds a re-entered root run from its counterpart's input, never a nested one", () => {
@@ -289,9 +290,16 @@ describe("resumeContinuation — Resume adapter", () => {
       },
     };
 
-    expect(resumeContinuation(seeded, file, true).seed()).toEqual({ blob: "input.json" });
+    expect(resumeContinuation(seeded, file, true).start()).toEqual({
+      kind: "seed",
+      seed: { blob: "input.json" },
+    });
     expect(reads).toEqual(["orig-root/input.json"]);
-    expect(resumeContinuation(seeded, file, false).seed()).toBeUndefined();
+    // A nested run starts from its own interpolated input, not the counterpart's.
+    expect(resumeContinuation(seeded, file, false).start()).toEqual({
+      kind: "seed",
+      seed: undefined,
+    });
   });
 });
 
@@ -318,7 +326,7 @@ describe("completeContinuation — Complete adapter", () => {
     const c = complete([target, sibling], "r-target");
 
     expect(c.disposition(node("a"))).toEqual({
-      kind: "complete",
+      kind: "settle",
       runId: "r-target",
       output: { submitted: true },
     });
@@ -330,13 +338,13 @@ describe("completeContinuation — Complete adapter", () => {
     const leafRow = record("r-leaf", "parent-1", "root-1", { nodeId: "b", status: "running" });
     const c = complete([wfRow, leafRow], "none");
 
-    expect(c.disposition(node("nested", "workflow"))).toEqual({ kind: "reenter", existing: wfRow });
-    expect(c.disposition(node("b", "binary"))).toEqual({ kind: "fresh" });
+    expect(c.disposition(node("nested", "workflow"))).toEqual({ kind: "run", existing: wfRow });
+    expect(c.disposition(node("b", "binary"))).toEqual({ kind: "run" });
   });
 
   it("runs fresh when no row under this parent answers the node", () => {
     const elsewhere = record("r1", "other-parent", "root-1", { nodeId: "a", status: "succeeded" });
-    expect(complete([elsewhere], "none").disposition(node("a"))).toEqual({ kind: "fresh" });
+    expect(complete([elsewhere], "none").disposition(node("a"))).toEqual({ kind: "run" });
   });
 
   it("restores a re-entered run's parked blackboard, and nothing for a fresh one", () => {
@@ -346,8 +354,8 @@ describe("completeContinuation — Complete adapter", () => {
     });
     const c = completeContinuation(continueState([own], "none"), file, "r-wf");
 
-    expect(c.reentry()).toEqual({ existing: own, context: { from: "r-wf" } });
-    expect(complete([], "none").reentry()).toBeUndefined();
+    expect(c.start()).toEqual({ kind: "reentry", existing: own, context: { from: "r-wf" } });
+    expect(complete([], "none").start()).toBeUndefined();
   });
 
   it("scopes a nested run's pass walk to the child file, not the parent's", () => {

@@ -96,7 +96,7 @@ async function runLoopIteration(
   // `exec` passes through unchanged, so the body publishes into the loop's own context.
   const container = await openContainerRun(run, {
     key: { owner: node, iteration },
-    existingRunId: disposition.kind === "reenter" ? disposition.existing.runId : undefined,
+    existingRunId: disposition.kind === "run" ? disposition.existing?.runId : undefined,
     input: iterationInput,
   });
   // The loop body is a single node (`@2` §4.3), run as a one-node sequence inside the container.
