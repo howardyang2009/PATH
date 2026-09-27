@@ -41,6 +41,12 @@ export type SeqOutcome =
   // incoming output; only the top-level walk consumes it.
   | { status: "goto"; goto: string; target: string; output: JsonValue };
 
+/**
+ * What a container body's walk returns. A `goto` may not sit under a `while-do` or a `parallel`
+ * (ADR 0058), so a body's outcome has no jump variant and a container runner cannot mishandle one.
+ */
+export type BodyOutcome = Exclude<SeqOutcome, { status: "goto" }>;
+
 export type CancelCause = "operator" | "sibling-failed" | "sibling-succeeded";
 
 /**
@@ -62,6 +68,14 @@ export type NodeWalk = (
   exec: NodeExecContext,
 ) => Promise<SeqOutcome>;
 
+/** A container body's walk: same shape, but a jump is not a possible result (see `BodyOutcome`). */
+export type NodeBodyWalk = (
+  run: RunContext,
+  nodes: WorkflowFile["body"],
+  seedInput: JsonValue,
+  exec: NodeExecContext,
+) => Promise<BodyOutcome>;
+
 // What each node in a sequence reads and writes: the `context` it sees (inside a `parallel` block a
 // per-branch snapshot copy, so siblings never observe each other's writes — mvp spec §5.3), the
 // enclosing cancellation, `onPublish`, and the run's `walk`.
@@ -70,7 +84,13 @@ export interface NodeExecContext {
   signal?: AbortSignal;
   cancellation?: Cancellation;
   onPublish: (updates: { [key: string]: JsonValue }) => Promise<void>;
+  /** The walk a body that may take a jump uses: the top-level walk and a `branch` arm. */
   walk: NodeWalk;
+  /**
+   * The walk a container body uses — a `while-do` iteration or a `parallel` branch, where a goto is
+   * a load refusal. Its outcome carries no jump, so a container runner handles no impossible value.
+   */
+  bodyWalk: NodeBodyWalk;
 }
 
 export interface RunIdentity {

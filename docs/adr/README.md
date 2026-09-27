@@ -70,6 +70,7 @@ An Architecture Decision Record (ADR) records one decision PATH has made: the sh
 | [0064](0064-a-sequence-body-is-transparent-to-the-rerun-boundary.md) | A sequence body is transparent to the rerun boundary | accepted |
 | [0065](0065-comments-state-what-and-why-decisions-live-in-adrs.md) | Source comments state what and why; decisions live in ADRs | accepted |
 | [0066](0066-the-log-event-is-the-only-event-vocabulary.md) | The log event is the only event vocabulary | accepted |
+| [0067](0067-a-container-body-walk-cannot-take-a-jump.md) | A container body's walk cannot take a jump | accepted |
 
 ## Superseded decisions
 

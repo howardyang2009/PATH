@@ -1,10 +1,10 @@
 import type { JsonValue, WorkflowFile } from "@path/schema";
 import { blockCancellation } from "./cancellation.js";
-import type { NodeExecContext, RunContext, SeqOutcome } from "./run-context.js";
+import type { BodyOutcome, NodeExecContext, RunContext, SeqOutcome } from "./run-context.js";
 
 /** The `parallel` block: collect/wait-one/do-not-wait joins, the block-local cancellation cascade,
- * and the barrier draining detached branches. Branches run through `NodeExecContext.walk` (no
- * module cycle). */
+ * and the barrier draining detached branches. Branches run through `NodeExecContext.bodyWalk` (no
+ * module cycle), which cannot return a jump: load refuses a goto under a `parallel`. */
 
 type ParallelNode = Extract<WorkflowFile["body"][number], { type: "parallel" }>;
 type ParallelBranch = ParallelNode["branches"][number];
@@ -12,7 +12,7 @@ type ParallelBranch = ParallelNode["branches"][number];
 // One branch's run: which branch, how it ended, and the publishes it buffered for the join.
 interface BranchResult {
   branch: ParallelBranch;
-  outcome: SeqOutcome;
+  outcome: BodyOutcome;
   buffer: { [key: string]: JsonValue };
 }
 
@@ -94,7 +94,7 @@ async function launchDoNotWait(
   exec: NodeExecContext,
 ): Promise<SeqOutcome> {
   for (const branch of node.branches) {
-    const branchRun = exec.walk(run, [branch], seedInput, branchView(exec).exec).then(() => {});
+    const branchRun = exec.bodyWalk(run, [branch], seedInput, branchView(exec).exec).then(() => {});
     run.detached.push(branchRun);
   }
   await run.emitter.emit(node, {
@@ -128,7 +128,7 @@ export async function runParallelNode(
     const reusedWinner = run.continuation.decidedRaceWinner(node);
     if (reusedWinner) {
       const view = branchView(exec);
-      const outcome = await exec.walk(run, [reusedWinner], seedInput, view.exec);
+      const outcome = await exec.bodyWalk(run, [reusedWinner], seedInput, view.exec);
       // The winner reused as `succeeded` originally, so a non-success here would be an engine bug.
       if (outcome.status !== "succeeded") return outcome;
       return landWaitOneWinner(
@@ -155,7 +155,7 @@ export async function runParallelNode(
         signal: cancellation.signal,
         cancellation,
       });
-      const outcome = await exec.walk(run, [branch], seedInput, branchExec);
+      const outcome = await exec.bodyWalk(run, [branch], seedInput, branchExec);
       if (node.join === "collect") {
         if (outcome.status === "failed") {
           cancellation.trigger(outcome.causeRunId ?? runId); // best-effort
