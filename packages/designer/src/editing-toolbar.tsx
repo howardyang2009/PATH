@@ -65,8 +65,8 @@ export function TemplateFileName({ template }: { template: TemplateSource | null
  * save wins: a `412` stale-write conflict (with its Reload, the recovery) or any other save or
  * delete error. Else "Unsaved edits" for a buffer with unsaved work, "Saved" after a save lands,
  * "Saved as template" after a workflow's Save as template, or "Deleted" once a Delete removed the
- * file. An id-less file opens dirty with no edit (ids stamped on import, ADR 0015), so that reason
- * is named instead. An untouched New buffer has no unsaved work, so it shows nothing.
+ * file. An id-less file (ids stamped on import, ADR 0015) or a non-canonical one opens dirty with
+ * no edit, so that reason is named instead. An untouched New buffer has no unsaved work, so it shows nothing.
  */
 export function FileStatus({
   frame,
@@ -119,14 +119,16 @@ export function FileStatus({
   }
   const opened = openedResultOf(frame);
   if (frame && opened && frameHasUnsavedWork(frame)) {
-    // `pristine`: the buffer still equals its bytes at the last save-point, so only the id stamp
-    // dirties it.
+    // `pristine`: the buffer still equals its bytes at the last save-point, so no edit dirties it:
+    // only the id stamp or a non-canonical source (key order, spacing) that Save will rewrite.
     const pristine = canonicalSerialize(opened.file) === frame.openedBytes;
     return (
       <span className="file-status file-status-unsaved" role="status">
-        {opened.idsStamped && pristine
-          ? "Ids stamped on import — unsaved (ADR 0015)"
-          : "Unsaved edits"}
+        {!pristine
+          ? "Unsaved edits"
+          : opened.idsStamped
+            ? "Ids stamped on import — unsaved (ADR 0015)"
+            : "Non-canonical file: Save will reformat it"}
       </span>
     );
   }
