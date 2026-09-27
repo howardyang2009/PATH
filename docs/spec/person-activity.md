@@ -43,7 +43,7 @@ The wait is **durable**, not a held process (§4). It may last days across engin
 
 ## 2. Plugin shape
 
-The plugin folder is `packages/engine/step-plugins/person-activity/`, registered like `binary` and
+The plugin folder is `packages/engine/plugin/step-plugin/person-activity/`, registered like `binary` and
 `prompt`. It declares three type **fields** and one worker.
 
 | Field          | Type                    | Required | Meaning |

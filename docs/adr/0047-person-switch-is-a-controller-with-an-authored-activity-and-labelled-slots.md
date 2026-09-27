@@ -32,7 +32,7 @@ already do (ADR 0038), and the selected child is an ordinary child of the enclos
 1. **Kind — a reserved controller, not a plugin folder.** The type name `person-switch` joins the
    core node union and `RESERVED_TYPE_NAMES`, beside `parallel`, `branch`, `while-do`, `sequence`, and
    `checkpoint`. It ships no worker, holds no task, and produces no run row of its own (invariant 1).
-   It is not a folder under `packages/engine/step-plugins/`, because a step-type plugin contributes
+   It is not a folder under `packages/engine/plugin/step-plugin/`, because a step-type plugin contributes
    *fields plus workers*, and this construct contributes neither — its content is other nodes.
 
 2. **Structure — two slots, the `@2` container shape (ADR 0014).**

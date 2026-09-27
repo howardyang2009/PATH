@@ -5,7 +5,7 @@ import { z } from "zod";
  * A registry mirroring the two shipped built-in leaf step types (`binary`, `prompt`) at the level
  * `@path/schema` reads — the two zod fragments and the worker *names*. The closed built-in union is
  * gone (#337): a test that needs a `binary`/`prompt` node to validate builds its schema from this
- * fixture, the same grammar the engine builds from its `step-plugins/` folder scan. `run` is a reject
+ * fixture, the same grammar the engine builds from its `plugin/step-plugin/` folder scan. `run` is a reject
  * stub the schema never calls. Kept byte-for-byte in step with `packages/schema/test/builtin-registry.ts`
  * (a test fixture is not part of a package's exports, so the two cannot share one module).
  */

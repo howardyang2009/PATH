@@ -104,7 +104,7 @@ plug, because a plugin is engine code and carries the trust of PATH's own source
    plugin runs **in the engine's process**: it can reach every secret in the whole run tree and not only
    its own, plus the store handle, the observer, and the run's heap. It is not named in any workflow
    file — only its type is. ADR 0019 sub-10 settles the matter physically: `binary` and `prompt` are
-   folders under `packages/engine/step-plugins/`, tracked in git, loaded by the same path as any other
+   folders under `packages/engine/plugin/step-plugin/`, tracked in git, loaded by the same path as any other
    plugin. **Adding a plugin is editing the engine.** The trust boundary is therefore write access to the
    PATH tree, which is source-code write access, and nothing in this ADR defends against a hostile
    plugin. Sandboxing untrusted plugin code stays out of scope (#308).

@@ -569,7 +569,7 @@ Response `200 OK`:
   reports exactly that. No `launchable` field is added: §6 has never reported launch-readiness (see the
   bullet below and ADR 0011), and a valid-but-unlaunchable state would need the loader to gain a
   partial-success mode — the third registry state ADR 0019 sub-decision 16 declined. The `error` names
-  every missing type in one message, plus the `packages/engine/step-plugins/<name>/` folder that would
+  every missing type in one message, plus the `packages/engine/plugin/step-plugin/<name>/` folder that would
   supply it (ADR 0018 sub-decision 5, as amended), so one call tells a client the whole list of what this
   tree lacks. Since a workflow file carries no `requires` block, that message *is* the dependency report.
 - **One broken plugin folder invalidates the whole list.** A candidate folder with no `index.ts`, a
@@ -727,7 +727,7 @@ New capability ([#261](https://github.com/howardyang2009/PATH/issues/261), part 
 **step-plugin registry** as data, so the Designer can build a **registry-driven palette**
 ([ADR 0018](../adr/0018-open-node-union-via-pure-registry-factory.md), designer-spec.md § The v1
 authoring palette). The Designer is a pure browser consumer: it cannot scan
-`packages/engine/step-plugins/`, so the grammar it may author has to arrive over the wire. This is a
+`packages/engine/plugin/step-plugin/`, so the grammar it may author has to arrive over the wire. This is a
 pure read, with no new engine exec path.
 
 **Ungated read.** It is a `GET`, so it does not pass the §2.1 origin gate (a read has no side effect,
