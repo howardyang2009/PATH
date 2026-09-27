@@ -1,10 +1,15 @@
+import {
+  DEFAULT_PLUGINS,
+  makeCalls,
+  type StubCalls,
+  stubClient,
+} from "@path/client-core/test-utils";
 import { FORMAT_VERSION, type WireStepPlugin } from "@path/schema";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { App } from "../src/app.js";
 import { openWorkflowFile } from "../src/open-workflow.js";
 import { canonicalSerialize } from "../src/serialize.js";
-import { DEFAULT_PLUGINS, makeCalls, type StubCalls, stubClient } from "./stub-server.js";
 
 /**
  * The on-disk bytes of a file the Designer has already saved: canonical, so a re-open is a fixed point

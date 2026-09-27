@@ -2,8 +2,8 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { apiClient } from "./api.js";
 import { App } from "./app.js";
-// The reused run panels read Viewer-only vars from the Viewer's `tokens.css`, so it loads first; the
-// Designer's own palette and stylesheet load last and so win the shared vars.
+// The Viewer's `tokens.css` is the one shared token sheet, so it loads first; the Designer's own sheet
+// adds only the per-kind block hues, and `designer.css` loads last so its frame classes win.
 import "@path/viewer/tokens.css";
 import "@path/viewer/viewer.css";
 import "./tokens.css";

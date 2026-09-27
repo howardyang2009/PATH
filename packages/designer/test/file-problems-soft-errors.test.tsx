@@ -1,10 +1,10 @@
+import { DEFAULT_PLUGINS, makeCalls, stubClient } from "@path/client-core/test-utils";
 import { FORMAT_VERSION } from "@path/schema";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { App } from "../src/app.js";
 import { openWorkflowFile } from "../src/open-workflow.js";
 import { canonicalSerialize } from "../src/serialize.js";
-import { DEFAULT_PLUGINS, makeCalls, stubClient } from "./stub-server.js";
 
 /**
  * #388 — a cross-node soft error (a read of a context key no step publishes) is a per-node marker and a

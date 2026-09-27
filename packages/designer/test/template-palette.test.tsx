@@ -1,8 +1,8 @@
 import type { TemplateSummary } from "@path/client-core";
+import { stubClient } from "@path/client-core/test-utils";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { App } from "../src/app.js";
-import { stubClient } from "./stub-server.js";
 
 /**
  * #577 — the palette lists templates. A `Templates` tab beside `Nodes` (variant C of #564) holds a

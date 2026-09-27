@@ -8,7 +8,8 @@
     "./api-client": "./src/api-client.ts",
     "./view-model": "./src/view-model.ts",
     "./complete-form": "./src/complete-form.ts",
-    "./blob-source": "./src/blob-source.ts"
+    "./blob-source": "./src/blob-source.ts",
+    "./test-utils": "./test-utils/stub-server.ts"
   },
   "types": "./src/index.ts",
   "scripts": {

@@ -65,7 +65,8 @@ emerge, and against the *run* surfaces specifically:
   the boundary this ADR lifts.
 - **Styling coupling:** the Designer imports `@path/viewer/viewer.css` for the panels, loaded *before*
   `designer.css` so the Designer's own frame classes still win the few names the two stylesheets share.
-  The Designer keeps its own `tokens.css` palette.
+  Both consoles share one token sheet, `@path/viewer/tokens.css`; the Designer's own `tokens.css` adds
+  only its per-kind block hues.
 - **The Viewer is now a library as well as an app.** Its `package.json` gains an `exports` barrel
   (`src/index.ts`) naming the reusable panels and hooks. Its `App`/`main` entry is untouched.
 - **A shared-`@path/client-react` future stays open,** exactly as ADR 0028 kept it open — the Viewer's

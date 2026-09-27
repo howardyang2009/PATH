@@ -1,9 +1,9 @@
 import type { TemplateSummary } from "@path/client-core";
+import { makeCalls, stubClient } from "@path/client-core/test-utils";
 import { FORMAT_VERSION } from "@path/schema";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { App } from "../src/app.js";
-import { makeCalls, stubClient } from "./stub-server.js";
 
 /**
  * #580 — author mode. Opening a `*.step-template.json` itself (a double-click on its palette card) edits

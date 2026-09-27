@@ -1,9 +1,9 @@
+import { makeCalls, stubClient } from "@path/client-core/test-utils";
 import { FORMAT_VERSION } from "@path/schema";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { App } from "../src/app.js";
 import { canonicalSerialize } from "../src/serialize.js";
-import { makeCalls, stubClient } from "./stub-server.js";
 
 /**
  * #371 — the Designer's edit-lock lease (acquire on open, a confirmation-gated takeover, one lease per

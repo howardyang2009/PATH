@@ -1,8 +1,8 @@
 import type { RunNodeState } from "@path/client-core";
+import { stubClient } from "@path/client-core/test-utils";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { NodeIo } from "../src/node-io.js";
-import { stubClient } from "./stub-server.js";
 
 const ROOT = "run_root";
 const RUN = "run_child";

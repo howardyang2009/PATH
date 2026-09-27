@@ -271,7 +271,7 @@ body {
 
 .palette-card-error {
   font-size: var(--fs-xs);
-  color: var(--run-failed);
+  color: var(--status-failed-fg);
 }
 
 .palette-card-tag {
@@ -291,7 +291,7 @@ body {
 }
 
 .palette-note-error {
-  color: var(--run-failed);
+  color: var(--status-failed-fg);
 }
 
 /* Canvas. */
@@ -1619,11 +1619,11 @@ body {
 }
 
 .run-error {
-  color: var(--run-failed);
+  color: var(--status-failed-fg);
 }
 
 .run-gate {
-  color: var(--run-pending);
+  color: var(--status-pending-fg);
 }
 
 .run-warning {
@@ -1631,8 +1631,8 @@ body {
   padding: 6px 8px;
   font-size: var(--fs-sm);
   color: var(--text);
-  background: var(--run-pending-bg);
-  border: 1px solid var(--run-pending);
+  background: var(--status-pending-bg);
+  border: 1px solid var(--status-pending-fg);
   border-radius: 6px;
 }
 
@@ -1663,7 +1663,7 @@ body {
 }
 
 .run-textarea[aria-invalid="true"] {
-  border-color: var(--run-failed);
+  border-color: var(--status-failed-fg);
 }
 
 .run-lint {
@@ -1673,7 +1673,7 @@ body {
 }
 
 .run-lint--bad {
-  color: var(--run-failed);
+  color: var(--status-failed-fg);
 }
 
 .run-disclosure {
@@ -1726,33 +1726,33 @@ body {
   font-weight: 600;
   padding: 0 6px;
   border-radius: 999px;
-  color: var(--run-pending);
-  background: var(--run-pending-bg);
+  color: var(--status-pending-fg);
+  background: var(--status-pending-bg);
 }
 
 .node-run-badge[data-run-status="running"] {
-  color: var(--run-running);
-  background: var(--run-running-bg);
+  color: var(--status-running-fg);
+  background: var(--status-running-bg);
 }
 .node-run-badge[data-run-status="awaiting"] {
-  color: var(--run-awaiting);
-  background: var(--run-awaiting-bg);
+  color: var(--status-awaiting-fg);
+  background: var(--status-awaiting-bg);
 }
 .node-run-badge[data-run-status="succeeded"] {
-  color: var(--run-succeeded);
-  background: var(--run-succeeded-bg);
+  color: var(--status-succeeded-fg);
+  background: var(--status-succeeded-bg);
 }
 .node-run-badge[data-run-status="failed"] {
-  color: var(--run-failed);
-  background: var(--run-failed-bg);
+  color: var(--status-failed-fg);
+  background: var(--status-failed-bg);
 }
 .node-run-badge[data-run-status="cancelled"] {
-  color: var(--run-cancelled);
-  background: var(--run-cancelled-bg);
+  color: var(--status-cancelled-fg);
+  background: var(--status-cancelled-bg);
 }
 .node-run-badge[data-run-status="pending"] {
-  color: var(--run-pending);
-  background: var(--run-pending-bg);
+  color: var(--status-pending-fg);
+  background: var(--status-pending-bg);
 }
 
 /* ── New-file placement dialog (#390) ─────────────────────────────────────────────────────────────
@@ -1925,7 +1925,7 @@ body {
 .new-file-error {
   margin: 12px 0 0;
   font-size: var(--fs-sm);
-  color: var(--run-failed);
+  color: var(--status-failed-fg);
 }
 
 .save-as-choices {

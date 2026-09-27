@@ -1,9 +1,9 @@
 import type { TemplateSummary } from "@path/client-core";
+import { makeCalls, stubClient } from "@path/client-core/test-utils";
 import { FORMAT_VERSION } from "@path/schema";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "../src/app.js";
-import { makeCalls, stubClient } from "./stub-server.js";
 
 /**
  * The toolbar's Workflow | Template edit-mode switch. Workflow mode edits `*.workflow.json` files;

@@ -1,10 +1,10 @@
 import { type PathApiClient, PathApiError } from "@path/client-core";
+import { EventStreamStub, stubClient } from "@path/client-core/test-utils";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { ARM_TIMEOUT_MS } from "../src/cancel-button.js";
 import { RunDetail } from "../src/run-detail.js";
 import { useRunView } from "../src/use-run-view.js";
-import { EventStreamStub, stubClient } from "./stub-server.js";
 
 const ROOT = "run_root";
 
