@@ -6,7 +6,12 @@ import {
   interpolateToString,
   interpolationScope,
 } from "./interpolate.js";
-import type { NodeExecContext, RunContext, SeqOutcome } from "./run-context.js";
+import {
+  type NodeExecContext,
+  type RunContext,
+  type SeqOutcome,
+  walkContainerBody,
+} from "./run-context.js";
 
 /**
  * The Structure Controllers the engine evaluates itself — `checkpoint`, `branch`, `while-do` — and
@@ -100,8 +105,8 @@ async function runLoopIteration(
     input: iterationInput,
   });
   // The loop body is a single node (`@2` §4.3), run as a one-node sequence inside the container.
-  // `bodyWalk` is the jump-free walk: load refuses a goto under a `while-do`.
-  const outcome = await exec.bodyWalk(container.run, [node.node], iterationInput, exec);
+  // The jump-free walk: load refuses a goto under a `while-do`.
+  const outcome = await walkContainerBody(container.run, [node.node], iterationInput, exec);
   // The body parked at an awaiting leaf: the container stays `running` (no `step-finished`) and the
   // loop propagates `awaiting` up; a Complete replay re-enters this container and drives it on.
   if (outcome.status === "awaiting") return outcome;

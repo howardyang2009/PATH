@@ -1,4 +1,10 @@
-import type { ConfigObject, JsonValue, RunRecord, WorkflowFile } from "@path/schema";
+import {
+  type ConfigObject,
+  type JsonValue,
+  type RunRecord,
+  type WorkflowFile,
+  walkNodes,
+} from "@path/schema";
 import type { Continuation } from "./continuation.js";
 import type { LoadedStepPluginRegistry } from "./plugin-seam/scan.js";
 import type { ProcessorSemaphore } from "./processor-semaphore.js";
@@ -43,7 +49,8 @@ export type SeqOutcome =
 
 /**
  * What a container body's walk returns. A `goto` may not sit under a `while-do` or a `parallel`
- * (ADR 0058), so a body's outcome has no jump variant and a container runner cannot mishandle one.
+ * (ADR 0058), so {@link walkContainerBody} strips the jump variant and a container runner cannot
+ * mishandle one.
  */
 export type BodyOutcome = Exclude<SeqOutcome, { status: "goto" }>;
 
@@ -68,14 +75,6 @@ export type NodeWalk = (
   exec: NodeExecContext,
 ) => Promise<SeqOutcome>;
 
-/** A container body's walk: same shape, but a jump is not a possible result (see `BodyOutcome`). */
-export type NodeBodyWalk = (
-  run: RunContext,
-  nodes: WorkflowFile["body"],
-  seedInput: JsonValue,
-  exec: NodeExecContext,
-) => Promise<BodyOutcome>;
-
 // What each node in a sequence reads and writes: the `context` it sees (inside a `parallel` block a
 // per-branch snapshot copy, so siblings never observe each other's writes — mvp spec §5.3), the
 // enclosing cancellation, `onPublish`, and the run's `walk`.
@@ -84,13 +83,30 @@ export interface NodeExecContext {
   signal?: AbortSignal;
   cancellation?: Cancellation;
   onPublish: (updates: { [key: string]: JsonValue }) => Promise<void>;
-  /** The walk a body that may take a jump uses: the top-level walk and a `branch` arm. */
+  /** The run's own walk, injected so a control runner never imports the one that dispatches it. */
   walk: NodeWalk;
-  /**
-   * The walk a container body uses — a `while-do` iteration or a `parallel` branch, where a goto is
-   * a load refusal. Its outcome carries no jump, so a container runner handles no impossible value.
-   */
-  bodyWalk: NodeBodyWalk;
+}
+
+/**
+ * A container body's walk (`while-do` iteration, `parallel` branch): load refuses a `goto` under
+ * either (ADR 0058), so a jump that reaches here is a skipped load. It fails the run, naming the
+ * node, rather than escaping into a container that has nowhere to land it — the only way in, so a
+ * container runner never holds a value its own outcome type cannot express.
+ */
+export async function walkContainerBody(
+  run: RunContext,
+  nodes: WorkflowFile["body"],
+  seedInput: JsonValue,
+  exec: NodeExecContext,
+): Promise<BodyOutcome> {
+  const outcome = await exec.walk(run, nodes, seedInput, exec);
+  if (outcome.status !== "goto") return outcome;
+  // The jump may sit under a `sequence` or a `branch`, so name it by its own id.
+  const jumped = [...walkNodes(nodes)].find((node) => node.id === outcome.goto);
+  return {
+    status: "failed",
+    error: `goto "${jumped?.name ?? outcome.goto}": a jump may not leave a while-do or parallel body`,
+  };
 }
 
 export interface RunIdentity {
