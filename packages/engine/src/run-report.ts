@@ -67,6 +67,10 @@ function eligibilityCell(verdict: EligibilityVerdict): string {
       return "not succeeded";
     case "prefix-unsucceeded":
       return "prefix not all succeeded";
+    case "not-workflow":
+      return "no longer a nested workflow";
+    case "ref-unresolved":
+      return "its referenced file is gone";
     case "not-in-tree":
       // Unreachable on a listed row, but the exhaustive switch must account for it.
       return "not in the run tree";

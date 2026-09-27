@@ -78,6 +78,7 @@ An Architecture Decision Record (ADR) records one decision PATH has made: the sh
 | [0072](0072-one-expiring-marker-lease-primitive.md) | One expiring-marker lease primitive, two policies over it | accepted |
 | [0073](0073-the-designers-write-decision-is-one-plan.md) | The Designer's write decision is one plan | accepted |
 | [0074](0074-the-session-reducer-hands-out-the-read-it-asks-for.md) | The session reducer hands out the read it asks for | accepted |
+| [0075](0075-one-legal-k-verdict-two-reachabilities.md) | One legal-K verdict, two reachabilities | accepted |
 
 ## Superseded decisions
 
