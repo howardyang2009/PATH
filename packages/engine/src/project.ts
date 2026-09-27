@@ -19,8 +19,7 @@ import {
 import { createRunArchive, type RunArchive } from "./run-archive.js";
 import { composeObservers, type RunObserver } from "./run-observer.js";
 import {
-  type ContinueInput,
-  type ResumeInput,
+  type ContinuationInput,
   type RunOptions,
   type RunResult,
   runWorkflow,
@@ -127,9 +126,8 @@ export interface ProjectCore {
     rootFile: WorkflowFile,
     workflowDir: string,
     opts: ProjectRunOptions,
-    resume: ResumeInput | undefined,
+    continuation: ContinuationInput | undefined,
     appendObservers: RunObserver[],
-    continueInput?: ContinueInput,
   ): Promise<RunResult>;
 }
 
@@ -169,9 +167,8 @@ export function openProject(dir: string): OpenProjectResult {
     rootFile: WorkflowFile,
     workflowDir: string,
     opts: ProjectRunOptions,
-    resume: ResumeInput | undefined,
+    continuation: ContinuationInput | undefined,
     appendObservers: RunObserver[],
-    continueInput?: ContinueInput,
   ): Promise<RunResult> {
     const {
       logBackends,
@@ -188,9 +185,10 @@ export function openProject(dir: string): OpenProjectResult {
 
     // A Complete continues the existing per-root log stream: seq picks up from `RunLog.lastSeq()`
     // and events append to `run.log` rather than truncating it.
-    const loggingOptions = continueInput
-      ? { startSeq: openRunLog(absDir, db, continueInput.rootRunId).lastSeq(), append: true }
-      : {};
+    const loggingOptions =
+      continuation?.kind === "complete"
+        ? { startSeq: openRunLog(absDir, db, continuation.rootRunId).lastSeq(), append: true }
+        : {};
 
     // Persistence first, deliberately: a log write failure aborts the remaining observers, so
     // logging first would leave a failed audit with no run row.
@@ -205,8 +203,7 @@ export function openProject(dir: string): OpenProjectResult {
       ...runOptions,
       observer,
       processorConcurrency: processorConcurrency ?? settings.processorConcurrency,
-      resume,
-      continue: continueInput,
+      continuation,
     });
   }
 

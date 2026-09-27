@@ -32,6 +32,7 @@ export {
   WORKFLOW_STEP_TYPE,
 } from "./run-observer.js";
 export {
+  type ContinuationInput,
   type ContinueInput,
   type ResumeInput,
   type RunOptions,

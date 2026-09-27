@@ -1,20 +1,32 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { LaunchFacts, RunRecord } from "@path/schema";
+import {
+  FORMAT_VERSION,
+  type GotoNode,
+  type JsonValue,
+  type LaunchFacts,
+  type RunRecord,
+  type WorkflowFile,
+} from "@path/schema";
 import type Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  completeContinuation,
   continuationBlobReader,
-  continuationOf,
   continuationRunOptions,
+  noContinuation,
+  passFirstNode,
+  recordedPasses,
+  resumeContinuation,
   sourceRuns,
   successorCapture,
 } from "../src/continuation.js";
 import { openDb } from "../src/persistence/db.js";
 import { runBlobDir } from "../src/persistence/paths.js";
 import { insertReuseRun, insertRun } from "../src/persistence/run-store.js";
-import type { ContinueState, RunContext } from "../src/run-context.js";
+import type { ResumeEntry } from "../src/resume-plan.js";
+import type { ContinueState } from "../src/run-context.js";
 import type { RunEvent } from "../src/run-observer.js";
 
 /**
@@ -60,6 +72,8 @@ function record(
 ): RunRecord {
   return {
     ...newRow(runId, parentRunId, rootRunId),
+    iteration: null,
+    pass: null,
     finishedAt: null,
     inputRef: null,
     outputRef: null,
@@ -205,12 +219,26 @@ describe("successorCapture", () => {
 
 /** A node the disposition adapters read: only the two fields they look at, cast to the body-node
  * type. */
-function node(
-  id: string,
-  type = "binary",
-): Parameters<ReturnType<typeof continuationOf>["disposition"]>[0] {
-  return { id, type } as unknown as Parameters<ReturnType<typeof continuationOf>["disposition"]>[0];
+function node(id: string, type = "binary"): WorkflowFile["body"][number] {
+  return { id, type } as unknown as WorkflowFile["body"][number];
 }
+
+/** A file holding exactly the nodes a plan can reuse. */
+const file: WorkflowFile = {
+  format: FORMAT_VERSION,
+  id: "11111111-1111-4111-8111-111111111111",
+  name: "t",
+  body: [
+    node("a"),
+    {
+      type: "workflow",
+      id: "nested",
+      name: "nested",
+      ref: "child.json",
+      input: {},
+    } as unknown as WorkflowFile["body"][number],
+  ],
+};
 
 /** A Complete-continue state over a fixed row set, targeting one parked leaf by id. */
 function continueState(existingRuns: RunRecord[], targetStepRunId: string): ContinueState {
@@ -221,17 +249,18 @@ function continueState(existingRuns: RunRecord[], targetStepRunId: string): Cont
   };
 }
 
-describe("continuationOf — Resume adapter", () => {
-  const identity = { runId: "wf-1" } as RunContext["identity"];
+describe("resumeContinuation — Resume adapter", () => {
+  const counterpart = record("orig-root", null, "root-1", { nodeId: null, status: "failed" });
+  const original = record("orig-1", "orig-root", "root-1", { nodeId: "a", status: "succeeded" });
+  const readBlob = (run: RunRecord, filename: string) => ({ from: run.runId, file: filename });
+  const entry: ResumeEntry = {
+    input: { originalRuns: [counterpart, original], readBlob },
+    counterpart,
+    rerunPath: [],
+  };
 
   it("reuses a node the plan holds, and runs every other node fresh", () => {
-    const original = record("orig-1", "wf-1");
-    const readBlob = (run: RunRecord, file: string) => ({ from: run.runId, file });
-    const resume = {
-      plan: new Map([["a", original]]),
-      input: { readBlob },
-    } as unknown as RunContext["resume"];
-    const c = continuationOf({ identity, resume });
+    const c = resumeContinuation(entry, file, false);
 
     const reused = c.disposition(node("a"));
     expect(reused).toMatchObject({ kind: "reuse", reusedFrom: "orig-1" });
@@ -243,16 +272,32 @@ describe("continuationOf — Resume adapter", () => {
     expect(c.disposition(node("b"))).toEqual({ kind: "fresh" });
   });
 
-  it("answers fresh everywhere for a plain forward run (no resume, no continue)", () => {
-    const c = continuationOf({ identity });
-    expect(c.disposition(node("a"))).toEqual({ kind: "fresh" });
+  it("answers fresh everywhere for a plain forward run (no continuation)", () => {
+    expect(noContinuation().disposition(node("a"))).toEqual({ kind: "fresh" });
+  });
+
+  it("seeds a re-entered root run from its counterpart's input, never a nested one", () => {
+    const reads: string[] = [];
+    const seeded: ResumeEntry = {
+      ...entry,
+      input: {
+        originalRuns: [counterpart, original],
+        readBlob: (run, filename) => {
+          reads.push(`${run.runId}/${filename}`);
+          return { blob: filename };
+        },
+      },
+    };
+
+    expect(resumeContinuation(seeded, file, true).seed()).toEqual({ blob: "input.json" });
+    expect(reads).toEqual(["orig-root/input.json"]);
+    expect(resumeContinuation(seeded, file, false).seed()).toBeUndefined();
   });
 });
 
-describe("continuationOf — Complete adapter", () => {
-  const identity = { runId: "parent-1" } as RunContext["identity"];
+describe("completeContinuation — Complete adapter", () => {
   const complete = (rows: RunRecord[], target: string) =>
-    continuationOf({ identity, continue: continueState(rows, target) });
+    completeContinuation(continueState(rows, target), file, "parent-1");
 
   it("reuses a succeeded row read-only", () => {
     const existing = record("r1", "parent-1", "root-1", {
@@ -281,16 +326,192 @@ describe("continuationOf — Complete adapter", () => {
   });
 
   it("re-enters a non-terminal workflow-run row, but runs a non-terminal leaf fresh", () => {
-    const wfRow = record("r-wf", "parent-1", "root-1", { nodeId: "a", status: "running" });
+    const wfRow = record("r-wf", "parent-1", "root-1", { nodeId: "nested", status: "running" });
     const leafRow = record("r-leaf", "parent-1", "root-1", { nodeId: "b", status: "running" });
     const c = complete([wfRow, leafRow], "none");
 
-    expect(c.disposition(node("a", "workflow"))).toEqual({ kind: "reenter", existing: wfRow });
+    expect(c.disposition(node("nested", "workflow"))).toEqual({ kind: "reenter", existing: wfRow });
     expect(c.disposition(node("b", "binary"))).toEqual({ kind: "fresh" });
   });
 
   it("runs fresh when no row under this parent answers the node", () => {
     const elsewhere = record("r1", "other-parent", "root-1", { nodeId: "a", status: "succeeded" });
     expect(complete([elsewhere], "none").disposition(node("a"))).toEqual({ kind: "fresh" });
+  });
+
+  it("restores a re-entered run's parked blackboard, and nothing for a fresh one", () => {
+    const own = record("r-wf", "parent-1", "root-1", {
+      nodeId: "nested",
+      status: "running",
+    });
+    const c = completeContinuation(continueState([own], "none"), file, "r-wf");
+
+    expect(c.reentry()).toEqual({ existing: own, context: { from: "r-wf" } });
+    expect(complete([], "none").reentry()).toBeUndefined();
+  });
+
+  it("scopes a nested run's pass walk to the child file, not the parent's", () => {
+    const goto = {
+      type: "goto",
+      id: "check",
+      name: "check",
+      target: "review",
+      max_jumps: 3,
+    } as unknown as WorkflowFile["body"][number];
+    const childFile: WorkflowFile = {
+      format: FORMAT_VERSION,
+      id: "22222222-2222-4222-8222-222222222222",
+      name: "child",
+      body: [
+        node("intake"),
+        {
+          type: "sequence",
+          id: "review",
+          name: "review",
+          body: [node("draft")],
+        } as unknown as WorkflowFile["body"][number],
+        goto,
+      ],
+    };
+    const rows = [
+      record("p2", "child-run", "root-1", { nodeId: "check", pass: 2, status: "running" }),
+      record("p2-draft", "p2", "root-1", { nodeId: "draft", status: "succeeded" }),
+    ];
+    const parent = completeContinuation(continueState(rows, "none"), file, "parent-1");
+    const identity = {
+      runId: "child-run",
+      rootRunId: "root-1",
+      parentRunId: "parent-1",
+      nodeId: "nested",
+      nodeName: "nested",
+    };
+
+    const walk = parent
+      .enter({ owner: null }, childFile, identity)
+      .passWalk(new Map([["check", goto as GotoNode]]), {});
+
+    // Pass 2 starts at the child's own `review` sequence, matching the row it recorded first.
+    if ("diverged" in walk) throw new Error(walk.error);
+    expect(walk).toMatchObject({ pass: 2, opener: goto, start: 1 });
+  });
+});
+
+// The pass-walk fixtures: a file with a goto, and rows that name the pass each was recorded under.
+const gotoCheck: GotoNode = {
+  type: "goto",
+  id: "check",
+  name: "check",
+  target: "review",
+  max_jumps: 3,
+};
+const reviewSequence: WorkflowFile["body"][number] = {
+  type: "sequence",
+  id: "review",
+  name: "review",
+  body: [node("draft"), node("lint")],
+};
+const gotoFile: WorkflowFile = {
+  format: FORMAT_VERSION,
+  id: "11111111-1111-4111-8111-111111111111",
+  name: "t",
+  body: [node("intake"), reviewSequence, gotoCheck],
+};
+const gotoMap = new Map([["check", gotoCheck]]);
+
+/** A Complete state whose every blob is named after its own run, so a re-entry's carried input is
+ * visible in the walk. */
+function passContinueState(existingRuns: RunRecord[]): ContinueState {
+  return {
+    existingRuns,
+    readBlob: (run, filename) => ({ blob: `${run.runId}/${filename}` }) as JsonValue,
+    target: { stepRunId: "leaf", output: {} },
+  };
+}
+
+describe("passFirstNode", () => {
+  it("looks through a sequence target to its first recorded node (ADR 0064)", () => {
+    expect(passFirstNode(reviewSequence)?.id).toBe("draft");
+    expect(passFirstNode(node("intake"))?.id).toBe("intake");
+  });
+});
+
+describe("the pass walk's start", () => {
+  it("starts a launch at pass 1 from the top, with no jumps spent", () => {
+    const walk = noContinuation().passWalk(gotoMap, { seed: 1 });
+    expect(walk).toMatchObject({
+      pass: 1,
+      opener: null,
+      start: 0,
+      carried: { seed: 1 },
+      reentered: undefined,
+    });
+    if ("diverged" in walk) throw new Error("unexpected divergence");
+    expect(walk.jumpsSpent.size).toBe(0);
+  });
+
+  it("re-enters a Complete's running pass at its goto's target, counting every recorded pass as a jump", () => {
+    const rows = [
+      record("p1", "root", "root", { nodeId: null, nodeName: null, pass: 1, status: "succeeded" }),
+      record("p2", "root", "root", {
+        nodeId: "check",
+        nodeName: "check",
+        pass: 2,
+        status: "succeeded",
+      }),
+      record("p3", "root", "root", {
+        nodeId: "check",
+        nodeName: "check",
+        pass: 3,
+        status: "running",
+      }),
+      record("p3-draft", "p3", "root", { nodeId: "draft", nodeName: "draft", status: "succeeded" }),
+    ];
+    const walk = completeContinuation(passContinueState(rows), gotoFile, "root").passWalk(
+      gotoMap,
+      {},
+    );
+    if ("diverged" in walk) throw new Error(walk.error);
+    expect(walk).toMatchObject({
+      pass: 3,
+      opener: gotoCheck,
+      start: 1,
+      carried: { blob: "p3/input.json" },
+      reentered: rows[2],
+    });
+    expect(walk.jumpsSpent.get("check")).toBe(2);
+  });
+
+  it("fails a Complete whose running pass no longer opens at the node it recorded first", () => {
+    const rows = [
+      record("p1", "root", "root", { nodeId: null, nodeName: null, pass: 1, status: "succeeded" }),
+      record("p2", "root", "root", {
+        nodeId: "check",
+        nodeName: "check",
+        pass: 2,
+        status: "running",
+      }),
+      record("p2-intake", "p2", "root", {
+        nodeId: "intake",
+        nodeName: "intake",
+        status: "succeeded",
+      }),
+    ];
+    const walk = completeContinuation(passContinueState(rows), gotoFile, "root").passWalk(
+      gotoMap,
+      {},
+    );
+    expect(walk).toMatchObject({ diverged: rows[1] });
+    expect("error" in walk && walk.error).toContain('recorded "intake"');
+  });
+});
+
+describe("recordedPasses", () => {
+  it("lists one run's pass rows in ordinal order", () => {
+    const rows = [
+      record("p2", "root", "root", { nodeId: "check", pass: 2, status: "succeeded" }),
+      record("x", "root", "root", { nodeId: "intake", status: "succeeded" }),
+      record("p1", "root", "root", { nodeId: null, pass: 1, status: "succeeded" }),
+    ];
+    expect(recordedPasses(rows, "root").map((r) => r.runId)).toEqual(["p1", "p2"]);
   });
 });

@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { JsonValue } from "@path/schema";
-import type { RunResume } from "./resume-plan.js";
-import type { RunContext, RunIdentity } from "./run-context.js";
+import type { ChildRunKey, RunContext, RunIdentity } from "./run-context.js";
 import type { RunOutcome } from "./run-observer.js";
 
 /**
@@ -9,15 +8,6 @@ import type { RunOutcome } from "./run-observer.js";
  * container or a goto pass container, re-entered in place when a Complete replay finds a `running`
  * row.
  */
-
-/** What identifies a child run beside its parent: the node that owns it, and its ordinal if it is a
- * container. */
-export interface ChildRunKey {
-  /** The owning node, or `null` for goto pass 1. */
-  owner: { id: string; name: string } | null;
-  iteration?: number;
-  pass?: number;
-}
 
 /** The identity of a run opened under `parent`; `existingRunId` re-enters a recorded `running` row
  * in place. */
@@ -49,14 +39,13 @@ export interface ContainerRun {
 }
 
 /** Open a container run under `parent`: a shared file/config/context, but a unique parent scope for
- * its body. */
+ * its body. The child's continuation is whatever the parent's says this container means. */
 export async function openContainerRun(
   parent: RunContext,
   args: {
     key: ChildRunKey;
     existingRunId: string | undefined;
     input: JsonValue;
-    resume: RunResume | undefined;
   },
 ): Promise<ContainerRun> {
   const identity = childIdentity(parent.identity, args.key, args.existingRunId);
@@ -64,7 +53,12 @@ export async function openContainerRun(
   const started = args.existingRunId === undefined;
   if (started) await emitter.runStarted({ input: args.input });
   return {
-    run: { ...parent, identity, emitter, resume: args.resume },
+    run: {
+      ...parent,
+      identity,
+      emitter,
+      continuation: parent.continuation.enter(args.key, parent.file, identity),
+    },
     started,
     finish: (outcome) => emitter.runFinished(outcome),
   };
