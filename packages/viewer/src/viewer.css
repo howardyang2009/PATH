@@ -46,6 +46,9 @@
    Designer uses between its run-dock panes and shell rails (`.run-dock-vresizer` / `.rail-vresizer`). */
 .pane-resizer {
   position: relative;
+  /* Reset the `<hr>` UA box: its inset border draws a gray outline, its margin shortens the bar. */
+  margin: 0;
+  border: none;
   cursor: col-resize;
   background: none;
   touch-action: none;
