@@ -825,8 +825,9 @@ lookup spans both origins.
 | `.path/template/` | `step-template/` | `user` | `false` | `*.step-template.json` |
 
 The `kind` of a file is its suffix, never its bytes. A leftover `*.workflow-template.json` file is
-ignored. The scan also builds the `id → {kind, origin,
-absPath}` index the by-id routes resolve against. An id shared by a user and a shipped file (reachable
+ignored. The scan also builds the `id → entry` index the by-id routes resolve against; a file's path
+stays inside the store, so a door addresses a template by `id` and never by `absPath`. An id shared
+by a user and a shipped file (reachable
 only when a user hand-copies a shipped file — save-as always mints a fresh id,
 [ADR 0049](../adr/0049-instantiation-is-a-detached-copy-that-re-stamps-ids-and-never-rewires.md)) lists
 **both**, with the **user** entry flagged `valid: false` (duplicate id). A **name** collision across

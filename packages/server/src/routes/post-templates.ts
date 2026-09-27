@@ -1,4 +1,3 @@
-import { join, relative, resolve } from "node:path";
 import {
   makeStepTemplateSchema,
   NameSchema,
@@ -6,9 +5,8 @@ import {
   type WireTemplateWriteResponse,
 } from "@path/schema";
 import { z } from "zod";
-import { conditionalWrite } from "../artifact-file.js";
 import { readRequestBody, sendError } from "../http-json.js";
-import { kindDirFor, suffixFor, userTemplateRoot } from "../template-store.js";
+import { templatesOf } from "../template-store.js";
 import type { ApiRequest } from "./route-context.js";
 
 /**
@@ -44,25 +42,17 @@ export async function handlePostTemplates({ req, res, ctx }: ApiRequest): Promis
   }
   const envelopeId = validation.data.id;
 
-  const projectDir = resolve(ctx.project.dir);
-  const absPath = join(userTemplateRoot(projectDir), kindDirFor(kind), `${name}${suffixFor(kind)}`);
-  // Create-only (`wx`): an existing name is never a blind overwrite (ADR 0050), and is this door's
-  // `409`. One call reads, decides and writes.
-  const written = conditionalWrite(absPath, {
-    ifMatch: undefined,
-    rule: "create-or-overwrite",
-    payload: rawBody,
-  });
+  // Create-only: an existing name is never a blind overwrite (ADR 0050), and is this door's `409`.
+  const written = templatesOf(ctx).create(kind, name, rawBody);
   if (!written.ok) {
-    sendError(res, 409, `a ${kind} template named "${name}" already exists`);
+    sendError(res, written.status, written.message);
     return;
   }
-  const { etag } = written;
   const reply: WireTemplateWriteResponse = {
     id: envelopeId,
-    relative_path: relative(projectDir, absPath),
-    etag,
+    relative_path: written.relativePath,
+    etag: written.etag,
   };
-  res.writeHead(201, { "Content-Type": "application/json", ETag: etag });
+  res.writeHead(201, { "Content-Type": "application/json", ETag: written.etag });
   res.end(JSON.stringify(reply));
 }
