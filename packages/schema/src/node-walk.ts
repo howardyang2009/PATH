@@ -1,3 +1,4 @@
+import { must } from "./must.js";
 import type { WorkflowNode } from "./node-type.js";
 
 /**
@@ -199,16 +200,17 @@ export function mapChildBodies(
   node: WorkflowNode,
   fn: (body: WorkflowNode[]) => WorkflowNode[],
 ): WorkflowNode {
+  const one = (single: WorkflowNode): WorkflowNode => must(fn([single])[0], "node returned by fn");
   switch (node.type) {
     case "sequence":
       return { ...node, body: fn(node.body) };
     case "parallel":
       return { ...node, branches: fn(node.branches) };
     case "while-do":
-      return { ...node, node: fn([node.node])[0]! };
+      return { ...node, node: one(node.node) };
     case "branch": {
-      const arms = node.arms.map((arm) => ({ ...arm, node: fn([arm.node])[0]! }));
-      const elseNode = node.else ? fn([node.else])[0]! : undefined;
+      const arms = node.arms.map((arm) => ({ ...arm, node: one(arm.node) }));
+      const elseNode = node.else ? one(node.else) : undefined;
       return { ...node, arms, else: elseNode };
     }
     case "prompt":

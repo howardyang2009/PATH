@@ -1,5 +1,5 @@
 import type { ZodRawShape, ZodTypeAny } from "zod";
-
+import { must } from "./must.js";
 import type { StepPluginRegistry } from "./nodes.js";
 
 /**
@@ -80,7 +80,7 @@ export function toWireStepPlugins(registry: StepPluginRegistry): StepPluginsResp
   const step_plugins = Object.keys(registry)
     .sort()
     .map((name) => {
-      const entry = registry[name]!;
+      const entry = must(registry[name], `step plugin ${name}`);
       return {
         name,
         fields: describeFields(entry.fields),

@@ -3,6 +3,7 @@ import {
   type ControlBlockKind,
   classifyLevelK,
   type LegalKLevelReason,
+  must,
   type RunRecord,
   selectBoundary,
   type WorkflowFile,
@@ -68,10 +69,11 @@ export function resumeFromEligibility(args: ResumeFromEligibilityArgs): ResumeFr
   // (2) An illegal K. A root-level K is located in the open file's body — the exact engine mirror.
   // A nested K sits in a file the Designer does not hold, so only its own success is checked here.
   const nodeName = selected.nodeName ?? selected.nodeId;
+  const onlyLevel = levels.length === 1 ? levels[0] : undefined;
   const topLevel =
-    levels.length === 1 && (levels[0]!.passRun ?? levels[0]!.run).parentRunId === rootRunId;
+    onlyLevel !== undefined && (onlyLevel.passRun ?? onlyLevel.run).parentRunId === rootRunId;
   if (topLevel && rootFile !== null) {
-    const illegal = classifyTopLevel(rootFile, runs, levels[0]!, selected, nodeName);
+    const illegal = classifyTopLevel(rootFile, runs, onlyLevel, selected, nodeName);
     if (illegal) return illegal;
   } else if (selected.status !== "succeeded") {
     // A nested K whose own run did not succeed is illegal on any level (engine rule 4).
@@ -104,7 +106,7 @@ function classifyTopLevel(
     body: rootFile.body,
     rows: runs.values(),
     scopeRunId,
-    nodeId: selected.nodeId!,
+    nodeId: must(selected.nodeId, "node id of the selected run"),
     leafStatus: selected.status,
     earlierPassRunIds,
   });

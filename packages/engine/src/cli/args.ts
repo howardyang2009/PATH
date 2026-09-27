@@ -62,13 +62,14 @@ export function extractDirFlag(args: string[], usage: string): ExtractDirFlagRes
   const rest: string[] = [];
   let dir: string | undefined;
   for (let i = 0; i < args.length; i += 1) {
-    if (args[i] === "-C") {
+    const arg = args[i];
+    if (arg === "-C") {
       const value = args[i + 1];
       if (!value) return { success: false, error: `-C requires a directory argument\n${usage}` };
       dir = value;
       i += 1;
-    } else {
-      rest.push(args[i]!);
+    } else if (arg !== undefined) {
+      rest.push(arg);
     }
   }
   return { success: true, dir, rest };

@@ -2,6 +2,7 @@ import {
   type GotoNode,
   isPassRun,
   type JsonValue,
+  must,
   type RunRecord,
   serialOrder,
   type WorkflowFile,
@@ -55,7 +56,7 @@ export function passFirstNode(target: WorkflowNode): WorkflowNode | undefined {
 export function recordedPasses(rows: readonly RunRecord[], parentRunId: string): RunRecord[] {
   return rows
     .filter((r) => r.parentRunId === parentRunId && isPassRun(r))
-    .sort((a, b) => a.pass! - b.pass!);
+    .sort((a, b) => (a.pass ?? 0) - (b.pass ?? 0));
 }
 
 /**
@@ -89,7 +90,7 @@ export function passWalkStart(
   const reentered = passes.find((recorded) => recorded.status === "running");
   if (!reentered) return walk;
   walk.reentered = reentered;
-  walk.pass = reentered.pass!;
+  walk.pass = must(reentered.pass, "pass number of a pass run");
   walk.carried = state.readBlob(reentered, RUN_BLOB_FILE.input);
   if (walk.pass === 1) return walk;
 
@@ -154,15 +155,15 @@ export async function runTopLevelWalk(
       return outcome;
     }
 
-    const goto = gotos.get(outcome.goto)!;
+    const goto = must(gotos.get(outcome.goto), `goto ${outcome.goto}`);
     const maxJumps = resolveBound(run, goto, exec);
     if (typeof maxJumps !== "number") {
       await container.finish(maxJumps);
       return maxJumps;
     }
     // `runGotoNode` names a first-level node of this same file, so the target is always indexed.
-    const targetIndex = indexById.get(outcome.target)!;
-    const target = body[targetIndex]!;
+    const targetIndex = must(indexById.get(outcome.target), `goto target ${outcome.target}`);
+    const target = must(body[targetIndex], `goto target ${outcome.target}`);
     const spent = jumpsSpent.get(goto.id) ?? 0;
     // Cause first (ADR 0061 §5): the goto event, then the closing pass's step-finished.
     if (spent >= maxJumps) {
@@ -208,16 +209,25 @@ async function failDivergedPass(
   passRow: RunRecord,
   error: string,
 ): Promise<SeqOutcome> {
-  const state = run.continue!;
+  const state = must(run.continue, "continue state of a Complete");
   if (targetLeafUnder(state, passRow.runId)) {
-    const leaf = state.existingRuns.find((r) => r.runId === state.target.stepRunId)!;
+    const leaf = must(
+      state.existingRuns.find((r) => r.runId === state.target.stepRunId),
+      "parked leaf run",
+    );
+    const id = must(leaf.nodeId, "node id of the parked leaf");
+    const name = must(leaf.nodeName, "node name of the parked leaf");
     await run.emitter
-      .step({ id: leaf.nodeId!, name: leaf.nodeName! }, leaf.runId)
+      .step({ id, name }, leaf.runId)
       .finished({ status: "succeeded", output: state.target.output });
   }
   const failed: SeqOutcome = { status: "failed", error };
-  const owner = passRow.nodeId === null ? null : { id: passRow.nodeId, name: passRow.nodeName! };
-  const identity = childIdentity(run.identity, { owner, pass: passRow.pass! }, passRow.runId);
+  const owner =
+    passRow.nodeId === null
+      ? null
+      : { id: passRow.nodeId, name: must(passRow.nodeName, "node name of a pass run") };
+  const pass = must(passRow.pass, "pass number of a pass run");
+  const identity = childIdentity(run.identity, { owner, pass }, passRow.runId);
   await run.emitter.child(identity).runFinished(failed);
   return failed;
 }

@@ -180,7 +180,7 @@ export class RunViewModel {
       return;
     }
     let i = this.narrative.length;
-    while (i > 0 && this.narrative[i - 1]!.seq > event.seq) i--;
+    while (i > 0 && (this.narrative[i - 1]?.seq ?? 0) > event.seq) i--;
     this.narrative.splice(i, 0, event);
   }
 

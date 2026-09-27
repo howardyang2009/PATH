@@ -40,8 +40,7 @@ export function descendNodePath(
   const levels: NodePathLevel[] = [];
   let file: WorkflowFile = rootFile;
   let dir = rootDir;
-  for (let index = 0; index < nodePath.length; index++) {
-    const nodeId = nodePath[index]!;
+  for (const [index, nodeId] of nodePath.entries()) {
     const node = serialOrder(file.body).find((n) => n.id === nodeId);
     levels.push({ file, dir, nodeId, node });
 

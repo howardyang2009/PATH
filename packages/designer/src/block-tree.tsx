@@ -476,14 +476,14 @@ function ParallelBlock({
             <NodeBlock node={branch} onDescend={onDescend} editor={editor} />
           </div>
         ))}
-        {branchSocketOpen ? (
+        {branchSocketOpen && editor ? (
           <div className="c-column">
             <button
               type="button"
               className="socket socket-tail"
-              onClick={() => editor!.placeIntoList(node.id)}
+              onClick={() => editor.placeIntoList(node.id)}
             >
-              + add {editor!.armedLabel} branch
+              + add {editor.armedLabel} branch
             </button>
           </div>
         ) : null}

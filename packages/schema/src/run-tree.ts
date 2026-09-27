@@ -42,8 +42,7 @@ export function subtree<T extends RunTreeFields>(rows: Iterable<T>, startId: str
   if (start === undefined) return [];
   const out: T[] = [];
   const stack: T[] = [start];
-  while (stack.length > 0) {
-    const row = stack.pop()!;
+  for (let row = stack.pop(); row !== undefined; row = stack.pop()) {
     out.push(row);
     for (const child of byParent.get(row.runId) ?? []) stack.push(child);
   }

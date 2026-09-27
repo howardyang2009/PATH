@@ -68,8 +68,10 @@ export function identityIssues(
       holders.set(value, paths);
     }
     for (const [value, paths] of holders) {
-      for (const path of paths.slice(1)) {
-        issues.push({ rule, value, path, firstPath: paths[0]! });
+      const [firstPath, ...later] = paths;
+      if (firstPath === undefined) continue;
+      for (const path of later) {
+        issues.push({ rule, value, path, firstPath });
       }
     }
   }

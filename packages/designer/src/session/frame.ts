@@ -206,8 +206,9 @@ export function frameDirty(frame: Frame | undefined): boolean {
 /** Would discarding this frame lose work? Dirty, except a from-scratch buffer still exactly as it
  * opened (it reads dirty only to keep Save live, and holds nothing the author made). */
 export function frameHasUnsavedWork(frame: Frame | undefined): boolean {
-  if (!frameDirty(frame)) return false;
-  return frame!.written || canonicalSerialize(openedResultOf(frame)!.file) !== frame!.openedBytes;
+  const opened = openedResultOf(frame);
+  if (!frame || !opened || !frameDirty(frame)) return false;
+  return frame.written || canonicalSerialize(opened.file) !== frame.openedBytes;
 }
 
 /** Has the active frame an edit to undo? Drives the toolbar's Undo button and its keyboard peer. */

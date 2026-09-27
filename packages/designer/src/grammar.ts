@@ -67,11 +67,12 @@ export function socketAcceptsBody(
   body: readonly WorkflowNode[],
   barred = false,
 ): boolean {
-  if (body.length === 0) return false;
+  const [first] = body;
+  if (first === undefined) return false;
   if (barred && [...walkNodes([...body])].some((node) => node.type === "goto")) return false;
   if (bodyInsertSocket(flavor) === "list")
     return body.every((node) => socketAcceptsKind(flavor, node.type));
-  return body.length >= 2 || socketAcceptsKind(flavor, body[0]!.type);
+  return body.length >= 2 || socketAcceptsKind(flavor, first.type);
 }
 
 /**

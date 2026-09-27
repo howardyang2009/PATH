@@ -25,9 +25,6 @@
     "enabled": true,
     "rules": {
       "preset": "recommended",
-      "style": {
-        "noNonNullAssertion": "off"
-      },
       "suspicious": {
         "noTemplateCurlyInString": "off"
       }
@@ -42,6 +39,21 @@
         "rules": {
           "style": {
             "noDescendingSpecificity": "off"
+          }
+        }
+      }
+    },
+    {
+      "includes": [
+        "**/test/**",
+        "**/test-utils/**",
+        "**/*.test.ts",
+        "**/*.test.tsx"
+      ],
+      "linter": {
+        "rules": {
+          "style": {
+            "noNonNullAssertion": "off"
           }
         }
       }

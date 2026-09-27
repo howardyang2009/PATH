@@ -137,7 +137,7 @@ function nodeConditions(node: WorkflowNode): Condition[] {
  * context-rooted. */
 function contextKey(path: string): string | null {
   const segments = path.split(".");
-  return segments[0] === "context" && segments.length > 1 ? segments[1]! : null;
+  return segments[0] === "context" ? (segments[1] ?? null) : null;
 }
 
 /**

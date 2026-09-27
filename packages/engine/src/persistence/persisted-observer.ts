@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { must } from "@path/schema";
 import type Database from "better-sqlite3";
 import {
   type RunObserver,
@@ -114,7 +115,7 @@ export function createPersistedObserver(db: Database.Database, projectDir: strin
             runId: randomUUID(),
             rootRunId,
             parentRunId: runId,
-            nodeId: event.node_id!,
+            nodeId: must(event.node_id, "node id of a reuse-marker event"),
             nodeName: event.node_name,
             reusedFromRunId: event.original_run_id,
           });
