@@ -4,7 +4,7 @@ import {
   safeParseStepTemplateWith,
   type WireTemplateWriteResponse,
 } from "@path/schema";
-import { checkPrecondition, PRECONDITION_FAILED, writeArtifact } from "../artifact-file.js";
+import { conditionalWrite, PRECONDITION_FAILED } from "../artifact-file.js";
 import { readJsonBody, sendError } from "../http-json.js";
 import { firstHeader } from "../origin-gate.js";
 import { templatesOf, writableTemplate } from "../template-store.js";
@@ -38,19 +38,6 @@ export async function handlePutTemplate({
   }
   const { entry } = found;
 
-  // Precondition (ADR 0016): `If-Match` carrying the §10.2 etag is required. Absent or stale is a
-  // `412`. The etag check through the write below is a single synchronous block — no `await`
-  // between them — so only an *external* writer can invalidate the token, which is what it guards.
-  const precondition = checkPrecondition(
-    entry.bytes,
-    firstHeader(req.headers["if-match"]),
-    "overwrite",
-  );
-  if (!precondition.ok) {
-    sendError(res, 412, PRECONDITION_FAILED[precondition.conflict]);
-    return;
-  }
-
   const rawBody = raw.value as Record<string, unknown>;
   if (rawBody.id !== id) {
     sendError(res, 400, "template id in body must match the URL id");
@@ -63,7 +50,19 @@ export async function handlePutTemplate({
     return;
   }
 
-  const { etag } = writeArtifact(entry.absPath, rawBody, { create: false });
+  // Precondition (ADR 0016): `If-Match` carrying the §10.2 etag is required, and absent or stale is
+  // a `412`. One call reads, decides and writes, so the check has no suspension point before it and
+  // only an *external* writer can invalidate the token — which is what it guards.
+  const written = conditionalWrite(entry.absPath, {
+    ifMatch: firstHeader(req.headers["if-match"]),
+    rule: "overwrite",
+    payload: rawBody,
+  });
+  if (!written.ok) {
+    sendError(res, 412, PRECONDITION_FAILED[written.conflict]);
+    return;
+  }
+  const { etag } = written;
   const reply: WireTemplateWriteResponse = {
     id,
     relative_path: relative(resolve(ctx.project.dir), entry.absPath),

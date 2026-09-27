@@ -8,12 +8,7 @@ import {
   workflowIdentityOccurrence,
 } from "@path/schema";
 import { z } from "zod";
-import {
-  checkPrecondition,
-  PRECONDITION_FAILED,
-  readArtifact,
-  writeArtifact,
-} from "../artifact-file.js";
+import { conditionalWrite, PRECONDITION_FAILED } from "../artifact-file.js";
 import { confineToProjectRoot } from "../confine.js";
 import { readRequestBody, sendError } from "../http-json.js";
 import { firstHeader } from "../origin-gate.js";
@@ -85,22 +80,18 @@ export async function handlePutWorkflow({ req, res, ctx }: ApiRequest): Promise<
     return;
   }
 
-  // Precondition and write are one synchronous block (ADR 0016): `If-Match` present is
-  // overwrite-only, absent is create-only, and every conflict is a `412` here.
-  const precondition = checkPrecondition(
-    readArtifact(absPath),
-    firstHeader(req.headers["if-match"]),
-    "create-or-overwrite",
-  );
-  const written = precondition.ok
-    ? writeArtifact(absPath, rawWorkflow, { create: precondition.create })
-    : precondition;
+  // One call reads, decides and writes (ADR 0016): `If-Match` present is overwrite-only, absent is
+  // create-only, and every conflict is a `412` here.
+  const written = conditionalWrite(absPath, {
+    ifMatch: firstHeader(req.headers["if-match"]),
+    rule: "create-or-overwrite",
+    payload: rawWorkflow,
+  });
   if (!written.ok) {
     sendError(res, 412, PRECONDITION_FAILED[written.conflict]);
     return;
   }
-  const { etag } = written;
-  const existed = precondition.ok && !precondition.create;
+  const { etag, created } = written;
   const relativePath = relative(resolve(ctx.project.dir), absPath);
   // The reply is the shared wire shape the client decodes, so a renamed field is a compile error
   // here.
@@ -109,6 +100,6 @@ export async function handlePutWorkflow({ req, res, ctx }: ApiRequest): Promise<
     id: validation.file.id,
     etag,
   };
-  res.writeHead(existed ? 200 : 201, { "Content-Type": "application/json", ETag: etag });
+  res.writeHead(created ? 201 : 200, { "Content-Type": "application/json", ETag: etag });
   res.end(JSON.stringify(reply));
 }
