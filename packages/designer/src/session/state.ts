@@ -11,6 +11,12 @@ export type EditMode = "workflow" | "template";
 
 export interface SessionState {
   mode: EditMode;
+  /**
+   * The next fetch token the reducer will mint (absent is 0). A read is stamped with one, so a
+   * landing whose frame has moved on can be dropped; the counter lives here rather than in a frame
+   * because a read replaces the whole trail.
+   */
+  loadToken?: number;
   /** The navigation **trail**, root file first. The active frame is `frames[activeIndex]`, not the
    * tip. */
   frames: Frame[];
@@ -33,9 +39,9 @@ export const initialSessionState: SessionState = {
 export type SessionAction =
   /** Open `path` as a fresh root, discarding any current stack — one loading frame, active index
    * 0. */
-  | { type: "openLoading"; path: string; loadSeq: number }
+  | { type: "openLoading"; path: string }
   /** Open a `*.step-template.json` as author mode's root, discarding any current stack. */
-  | { type: "openTemplateLoading"; template: TemplateSource; loadSeq: number }
+  | { type: "openTemplateLoading"; template: TemplateSource }
   /** Start a from-scratch buffer as a fresh root, discarding any current stack. */
   | { type: "newFile" }
   /** Start a new, unsaved template in template mode, discarding any current stack. */
@@ -48,7 +54,7 @@ export type SessionAction =
    * truncate the forward trail and push a loading frame. A path-less root has no ref to resolve, so
    * the action is a no-op.
    */
-  | { type: "descend"; ref: string; nodeId: string; loadSeq: number }
+  | { type: "descend"; ref: string; nodeId: string }
   /** Descend into a fresh, unwritten, path-less create-new child linked back to `parentNodeId`. */
   | { type: "descendNewUnbound"; parentNodeId: string }
   /** Make the breadcrumb entry at `index` active — an ascend or a forward re-entry; no frame is
@@ -65,14 +71,14 @@ export type SessionAction =
    * Re-fetch the active frame from disk; a no-op when nothing is reloadable (an unwritten buffer,
    * or a fetch that would discard the authored buffer).
    */
-  | { type: "reload"; loadSeq: number }
-  /** A file fetch-and-open landed. Patched in only when the frame at `depth` still awaits `loadSeq`
+  | { type: "reload" }
+  /** A file fetch-and-open landed. Patched in only when the frame at `depth` still awaits `token`
    * — the pure staleness guard that drops a result whose destination the author already left. */
   | {
       type: "loadLanded";
       depth: number;
       path: string | null;
-      loadSeq: number;
+      token: number;
       frameState: FrameState;
       etag: string | null;
       baseline: string;

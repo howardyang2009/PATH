@@ -16,7 +16,11 @@ export {
   TEMPLATE_SUFFIX,
   type TemplateSource,
 } from "./session/frame.js";
-export { reduceSession } from "./session/reducer.js";
+export {
+  type FetchRequest,
+  reduceSession,
+  type SessionOutcome,
+} from "./session/reducer.js";
 export {
   type DeletePlan,
   type PlanState,

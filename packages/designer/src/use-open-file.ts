@@ -1,5 +1,5 @@
 import type { PathApiClient, WireStepPlugin } from "@path/client-core";
-import { must, type WorkflowFile } from "@path/schema";
+import type { WorkflowFile } from "@path/schema";
 import { errorMessage } from "@path/viewer";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { loadDocument, writeDocument } from "./document.js";
@@ -7,6 +7,7 @@ import type { EditCommit, EditKey } from "./edit-key.js";
 import { canonicalSerialize } from "./serialize.js";
 import {
   type EditMode,
+  type FetchRequest,
   type Frame,
   initialSessionState,
   planDelete,
@@ -15,6 +16,7 @@ import {
   type SaveAsIntent,
   type SaveState,
   type SessionAction,
+  type SessionOutcome,
   type SessionState,
   type TemplateSource,
   type WritePlan,
@@ -127,18 +129,6 @@ export interface OpenSession {
   saveState: SaveState;
 }
 
-/**
- * The frame a just-applied loading action put in flight, when it is the one this request is for:
- * the reducer's verdict read back as I/O intent. A `descend` that re-entered the frame ahead leaves
- * no frame awaiting `seq`, so there is nothing to fetch. Module scope, so naming it never
- * invalidates a caller.
- */
-function pendingFetch(state: SessionState, seq: number): { frame: Frame; depth: number } | null {
-  const depth = state.activeIndex;
-  const frame = state.frames[depth];
-  return frame && frame.loadSeq === seq ? { frame, depth } : null;
-}
-
 export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSession {
   const [registry, setRegistry] = useState<RegistryLoad>({ phase: "loading" });
   const [session, setSession] = useState<SessionState>(initialSessionState);
@@ -151,19 +141,14 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
   // The registry plugins, so an open callback reads them without waiting on a state read.
   const pluginsRef = useRef<WireStepPlugin[] | null>(null);
 
-  /** Apply one session action and return the state it produced, so the hook reads the reducer's
-   * verdict directly. */
-  const apply = useCallback((action: SessionAction): SessionState => {
-    const next = reduceSession(sessionRef.current, action);
-    sessionRef.current = next;
-    setSession(next);
-    return next;
+  /** Apply one session action and return what it produced: the next state, and the read it asks for
+   * (if any). The reducer resolves both, so the hook performs I/O and decides nothing. */
+  const apply = useCallback((action: SessionAction): SessionOutcome => {
+    const outcome = reduceSession(sessionRef.current, action);
+    sessionRef.current = outcome.state;
+    setSession(outcome.state);
+    return outcome;
   }, []);
-
-  // The number each fetch carries. Minted here because only the hook knows a request was made; what
-  // the number *means* — a landing is stale unless the frame still awaits it — is the reducer's
-  // (`Frame.loadSeq`).
-  const loadSeq = useRef(0);
 
   useEffect(() => {
     let alive = true;
@@ -182,36 +167,43 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
     };
   }, [client]);
 
-  /** Fetch the frame at `depth`, which the reducer has just put into its loading state. */
+  /** Perform the read the reducer asked for, echoing its token back so a landing the author has
+   * since outrun is dropped. */
   const fetchFrame = useCallback(
-    (frame: Frame, depth: number, seq: number): void => {
+    (request: FetchRequest): void => {
       const plugins = pluginsRef.current;
       if (!plugins) return;
+      const { frame, depth, token } = request;
       void loadDocument(client, frame, plugins).then((loaded) => {
-        if (loaded) apply({ type: "loadLanded", depth, path: frame.path, loadSeq: seq, ...loaded });
+        if (loaded) apply({ type: "loadLanded", depth, path: frame.path, token, ...loaded });
       });
     },
     [apply, client],
   );
 
+  /** Apply an action and run whatever read it asked for — the whole shape of an I/O step. */
+  const applyAndFetch = useCallback(
+    (action: SessionAction): void => {
+      const { fetch } = apply(action);
+      if (fetch) fetchFrame(fetch);
+    },
+    [apply, fetchFrame],
+  );
+
   const open = useCallback(
     (path: string): void => {
       if (!pluginsRef.current) return;
-      const seq = ++loadSeq.current;
-      const next = apply({ type: "openLoading", path, loadSeq: seq });
-      fetchFrame(must(next.frames[next.activeIndex], "opened frame"), next.activeIndex, seq);
+      applyAndFetch({ type: "openLoading", path });
     },
-    [apply, fetchFrame],
+    [applyAndFetch],
   );
 
   const openTemplate = useCallback(
     (template: TemplateSource): void => {
       if (!pluginsRef.current) return;
-      const seq = ++loadSeq.current;
-      const next = apply({ type: "openTemplateLoading", template, loadSeq: seq });
-      fetchFrame(must(next.frames[next.activeIndex], "opened frame"), next.activeIndex, seq);
+      applyAndFetch({ type: "openTemplateLoading", template });
     },
-    [apply, fetchFrame],
+    [applyAndFetch],
   );
 
   const newFile = useCallback((): void => {
@@ -234,12 +226,10 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
     (ref: string, nodeId: string): void => {
       // A descent needs a file open and the registry ready to parse what comes back.
       if (!pluginsRef.current) return;
-      const seq = ++loadSeq.current;
-      const next = apply({ type: "descend", ref, nodeId, loadSeq: seq });
-      const pending = pendingFetch(next, seq);
-      if (pending) fetchFrame(pending.frame, pending.depth, seq);
+      // Re-entering the frame ahead asks for no read; the reducer's outcome says so.
+      applyAndFetch({ type: "descend", ref, nodeId });
     },
-    [apply, fetchFrame],
+    [applyAndFetch],
   );
 
   const descendNewUnbound = useCallback(
@@ -298,13 +288,9 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
 
   const reloadActive = useCallback((): void => {
     if (!pluginsRef.current) return;
-    const seq = ++loadSeq.current;
-    const next = apply({ type: "reload", loadSeq: seq });
-    // An unwritten buffer leaves no frame awaiting this fetch, so it is never thrown away for a
-    // 404.
-    const pending = pendingFetch(next, seq);
-    if (pending) fetchFrame(pending.frame, pending.depth, seq);
-  }, [apply, fetchFrame]);
+    // An unwritten buffer asks for no read, so it is never thrown away for a 404.
+    applyAndFetch({ type: "reload" });
+  }, [applyAndFetch]);
 
   /**
    * The persist-and-advance-the-save-point spine behind `save` and `saveAs`: set `saving`, write

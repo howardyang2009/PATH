@@ -15,16 +15,63 @@ import {
 } from "./frame.js";
 import { IDLE, type SessionAction, type SessionState } from "./state.js";
 
-/** The one pure `(state, action) => state` behind the whole session. */
-export function reduceSession(state: SessionState, action: SessionAction): SessionState {
+/** A read the session has asked for: the loading frame to fetch, where it lands, and the token a
+ * landing must echo to prove it is still the current one. */
+export interface FetchRequest {
+  frame: Frame;
+  depth: number;
+  token: number;
+}
+
+/** What one action produced: the next state, and the read the caller must now perform — `null` when
+ * the action asked for none. */
+export interface SessionOutcome {
+  state: SessionState;
+  fetch: FetchRequest | null;
+}
+
+/** The actions that start a read, and therefore put a fetch in flight. */
+const READS = new Set<SessionAction["type"]>([
+  "openLoading",
+  "openTemplateLoading",
+  "descend",
+  "reload",
+]);
+
+/** The token a read is stamped with: one more than the last, so a landing from a trail the author
+ * has since replaced can never match a live frame's. */
+function nextToken(state: SessionState): number {
+  return (state.loadToken ?? 0) + 1;
+}
+
+/**
+ * The one pure `(state, action) => outcome` behind the whole session: the state transition, plus the
+ * read the transition asks for, already resolved to the frame it will land in. A caller performs the
+ * read and echoes the token back; it never has to work out what is in flight.
+ */
+export function reduceSession(state: SessionState, action: SessionAction): SessionOutcome {
+  const next = advance(state, action);
+  // Every reading action leaves its freshly loading frame active, so the fetch is that frame.
+  const active = next.frames[next.activeIndex];
+  const fetch =
+    READS.has(action.type) && active?.loadSeq != null
+      ? { frame: active, depth: next.activeIndex, token: active.loadSeq }
+      : null;
+  return { state: next, fetch };
+}
+
+function advance(state: SessionState, action: SessionAction): SessionState {
   switch (action.type) {
-    case "openLoading":
+    case "openLoading": {
+      const token = nextToken(state);
       return {
         mode: "workflow",
-        frames: [loadingFrame(action.path, undefined, action.loadSeq)],
+        frames: [loadingFrame(action.path, undefined, token)],
         activeIndex: 0,
         saveState: IDLE,
+        loadToken: token,
       };
+    }
 
     case "newFile":
       return { mode: "workflow", frames: [scratchFrame()], activeIndex: 0, saveState: IDLE };
@@ -46,13 +93,16 @@ export function reduceSession(state: SessionState, action: SessionAction): Sessi
       return { mode: state.mode, frames: [], activeIndex: 0, saveState: { phase: "deleted" } };
     }
 
-    case "openTemplateLoading":
+    case "openTemplateLoading": {
+      const token = nextToken(state);
       return {
         mode: "template",
-        frames: [loadingFrame(null, undefined, action.loadSeq, action.template)],
+        frames: [loadingFrame(null, undefined, token, action.template)],
         activeIndex: 0,
         saveState: IDLE,
+        loadToken: token,
       };
+    }
 
     case "descend": {
       const depth = state.activeIndex;
@@ -69,14 +119,13 @@ export function reduceSession(state: SessionState, action: SessionAction): Sessi
       }
       // Otherwise truncate the forward trail and load fresh; `nodeId` feeds the breadcrumb's run
       // badge.
+      const token = nextToken(state);
       return {
         mode: state.mode,
-        frames: [
-          ...state.frames.slice(0, depth + 1),
-          loadingFrame(path, action.nodeId, action.loadSeq),
-        ],
+        frames: [...state.frames.slice(0, depth + 1), loadingFrame(path, action.nodeId, token)],
         activeIndex: depth + 1,
         saveState: IDLE,
+        loadToken: token,
       };
     }
 
@@ -158,16 +207,17 @@ export function reduceSession(state: SessionState, action: SessionAction): Sessi
       const frames = state.frames.slice();
       // A reload keeps the frame's descent origin, so a re-fetched child still badges its run
       // status.
-      frames[depth] = loadingFrame(frame.path, frame.descendedVia, action.loadSeq, frame.template);
-      return { ...state, frames, saveState: IDLE };
+      const token = nextToken(state);
+      frames[depth] = loadingFrame(frame.path, frame.descendedVia, token, frame.template);
+      return { ...state, frames, saveState: IDLE, loadToken: token };
     }
 
     case "loadLanded": {
-      const { depth, loadSeq } = action;
+      const { depth, token } = action;
       // The staleness guard: patch in only when the frame at `depth` still awaits this exact fetch;
-      // a frame the author left, replaced, or that already landed holds a different number, so its
+      // a frame the author left, replaced, or that already landed holds a different token, so its
       // result is dropped.
-      if (state.frames[depth]?.loadSeq !== loadSeq) return state;
+      if (state.frames[depth]?.loadSeq !== token) return state;
       const frames = state.frames.slice();
       frames[depth] = {
         path: action.path,
