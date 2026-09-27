@@ -5,11 +5,12 @@ import { strongEtag } from "./etag.js";
 /**
  * One versioned JSON artifact file on disk as the write doors see it (server-api-v0.md §7, §10).
  *
- * The only way a door writes is {@link conditionalWrite} / {@link conditionalDelete}: each reads the
- * current bytes, decides `If-Match` against their strong ETag, and writes or removes — all inside
- * one **synchronous** call. That matters because the check and the write must have no suspension
- * point between them: an `await` there turns the ETag compare-and-swap into a TOCTOU race, and the
- * caller cannot see the hazard in the types. Keeping the read private is what makes it unmissable.
+ * The only way a door writes is {@link conditionalWrite} / {@link conditionalDelete} /
+ * {@link removeArtifact}: each reads the current bytes, decides `If-Match` against their strong ETag,
+ * and writes or removes — all inside one **synchronous** call. That matters because the check and the
+ * write must have no suspension point between them: an `await` there turns the ETag compare-and-swap
+ * into a TOCTOU race, and the caller cannot see the hazard in the types. Keeping the read private is
+ * what makes it unmissable.
  */
 
 /** The `412` wording per precondition conflict, at every artifact door; `required` arises only
@@ -117,4 +118,10 @@ export function conditionalDelete(
   if (!precondition.ok) return precondition;
   rmSync(absPath);
   return { ok: true };
+}
+
+/** Remove one artifact file with no precondition: the door whose route resolves its target by
+ * discovery and documents none (§10.5). It stays here so every artifact write has one owner. */
+export function removeArtifact(absPath: string): void {
+  rmSync(absPath);
 }

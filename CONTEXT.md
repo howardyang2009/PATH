@@ -688,6 +688,12 @@ Rule of thumb: **Config flows in from outside. Context is written from inside.**
   buffer; a descended nested-`workflow`-ref child is a separate open file with its own buffer, its own
   edit lease (ADR 0017), and its own undo stack. A buffer is what the canvas edits; a save serializes it
   through the write route.
+- **Run file set** — the files a run's node ids resolve against: the file the run was launched from,
+  plus every file its `workflow` refs reach, transitively. Every surface that shows or completes a
+  run's node reads it — the Viewer, and the Designer's run dock — and it is read from the **store**,
+  never from a **Buffer**, because Complete validates against the current file (ADR 0040) and a dirty
+  buffer holds bytes the server would refuse. One module in `@path/client-core` answers the question
+  the surfaces ask of it: which awaiting node does this run show?
 - **Baseline** — the on-disk bytes (and their ETag) a **Buffer** last synced with: its last successful
   open or save. It is what the write route's `If-Match` precondition carries (ADR 0016) and the value a
   buffer is compared against to decide clean-versus-dirty. A `200` save advances it; nothing else moves it.

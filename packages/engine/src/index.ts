@@ -58,7 +58,6 @@ export {
   runWorkflow,
   type WorkerOverrides,
 } from "./run-workflow.js";
-export { type ValidateWorkflowFileResult, validateWorkflowFile } from "./validate-workflow-file.js";
 
 // What a consumer may name is what it needs to *use* the engine, not what the engine is built from.
 // Assembly is not exported: `openProject` and `runWorkflow` own their composition, and exporting

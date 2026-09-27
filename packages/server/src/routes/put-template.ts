@@ -1,13 +1,11 @@
-import { relative, resolve } from "node:path";
 import {
   makeStepTemplateSchema,
   safeParseStepTemplateWith,
   type WireTemplateWriteResponse,
 } from "@path/schema";
-import { conditionalWrite, PRECONDITION_FAILED } from "../artifact-file.js";
 import { readJsonBody, sendError } from "../http-json.js";
 import { firstHeader } from "../origin-gate.js";
-import { templatesOf, writableTemplate } from "../template-store.js";
+import { templatesOf } from "../template-store.js";
 import type { ApiRequest } from "./route-context.js";
 
 /**
@@ -15,8 +13,8 @@ import type { ApiRequest } from "./route-context.js";
  * **precondition-gated**. The request body is the full template object; its `id` must equal `:id`.
  * Origin-gated centrally. Unlike `PUT /v0/workflows` it is not an upsert — an unknown id is a
  * `404`, not a create (creation is §10.3). It **cannot rename**: the write lands on the resolved
- * entry's own `absPath`, so the file stem (hence `name`) is immutable through this door. A shipped
- * id is a `403`. The server serializes the raw request object (author key order preserved), as
+ * entry's own file, so the file stem (hence `name`) is immutable through this door. A shipped id is
+ * a `403`. The server serializes the raw request object (author key order preserved), as
  * `put-workflow` does.
  */
 export async function handlePutTemplate({
@@ -31,12 +29,12 @@ export async function handlePutTemplate({
     return;
   }
 
-  const found = writableTemplate(templatesOf(ctx), id);
+  const store = templatesOf(ctx);
+  const found = store.writable(id);
   if (!found.ok) {
     sendError(res, found.status, found.message);
     return;
   }
-  const { entry } = found;
 
   const rawBody = raw.value as Record<string, unknown>;
   if (rawBody.id !== id) {
@@ -51,23 +49,18 @@ export async function handlePutTemplate({
   }
 
   // Precondition (ADR 0016): `If-Match` carrying the §10.2 etag is required, and absent or stale is
-  // a `412`. One call reads, decides and writes, so the check has no suspension point before it and
-  // only an *external* writer can invalidate the token — which is what it guards.
-  const written = conditionalWrite(entry.absPath, {
-    ifMatch: firstHeader(req.headers["if-match"]),
-    rule: "overwrite",
-    payload: rawBody,
-  });
+  // a `412`. The store's one call reads, decides and writes, so the check has no suspension point
+  // before it and only an *external* writer can invalidate the token.
+  const written = store.update(id, rawBody, firstHeader(req.headers["if-match"]));
   if (!written.ok) {
-    sendError(res, 412, PRECONDITION_FAILED[written.conflict]);
+    sendError(res, written.status, written.message);
     return;
   }
-  const { etag } = written;
   const reply: WireTemplateWriteResponse = {
     id,
-    relative_path: relative(resolve(ctx.project.dir), entry.absPath),
-    etag,
+    relative_path: written.relativePath,
+    etag: written.etag,
   };
-  res.writeHead(200, { "Content-Type": "application/json", ETag: etag });
+  res.writeHead(200, { "Content-Type": "application/json", ETag: written.etag });
   res.end(JSON.stringify(reply));
 }

@@ -8,6 +8,8 @@ import {
   type TemplateSummary,
   type WireError,
 } from "@path/schema";
+import { conditionalWrite, PRECONDITION_FAILED, removeArtifact } from "./artifact-file.js";
+import { strongEtag } from "./etag.js";
 
 // The Template store (ADR 0050): Server-owned, engine-blind discovery of shipped∪user authoring
 // templates. A template is typed by its file **suffix**, never its bytes, so the two maps below are
@@ -24,17 +26,8 @@ const KIND_DIR: Record<TemplateKind, string> = {
   step: "step-template",
 };
 
-export function suffixFor(kind: TemplateKind): string {
-  return SUFFIX[kind];
-}
-
-export function kindDirFor(kind: TemplateKind): string {
-  return KIND_DIR[kind];
-}
-
-/** The `.path/template/<kind-dir>/` root under a project, where every writable (user) template
- * lives. */
-export function userTemplateRoot(projectDir: string): string {
+/** The `.path/template/` root under a project, where every writable (user) template lives. */
+function userTemplateRoot(projectDir: string): string {
   return join(projectDir, ".path", "template");
 }
 
@@ -61,8 +54,8 @@ export interface TemplateEntry {
   kind: TemplateKind;
   origin: TemplateOrigin;
   readOnly: boolean;
-  absPath: string;
-  bytes: Buffer;
+  /** sha256 of this file's on-disk bytes: the §10.2 read's `etag`, and the token §10.4 compares. */
+  etag: string;
   description: string;
   format: string | null;
   /** A step-template's `WorkflowNode[]` body. */
@@ -71,14 +64,48 @@ export interface TemplateEntry {
   error: WireError["error"] | null;
 }
 
+/** An entry plus the file it came from. The path stays behind the store's interface: a caller
+ * addresses a template by `id` and the store decides where it lives. */
+interface LocatedTemplate extends TemplateEntry {
+  absPath: string;
+}
+
+/** The user template `id` names, or the refusal: unknown → `404`, shipped → `403` (read-only,
+ * ADR 0050 decision 9). */
+export type WritableTemplate =
+  | { ok: true; entry: TemplateEntry }
+  | { ok: false; status: 403 | 404; message: string };
+
+/** A write that landed, addressed by the project-relative path the reply carries. */
+export type TemplateWrite =
+  | { ok: true; relativePath: string; etag: string }
+  | { ok: false; status: 403 | 404 | 409 | 412; message: string };
+
+export type TemplateRemove = { ok: true } | { ok: false; status: 403 | 404; message: string };
+
+/**
+ * The template union one Server serves, and the only door onto the files it holds: a read lists the
+ * entries, a write names an `id`. No caller sees an `absPath`, so the conditional-write seam
+ * (ADR 0016) cannot be bypassed.
+ */
 export interface TemplateStore {
   /** Every discovered entry, in scan order: shipped before user, files sorted. */
-  entries: TemplateEntry[];
+  readonly entries: readonly TemplateEntry[];
   /**
    * `id → entry` for the by-id routes. First-seen wins — shipped is scanned before user, so a user
    * hand-copy of a shipped id resolves to the shipped entry. Malformed, id-less entries are absent.
    */
-  byId: Map<string, TemplateEntry>;
+  readonly byId: ReadonlyMap<string, TemplateEntry>;
+  /** The user entry `id` names, for a door that changes one. */
+  writable(id: string): WritableTemplate;
+  /** Create a user template under `name`; the name is the file stem, so this door never renames.
+   * An existing name is the `409` (ADR 0050 decision 6). */
+  create(kind: TemplateKind, name: string, payload: unknown): TemplateWrite;
+  /** Overwrite the user template `id` names, gated on the `If-Match` the caller read from
+   * §10.2. */
+  update(id: string, payload: unknown, ifMatch: string | undefined): TemplateWrite;
+  /** Remove the user template `id` names. §10.5 carries no precondition. */
+  remove(id: string): TemplateRemove;
 }
 
 /** The names of files directly under `dir` that end with `suffix`, sorted; `[]` when `dir` is
@@ -148,7 +175,7 @@ export function discoverTemplates(
     { root: userTemplateRoot(projectDir), origin: "user", readOnly: false },
   ];
 
-  const entries: TemplateEntry[] = [];
+  const located: LocatedTemplate[] = [];
   for (const { root, origin, readOnly } of roots) {
     for (const kind of ["step"] as const) {
       const suffix = SUFFIX[kind];
@@ -157,21 +184,21 @@ export function discoverTemplates(
         const absPath = join(dir, fileName);
         const bytes = readFileSync(absPath);
         const name = fileName.slice(0, -suffix.length);
-        entries.push({
+        located.push({
           name,
           kind,
           origin,
           readOnly,
           absPath,
-          bytes,
+          etag: strongEtag(bytes),
           ...classify(bytes, stepSchema),
         });
       }
     }
   }
 
-  const byId = new Map<string, TemplateEntry>();
-  for (const entry of entries) {
+  const byId = new Map<string, LocatedTemplate>();
+  for (const entry of located) {
     if (entry.id === null) continue;
     const existing = byId.get(entry.id);
     if (existing === undefined) {
@@ -185,7 +212,62 @@ export function discoverTemplates(
     }
   }
 
-  return { entries, byId };
+  const locate = (
+    id: string,
+  ): { ok: true; entry: LocatedTemplate } | { ok: false; status: 403 | 404; message: string } => {
+    const entry = byId.get(id);
+    if (entry === undefined) return { ok: false, status: 404, message: "not found" };
+    if (entry.readOnly) return { ok: false, status: 403, message: "template is read-only" };
+    return { ok: true, entry };
+  };
+
+  const writeAt = (
+    absPath: string,
+    payload: unknown,
+    precondition: { ifMatch: string | undefined; rule: "create-or-overwrite" | "overwrite" },
+  ): TemplateWrite => {
+    const written = conditionalWrite(absPath, { ...precondition, payload });
+    if (!written.ok) {
+      return { ok: false, status: 412, message: PRECONDITION_FAILED[written.conflict] };
+    }
+    return { ok: true, relativePath: relative(projectDir, absPath), etag: written.etag };
+  };
+
+  return {
+    entries: located,
+    byId,
+    writable(id) {
+      const found = locate(id);
+      return found.ok ? { ok: true, entry: found.entry } : found;
+    },
+    create(kind, name, payload) {
+      const absPath = join(userTemplateRoot(projectDir), KIND_DIR[kind], `${name}${SUFFIX[kind]}`);
+      const written = writeAt(absPath, payload, {
+        ifMatch: undefined,
+        rule: "create-or-overwrite",
+      });
+      // A create-only write has one conflict: the name is taken. Its wording is this door's 409.
+      if (!written.ok) {
+        return {
+          ok: false,
+          status: 409,
+          message: `a ${kind} template named "${name}" already exists`,
+        };
+      }
+      return written;
+    },
+    update(id, payload, ifMatch) {
+      const found = locate(id);
+      if (!found.ok) return found;
+      return writeAt(found.entry.absPath, payload, { ifMatch, rule: "overwrite" });
+    },
+    remove(id) {
+      const found = locate(id);
+      if (!found.ok) return found;
+      removeArtifact(found.entry.absPath);
+      return { ok: true };
+    },
+  };
 }
 
 /** Whether `workflowPath` addresses a template, which the workflow doors refuse (§10.6): anything
@@ -207,20 +289,6 @@ export interface TemplateStoreContext {
 /** The template union one server serves, scanned fresh for this request. */
 export function templatesOf(ctx: TemplateStoreContext): TemplateStore {
   return discoverTemplates(resolve(ctx.project.dir), shippedTemplateDir(ctx), ctx.stepPlugins);
-}
-
-/**
- * The user template `id` names, for a door that changes one — or the refusal: unknown → `404`,
- * shipped → `403` (read-only, ADR 0050 decision 9).
- */
-export function writableTemplate(
-  store: TemplateStore,
-  id: string,
-): { ok: true; entry: TemplateEntry } | { ok: false; status: 404 | 403; message: string } {
-  const entry = store.byId.get(id);
-  if (entry === undefined) return { ok: false, status: 404, message: "not found" };
-  if (entry.readOnly) return { ok: false, status: 403, message: "template is read-only" };
-  return { ok: true, entry };
 }
 
 /** One entry as its thin wire row (§10.1): everything but the body. */

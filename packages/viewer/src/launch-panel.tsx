@@ -12,10 +12,10 @@ import {
   nextOpenFolder,
   workflowBaseName,
 } from "@path/client-core";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { LaunchForm } from "./launch-form.js";
-import { errorMessage, type Load } from "./load-state.js";
 import { PaneError, PaneLoading } from "./pane-note.js";
+import { useResource } from "./use-resource.js";
 
 export interface LaunchPanelProps {
   client: PathApiClient;
@@ -65,38 +65,24 @@ function matchesFilter(workflow: WorkflowSummary, filter: WorkflowFilter): boole
 }
 
 export function LaunchPanel({ client, onLaunched }: LaunchPanelProps) {
-  const [state, setState] = useState<Load<WorkflowSummary[]>>({ phase: "loading" });
-  const [plugins, setPlugins] = useState<readonly WireStepPlugin[]>([]);
   const [expanded, setExpanded] = useState<string | null>(null);
   // The deepest open folder path; a folder is expanded when it is this path or a prefix of it, so
   // opening a sibling collapses the previous one automatically (one open folder per level).
   const [openFolder, setOpenFolder] = useState<string | null>(null);
   const [filter, setFilter] = useState<WorkflowFilter>("all");
 
-  useEffect(() => {
-    let cancelled = false;
-    client
-      .listWorkflows()
-      .then((res) => {
-        if (!cancelled) setState({ phase: "ready", value: res.workflows });
-      })
-      .catch((error: unknown) => {
-        if (!cancelled) setState({ phase: "error", message: errorMessage(error) });
-      });
-    // The step-plugin registry feeds the launch form's worker-default editor (ADR 0044). It is
-    // secondary to discovery: a failed read leaves the editor hidden rather than failing the panel.
-    client
-      .getStepPlugins()
-      .then((res) => {
-        if (!cancelled) setPlugins(res.step_plugins);
-      })
-      .catch(() => {
-        if (!cancelled) setPlugins([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [client]);
+  const { load: state } = useResource(
+    () => client.listWorkflows().then((res) => res.workflows),
+    [client],
+  );
+  // The step-plugin registry feeds the launch form's worker-default editor (ADR 0044). It is
+  // secondary to discovery: a failed read leaves the editor hidden rather than failing the panel.
+  const pluginRead = useResource(
+    () => client.getStepPlugins().then((res) => res.step_plugins),
+    [client],
+  );
+  const plugins: readonly WireStepPlugin[] =
+    pluginRead.load.phase === "ready" ? pluginRead.load.value : [];
 
   const visible = useMemo(
     () => (state.phase === "ready" ? state.value.filter((w) => matchesFilter(w, filter)) : []),

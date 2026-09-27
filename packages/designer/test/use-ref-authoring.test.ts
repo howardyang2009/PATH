@@ -1,8 +1,8 @@
 import { FORMAT_VERSION, type WorkflowFile, type WorkflowNode } from "@path/schema";
 import { act, renderHook } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { relativeRefPath } from "../src/resolve-ref.js";
-import type { OpenSession } from "../src/use-open-file.js";
+import type { OpenSession, SessionAction } from "../src/use-open-file.js";
 import { useRefAuthoring } from "../src/use-ref-authoring.js";
 
 /**
@@ -25,19 +25,15 @@ function parentFile(): WorkflowFile {
   } as WorkflowFile;
 }
 
-/** A session whose two transitions the seam calls; the rest is unused here. */
-function stubSession(): {
-  session: OpenSession;
-  applyEdit: ReturnType<typeof vi.fn>;
-  descendNewUnbound: ReturnType<typeof vi.fn>;
-} {
-  const applyEdit = vi.fn();
-  const descendNewUnbound = vi.fn();
-  return {
-    session: { applyEdit, descendNewUnbound } as unknown as OpenSession,
-    applyEdit,
-    descendNewUnbound,
-  };
+/** A session that records the actions the seam applies; the rest is unused here. */
+function stubSession(): { session: OpenSession; applied: SessionAction[] } {
+  const applied: SessionAction[] = [];
+  const session = {
+    apply: (action: SessionAction) => {
+      applied.push(action);
+    },
+  } as unknown as OpenSession;
+  return { session, applied };
 }
 
 describe("useRefAuthoring", () => {
@@ -57,37 +53,36 @@ describe("useRefAuthoring", () => {
   });
 
   it("reference-existing writes the node's relative ref and closes", () => {
-    const { session, applyEdit } = stubSession();
+    const { session, applied } = stubSession();
     const { result } = renderHook(() => useRefAuthoring(session, parentFile(), PARENT_PATH));
     act(() => result.current.onAuthorRef?.(REF_NODE_ID));
     act(() => result.current.pickExisting("flows/other.workflow.json"));
 
-    expect(applyEdit).toHaveBeenCalledTimes(1);
-    const edited = applyEdit.mock.calls[0]![0] as WorkflowFile;
-    const node = edited.body[0] as WorkflowNode & { ref: string };
+    expect(applied).toHaveLength(1);
+    const action = applied[0]!;
+    if (action.type !== "applyEdit") throw new Error(`unexpected action ${action.type}`);
+    const node = action.next.body[0] as WorkflowNode & { ref: string };
     expect(node.ref).toBe(relativeRefPath(PARENT_PATH, "flows/other.workflow.json"));
     expect(result.current.target).toBeNull();
   });
 
   it("create-new descends into a fresh child linked back to the node and closes", () => {
-    const { session, descendNewUnbound, applyEdit } = stubSession();
+    const { session, applied } = stubSession();
     const { result } = renderHook(() => useRefAuthoring(session, parentFile(), PARENT_PATH));
     act(() => result.current.onAuthorRef?.(REF_NODE_ID));
     act(() => result.current.createNew());
 
-    expect(descendNewUnbound).toHaveBeenCalledWith(REF_NODE_ID);
     // Create-new sets no ref here — the child's first save back-fills it.
-    expect(applyEdit).not.toHaveBeenCalled();
+    expect(applied).toEqual([{ type: "descendNewUnbound", parentNodeId: REF_NODE_ID }]);
     expect(result.current.target).toBeNull();
   });
 
   it("cancel closes the chooser with no edit", () => {
-    const { session, applyEdit, descendNewUnbound } = stubSession();
+    const { session, applied } = stubSession();
     const { result } = renderHook(() => useRefAuthoring(session, parentFile(), PARENT_PATH));
     act(() => result.current.onAuthorRef?.(REF_NODE_ID));
     act(() => result.current.cancel());
     expect(result.current.target).toBeNull();
-    expect(applyEdit).not.toHaveBeenCalled();
-    expect(descendNewUnbound).not.toHaveBeenCalled();
+    expect(applied).toEqual([]);
   });
 });

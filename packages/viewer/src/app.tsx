@@ -1,14 +1,11 @@
-import {
-  loadReachableWorkflowFiles,
-  type PathApiClient,
-  type WorkflowFile,
-} from "@path/client-core";
-import { useEffect, useState } from "react";
+import { EMPTY_RUN_FILE_SET, type PathApiClient, runFileSetFromDisk } from "@path/client-core";
+import { useState } from "react";
 import { AppShell } from "./app-shell.js";
 import { LaunchPanel } from "./launch-panel.js";
 import { NodeIo } from "./node-io.js";
 import { RunDetail } from "./run-detail.js";
 import { RunsList } from "./runs-list.js";
+import { useResource } from "./use-resource.js";
 import { useRunView } from "./use-run-view.js";
 
 /**
@@ -24,36 +21,24 @@ export function App({ client }: { client: PathApiClient }) {
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [runsReloadNonce, setRunsReloadNonce] = useState(0);
   const load = useRunView(client, selectedRootRunId);
-
-  // The watched run's reachable workflow files (root + transitively-ref'd), read from disk (a GET,
-  // no lease — ADR 0017). The eager `Resume from …` legal-K check needs the root file (`files[0]`);
-  // the awaiting surface needs the whole set, since a `person-activity` leaf can live in a nested
-  // file. Empty while loading or on a failed read: the checks fall back to run-tree-derivable
-  // reasons.
-  const [workflowFiles, setWorkflowFiles] = useState<readonly WorkflowFile[]>([]);
-  const rootFile = workflowFiles[0] ?? null;
+  // The watched root run's source file, as the live snapshot records it.
   const rootWorkflowPath =
     load.phase === "ready" && selectedRootRunId !== null
       ? (load.value.runs.get(selectedRootRunId)?.workflowPath ?? null)
       : null;
-  useEffect(() => {
-    if (rootWorkflowPath === null) {
-      setWorkflowFiles([]);
-      return;
-    }
-    let cancelled = false;
-    setWorkflowFiles([]);
-    loadReachableWorkflowFiles(client, rootWorkflowPath)
-      .then((files) => {
-        if (!cancelled) setWorkflowFiles(files);
-      })
-      .catch(() => {
-        if (!cancelled) setWorkflowFiles([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [client, rootWorkflowPath]);
+
+  // The watched run's reachable workflow files (root + transitively-ref'd), read from disk (a GET,
+  // no lease — ADR 0017). The eager `Resume from …` legal-K check needs the root file; the awaiting
+  // surface needs the whole set, since a `person-activity` leaf can live in a nested file. Unresolved
+  // while loading or on a failed read: the checks fall back to run-tree-derivable reasons.
+  const readRunFiles = useResource(
+    () =>
+      rootWorkflowPath === null ? EMPTY_RUN_FILE_SET : runFileSetFromDisk(client, rootWorkflowPath),
+    [client, rootWorkflowPath],
+  );
+  const runFiles =
+    readRunFiles.load.phase === "ready" ? readRunFiles.load.value : EMPTY_RUN_FILE_SET;
+  const rootFile = runFiles.rootFile;
 
   // Switching root run drops the node selection: a run id from the previous tree names nothing
   // here.
@@ -118,7 +103,7 @@ export function App({ client }: { client: PathApiClient }) {
             rootRunId={selectedRootRunId}
             selectedRunId={selectedRunId}
             onSelectRun={setSelectedRunId}
-            workflowFiles={workflowFiles}
+            runFiles={runFiles}
           />
         )
       }
@@ -132,7 +117,7 @@ export function App({ client }: { client: PathApiClient }) {
             // One snapshot feeds the pane: it reads this run's display status and error off the
             // view (ADR 0025).
             view={load.phase === "ready" ? load.value : undefined}
-            workflowFiles={workflowFiles}
+            runFiles={runFiles}
           />
         )
       }

@@ -1,4 +1,10 @@
-import type { PathApiClient, WireStepPlugin } from "@path/client-core";
+import {
+  EMPTY_RUN_FILE_SET,
+  type PathApiClient,
+  type RunFileSet,
+  runFileSetFromDisk,
+  type WireStepPlugin,
+} from "@path/client-core";
 import type { WorkflowFile } from "@path/schema";
 import {
   NodeIo,
@@ -8,7 +14,7 @@ import {
   useDragSize,
   usePaneWidths,
 } from "@path/viewer";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { RunLaunch } from "./run-launch.js";
 
 /** Persisted open-dock height, in px; the panes inside scroll. */
@@ -66,6 +72,29 @@ export interface RunDockProps {
  */
 export function RunDock(props: RunDockProps): JSX.Element {
   const [expanded, setOpen] = useState(false);
+  // The files a run's node ids resolve against, read from the store by the open file's path: the
+  // awaiting surfaces must see the bytes the server will validate at Complete (ADR 0040), and a
+  // nested `ref`'d leaf does not live in the open buffer.
+  const [runFiles, setRunFiles] = useState<RunFileSet>(EMPTY_RUN_FILE_SET);
+  const { client, workflowPath } = props;
+  useEffect(() => {
+    if (workflowPath === null) {
+      setRunFiles(EMPTY_RUN_FILE_SET);
+      return;
+    }
+    let cancelled = false;
+    setRunFiles(EMPTY_RUN_FILE_SET);
+    runFileSetFromDisk(client, workflowPath)
+      .then((files) => {
+        if (!cancelled) setRunFiles(files);
+      })
+      .catch(() => {
+        if (!cancelled) setRunFiles(EMPTY_RUN_FILE_SET);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [client, workflowPath]);
   // A disabled dock stays closed, and re-opens as it was when it is live again.
   const open = expanded && props.disabledReason === undefined;
   const bodyRef = useRef<HTMLDivElement | null>(null);
@@ -193,10 +222,9 @@ export function RunDock(props: RunDockProps): JSX.Element {
                 rootRunId={props.rootRunId}
                 selectedRunId={props.selectedRunId}
                 onSelectRun={props.onSelectRun}
-                // Passing the open buffer lets an awaiting leaf's assignee chip resolve by node id,
-                // the same surface the Viewer draws; the Viewer widens this to the reachable file
-                // set.
-                workflowFiles={props.rootFile ? [props.rootFile] : []}
+                // The same reachable set the Viewer reads, so an awaiting leaf's assignee chip
+                // resolves by node id across nested files (ADR 0031).
+                runFiles={runFiles}
               />
             )}
           </div>
@@ -211,15 +239,15 @@ export function RunDock(props: RunDockProps): JSX.Element {
             {selectedRun === undefined ? (
               <p className="pane-note">Select a run in the tree.</p>
             ) : (
-              // Passing the open buffer lets an awaiting leaf's Complete form build from
-              // `outputSchema` (ADR 0031).
+              // The reachable set lets an awaiting leaf's Complete form build from the node's
+              // `outputSchema` (ADR 0031, ADR 0040).
               <NodeIo
                 client={props.client}
                 run={selectedRun}
                 // One snapshot feeds the pane: it reads this run's status and error off the view
                 // (ADR 0025/0031).
                 view={props.load.phase === "ready" ? props.load.value : undefined}
-                workflowFiles={props.rootFile ? [props.rootFile] : []}
+                runFiles={runFiles}
               />
             )}
           </div>

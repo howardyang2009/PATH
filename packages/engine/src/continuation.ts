@@ -129,20 +129,25 @@ export function successorCapture(): SuccessorCapture {
 
 /**
  * What a node's recorded row says about the walk: Resume reads its reuse plan, Complete this tree's
- * own rows. The five answers are the whole mode difference a walker sees.
+ * own rows. The four answers are the whole mode difference a walker sees.
  */
 export type NodeDisposition =
   /** Do not run the node: Resume reuses the original's output and marks it; Complete reads its own
    * succeeded row. */
   | { kind: "reuse"; output: () => JsonValue; reusedFrom?: string }
   /** Complete: this node's row is the parked leaf being Completed. */
-  | { kind: "complete"; runId: string; output: JsonValue }
+  | { kind: "settle"; runId: string; output: JsonValue }
   /** Complete: this node's row is a still-parked sibling — park the walk again (park-at-join). */
   | { kind: "park" }
-  /** Complete: a non-terminal row re-entered in place, keeping its run id; the whole row restores
-   * context. */
-  | { kind: "reenter"; existing: RunRecord }
-  | { kind: "fresh" };
+  /** Run the node. `existing` is the non-terminal row a Complete re-enters in place, which keeps
+   * its run id and restores its context. */
+  | { kind: "run"; existing?: RunRecord };
+
+/** What a run starts from: a Resume replays a recorded seed, a Complete re-enters its own row in
+ * place; a launch and a fresh child start from nothing. */
+export type RunStart =
+  | { kind: "seed"; seed: { [key: string]: JsonValue } | undefined }
+  | { kind: "reentry"; existing: RunRecord; context: { [key: string]: JsonValue } };
 
 /** Where a top-level walk with passes starts. */
 export interface PassWalkStart {
@@ -178,33 +183,30 @@ export interface PassDivergence {
  * a goto pass. Resume and Complete differ only in the implementation, never in the walker's question.
  */
 export interface Continuation {
+  /** What this run starts from: a Resume's replay seed (ADR 0062), a Complete's recorded row and
+   * parked blackboard, or nothing. A present `reentry` is why a re-entry skips its `step-started`. */
+  start(): RunStart | undefined;
   /** The recorded-row verdict for one node; `ordinal` scopes a `while-do` container. */
   disposition(node: WorkflowNode, ordinal?: number): NodeDisposition;
-  /** The seed a re-entered workflow-run replays from (Resume root, ADR 0062), or `undefined` to
-   * take the run's own interpolated input. */
-  seed(): { [key: string]: JsonValue } | undefined;
-  /** The row this run re-enters in place, with the parked blackboard it restores (Complete); its
-   * presence is why a re-entry skips its `step-started`. */
-  reentry(): { existing: RunRecord; context: { [key: string]: JsonValue } } | undefined;
   /** The continuation for a child run opened under this one: a nested `workflow` step, a `while-do`
    * iteration container or a goto pass container. `file` is the child run's file. */
   enter(key: ChildRunKey, file: WorkflowFile, identity: RunIdentity): Continuation;
-  /** The starting state of this run's **top-level walk**, or the divergence a Complete fails on. */
+  /** The starting state of this run's **top-level walk**; a Complete whose reloaded file no longer
+   * matches the pass it recorded answers with a {@link PassDivergence} instead. */
   passWalk(
     gotos: ReadonlyMap<string, GotoNode>,
     seedInput: JsonValue,
   ): PassWalkStart | PassDivergence;
-  /** The already-decided `wait-one` winner to replay without running the losers, if any. */
-  decidedRaceWinner(node: ParallelNode): ParallelBranch | undefined;
+  /** The already-decided `wait-one` winner to replay without running the losers, where this
+   * continuation knows one. */
+  decidedRaceWinner?(node: ParallelNode): ParallelBranch | undefined;
 }
 
 /** A launch's continuation: nothing is recorded, so every node runs fresh. */
 const FRESH: Continuation = {
-  disposition: () => ({ kind: "fresh" }),
-  seed: () => undefined,
-  reentry: () => undefined,
+  start: () => undefined,
+  disposition: () => ({ kind: "run" }),
   enter: () => FRESH,
-  decidedRaceWinner: () => undefined,
   passWalk: (_gotos, seedInput) => freshPassWalk(seedInput),
 };
 
@@ -228,19 +230,18 @@ function resumeFromResume(resume: RunResume, file: WorkflowFile, isRoot: boolean
   return {
     disposition(node, ordinal) {
       // Iteration containers pair through `enterIteration`, never this node-id lookup.
-      if (ordinal !== undefined) return { kind: "fresh" };
+      if (ordinal !== undefined) return { kind: "run" };
       const original = resume.plan.get(node.id);
-      if (!original) return { kind: "fresh" };
+      if (!original) return { kind: "run" };
       return {
         kind: "reuse",
         output: () => resume.input.readBlob(original, RUN_BLOB_FILE.output),
         reusedFrom: original.runId,
       };
     },
-    seed() {
-      return resumeSeed(resume, isRoot);
+    start() {
+      return { kind: "seed", seed: resumeSeed(resume, isRoot) };
     },
-    reentry: () => undefined,
     enter(key, childFile) {
       if (key.iteration !== undefined) {
         const iteration = enterIteration(
@@ -291,21 +292,21 @@ function completeFromScope(
         nodeId: node.id,
         iteration: ordinal,
       });
-      if (!existing) return { kind: "fresh" };
+      if (!existing) return { kind: "run" };
       if (existing.status === "succeeded")
         return { kind: "reuse", output: () => readExistingOutput(state, existing) };
       if (existing.status === "awaiting") {
         return existing.runId === state.target.stepRunId
-          ? { kind: "complete", runId: existing.runId, output: state.target.output }
+          ? { kind: "settle", runId: existing.runId, output: state.target.output }
           : { kind: "park" };
       }
-      if (node.type === "workflow" || ordinal !== undefined) return { kind: "reenter", existing };
-      return { kind: "fresh" };
+      if (node.type === "workflow" || ordinal !== undefined) return { kind: "run", existing };
+      return { kind: "run" };
     },
-    seed: () => undefined,
-    reentry() {
+    start() {
       if (ownRun === undefined) return undefined;
       return {
+        kind: "reentry",
         existing: ownRun,
         context: state.readBlob(ownRun, RUN_BLOB_FILE.context) as { [key: string]: JsonValue },
       };
@@ -313,7 +314,6 @@ function completeFromScope(
     enter(_key, childFile, identity) {
       return completeFromScope(state, childFile, identity.runId, ownRow(state, identity.runId));
     },
-    decidedRaceWinner: () => undefined,
     passWalk: (gotos, seedInput) => completePassWalk(state, file, parentRunId, gotos, seedInput),
   };
 }

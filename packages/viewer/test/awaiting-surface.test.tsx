@@ -2,6 +2,7 @@ import {
   displayStatusByRun,
   type PathApiClient,
   type RunNodeState,
+  runFileSetOf,
   type WorkflowFile,
 } from "@path/client-core";
 import { stubClient } from "@path/client-core/test-utils";
@@ -121,7 +122,7 @@ function ConnectedDetail({ client }: { client: PathApiClient }) {
       rootRunId={ROOT}
       selectedRunId={null}
       onSelectRun={vi.fn()}
-      workflowFiles={[ROOT_FILE]}
+      runFiles={runFileSetOf([ROOT_FILE])}
     />
   );
 }
@@ -190,7 +191,7 @@ describe("awaiting rail (RunDetail)", () => {
 
 describe("awaiting detail panel — inline Complete (NodeIo)", () => {
   it("shows the description callout, the assignee, and the inline Complete form for an awaiting leaf", async () => {
-    render(<NodeIo client={stubClient()} run={runState()} workflowFiles={[ROOT_FILE]} />);
+    render(<NodeIo client={stubClient()} run={runState()} runFiles={runFileSetOf([ROOT_FILE])} />);
 
     expect(screen.getByTestId("awaiting-description")).toHaveTextContent(
       "Review the contract for {{client.name}}.",
@@ -213,7 +214,9 @@ describe("awaiting detail panel — inline Complete (NodeIo)", () => {
       nodeId: "step-nested",
       nodeName: "nested-review",
     });
-    render(<NodeIo client={stubClient()} run={nested} workflowFiles={[ROOT_FILE, SUB_FILE]} />);
+    render(
+      <NodeIo client={stubClient()} run={nested} runFiles={runFileSetOf([ROOT_FILE, SUB_FILE])} />,
+    );
 
     expect(screen.getByTestId("awaiting-description")).toHaveTextContent(
       "Nested review for {{client.name}}.",
@@ -229,7 +232,7 @@ describe("awaiting detail panel — inline Complete (NodeIo)", () => {
   it("shows the output schema, and completes inline on submit", async () => {
     const completeBodies: unknown[] = [];
     const client = stubClient({ completeBodies });
-    render(<NodeIo client={client} run={runState()} workflowFiles={[ROOT_FILE]} />);
+    render(<NodeIo client={client} run={runState()} runFiles={runFileSetOf([ROOT_FILE])} />);
 
     // The step's outputSchema shows in the panel (the `approved` property is in the rendered JSON).
     expect(screen.getByTestId("awaiting-output-schema")).toHaveTextContent("approved");
@@ -251,7 +254,9 @@ describe("awaiting detail panel — inline Complete (NodeIo)", () => {
       lastError: new Map<string, string>(),
       launchFacts: { secretKeys: ["github.token"] },
     };
-    render(<NodeIo client={client} run={runState()} view={view} workflowFiles={[ROOT_FILE]} />);
+    render(
+      <NodeIo client={client} run={runState()} view={view} runFiles={runFileSetOf([ROOT_FILE])} />,
+    );
 
     const field = screen.getByTestId("complete-config") as HTMLTextAreaElement;
     expect(JSON.parse(field.value)).toEqual({ github: { token: "" } });
@@ -287,7 +292,7 @@ describe("awaiting detail panel — inline Complete (NodeIo)", () => {
         },
       },
     });
-    render(<NodeIo client={client} run={runState()} workflowFiles={[ROOT_FILE]} />);
+    render(<NodeIo client={client} run={runState()} runFiles={runFileSetOf([ROOT_FILE])} />);
 
     // Submitting an unchecked box coerces to `approved: false`, which is present client-side but
     // the server's required check here rejects — the point is the 400 field error renders in place.
@@ -309,7 +314,7 @@ describe("awaiting detail panel — inline Complete (NodeIo)", () => {
           nodeId: "step-finance",
           nodeName: "finance-approval",
         })}
-        workflowFiles={[ROOT_FILE]}
+        runFiles={runFileSetOf([ROOT_FILE])}
       />,
     );
 
@@ -327,7 +332,7 @@ describe("awaiting detail panel — inline Complete (NodeIo)", () => {
       <NodeIo
         client={stubClient()}
         run={runState({ nodeId: "step-nested" })}
-        workflowFiles={[ROOT_FILE]}
+        runFiles={runFileSetOf([ROOT_FILE])}
       />,
     );
     expect(screen.getByTestId("awaiting-unresolved")).toBeInTheDocument();
@@ -357,7 +362,7 @@ describe("awaiting detail panel — inline Complete (NodeIo)", () => {
         client={stubClient()}
         run={runs.get("run_root")!}
         view={view}
-        workflowFiles={[ROOT_FILE]}
+        runFiles={runFileSetOf([ROOT_FILE])}
       />,
     );
 

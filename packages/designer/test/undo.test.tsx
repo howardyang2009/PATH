@@ -63,17 +63,17 @@ describe("undo/redo — one entry per structural edit, clean re-derived (ADR 003
     const original = buffer(hook);
 
     // A structural rename is one entry; undo restores the original, redo re-applies it.
-    act(() => hook.result.current.applyEdit(rename(original, "renamed")));
+    act(() => hook.result.current.apply({ type: "applyEdit", next: rename(original, "renamed") }));
     expect(buffer(hook).body[0]!.name).toBe("renamed");
     expect(frameCanUndo(hook.result.current.frames[0])).toBe(true);
 
-    act(() => hook.result.current.undo());
+    act(() => hook.result.current.apply({ type: "undo" }));
     expect(buffer(hook).body[0]!.name).toBe("draft");
     expect(canonicalSerialize(buffer(hook))).toBe(canonicalSerialize(original));
     expect(frameCanUndo(hook.result.current.frames[0])).toBe(false);
     expect(frameCanRedo(hook.result.current.frames[0])).toBe(true);
 
-    act(() => hook.result.current.redo());
+    act(() => hook.result.current.apply({ type: "redo" }));
     expect(buffer(hook).body[0]!.name).toBe("renamed");
     expect(frameCanRedo(hook.result.current.frames[0])).toBe(false);
   });
@@ -85,21 +85,21 @@ describe("undo/redo — one entry per structural edit, clean re-derived (ADR 003
 
     // Edit, then save — the save advances the baseline to the edited bytes and re-cleans the
     // buffer.
-    act(() => hook.result.current.applyEdit(rename(original, "renamed")));
+    act(() => hook.result.current.apply({ type: "applyEdit", next: rename(original, "renamed") }));
     act(() => hook.result.current.save());
     await waitFor(() => expect(calls.put).toHaveLength(1));
     await waitFor(() => expect(frameDirty(hook.result.current.frames[0])).toBe(false));
 
     // The stack survives the save: there is still an entry to undo back past the save-point.
     expect(frameCanUndo(hook.result.current.frames[0])).toBe(true);
-    act(() => hook.result.current.undo());
+    act(() => hook.result.current.apply({ type: "undo" }));
     // Back at "draft", which no longer equals the saved-"renamed" baseline → dirty again, for free.
     expect(buffer(hook).body[0]!.name).toBe("draft");
     expect(frameDirty(hook.result.current.frames[0])).toBe(true);
 
     // Redo forward to the save-point bytes → clean once more (content-equality, re-evaluated each
     // time).
-    act(() => hook.result.current.redo());
+    act(() => hook.result.current.apply({ type: "redo" }));
     expect(buffer(hook).body[0]!.name).toBe("renamed");
     expect(frameDirty(hook.result.current.frames[0])).toBe(false);
   });
@@ -108,12 +108,12 @@ describe("undo/redo — one entry per structural edit, clean re-derived (ADR 003
     const hook = await openSession({ [PATH]: JSON.stringify(file("draft")) });
     const original = buffer(hook);
 
-    act(() => hook.result.current.applyEdit(rename(original, "one")));
-    act(() => hook.result.current.undo());
+    act(() => hook.result.current.apply({ type: "applyEdit", next: rename(original, "one") }));
+    act(() => hook.result.current.apply({ type: "undo" }));
     expect(frameCanRedo(hook.result.current.frames[0])).toBe(true);
 
     // A fresh edit past the undo point drops the redo branch.
-    act(() => hook.result.current.applyEdit(rename(original, "two")));
+    act(() => hook.result.current.apply({ type: "applyEdit", next: rename(original, "two") }));
     expect(frameCanRedo(hook.result.current.frames[0])).toBe(false);
     expect(buffer(hook).body[0]!.name).toBe("two");
   });
@@ -125,21 +125,35 @@ describe("undo/redo — one entry per structural edit, clean re-derived (ADR 003
     // Three edits sharing one identity fold to one entry; a single undo jumps back to the run
     // start.
     const name = { owner: "step", field: "name" };
-    act(() => hook.result.current.applyEdit(rename(original, "d"), name));
-    act(() => hook.result.current.applyEdit(rename(original, "dr"), name));
-    act(() => hook.result.current.applyEdit(rename(original, "draft-2"), name));
+    act(() =>
+      hook.result.current.apply({ type: "applyEdit", next: rename(original, "d"), key: name }),
+    );
+    act(() =>
+      hook.result.current.apply({ type: "applyEdit", next: rename(original, "dr"), key: name }),
+    );
+    act(() =>
+      hook.result.current.apply({
+        type: "applyEdit",
+        next: rename(original, "draft-2"),
+        key: name,
+      }),
+    );
     expect(buffer(hook).body[0]!.name).toBe("draft-2");
 
-    act(() => hook.result.current.undo());
+    act(() => hook.result.current.apply({ type: "undo" }));
     expect(buffer(hook).body[0]!.name).toBe("draft");
     expect(frameCanUndo(hook.result.current.frames[0])).toBe(false);
 
     // A different identity opens a new entry, so it does not fold with the previous run.
-    act(() => hook.result.current.redo());
+    act(() => hook.result.current.apply({ type: "redo" }));
     act(() =>
-      hook.result.current.applyEdit(rename(original, "other"), { owner: "step", field: "prompt" }),
+      hook.result.current.apply({
+        type: "applyEdit",
+        next: rename(original, "other"),
+        key: { owner: "step", field: "prompt" },
+      }),
     );
-    act(() => hook.result.current.undo());
+    act(() => hook.result.current.apply({ type: "undo" }));
     expect(buffer(hook).body[0]!.name).toBe("draft-2");
   });
 });
@@ -154,17 +168,25 @@ describe("per-file stack isolation — each descended ref child has its own stac
     });
 
     // Descend across a ref into the child frame; wait until its own fetch-and-open lands.
-    act(() => hook.result.current.descend("child.workflow.json", "wf-child"));
+    act(() =>
+      hook.result.current.apply({
+        type: "descend",
+        ref: "child.workflow.json",
+        nodeId: "wf-child",
+      }),
+    );
     await waitFor(() => expect(openedResultOf(hook.result.current.frames[1])).not.toBeNull());
     const childOriginal = buffer(hook);
 
     // Edit the child → the child's stack has an entry; the parent's stays empty.
-    act(() => hook.result.current.applyEdit(rename(childOriginal, "child-edited")));
+    act(() =>
+      hook.result.current.apply({ type: "applyEdit", next: rename(childOriginal, "child-edited") }),
+    );
     expect(frameCanUndo(hook.result.current.frames[1])).toBe(true);
     expect(frameCanUndo(hook.result.current.frames[0])).toBe(false);
 
     // Undoing the child restores only the child; the parent buffer never moved.
-    act(() => hook.result.current.undo());
+    act(() => hook.result.current.apply({ type: "undo" }));
     expect(buffer(hook).body[0]!.name).toBe("child-step");
     expect(openedResultOf(hook.result.current.frames[0])!.file.body[0]!.name).toBe("parent-step");
     expect(frameCanRedo(hook.result.current.frames[0])).toBe(false);

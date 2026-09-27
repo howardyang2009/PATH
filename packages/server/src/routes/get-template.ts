@@ -1,4 +1,3 @@
-import { strongEtag } from "../etag.js";
 import { sendError } from "../http-json.js";
 import { templateSummary, templatesOf } from "../template-store.js";
 import type { ApiRequest } from "./route-context.js";
@@ -14,7 +13,7 @@ export function handleGetTemplate({ res, ctx, params: [id] }: ApiRequest<[string
     return;
   }
 
-  const etag = strongEtag(entry.bytes);
+  const etag = entry.etag;
   const body = { ...templateSummary(entry), format: entry.format, body: entry.body, etag };
   res.writeHead(200, { "Content-Type": "application/json", ETag: etag });
   res.end(JSON.stringify(body));

@@ -53,7 +53,7 @@ export function useRefAuthoring(
   const pickExisting = (targetPath: string): void => {
     if (nodeId !== null && openedFile && activePath !== undefined) {
       const next = fileWithNodeRef(openedFile, activePath, nodeId, targetPath);
-      if (next) session.applyEdit(next);
+      if (next) session.apply({ type: "applyEdit", next });
     }
     setNodeId(null);
   };
@@ -62,7 +62,7 @@ export function useRefAuthoring(
   // yet — the child's first save picks the path and back-fills the parent ref, so the ref follows
   // the save.
   const createNew = (): void => {
-    if (nodeId !== null) session.descendNewUnbound(nodeId);
+    if (nodeId !== null) session.apply({ type: "descendNewUnbound", parentNodeId: nodeId });
     setNodeId(null);
   };
 

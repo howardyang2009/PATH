@@ -17,7 +17,7 @@ import { createProcessorSemaphore } from "../src/processor-semaphore.js";
 import type { ContinueState, NodeExecContext, RunContext } from "../src/run-context.js";
 import { createEmitter } from "../src/run-emitter.js";
 import type { RunEvent } from "../src/run-observer.js";
-import { runContainerBody, runNode, runSequence } from "../src/run-workflow.js";
+import { runNode, runSequence } from "../src/run-workflow.js";
 import { flat } from "./fake-observer.js";
 
 /**
@@ -123,7 +123,7 @@ function makeRun(overrides: Partial<RunContext> = {}): {
 }
 
 function makeExec(context: { [key: string]: JsonValue } = {}): NodeExecContext {
-  return { context, onPublish: async () => {}, walk: runSequence, bodyWalk: runContainerBody };
+  return { context, onPublish: async () => {}, walk: runSequence };
 }
 
 /**

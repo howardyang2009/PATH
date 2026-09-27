@@ -8,7 +8,6 @@ import {
   type RerunFromNodePathEntry,
   type RunRecord,
   type WorkflowFile,
-  walkNodes,
 } from "@path/schema";
 import { childIdentity } from "./child-run.js";
 import type { Continuation } from "./continuation.js";
@@ -24,7 +23,6 @@ import { finishSucceeded, type LeafStepNode, runLeafStep, type StepContext } fro
 import { resolveChildRef } from "./ref-tree.js";
 import { type EnvSource, effectiveConfig } from "./resolve-env.js";
 import type {
-  BodyOutcome,
   Cancellation,
   NodeExecContext,
   RunContext,
@@ -79,8 +77,9 @@ export async function executeWorkflowRun(params: WorkflowRunParams): Promise<Run
   // Resume replays from the run's **seed**, never the counterpart's final `context.json` — under
   // Resume-from-K that holds keys written after K. Complete re-entry restores its parked blackboard
   // (ADR 0062).
-  const reentry = continuation.reentry();
-  const seed = continuation.seed() ?? input;
+  const start = continuation.start();
+  const reentry = start?.kind === "reentry" ? start : undefined;
+  const seed = start?.kind === "seed" ? (start.seed ?? input) : input;
   const context: { [key: string]: JsonValue } = { ...(reentry?.context ?? seed) }; // format doc §6.3
   let previousOutput: JsonValue = seed;
 
@@ -174,7 +173,6 @@ export async function executeWorkflowRun(params: WorkflowRunParams): Promise<Run
         await emitter.record({ kind: "context", context });
       },
       walk: runSequence,
-      bodyWalk: runContainerBody,
     });
     // The run parked at a person-activity leaf (ADR 0039/0041): no terminal `step-finished`, the
     // row stays `running`, and its detached branches keep running until a later Complete settles
@@ -325,7 +323,7 @@ export async function runNode(
         original_run_id: disposition.reusedFrom,
       });
     outcome = { status: "succeeded", output };
-  } else if (disposition.kind === "complete") {
+  } else if (disposition.kind === "settle") {
     // The parked leaf transitions `awaiting → succeeded` in place under its own step-run id;
     // publish lands as for a fresh output.
     const step = run.emitter.step(node, disposition.runId);
@@ -352,14 +350,9 @@ export async function runNode(
       onLeafStep: (emitted) => (leafStep = emitted),
     };
     if (node.type === "workflow") {
-      // A `reenter` disposition hands the child its own existing row, so it is re-driven in place
+      // A re-entered row hands the child its own existing row, so it is re-driven in place
       // (ADR 0041).
-      outcome = await runWorkflowNode(
-        node,
-        stepInput,
-        step,
-        disposition.kind === "reenter" ? disposition.existing : undefined,
-      );
+      outcome = await runWorkflowNode(node, stepInput, step, disposition.existing);
     } else {
       outcome = await runLeafStep(node as unknown as LeafStepNode, stepInput, step);
     }
@@ -412,25 +405,4 @@ export async function runSequence(
   }
 
   return { status: "succeeded", output: previous };
-}
-
-/**
- * A container body's walk (`while-do` iteration, `parallel` branch): load refuses a `goto` under
- * either (ADR 0058), so a jump that reaches here is a skipped load. It fails the run, naming the
- * node, rather than escaping into a container that has nowhere to land it.
- */
-export async function runContainerBody(
-  run: RunContext,
-  nodes: WorkflowFile["body"],
-  seedInput: JsonValue,
-  exec: NodeExecContext,
-): Promise<BodyOutcome> {
-  const outcome = await runSequence(run, nodes, seedInput, exec);
-  if (outcome.status !== "goto") return outcome;
-  // The jump may sit under a `sequence` or a `branch`, so name it by its own id.
-  const jumped = [...walkNodes(nodes)].find((node) => node.id === outcome.goto);
-  return {
-    status: "failed",
-    error: `goto "${jumped?.name ?? outcome.goto}": a jump may not leave a while-do or parallel body`,
-  };
 }

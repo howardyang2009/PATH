@@ -1,8 +1,8 @@
 import { relative, resolve } from "node:path";
-import { validateWorkflowFile } from "@path/engine";
 import {
   identityIssues,
   nodeIdentityOccurrences,
+  safeParseWorkflowFile,
   type WirePutWorkflowResponse,
   type WorkflowFile,
   workflowIdentityOccurrence,
@@ -69,12 +69,14 @@ export async function handlePutWorkflow({ req, res, ctx }: ApiRequest): Promise<
     return;
   }
 
-  const validation = await validateWorkflowFile(rawWorkflow);
+  // Parsed against the registry frozen at server start (ADR 0018), like every other door that
+  // validates a file: a per-save folder re-scan would answer a different registry.
+  const validation = safeParseWorkflowFile(rawWorkflow, ctx.stepPlugins);
   if (!validation.success) {
     sendError(res, 400, "workflow validation failed", validation.errors);
     return;
   }
-  const duplicates = duplicateIdErrors(validation.file);
+  const duplicates = duplicateIdErrors(validation.data);
   if (duplicates.length > 0) {
     sendError(res, 400, "workflow validation failed", duplicates);
     return;
@@ -97,7 +99,7 @@ export async function handlePutWorkflow({ req, res, ctx }: ApiRequest): Promise<
   // here.
   const reply: WirePutWorkflowResponse = {
     relative_path: relativePath,
-    id: validation.file.id,
+    id: validation.data.id,
     etag,
   };
   res.writeHead(created ? 201 : 200, { "Content-Type": "application/json", ETag: etag });
