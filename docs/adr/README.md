@@ -70,7 +70,7 @@ An Architecture Decision Record (ADR) records one decision PATH has made: the sh
 | [0064](0064-a-sequence-body-is-transparent-to-the-rerun-boundary.md) | A sequence body is transparent to the rerun boundary | accepted |
 | [0065](0065-comments-state-what-and-why-decisions-live-in-adrs.md) | Source comments state what and why; decisions live in ADRs | accepted |
 | [0066](0066-the-log-event-is-the-only-event-vocabulary.md) | The log event is the only event vocabulary | accepted |
-| [0067](0067-a-container-body-walk-cannot-take-a-jump.md) | A container body's walk cannot take a jump | accepted |
+| [0067](0067-a-container-body-walk-cannot-take-a-jump.md) | A container body's walk cannot take a jump | partly superseded by [ADR 0078](0078-a-container-bodys-walk-is-one-adapter.md) |
 | [0068](0068-the-run-entry-options-are-two-arms.md) | The run entry options are two arms: a launch and a continuation | accepted |
 | [0069](0069-the-api-clients-endpoint-groups-are-implementation.md) | The API client's endpoint groups are implementation, not a seam | accepted |
 | [0070](0070-every-run-door-addresses-its-run-through-one-lookup.md) | Every run door addresses its run through one lookup | accepted |
@@ -79,10 +79,14 @@ An Architecture Decision Record (ADR) records one decision PATH has made: the sh
 | [0073](0073-the-designers-write-decision-is-one-plan.md) | The Designer's write decision is one plan | accepted |
 | [0074](0074-the-session-reducer-hands-out-the-read-it-asks-for.md) | The session reducer hands out the read it asks for | accepted |
 | [0075](0075-one-legal-k-verdict-two-reachabilities.md) | One legal-K verdict, two reachabilities | accepted |
+| [0076](0076-a-runs-files-are-read-through-one-seam.md) | A run's files are read through one seam | accepted |
+| [0077](0077-the-session-hook-exposes-the-reducers-verb.md) | The session hook exposes the reducer's verb | accepted |
+| [0078](0078-a-container-bodys-walk-is-one-adapter.md) | A container body's walk is one adapter, not a second injected walker | accepted |
 
 ## Superseded decisions
 
 - [0028](0028-designer-is-a-separate-package-not-a-viewer-route.md) — partly superseded by [ADR 0031](0031-designer-reuses-the-viewers-run-panels.md): decision 2 (the Designer "does not embed or import the Viewer") is reversed, and the Designer now depends on `@path/viewer` and reuses its run panels. Decision 5 still holds: `@path/designer` stays a separate package with its own bundle and mount.
 - [0047](0047-person-switch-is-a-controller-with-an-authored-activity-and-labelled-slots.md) — superseded by [ADR 0052](0052-person-switch-is-a-shipped-step-template-not-a-controller.md): `person-switch` is a shipped step-template composing `person-activity` + `branch`, not a worker-less controller.
 - [0049](0049-instantiation-is-a-detached-copy-that-re-stamps-ids-and-never-rewires.md) — partly superseded by [ADR 0063](0063-the-workflow-template-is-removed-the-step-template-is-the-only-template.md): decision 7 (Workflow-Template instantiation into an empty canvas) no longer applies because the Workflow-Template is removed. The Step-Template parts stand.
+- [0067](0067-a-container-body-walk-cannot-take-a-jump.md) — partly superseded by [ADR 0078](0078-a-container-bodys-walk-is-one-adapter.md): decisions 2–4 (two injected walks plus `runContainerBody`) give way to one injected `walk` and the `walkContainerBody` adapter. Decision 2's `BodyOutcome` and the fail-closed guard stand.
 - [0050](0050-the-template-api-is-id-addressed-and-owns-the-template-write-door.md) — partly superseded by [ADR 0063](0063-the-workflow-template-is-removed-the-step-template-is-the-only-template.md): the `workflow` template kind, its `workflow-template/` directories and its `*.workflow-template.json` suffix are removed. The Step-Template parts stand.
