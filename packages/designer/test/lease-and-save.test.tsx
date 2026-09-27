@@ -178,6 +178,18 @@ describe("Designer save through the write route", () => {
     expect(screen.getByTestId("workflow-file-name").closest(".topbar-title")).not.toBeNull();
   });
 
+  it("names a non-canonical file's dirty state as a reformat, not as unsaved edits", async () => {
+    // Valid, id-bearing, but `type` first: the parsed buffer serializes in a different key order.
+    const files = { [ROOT_PATH]: JSON.stringify(childFile()) };
+    render(<App client={stubClient({ files, calls: makeCalls() })} initialPath={ROOT_PATH} />);
+
+    await screen.findByText("child-step");
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Non-canonical file: Save will reformat it",
+    );
+    expect(screen.queryByText("Unsaved edits")).not.toBeInTheDocument();
+  });
+
   it("surfaces a 412 as a stale-write conflict the author must resolve, keeping the buffer", async () => {
     const calls = makeCalls();
     const idless = rootFile();

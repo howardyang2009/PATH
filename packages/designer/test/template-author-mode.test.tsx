@@ -85,7 +85,7 @@ const WORKFLOW_FILE = {
   body: [{ type: "prompt", id: uuid(21), name: "alpha", prompt: "a" }],
 };
 
-function renderApp(initialPath?: string) {
+function renderApp(initialPath?: string, bodies: Record<string, unknown> = {}) {
   const calls = makeCalls();
   render(
     <App
@@ -104,6 +104,7 @@ function renderApp(initialPath?: string) {
           [SHIPPED_ID]: envelope(SHIPPED_ID, "shipped"),
           [STEP_ID]: STEP_ENVELOPE,
           [BROKEN_ID]: { ...envelope(BROKEN_ID, "user"), name: "broken" },
+          ...bodies,
         },
         calls,
       })}
@@ -143,6 +144,26 @@ describe("Author mode on a *.step-template.json", () => {
     expect(screen.getByRole("button", { name: "Save as…" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Save as workflow…" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^Edit / })).not.toBeInTheDocument();
+  });
+
+  it("opens a canonical template clean, with no unsaved status", async () => {
+    renderApp();
+    await editTemplate("nightly");
+
+    expect(screen.queryByText("Unsaved edits")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Save will reformat/)).not.toBeInTheDocument();
+  });
+
+  it("names a non-canonical template's dirty state as a reformat, not as unsaved edits", async () => {
+    // Same nodes, `type` first: the parsed buffer serializes in a different key order.
+    const typeFirst = TEMPLATE_BODY.map(({ type, ...rest }) => ({ type, ...rest }));
+    renderApp(undefined, { [USER_ID]: { ...envelope(USER_ID, "user"), body: typeFirst } });
+    await editTemplate("nightly");
+
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Non-canonical file: Save will reformat it",
+    );
+    expect(screen.queryByText("Unsaved edits")).not.toBeInTheDocument();
   });
 
   it("opens an invalid template on double-click, so the author can repair it", async () => {
