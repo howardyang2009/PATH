@@ -1,7 +1,7 @@
 import { type ConfigObject, formatIssues, type WorkflowFile, walkNodes } from "@path/schema";
 import { z } from "zod";
 import { describeMissingLaunchSecrets } from "./launch-facts.js";
-import { type LoadedStepPluginRegistry, scanStepPlugins } from "./plugin/scan.js";
+import { type LoadedStepPluginRegistry, scanStepPlugins } from "./plugin-seam/scan.js";
 import { walkRefTree } from "./ref-tree.js";
 import { describeUnsetEnv, type EnvSource, resolveRunEnv } from "./resolve-env.js";
 import type { RunOptions, WorkerOverrides } from "./run-workflow.js";

@@ -1,6 +1,6 @@
 import type { ConfigObject, WorkflowFile } from "@path/schema";
 import { beforeAll, describe, expect, it } from "vitest";
-import { type LoadedStepPluginRegistry, scanStepPlugins } from "../src/plugin/scan.js";
+import { type LoadedStepPluginRegistry, scanStepPlugins } from "../src/plugin-seam/scan.js";
 import { analyzeRunStart } from "../src/run-start.js";
 import { stampNames } from "./stamp-names.js";
 

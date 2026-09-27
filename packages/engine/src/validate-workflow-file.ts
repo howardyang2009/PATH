@@ -1,5 +1,5 @@
 import { makeWorkflowFileSchema, safeParseWorkflowFileWith, type WorkflowFile } from "@path/schema";
-import { scanStepPlugins } from "./plugin/scan.js";
+import { scanStepPlugins } from "./plugin-seam/scan.js";
 
 export type ValidateWorkflowFileResult =
   | { success: true; file: WorkflowFile }

@@ -10,8 +10,8 @@ import type {
   WorkflowFile,
 } from "@path/schema";
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { type LoadedStepPluginRegistry, scanStepPlugins } from "../src/plugin/scan.js";
-import type { StepRequest, WorkerDescriptor } from "../src/plugin/seam.js";
+import { type LoadedStepPluginRegistry, scanStepPlugins } from "../src/plugin-seam/scan.js";
+import type { StepRequest, WorkerDescriptor } from "../src/plugin-seam/seam.js";
 import { createProcessorSemaphore } from "../src/processor-semaphore.js";
 import type { NodeExecContext, RunContext } from "../src/run-context.js";
 import { createEmitter } from "../src/run-emitter.js";

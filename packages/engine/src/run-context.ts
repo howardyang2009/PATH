@@ -1,5 +1,5 @@
 import type { ConfigObject, JsonValue, RunRecord, WorkflowFile } from "@path/schema";
-import type { LoadedStepPluginRegistry } from "./plugin/scan.js";
+import type { LoadedStepPluginRegistry } from "./plugin-seam/scan.js";
 import type { ProcessorSemaphore } from "./processor-semaphore.js";
 import type { EnvSource } from "./resolve-env.js";
 import type { RunResume } from "./resume-plan.js";

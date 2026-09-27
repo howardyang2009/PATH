@@ -7,7 +7,7 @@ import {
   type WorkflowNode,
   walkNodes,
 } from "@path/schema";
-import { type LoadedStepPluginRegistry, scanStepPlugins } from "./plugin/scan.js";
+import { type LoadedStepPluginRegistry, scanStepPlugins } from "./plugin-seam/scan.js";
 
 /**
  * One workflow, loaded: the entry file itself, where it sits, and every file it reaches. Everything

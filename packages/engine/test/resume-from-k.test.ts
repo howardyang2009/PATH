@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import type { JsonValue, RunRecord, WorkflowFile } from "@path/schema";
 import { describe, expect, it } from "vitest";
-import type { StepRequest, WorkerDescriptor } from "../src/plugin/seam.js";
+import type { StepRequest, WorkerDescriptor } from "../src/plugin-seam/seam.js";
 import type { Observation } from "../src/run-observer.js";
 import { type ResumeInput, runWorkflow } from "../src/run-workflow.js";
 import { type FakeObserver, fakeObserver } from "./fake-observer.js";

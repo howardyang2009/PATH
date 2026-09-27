@@ -1,7 +1,7 @@
 import type { JsonValue } from "@path/schema";
 import { describe, expect, it } from "vitest";
 import { type SettleStepResult, settleStepResult } from "../src/leaf-step.js";
-import type { StepResult } from "../src/plugin/seam.js";
+import type { StepResult } from "../src/plugin-seam/seam.js";
 import type { Cancellation, RunIdentity } from "../src/run-context.js";
 import { createEmitter, type StepEmitter } from "../src/run-emitter.js";
 import type { Observation } from "../src/run-observer.js";

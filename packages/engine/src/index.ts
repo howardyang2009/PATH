@@ -4,7 +4,7 @@ export { LOG_FORMAT, type LogBackend, type LogFormat } from "./logging/log-backe
 export { readNdjsonLog } from "./logging/ndjson-backend.js";
 export { openDb, SchemaVersionError } from "./persistence/db.js";
 export { dbFilePath, pathDir, rootRunTreeDir } from "./persistence/paths.js";
-export { type LoadedStepPluginRegistry, loadStepPluginRegistry } from "./plugin/scan.js";
+export { type LoadedStepPluginRegistry, loadStepPluginRegistry } from "./plugin-seam/scan.js";
 export {
   type CompleteResult,
   type EligibilityRow,

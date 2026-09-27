@@ -4,7 +4,7 @@ import { join } from "node:path";
 import type { RunRecord, WorkflowFile } from "@path/schema";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { acquireCompleteLease } from "../src/persistence/complete-lease.js";
-import type { WorkerDescriptor } from "../src/plugin/seam.js";
+import type { WorkerDescriptor } from "../src/plugin-seam/seam.js";
 import { openProject, type Project } from "../src/project.js";
 import { stampNames } from "./stamp-names.js";
 

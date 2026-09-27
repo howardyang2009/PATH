@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { isPassRun, type RunRecord, type WorkflowFile } from "@path/schema";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { WorkerDescriptor } from "../src/plugin/seam.js";
+import type { WorkerDescriptor } from "../src/plugin-seam/seam.js";
 import { openProject, type Project } from "../src/project.js";
 import type { Observation, RunObserver } from "../src/run-observer.js";
 import { stampNames } from "./stamp-names.js";

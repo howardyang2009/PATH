@@ -2,7 +2,7 @@ import type { JsonValue } from "@path/engine/plugin";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runDeepseekWorker } from "../../../plugin/step-plugin/prompt/deepseek-worker.js";
 import type { PromptConfig, PromptFields } from "../../../plugin/step-plugin/prompt/index.js";
-import type { StepRequest } from "../../../src/plugin/seam.js";
+import type { StepRequest } from "../../../src/plugin-seam/seam.js";
 
 // The `deepseek` worker, tested at its own boundary: a stubbed `fetch` stands in for the API, so every
 // case asserts what PATH *sends* and how it reads what comes back. Nothing here touches the network.

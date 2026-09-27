@@ -1,5 +1,5 @@
 import type { JsonValue } from "@path/schema";
-import type { StepRequest, StepResult, WorkerDescriptor } from "../../src/plugin/seam.js";
+import type { StepRequest, StepResult, WorkerDescriptor } from "../../src/plugin-seam/seam.js";
 
 /**
  * What one scripted prompt step returns. A handler receives the request and the 1-based count of

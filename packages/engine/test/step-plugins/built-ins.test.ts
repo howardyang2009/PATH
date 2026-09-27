@@ -4,8 +4,8 @@ import { join } from "node:path";
 import { makeWorkflowFileSchema, safeParseWorkflowFileWith, toWireStepPlugins } from "@path/schema";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { STEP_PLUGINS_DIR, scanStepPlugins } from "../../src/plugin/scan.js";
-import type { StepRequest, StepResult } from "../../src/plugin/seam.js";
+import { STEP_PLUGINS_DIR, scanStepPlugins } from "../../src/plugin-seam/scan.js";
+import type { StepRequest, StepResult } from "../../src/plugin-seam/seam.js";
 
 // The end-to-end dogfood of the public surface (#336, ADR 0019 sub-10): the two shipped built-in leaf
 // step types are loaded through the real scanner (#335) from the real `plugin/step-plugin/` directory, and a
