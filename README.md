@@ -15,6 +15,8 @@ The part that makes PATH different is what happens when work stops:
 - **Humans are steps.** A `person-activity` step parks its run in the leaf-only `awaiting` status.
   Somebody presses **Complete** an hour or a week later, and the run continues from that point.
 
+![The PATH designer: a workflow on the canvas, with its run tree and node I/O in the run dock below](docs/images/designer.png)
+
 ## Why PATH
 
 - **JSON, not YAML.** One strict schema (`path/workflow@5`) validates a file before anything runs.
