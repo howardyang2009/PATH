@@ -273,6 +273,24 @@ describe("runNode — branch", () => {
     });
   });
 
+  it("reads the predecessor's output in `when` under `previous` (ADR 0079)", async () => {
+    const { run } = makeRun();
+    const node: BranchNode = {
+      type: "branch",
+      id: "route",
+      name: "route",
+      arms: [
+        { when: { type: "equals", path: "previous.choice", value: "a" }, node: echo("arm-a", "A") },
+        { when: { type: "equals", path: "previous.choice", value: "b" }, node: echo("arm-b", "B") },
+      ],
+    };
+
+    expect(await runNode(run, node, { choice: "b" }, makeExec())).toEqual({
+      status: "succeeded",
+      output: "B",
+    });
+  });
+
   // Silent fall-through would hide an authoring bug, so it fails the run (§5.2).
   it("fails the run when nothing matches and there is no else, carrying every arm's trace", async () => {
     const { run, observed } = makeRun();
@@ -592,6 +610,24 @@ describe("runNode — binary step", () => {
       status: "succeeded",
       output: "carried",
     });
+  });
+
+  it("builds an input map over `previous`, the predecessor's output (ADR 0079)", async () => {
+    const { run } = makeRun();
+    const echoStdin =
+      "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>process.stdout.write(d))";
+    const node = {
+      type: "binary",
+      id: "cat",
+      name: "cat",
+      command: "node",
+      args: ["-e", echoStdin],
+      input: { picked: "${previous.choice}", from: "${context.who}" },
+    } as Node;
+
+    const outcome = await runNode(run, node, { choice: "a" }, makeExec({ who: "ann" }));
+
+    expect(outcome).toEqual({ status: "succeeded", output: '{"picked":"a","from":"ann"}' });
   });
 
   it("lands its publish on the run's context after it succeeds (§5.3)", async () => {

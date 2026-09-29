@@ -4,7 +4,7 @@ import { ConfigObjectSchema } from "./config.js";
 import { IdSchema, NameSchema } from "./ids.js";
 import { interpolableString, interpolatedJsonValue } from "./interpolation.js";
 import type { WorkflowNode } from "./node-type.js";
-import { PUBLISH_ROOTS, STEP_ROOTS } from "./roots.js";
+import { INPUT_ROOTS, PUBLISH_ROOTS, STEP_ROOTS } from "./roots.js";
 
 // The envelope fields every step node carries, shared by `buildPluginMember`. `worker` is a
 // worker-*name* string, not a tagged object: each step type's `worker` is a `z.enum` of its own
@@ -13,7 +13,7 @@ export const commonStepFields = {
   id: IdSchema,
   name: NameSchema,
   config: ConfigObjectSchema.optional(),
-  input: interpolatedJsonValue(STEP_ROOTS).optional(),
+  input: interpolatedJsonValue(INPUT_ROOTS).optional(),
   parse: z.enum(["text", "json"]).optional(),
   publish: z.record(z.string(), interpolatedJsonValue(PUBLISH_ROOTS)).optional(),
 };

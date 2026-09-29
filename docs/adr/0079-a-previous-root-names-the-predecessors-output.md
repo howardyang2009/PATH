@@ -45,7 +45,7 @@ A node's predecessor output reaches it today in two ways, and neither can name i
 
    | Position | Roots |
    | --- | --- |
-   | step `input` map (`STEP_ROOTS`) | `config`, `context`, `previous` |
+   | step `input` map (`INPUT_ROOTS`) | `config`, `context`, `previous` |
    | `when` / `condition` (`CONDITION_ROOTS`) | `context`, `previous` |
    | step `publish` map (`PUBLISH_ROOTS`) | `config`, `context`, `output` |
 
@@ -54,8 +54,9 @@ A node's predecessor output reaches it today in two ways, and neither can name i
    `max_iterations`, `max_jumps`) keep their roots.
 
 4. **Two phases.**
-   - **Phase A, additive, inside `path/workflow@5`.** Add `previous` to `INTERPOLATION_ROOTS`,
-     `STEP_ROOTS` and `CONDITION_ROOTS`. `output` stays legal in conditions as a deprecated name for
+   - **Phase A, additive, inside `path/workflow@5`.** Add `previous` to `INTERPOLATION_ROOTS` and
+     `CONDITION_ROOTS`, and give the `input` map its own `INPUT_ROOTS`. `STEP_ROOTS` keeps serving
+     the positions that stay on `config` + `context`. `output` stays legal in conditions as a deprecated name for
      the same value, so every existing file still loads.
    - **Phase B, `path/workflow@6`.** Remove `output` from `CONDITION_ROOTS`. The `@5` to `@6`
      migration rewrites `output` and `output.*` in `when.path` and `condition.path` to `previous` and

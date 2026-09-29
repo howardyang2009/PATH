@@ -2,6 +2,7 @@ import type { WireStepPlugin } from "@path/client-core";
 import {
   CONDITION_ROOTS,
   type Condition,
+  INPUT_ROOTS,
   type InterpolationRoot,
   PUBLISH_ROOTS,
   STEP_ROOTS,
@@ -137,6 +138,7 @@ export function ReferenceSection({
   } else if (node.type === "checkpoint") {
     for (const root of CONDITION_ROOTS) roots.add(root);
   } else if (carriesEnvelope(node.type)) {
+    for (const root of INPUT_ROOTS) roots.add(root);
     for (const root of PUBLISH_ROOTS) roots.add(root);
   }
   if (roots.size === 0) return null;

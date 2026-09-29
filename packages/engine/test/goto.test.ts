@@ -195,6 +195,19 @@ describe("goto — the top-level walk and its passes", () => {
     expect(r.inputs.get("c")).toEqual(["a-1"]);
   });
 
+  it("a forward-jump target's `${previous}` is the goto's passed-through output, not the skipped B's (ADR 0079)", async () => {
+    const r = await run(
+      file([
+        step("a"),
+        { type: "goto", id: "check", target: "c", max_jumps: 1 },
+        step("b"),
+        step("c", { input: { from: "${previous}" } }),
+      ]),
+    );
+    expect(r.result).toMatchObject({ status: "succeeded" });
+    expect(r.inputs.get("c")).toEqual([{ from: "a-1" }]);
+  });
+
   it("G-E-05: a condition that stays true fails pass 3 and the workflow-run once max_jumps (2) is spent", async () => {
     const r = await run(
       file([

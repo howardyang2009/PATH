@@ -500,6 +500,13 @@ Context ──shared blackboard──> all steps of one workflow-run (isolated p
   **Pass** share it, and nothing is reset when a loop repeats or a `goto` jumps backward. A key that no
   node has published yet on the path taken is unresolvable when read, whatever the reason
   ([ADR 0059](https://github.com/howardyang2009/PATH/blob/main/docs/adr/0059-context-under-goto-is-one-last-writer-wins-blackboard-across-passes.md)).
+- **Previous** — the output object of the node that ran just before this node in the walk: the
+  value a step takes as its input when it declares no `input` map. A step's `input` map reads it as
+  `${previous.*}`, and a condition reads it as `previous.*`. The default-input chain places it: a
+  block's first node gets the block's predecessor's output, a `while-do` iteration gets the prior
+  iteration's, a `goto` target gets the goto's passed-through output, and a workflow-run's first node
+  gets the run's input. `output` is a different root: a step's **own** output, read in `publish`
+  ([ADR 0079](https://github.com/howardyang2009/PATH/blob/main/docs/adr/0079-a-previous-root-names-the-predecessors-output.md)).
 - **Publish set** — of a node: the set of `publish` keys declared on that node, plus the publish sets
   of every node reachable through its child bodies (the nested block grammar), through any depth of
   nesting. It **excludes** the file that a nested `workflow` step refs, because that file has its own

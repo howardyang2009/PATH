@@ -76,6 +76,15 @@ describe("ConditionSchema — leaf predicates", () => {
     ).toBe(false);
   });
 
+  it("accepts a `previous` path, and rejects `input` (ADR 0079)", () => {
+    expect(
+      ConditionSchema.safeParse({ type: "equals", path: "previous.choice", value: "a" }).success,
+    ).toBe(true);
+    expect(
+      ConditionSchema.safeParse({ type: "equals", path: "input.choice", value: "a" }).success,
+    ).toBe(false);
+  });
+
   it("rejects a path that does not start with an allowed root", () => {
     expect(ConditionSchema.safeParse({ type: "exists", path: "config.x" }).success).toBe(false);
     expect(ConditionSchema.safeParse({ type: "exists", path: "bogus.x" }).success).toBe(false);
@@ -84,6 +93,7 @@ describe("ConditionSchema — leaf predicates", () => {
   it("accepts bare-root paths", () => {
     expect(ConditionSchema.safeParse({ type: "exists", path: "context" }).success).toBe(true);
     expect(ConditionSchema.safeParse({ type: "exists", path: "output" }).success).toBe(true);
+    expect(ConditionSchema.safeParse({ type: "exists", path: "previous" }).success).toBe(true);
   });
 });
 

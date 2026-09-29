@@ -70,6 +70,12 @@ describe("validateInputDraft", () => {
     if (r.ok) expect(asRec(r.value).input).toEqual({ a: "${context.x}" });
   });
 
+  it("accepts a `previous` placeholder, the predecessor's output (ADR 0079)", () => {
+    const r = validateInputDraft(apiNode(), '{"pick":"${previous.choice}"}');
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(asRec(r.value).input).toEqual({ pick: "${previous.choice}" });
+  });
+
   it("drops the input key for an empty object or empty draft", () => {
     const withInput = apiNode({ input: { a: 1 } });
     expect("input" in asRec(pickValue(validateInputDraft(withInput, "{}")))).toBe(false);

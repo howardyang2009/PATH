@@ -460,6 +460,11 @@ Authoring errors surface at load, never mid-run. An **unset `$env` variable is n
 (whole-string rule, §6.6) makes that value the entire input object, and literals are allowed. When
 `input` is absent, the step's input object is the **previous node's output object**.
 
+That object is the root **`previous`**: the output object of the node that ran just before, placed
+by the chain below. An `input` map builds a new object over `config`, `context` and `previous`
+(`"${previous}"` is the whole object, `"${previous.x}"` one field); nothing of `previous` reaches
+the step unless the map names it (ADR 0079).
+
 **The default-input chain** threads through every slot:
 
 - At the **top level** and inside a **`sequence`**, the first node's default input is the **enclosing
@@ -578,8 +583,8 @@ for strings deliberately left unparsed.)
 
   `worker` is a plain name string, and `config` (including `config.model` / `config.options`) is
   literal — neither is an evaluated position.
-- **Roots**: `config` and `context`. In `publish` maps only, the additional root `output` (the step's
-  own output object). Bare roots are valid (`"${output}"`, `"${context}"`). Paths are plain dot-paths
+- **Roots**: `config` and `context`. In `input` maps only, the additional root `previous` (§6.1). In
+  `publish` maps only, the additional root `output` (the step's own output object). Bare roots are valid (`"${output}"`, `"${context}"`). Paths are plain dot-paths
   (numeric segments index arrays; no wildcards).
 
 ## 7. Config
@@ -671,7 +676,8 @@ caught anywhere below the block, including one nested through a `sequence` or in
 
 Zod-validated structured predicate trees, discriminated on `type`. Predicates: `exists`, `equals`,
 `one-of`, `matches`, `range`, `valid-json`. Combinators: `all`/`any`/`not`. Dot-paths over roots
-`context` and `output`. Error semantics are strict. Interpolation is never evaluated inside condition
+`context` and `previous` (the predecessor's output, §6.1). `output` is a deprecated name for
+`previous` here, removed in `@6` (ADR 0079). Error semantics are strict. Interpolation is never evaluated inside condition
 trees. Conditions appear on `branch` arm `when`s, `while-do` `condition`, and `checkpoint` `condition`.
 
 ## 10. Deferred and owned elsewhere

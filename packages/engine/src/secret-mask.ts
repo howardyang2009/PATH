@@ -98,7 +98,7 @@ export function collectSecrets(configs: ConfigObject[]): SecretMasker {
 }
 
 /** Scrubs a condition trace's `value` leaves and `message`: a condition reads the `context` and
- * `output` roots, so a trace can carry a published secret (mvp spec §8.1). */
+ * predecessor-output roots, so a trace can carry a published secret (mvp spec §8.1). */
 function maskTrace(masker: SecretMasker, trace: Trace): Trace {
   if (trace.type === "all" || trace.type === "any") {
     return { ...trace, of: trace.of.map((child) => maskTrace(masker, child)) };
