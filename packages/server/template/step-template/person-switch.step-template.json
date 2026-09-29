@@ -1,6 +1,6 @@
 {
   "format": "path/workflow@6",
-  "id": "0e6be717-1546-4ae9-828b-f4b4a8415ab6",
+  "id": "79a3ebdc-20ec-4e68-9c5d-708aa9022147",
   "description": "A person picks which of several options runs next; the flow branches on the chosen label (ADR 0052).",
   "body": [
     {
@@ -10,7 +10,7 @@
       "body": [
         {
           "id": "cc6a8e62-d739-4e17-8a63-b0ed9d8fab3e",
-          "name": "choose",
+          "name": "choice",
           "description": "Pick which option runs next.",
           "outputSchema": {
             "type": "object",
@@ -21,7 +21,8 @@
                 "description": "The option to run next.",
                 "enum": [
                   "option-a",
-                  "option-b"
+                  "option-b",
+                  "option-c"
                 ]
               }
             },
@@ -44,13 +45,11 @@
                 "value": "option-a"
               },
               "node": {
-                "id": "5c347a16-6774-4927-a2b4-0631b8f55e18",
-                "name": "option-a",
-                "command": "echo",
-                "args": [
-                  "option-a"
-                ],
-                "type": "binary"
+                "type": "goto",
+                "id": "7f2087dd-66c9-451b-9cee-d5392c3069c0",
+                "name": "goto-1",
+                "target": "person-switch",
+                "max_jumps": 3
               }
             },
             {
@@ -60,13 +59,25 @@
                 "value": "option-b"
               },
               "node": {
-                "id": "5d84996e-3b27-40cd-8222-c90f3719c968",
-                "name": "option-b",
-                "command": "echo",
-                "args": [
-                  "option-b"
-                ],
-                "type": "binary"
+                "type": "goto",
+                "id": "a97d15da-bf8d-4afc-adc9-38aa7ca38895",
+                "name": "goto-2",
+                "target": "person-switch",
+                "max_jumps": 3
+              }
+            },
+            {
+              "when": {
+                "type": "equals",
+                "path": "previous.choice",
+                "value": "option-c"
+              },
+              "node": {
+                "type": "goto",
+                "id": "b430b286-ee4c-4270-912a-1b7ffe534ad7",
+                "name": "goto-3",
+                "target": "person-switch",
+                "max_jumps": 3
               }
             }
           ]
