@@ -183,6 +183,7 @@ export {
 export {
   CONDITION_ROOTS,
   type ConditionRoot,
+  INPUT_ROOTS,
   INTERPOLATION_ROOTS,
   PUBLISH_ROOTS,
   STEP_ROOTS,

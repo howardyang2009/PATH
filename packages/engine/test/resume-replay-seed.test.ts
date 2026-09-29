@@ -184,6 +184,41 @@ describe("replay from seed — straight-line file", () => {
   });
 });
 
+describe("replay from seed — `previous` (ADR 0079)", () => {
+  it("a re-run step's `${previous}` is its reused predecessor's recorded output", async () => {
+    const ran: Executed[] = [];
+    const result = await runWorkflow(
+      tree([
+        { type: "prompt", id: "a", name: "a", prompt: "a" },
+        { type: "prompt", id: "b", name: "b", prompt: "b", input: { from: "${previous}" } },
+      ]),
+      "/tmp",
+      {
+        observer: fakeObserver(),
+        workerOverrides: promptOverride(recordingWorker({}, ran)),
+        continuation: {
+          kind: "resume",
+          originalRuns: [
+            run({
+              runId: "orig-root",
+              parentRunId: null,
+              nodeId: null,
+              nodeName: null,
+              status: "failed",
+            }),
+            run({ runId: "a-run", parentRunId: "orig-root", nodeId: "a", status: "succeeded" }),
+            run({ runId: "b-run", parentRunId: "orig-root", nodeId: "b", status: "failed" }),
+          ],
+          readBlob: reader({ "orig-root/input.json": {}, "a-run/output.json": "1" }, []),
+        },
+      },
+    );
+
+    expect(result.status).toBe("succeeded");
+    expect(ran).toEqual([{ label: "b", input: { from: "1" } }]);
+  });
+});
+
 describe("replay from seed — while-do", () => {
   it("a re-run loop evaluates its condition against the seed, not against keys its own past iterations wrote", async () => {
     // [a, loop { body }]: the loop runs while `done` is absent; its body publishes `done`. The

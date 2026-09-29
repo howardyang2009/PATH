@@ -39,6 +39,15 @@ describe("step nodes", () => {
     expect(result.success).toBe(true);
   });
 
+  it("reads `previous` in an input map but not in publish (ADR 0079)", () => {
+    const step = { type: "prompt", id: ID, name: "a", prompt: "hi" };
+    expect(
+      NodeSchema.safeParse({ ...step, input: { pick: "${previous.choice}", all: "${previous}" } })
+        .success,
+    ).toBe(true);
+    expect(NodeSchema.safeParse({ ...step, publish: { x: "${previous}" } }).success).toBe(false);
+  });
+
   it("accepts an omitted worker (the type default) and the type's own worker name (`@3` §4)", () => {
     expect(NodeSchema.safeParse({ type: "prompt", id: ID, name: "a", prompt: "hi" }).success).toBe(
       true,

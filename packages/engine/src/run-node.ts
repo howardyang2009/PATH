@@ -333,7 +333,7 @@ export async function runNode(
     // A still-parked sibling: the walk parks again; only the last such Complete runs the tail.
     return { status: "awaiting" };
   } else {
-    const scope = interpolationScope(stepConfig, exec.context);
+    const scope = { ...interpolationScope(stepConfig, exec.context), previous: incomingOutput };
     let stepInput: JsonValue;
     try {
       stepInput = node.input !== undefined ? interpolateValue(node.input, scope) : incomingOutput;

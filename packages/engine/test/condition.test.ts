@@ -19,6 +19,7 @@ const roots: ConditionRoots = {
     nothing: null,
   },
   output: { status: "done" },
+  previous: { status: "done" },
 };
 
 function evalCond(condition: Condition) {
@@ -26,6 +27,12 @@ function evalCond(condition: Condition) {
 }
 
 describe("evaluateCondition — leaf predicates over strict semantics (ticket #21)", () => {
+  it("reads the predecessor's output under `previous` (ADR 0079)", () => {
+    expect(evalCond({ type: "equals", path: "previous.status", value: "done" }).outcome).toBe(
+      "true",
+    );
+  });
+
   it("exists is true when the path resolves and false (not error) when it does not", () => {
     expect(evalCond({ type: "exists", path: "context.name" }).outcome).toBe("true");
     const missing = evalCond({ type: "exists", path: "context.absent" });

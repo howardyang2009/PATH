@@ -220,8 +220,8 @@ export function ConfigRowField({
 
 /**
  * The interpolable **input** object: a live-validated JSON textarea whose `${…}` placeholders
- * reference `config.` / `context.` dot-paths — the roots a step may read before it runs
- * (`STEP_ROOTS`; its own `output` does not exist yet). An unclosed or ill-typed placeholder is
+ * reference `config.` / `context.` / `previous.` dot-paths — the roots a step may read before it
+ * runs (`INPUT_ROOTS`; its own `output` does not exist yet). An unclosed or ill-typed placeholder is
  * reported and never committed.
  */
 export function InputEditor({

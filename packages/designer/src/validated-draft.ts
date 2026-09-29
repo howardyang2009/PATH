@@ -2,6 +2,7 @@ import type { WireStepPlugin } from "@path/client-core";
 import {
   checkInterpolationSyntax,
   FORMAT_VERSION,
+  INPUT_ROOTS,
   type InterpolationRoot,
   type JsonValue,
   STEP_ROOTS,
@@ -118,10 +119,10 @@ export function validateJsonPayload(
 
 /**
  * The input object's rule (§ Input/output wiring): any JSON value with `${…}` placeholders over the
- * step roots; empty, or `{}`, drops the key, and an ill-typed placeholder errors.
+ * input roots; empty, or `{}`, drops the key, and an ill-typed placeholder errors.
  */
 export function validateInputDraft(node: WorkflowNode, text: string): DraftResult<WorkflowNode> {
-  const parsed = parseInputDraft(text, STEP_ROOTS);
+  const parsed = parseInputDraft(text, INPUT_ROOTS);
   if (!parsed.ok) return { ok: false, error: parsed.error };
   const isEmptyObject =
     parsed.value !== null &&

@@ -12,6 +12,7 @@ import { CONDITION_ROOTS } from "../src/roots.js";
 const roots = {
   context: { name: "ada", nested: { deep: [10, 20] }, flag: false, nothing: null },
   output: "a string",
+  previous: "a string",
 };
 
 describe("resolveDotPath", () => {

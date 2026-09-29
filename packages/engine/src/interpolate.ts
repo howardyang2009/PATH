@@ -6,7 +6,7 @@ import {
   tokenizeInterpolation,
 } from "@path/schema";
 
-/** The `config`/`context`/`output` values a `${dot.path}` resolves against (format doc §5). */
+/** The `config`/`context`/`output`/`previous` values a `${dot.path}` resolves against (format doc §6). */
 export type InterpolationScope = { [root: string]: JsonValue };
 
 // Thrown rather than returned as a Result: callers catch it and translate it into their own
