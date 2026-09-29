@@ -2,9 +2,9 @@ import { type ZodRawShape, z } from "zod";
 import { ConditionSchema } from "./conditions.js";
 import { ConfigObjectSchema } from "./config.js";
 import { IdSchema, NameSchema } from "./ids.js";
-import { interpolableString, interpolatedJsonValue } from "./interpolation.js";
+import { interpolableString, interpolatedJsonValue, interpolationIssues } from "./interpolation.js";
 import type { WorkflowNode } from "./node-type.js";
-import { INPUT_ROOTS, PUBLISH_ROOTS, STEP_ROOTS } from "./roots.js";
+import { ROOTS, typeFieldRoots } from "./roots.js";
 
 // The envelope fields every step node carries, shared by `buildPluginMember`. `worker` is a
 // worker-*name* string, not a tagged object: each step type's `worker` is a `z.enum` of its own
@@ -13,9 +13,9 @@ export const commonStepFields = {
   id: IdSchema,
   name: NameSchema,
   config: ConfigObjectSchema.optional(),
-  input: interpolatedJsonValue(INPUT_ROOTS).optional(),
+  input: interpolatedJsonValue(ROOTS.input).optional(),
   parse: z.enum(["text", "json"]).optional(),
-  publish: z.record(z.string(), interpolatedJsonValue(PUBLISH_ROOTS)).optional(),
+  publish: z.record(z.string(), interpolatedJsonValue(ROOTS.publish)).optional(),
 };
 
 // `ref` is a relative path to another workflow file — not an interpolated position
@@ -27,7 +27,7 @@ const RefSchema = z
     message: "ref must be a relative path, not absolute",
   });
 
-const MaxIterationsSchema = z.union([z.number().int().positive(), interpolableString(STEP_ROOTS)]);
+const MaxIterationsSchema = z.union([z.number().int().positive(), interpolableString(ROOTS.limit)]);
 
 /**
  * The recursion pair a member set closes over: the node-array slot and the single-node slot,
@@ -209,10 +209,22 @@ function buildPluginMember(typeName: string, entry: RegistryStepType): z.ZodObje
     throw new Error(`step type "${typeName}": a leaf step type must ship at least one worker`);
   }
 
+  // Every type field is interpolated at run start, so a root it may not read is a load error, not a
+  // mid-run failure (format §5.6).
+  const fields: Record<string, z.ZodType> = {};
+  for (const [fieldName, fieldSchema] of Object.entries(entry.fields)) {
+    const roots = typeFieldRoots(typeName, fieldName);
+    fields[fieldName] = (fieldSchema as z.ZodType).superRefine((value, ctx) => {
+      for (const issue of interpolationIssues(value, roots)) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: issue.path, message: issue.error });
+      }
+    });
+  }
+
   return z
     .object({
       ...commonStepFields,
-      ...entry.fields,
+      ...fields,
       type: z.literal(typeName),
       // `config` is open (passthrough): a step's config also carries keys an ancestor or a sibling
       // leaf type declared, resolved at run start (ADR 0022). The plugin's fragment names this

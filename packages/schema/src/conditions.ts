@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { AllCondition, AnyCondition, Condition, NotCondition } from "./condition-type.js";
 import { checkDotPath } from "./dot-path.js";
-import { CONDITION_ROOTS } from "./roots.js";
+import { ROOTS } from "./roots.js";
 
 const ConditionPathSchema = z.string().superRefine((value, ctx) => {
   // `@5` named the predecessor's output `output` here; say where it went.
@@ -12,7 +12,7 @@ const ConditionPathSchema = z.string().superRefine((value, ctx) => {
     });
     return;
   }
-  const result = checkDotPath(value, CONDITION_ROOTS);
+  const result = checkDotPath(value, ROOTS.condition);
   if (!result.ok) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, message: result.error });
   }

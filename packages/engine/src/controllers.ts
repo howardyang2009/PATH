@@ -1,11 +1,7 @@
 import type { BranchNode, CheckpointNode, GotoNode, JsonValue, WhileDoNode } from "@path/schema";
 import { openContainerRun } from "./child-run.js";
 import { describeConditionFailure, evaluateCondition, type Trace } from "./condition.js";
-import {
-  describeInterpolationError,
-  interpolateToString,
-  interpolationScope,
-} from "./interpolate.js";
+import { describeInterpolationError, interpolateToString, scopeFor } from "./interpolate.js";
 import {
   type NodeExecContext,
   type RunContext,
@@ -182,7 +178,10 @@ export function resolveBound(
   if (typeof value === "number") return value;
   let resolved: string;
   try {
-    resolved = interpolateToString(value, interpolationScope(run.fileConfig, exec.context));
+    resolved = interpolateToString(
+      value,
+      scopeFor("limit", { config: run.fileConfig, context: exec.context }),
+    );
   } catch (err) {
     return { status: "failed", error: describeInterpolationError(node.name, err) };
   }

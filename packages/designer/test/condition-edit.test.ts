@@ -65,7 +65,7 @@ describe("changeConditionType carries what the new shape can hold", () => {
 
 describe("validateCondition rejects an ill-typed condition", () => {
   it("flags a bad dot-path root", () => {
-    // `config` is not a legal condition root (CONDITION_ROOTS is context/output).
+    // `config` is not a legal condition root (ROOTS.condition is context/previous).
     expect(validateCondition({ type: "exists", path: "config.x" } as Condition)).not.toBeNull();
   });
 

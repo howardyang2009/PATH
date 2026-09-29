@@ -6,6 +6,7 @@
 // Surfaces name the domain through this one seam; everything below originates in `@path/schema`, so
 // this package depends on no engine and a browser never sits one import from SQLite.
 export {
+  AWAITING_STEP_TYPE,
   type BlobName,
   type CompleteRunRequest,
   type CompleteRunResponse,
@@ -60,7 +61,6 @@ export {
 // The awaiting surface (ADR 0040): the `person-activity` node read from the workflow file by id,
 // and the framework-free Complete-form model both surfaces draw.
 export {
-  AWAITING_STEP_TYPE,
   type AwaitingNode,
   type AwaitingRun,
   awaitingNodeForRun,

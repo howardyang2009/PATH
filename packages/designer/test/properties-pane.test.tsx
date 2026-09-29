@@ -628,7 +628,7 @@ describe("the workflow-level output object (§6.4)", () => {
 
 describe("the workflow-level reference list", () => {
   it("gathers the output roots' referenceable paths into one file-level reference section", async () => {
-    // The file's own `output` reads config/context (STEP_ROOTS), so the file reference list carries
+    // The file's own `output` reads config/context (ROOTS.fileOutput), so the file reference list carries
     // those roots' concrete keys plus their bare prefixes — the counterpart of a node's reference
     // list.
     const file = {

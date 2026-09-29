@@ -1,5 +1,5 @@
 import type { WireStepPlugin } from "@path/client-core";
-import { PUBLISH_ROOTS, STEP_ROOTS, type WorkflowNode } from "@path/schema";
+import { ROOTS, type WorkflowNode } from "@path/schema";
 import { describe, expect, it } from "vitest";
 import {
   validateInputDraft,
@@ -142,27 +142,29 @@ describe("validateOutputSchema", () => {
 
 describe("validRowsToMap", () => {
   it("builds the map when every named row's value interpolates", () => {
-    expect(validRowsToMap([{ key: "out", value: "${output.x}" }], PUBLISH_ROOTS)).toEqual({
+    expect(validRowsToMap([{ key: "out", value: "${output.x}" }], ROOTS.publish)).toEqual({
       ok: true,
       map: { out: "${output.x}" },
     });
   });
 
   it("reports not-ok when a named row's value is ill-typed", () => {
-    expect(validRowsToMap([{ key: "out", value: "${output.x" }], PUBLISH_ROOTS)).toEqual({
+    expect(validRowsToMap([{ key: "out", value: "${output.x" }], ROOTS.publish)).toEqual({
       ok: false,
     });
   });
 
   it("skips an unnamed (blank-key) in-progress row rather than failing it", () => {
-    expect(validRowsToMap([{ key: "", value: "${output.x" }], PUBLISH_ROOTS)).toEqual({
+    expect(validRowsToMap([{ key: "", value: "${output.x" }], ROOTS.publish)).toEqual({
       ok: true,
       map: {},
     });
   });
 
   it("honours the roots it is given (output is not a step root)", () => {
-    expect(validRowsToMap([{ key: "k", value: "${output.x}" }], STEP_ROOTS)).toEqual({ ok: false });
+    expect(validRowsToMap([{ key: "k", value: "${output.x}" }], ROOTS.fileOutput)).toEqual({
+      ok: false,
+    });
   });
 });
 

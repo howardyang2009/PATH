@@ -472,7 +472,7 @@ the typed condition builder. There is no node-to-node wire on the canvas.
 
 The **workflow's own output object** (`output`, workflow-format-v0.md §6.4) is authored on the **file's own
 properties** (the empty-canvas selection), below its config: a `key → ${…}` map whose values interpolate
-over `config.`/`context.` (`STEP_ROOTS` — the output map cannot read `output`), live-validated the same
+over `config.`/`context.` (`ROOTS.fileOutput`: the output map cannot read `output`), live-validated the same
 way. It is the explicit contract a parent's `publish` reads back across a `workflow`-ref, so a nested
 workflow that declares one exposes named results to its caller rather than a bare last-node output.
 

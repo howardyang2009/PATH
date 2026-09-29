@@ -2,10 +2,9 @@ import type { WireStepPlugin } from "@path/client-core";
 import {
   checkInterpolationSyntax,
   FORMAT_VERSION,
-  INPUT_ROOTS,
   type InterpolationRoot,
   type JsonValue,
-  STEP_ROOTS,
+  ROOTS,
   safeParseWorkflowFile,
   type WorkflowFile,
   type WorkflowNode,
@@ -122,7 +121,7 @@ export function validateJsonPayload(
  * input roots; empty, or `{}`, drops the key, and an ill-typed placeholder errors.
  */
 export function validateInputDraft(node: WorkflowNode, text: string): DraftResult<WorkflowNode> {
-  const parsed = parseInputDraft(text, INPUT_ROOTS);
+  const parsed = parseInputDraft(text, ROOTS.input);
   if (!parsed.ok) return { ok: false, error: parsed.error };
   const isEmptyObject =
     parsed.value !== null &&
@@ -192,7 +191,7 @@ export function validateMaxIterations(text: string): DraftResult<number | string
     if (n < 1) return { ok: false, error: "Must be a positive whole number." };
     return { ok: true, value: n };
   }
-  const check = checkInterpolationSyntax(text, STEP_ROOTS);
+  const check = checkInterpolationSyntax(text, ROOTS.limit);
   if (!check.ok) return { ok: false, error: check.error ?? "Invalid interpolation." };
   return { ok: true, value: text };
 }

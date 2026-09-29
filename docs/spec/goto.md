@@ -51,7 +51,7 @@ Out of scope: `person-switch` (a Step-Template, ADR 0052), jumps into a nested b
 - `target`: required. A `NameSchema` string (`^[a-z][a-z0-9-]*$`), the **name** of the target node,
   never its `id`.
 - `max_jumps`: required. `MaxIterationsSchema` reused: a positive integer, or a string that
-  interpolates to one over `STEP_ROOTS` (`config` + `context`). There is no parse-time default and no
+  interpolates to one over `ROOTS.limit` (`config` + `context`). There is no parse-time default and no
   engine fallback. `3` is the authoring default only (the Designer pre-fills it).
 - `goto` joins `buildCoreMembers` and `RESERVED_TYPE_NAMES`, so no plugin folder may claim the name.
 - `goto` joins `ControllerType` / `CONTROLLER_TYPES` in `node-walk.ts`, so `isStepType("goto")` is

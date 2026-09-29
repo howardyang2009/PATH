@@ -1,12 +1,13 @@
 import {
-  type ConfigObject,
   type JsonValue,
   mapSecrets,
+  type RootPosition,
   resolveDotPath as resolvePath,
+  type ScopeFor,
   tokenizeInterpolation,
 } from "@path/schema";
 
-/** The `config`/`context`/`output`/`previous` values a `${dot.path}` resolves against (format doc §6). */
+/** The root values a `${dot.path}` resolves against (format doc §6). */
 export type InterpolationScope = { [root: string]: JsonValue };
 
 // Thrown rather than returned as a Result: callers catch it and translate it into their own
@@ -14,18 +15,15 @@ export type InterpolationScope = { [root: string]: JsonValue };
 export class InterpolationError extends Error {}
 
 /**
- * The scope a node's `${}` expressions resolve against: its effective `config`, the enclosing run's
- * `context`, and — for a `publish` map only — the step's own `output`.
+ * The scope for one position, typed from `ROOTS`: a caller must pass exactly the roots the load let
+ * that position name, so a new root is a compile error at every site that must supply it.
  */
-export function interpolationScope(
-  config: ConfigObject,
-  context: { [key: string]: JsonValue },
-  output?: JsonValue,
+export function scopeFor<P extends RootPosition>(
+  _position: P,
+  values: ScopeFor<P>,
 ): InterpolationScope {
   // Structurally compatible but not nominally assignable across the recursive unions.
-  const scope: InterpolationScope = { config: config as unknown as JsonValue, context };
-  if (output !== undefined) scope.output = output;
-  return scope;
+  return values as unknown as InterpolationScope;
 }
 
 /**

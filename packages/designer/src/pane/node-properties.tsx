@@ -1,11 +1,9 @@
 import type { WireStepPlugin } from "@path/client-core";
 import {
-  CONDITION_ROOTS,
   type Condition,
-  INPUT_ROOTS,
   type InterpolationRoot,
-  PUBLISH_ROOTS,
-  STEP_ROOTS,
+  nodePositions,
+  ROOTS,
   type WorkflowFile,
   type WorkflowNode,
 } from "@path/schema";
@@ -57,7 +55,7 @@ export function NodeProperties({
   };
   const site = locate(file, node.id);
   const role = occupantRole(site, file);
-  const condSuggest = referenceablePaths(file, CONDITION_ROOTS);
+  const condSuggest = referenceablePaths(file, ROOTS.condition);
 
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: delegated Tab handling for wrapped inputs.
@@ -130,17 +128,8 @@ export function ReferenceSection({
   node: WorkflowNode;
   site: ReturnType<typeof locate>;
 }): JSX.Element | null {
-  const roots = new Set<InterpolationRoot>();
-  if (site?.where === "arm") for (const root of CONDITION_ROOTS) roots.add(root);
-  if (node.type === "while-do") {
-    for (const root of CONDITION_ROOTS) roots.add(root);
-    for (const root of STEP_ROOTS) roots.add(root);
-  } else if (node.type === "checkpoint") {
-    for (const root of CONDITION_ROOTS) roots.add(root);
-  } else if (carriesEnvelope(node.type)) {
-    for (const root of INPUT_ROOTS) roots.add(root);
-    for (const root of PUBLISH_ROOTS) roots.add(root);
-  }
+  const roots = new Set<InterpolationRoot>(nodePositions(node.type).flatMap((p) => ROOTS[p]));
+  if (site?.where === "arm") for (const root of ROOTS.condition) roots.add(root);
   if (roots.size === 0) return null;
   return <ReferenceList ownerId={node.id} paths={referenceablePaths(file, [...roots])} />;
 }

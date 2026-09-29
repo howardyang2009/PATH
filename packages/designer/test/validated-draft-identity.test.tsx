@@ -1,4 +1,4 @@
-import { STEP_ROOTS } from "@path/schema";
+import { ROOTS } from "@path/schema";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { type EditKey, editKey } from "../src/edit-key.js";
@@ -66,7 +66,7 @@ function RowsField({
 }): JSX.Element {
   const { rows, setRow } = useKeyedRows(
     () => [{ key: "k", value: owner }],
-    STEP_ROOTS,
+    ROOTS.fileOutput,
     editKey(owner, "publish"),
     onCommit,
   );

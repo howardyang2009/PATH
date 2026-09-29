@@ -1,4 +1,9 @@
-import { isPlainObject, type JsonValue, validateOutputSchema } from "@path/schema";
+import {
+  holdsPlaceholder,
+  isPlainObject,
+  type JsonValue,
+  validateOutputSchema,
+} from "@path/schema";
 
 /** The Complete form model (ADR 0040, CONTEXT.md § Person-activity): the field list, value
  * coercion, client pre-check, and the mapping of the server's ajv `400` onto fields, shared by the
@@ -112,7 +117,11 @@ export function validateCompleteDraft(
   outputSchema: JsonValue | null,
   output: JsonValue,
 ): MappedCompleteErrors {
-  if (outputSchema === null) return { fieldErrors: {}, formErrors: [] };
+  // A schema reading `${config.x}` is resolved only by the server, which holds the run's config;
+  // the raw one would disagree with its verdict.
+  if (outputSchema === null || holdsPlaceholder(outputSchema)) {
+    return { fieldErrors: {}, formErrors: [] };
+  }
   // Validate the bytes the route will see, not the in-memory value: serializing turns a `NaN` (a
   // number field the person typed text into) into `null`, so the pre-check reaches the route's
   // verdict.

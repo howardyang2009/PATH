@@ -1,5 +1,5 @@
 import type { WireStepPlugin } from "@path/client-core";
-import { type ConfigObject, STEP_ROOTS, type WorkflowFile } from "@path/schema";
+import { type ConfigObject, ROOTS, type WorkflowFile } from "@path/schema";
 import { WorkerDefaultsEditor, workerDefaultCandidates } from "@path/viewer";
 import { type EditCommit, type EditKey, editKey } from "../edit-key.js";
 import { withOptionalKey } from "../edit-target.js";
@@ -61,12 +61,13 @@ export function FileProperties({
 
 /**
  * The file-level **Reference** list, the counterpart of a node's `ReferenceSection`. The file's
- * only interpolable field is its own `output` map, whose values read `config.` / `context.`
- * (`STEP_ROOTS` cannot read `output`), so the list gathers those paths; `STEP_ROOTS` always
- * contributes bare prefixes, so it is never empty.
+ * only interpolable field is its own `output` map, whose roots always contribute bare prefixes, so
+ * the list is never empty.
  */
 export function FileReferenceSection({ file }: { file: WorkflowFile }): JSX.Element | null {
-  return <ReferenceList ownerId={file.id} paths={referenceablePaths(file, [...STEP_ROOTS])} />;
+  return (
+    <ReferenceList ownerId={file.id} paths={referenceablePaths(file, [...ROOTS.fileOutput])} />
+  );
 }
 
 /**
@@ -135,7 +136,7 @@ export function FileOutputRegion({
   // Keyed rows: an empty map drops the whole `output` key; a row edit folds to one undo entry.
   const { rows, setRow, addRow, removeRow } = useKeyedRows(
     () => keyedRowsOf((file as { output?: unknown }).output),
-    STEP_ROOTS,
+    ROOTS.fileOutput,
     editKey(file.id, "output"),
     (map, key) => {
       // An empty map omits the `output` key rather than writing `output: {}` (`withOptionalKey`).
@@ -159,7 +160,7 @@ export function FileOutputRegion({
               // biome-ignore lint/suspicious/noArrayIndexKey: rows are positional; the undo fold keys by index.
               key={index}
               row={row}
-              roots={STEP_ROOTS}
+              roots={ROOTS.fileOutput}
               keyLabel="Output key"
               valueLabel="Output value"
               removeLabel="Remove output"

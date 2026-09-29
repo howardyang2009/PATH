@@ -74,11 +74,13 @@ export {
 } from "./instantiate.js";
 export {
   checkInterpolationSyntax,
+  holdsPlaceholder,
   type InterpolationCheckResult,
   type InterpolationRoot,
   type InterpolationToken,
   interpolableString,
   interpolatedJsonValue,
+  interpolationIssues,
   tokenizeInterpolation,
 } from "./interpolation.js";
 export type { JsonValue } from "./json-value.js";
@@ -182,12 +184,14 @@ export {
 } from "./rerun-disposition.js";
 // Which roots are legal where — one declaration each, referenced rather than restated.
 export {
-  CONDITION_ROOTS,
+  AWAITING_STEP_TYPE,
   type ConditionRoot,
-  INPUT_ROOTS,
   INTERPOLATION_ROOTS,
-  PUBLISH_ROOTS,
-  STEP_ROOTS,
+  nodePositions,
+  ROOTS,
+  type RootPosition,
+  type ScopeFor,
+  typeFieldRoots,
 } from "./roots.js";
 export {
   isIterationRun,

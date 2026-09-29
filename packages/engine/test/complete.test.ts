@@ -452,6 +452,29 @@ describe("Complete — the frozen launch config (ADR 0046)", () => {
     }
   });
 
+  it("validates against an outputSchema interpolated over the launch config", async () => {
+    const project = open();
+    try {
+      const ask = {
+        ...(person("ask") as object),
+        outputSchema: {
+          type: "object",
+          properties: { pick: { type: "string", enum: ["${config.choice}"] } },
+        },
+      } as unknown as WorkflowFile["body"][number];
+      const wf = workflow([ask]);
+      await project.run(wf, dir, { operatorConfig: { choice: "yes" } });
+      const leaf = awaitingLeaf(project, project.archive.listRoots()[0]!.runId);
+
+      const refused = await project.complete(wf, leaf.runId, { pick: "no" }, dir);
+      expect(refused.ok).toBe(false);
+      const done = await project.complete(wf, leaf.runId, { pick: "yes" }, dir);
+      expect(done.ok).toBe(true);
+    } finally {
+      project.close();
+    }
+  });
+
   it("fails on a named key when the frozen secret is not supplied again, and runs when it is", async () => {
     // Two launches, because a Complete consumes its leaf: the first continues without the secret
     // and ends before the tail, the second re-enters it and reaches the tail.

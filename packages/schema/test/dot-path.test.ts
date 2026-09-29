@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { checkDotPath, resolveDotPath } from "../src/dot-path.js";
-import { CONDITION_ROOTS } from "../src/roots.js";
+import { ROOTS } from "../src/roots.js";
 
 /**
  * The walk used to exist twice in `@path/engine` — once returning a result for the condition
@@ -75,8 +75,8 @@ describe("resolveDotPath", () => {
 
 describe("checkDotPath and resolveDotPath govern the same grammar", () => {
   it("accepts the roots the condition language declares", () => {
-    for (const root of CONDITION_ROOTS) {
-      expect(checkDotPath(root, CONDITION_ROOTS).ok).toBe(true);
+    for (const root of ROOTS.condition) {
+      expect(checkDotPath(root, ROOTS.condition).ok).toBe(true);
       expect(resolveDotPath(roots, root).found).toBe(true);
     }
   });

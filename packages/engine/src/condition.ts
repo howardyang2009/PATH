@@ -1,10 +1,10 @@
 import {
   type Condition,
   type ConditionOutcome,
-  type ConditionRoot,
   type JsonValue,
   type LeafTrace,
   resolveDotPath,
+  type ScopeFor,
   type Trace,
 } from "@path/schema";
 
@@ -38,12 +38,9 @@ export { TraceSchema } from "@path/schema";
 
 /**
  * The values a condition reads (format §9): `context` (written from inside) and `previous` (the
- * predecessor node's output object, checkpoint-transparent per §5.4).
- *
- * Derived from `CONDITION_ROOTS` rather than restating it, so the deferred third root (`config`,
- * mvp spec §10) becomes one edit in @path/schema instead of three across two packages.
+ * predecessor node's output object, checkpoint-transparent per §5.4). Typed from `ROOTS`.
  */
-export type ConditionRoots = { [K in ConditionRoot]: JsonValue };
+export type ConditionRoots = ScopeFor<"condition">;
 
 export interface ConditionEvaluation {
   outcome: ConditionOutcome;

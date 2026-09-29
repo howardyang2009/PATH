@@ -1,14 +1,11 @@
 import {
+  AWAITING_STEP_TYPE,
   isPlainObject,
   type JsonValue,
   type RunStatus,
   type WorkflowFile,
   walkNodes,
 } from "@path/schema";
-
-/** The one awaiting leaf step type v1 ships (ADR 0039); the same string the Complete route gates
- * on. */
-export const AWAITING_STEP_TYPE = "person-activity";
 
 /** The `person-activity` node's three type fields (CONTEXT.md § Person-activity), read from the
  * workflow file to draw the awaiting surface.

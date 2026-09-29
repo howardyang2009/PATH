@@ -1,11 +1,12 @@
 import {
+  AWAITING_STEP_TYPE,
   type ConfigObject,
   type JsonValue,
   type OutputValidation,
   validateOutputSchema,
   type WorkflowFile,
 } from "@path/schema";
-import { InterpolationError, interpolateValue } from "./interpolate.js";
+import { InterpolationError, interpolateValue, scopeFor } from "./interpolate.js";
 import { resolveNode } from "./ref-tree.js";
 import type { EnvSource } from "./resolve-env.js";
 
@@ -15,9 +16,6 @@ import type { EnvSource } from "./resolve-env.js";
  * config the run executes with: the tree's frozen launch config merged under anything supplied
  * again, which is why this sits behind `Project.complete` rather than in a route.
  */
-
-/** The one awaiting step type. */
-export const AWAITING_STEP_TYPE = "person-activity";
 
 export type OutputCheck =
   | { ok: true }
@@ -64,7 +62,7 @@ export function checkCompletedOutput(args: {
   if (rawSchema === undefined) return { ok: true };
   let schema: JsonValue;
   try {
-    schema = interpolateValue(rawSchema, { config: resolved.config as unknown as JsonValue });
+    schema = interpolateValue(rawSchema, scopeFor("awaitingSchema", { config: resolved.config }));
   } catch (err) {
     if (!(err instanceof InterpolationError)) throw err;
     return {
