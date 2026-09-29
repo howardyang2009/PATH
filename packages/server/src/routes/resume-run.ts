@@ -1,4 +1,4 @@
-import { ConfigObjectSchema, isTerminal, type StartRunResponse } from "@path/schema";
+import { ConfigObjectSchema, type StartRunResponse } from "@path/schema";
 import { z } from "zod";
 import { readRequestBody, sendError, sendJson } from "../http-json.js";
 import { operatorConfigEnvError, prepareRunWorkflow } from "../launch.js";
@@ -42,22 +42,6 @@ export async function handleResumeRun({
   }
   const { root } = address;
 
-  // A still-running run has nothing to resume yet; a succeeded run has nothing left to do.
-  if (!isTerminal(root.status)) {
-    sendError(
-      res,
-      409,
-      `run "${rootRunId}" is still ${root.status}; only a finished run can be resumed`,
-    );
-    return;
-  }
-  // A Resume-from-K target is legitimately succeeded (ADR 0032), so the already-succeeded refusal
-  // is relaxed exactly when `rerun_from_run_id` is supplied; plain Resume's gate is unchanged.
-  if (root.status === "succeeded" && rerunFromRunId === undefined) {
-    sendError(res, 409, `run "${rootRunId}" already succeeded; there is nothing to resume`);
-    return;
-  }
-
   // Recover and re-validate the workflow as it stands now: gone → `404`, now-invalid → `400`, no
   // longer this run's workflow (id changed, ADR 0006) → `409`. No `escapesRoot`: the path came from
   // our own row.
@@ -94,8 +78,8 @@ export async function handleResumeRun({
       sendError(res, 404, `no run found with id "${rootRunId}"`);
       return;
     }
-    // A Resume-from-K refusal: the engine's one legal-K authority rejected the selection before any
-    // successor started. The route only translates.
+    // A refusal from the engine's one Resume gate (a live or fully succeeded tree, or an illegal
+    // K), before any successor started. The route only translates.
     if (err instanceof ResumeRefused) {
       sendError(res, err.status, err.message);
       return;

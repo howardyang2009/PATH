@@ -344,8 +344,9 @@ Responses:
   also lands here when `rerun_from_run_id` names no run of the tree, or resolves to an illegal locus
   (spec §5 reasons 1 and 3).
 - `409 Conflict` — the run is not in a resumable state, each case named distinctly: still `running`
-  (nothing to resume yet); already `succeeded` (nothing to resume — **relaxed** when `rerun_from_run_id`
-  is supplied); it carries no recorded `workflow_path` (a pre-#169 run), so the server cannot know which
+  (nothing to resume yet); every run of its tree `succeeded` (nothing to resume — **relaxed** when
+  `rerun_from_run_id` is supplied; a succeeded root with a non-`succeeded` detached branch is
+  resumable, ADR 0009); it carries no recorded `workflow_path` (a pre-#169 run), so the server cannot know which
   file to re-run; or the file now at that path is a **different workflow** (its `id` no longer matches
   the run's, ADR 0006). The path is recovered from the row, not re-confirmed by the operator, so a
   swapped file is refused rather than run against the predecessor's restored context. A Resume-from-K
