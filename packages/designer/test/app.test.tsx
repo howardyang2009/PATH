@@ -58,7 +58,7 @@ function rootFile(): Record<string, unknown> {
               type: "checkpoint",
               id: uuid(11),
               name: "chk",
-              condition: { type: "exists", path: "output.z" },
+              condition: { type: "exists", path: "previous.z" },
             },
           ],
         },
@@ -153,7 +153,7 @@ describe("Designer open + render", () => {
     expect(within(canvas).getByText("join: collect")).toBeInTheDocument();
     expect(within(canvas).getByText("when exists context.x")).toBeInTheDocument();
     expect(within(canvas).getByText("while exists context.y · max 3")).toBeInTheDocument();
-    expect(within(canvas).getByText("assert exists output.z")).toBeInTheDocument();
+    expect(within(canvas).getByText("assert exists previous.z")).toBeInTheDocument();
     // The ref chip shows its target path.
     expect(within(canvas).getByText("sub/child.workflow.json")).toBeInTheDocument();
   });

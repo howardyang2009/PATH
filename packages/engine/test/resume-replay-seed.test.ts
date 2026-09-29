@@ -78,7 +78,7 @@ function reader(blobs: { [key: string]: JsonValue }, reads: string[]): ResumeInp
 
 function tree(body: WorkflowFile["body"], output?: WorkflowFile["output"]): WorkflowFile {
   return stampNames({
-    format: "path/workflow@5",
+    format: "path/workflow@6",
     name: "resumed",
     config: { model: "m" },
     body,

@@ -14,7 +14,7 @@ const parentIdentity: RunIdentity = {
   nodeId: "n",
   nodeName: "n",
 };
-const file: WorkflowFile = { format: "path/workflow@5", id: "wf", name: "wf", body: [] };
+const file: WorkflowFile = { format: "path/workflow@6", id: "wf", name: "wf", body: [] };
 const loop = { id: "loop-id", name: "loop" };
 
 function parentRun(into: RunEvent[]): RunContext {

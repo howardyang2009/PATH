@@ -38,7 +38,7 @@ function run(
 }
 
 function tree(body: WorkflowFile["body"]): WorkflowFile {
-  return stampNames({ format: "path/workflow@5", name: "k", config: {}, body });
+  return stampNames({ format: "path/workflow@6", name: "k", config: {}, body });
 }
 
 // Three top-level prompts a,b,c, all succeeded under the root run.

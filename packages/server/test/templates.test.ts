@@ -30,7 +30,7 @@ function strongEtag(bytes: string): string {
  * node. */
 function stepTemplate(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
-    format: "path/workflow@5",
+    format: "path/workflow@6",
     id: randomUUID(),
     description: "a saved step fragment",
     body: [{ type: "binary", id: randomUUID(), name: "step-one", command: "echo" }],
@@ -41,7 +41,7 @@ function stepTemplate(overrides: Record<string, unknown> = {}): Record<string, u
 /** A valid workflow file (not a template kind since ADR 0063, so the template store ignores it). */
 function workflowFile(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
-    format: "path/workflow@5",
+    format: "path/workflow@6",
     id: randomUUID(),
     name: "nightly",
     body: [{ type: "binary", id: randomUUID(), name: "step-one", command: "echo" }],
@@ -187,7 +187,7 @@ describe("GET /v0/templates/:id", () => {
       kind: "step",
       origin: "shipped",
       read_only: true,
-      format: "path/workflow@5",
+      format: "path/workflow@6",
       description: "a saved step fragment",
       body: tpl.body,
       valid: true,

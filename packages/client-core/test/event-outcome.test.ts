@@ -15,7 +15,7 @@ const ENVELOPE = {
 type Trace = Extract<LogEvent, { type: "checkpoint-passed" }>["trace"];
 
 /** A condition trace stands in for the real one — neither the row nor the outcome renders it. */
-const TRACE: Trace = { type: "exists", path: "output.status", outcome: "true" };
+const TRACE: Trace = { type: "exists", path: "previous.status", outcome: "true" };
 
 describe("eventOutcome", () => {
   it("reads a step's own outcome off step-finished", () => {

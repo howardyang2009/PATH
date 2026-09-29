@@ -32,7 +32,7 @@ function apiCallRegistry(): StepPluginRegistry {
 }
 
 function file(body: unknown[]): unknown {
-  return { format: "path/workflow@5", id: ID, name: "wf", body };
+  return { format: "path/workflow@6", id: ID, name: "wf", body };
 }
 
 function apiCallNode(overrides: Record<string, unknown> = {}): Record<string, unknown> {

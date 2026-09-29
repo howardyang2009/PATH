@@ -149,13 +149,13 @@ describe("the typed condition builder", () => {
     const referenceText = (): string =>
       pane.querySelector(".pane-reference .pane-suggest")?.textContent ?? "";
 
-    // A checkpoint reads only the condition roots (context / output) — no config in its list.
+    // A checkpoint reads only the condition roots (context / previous) — no config in its list.
     selectNode(canvas, "gate");
     // The section starts collapsed and re-collapses on a new selection, so each node unfolds its
     // own.
     openSection(pane, "reference");
     expect(referenceText()).toMatch(/context\.x/);
-    expect(referenceText()).toMatch(/output\./);
+    expect(referenceText()).toMatch(/previous\./);
     expect(referenceText()).not.toMatch(/config\./);
     // The condition builder no longer carries its own Reference line.
     expect(
@@ -167,7 +167,7 @@ describe("the typed condition builder", () => {
     openSection(pane, "reference");
     expect(referenceText()).toMatch(/config\./);
     expect(referenceText()).toMatch(/context\.y/);
-    expect(referenceText()).toMatch(/output\./);
+    expect(referenceText()).toMatch(/previous\./);
 
     // A branch arm's occupant: its `when` roots plus the step's own input/publish roots.
     selectNode(canvas, "arm1");

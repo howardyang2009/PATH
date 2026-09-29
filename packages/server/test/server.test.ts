@@ -269,7 +269,7 @@ describe("POST /v0/runs + GET /v0/runs/:root_run_id — end to end", () => {
     expect(res.status).toBe(400);
     const body = (await res.json()) as { error: { message: string; details: string[] } };
     expect(body.error.details).toEqual([
-      `${join(projectDir, "superseded.workflow.json")}: path/workflow@1 is no longer read — run scripts/archive/migrate-workflow-format-v2.ts then scripts/archive/migrate-workflow-format-v3.ts then scripts/archive/migrate-workflow-format-v4.ts then scripts/migrate-workflow-format-v5.ts to migrate this file to path/workflow@5`,
+      `${join(projectDir, "superseded.workflow.json")}: path/workflow@1 is no longer read — run scripts/archive/migrate-workflow-format-v2.ts then scripts/archive/migrate-workflow-format-v3.ts then scripts/archive/migrate-workflow-format-v4.ts then scripts/archive/migrate-workflow-format-v5.ts then scripts/migrate-workflow-format-v6.ts to migrate this file to path/workflow@6`,
     ]);
 
     const runs = (await (await listRuns()).json()) as { runs: RootRunSummary[] };
@@ -1294,7 +1294,7 @@ describe("POST /v0/runs/:root_run_id/resume — resume a finished-but-unsuccessf
     expect(res.status).toBe(400);
     const body = (await res.json()) as { error: { details: string[] } };
     expect(body.error.details).toEqual([
-      `${join(projectDir, "failing-step.workflow.json")}: path/workflow@1 is no longer read — run scripts/archive/migrate-workflow-format-v2.ts then scripts/archive/migrate-workflow-format-v3.ts then scripts/archive/migrate-workflow-format-v4.ts then scripts/migrate-workflow-format-v5.ts to migrate this file to path/workflow@5`,
+      `${join(projectDir, "failing-step.workflow.json")}: path/workflow@1 is no longer read — run scripts/archive/migrate-workflow-format-v2.ts then scripts/archive/migrate-workflow-format-v3.ts then scripts/archive/migrate-workflow-format-v4.ts then scripts/archive/migrate-workflow-format-v5.ts then scripts/migrate-workflow-format-v6.ts to migrate this file to path/workflow@6`,
     ]);
   });
 
@@ -1356,7 +1356,7 @@ describe("POST /v0/runs/:root_run_id/resume — resume a finished-but-unsuccessf
     writeFileSync(
       join(projectDir, "failing-step.workflow.json"),
       JSON.stringify({
-        format: "path/workflow@5",
+        format: "path/workflow@6",
         id: "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
         name: "swapped",
         body: [

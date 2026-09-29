@@ -29,9 +29,9 @@ describe("condition-edit defaults", () => {
 
 describe("changeConditionType carries what the new shape can hold", () => {
   it("keeps the dot-path across a leaf → leaf switch", () => {
-    const prev: Condition = { type: "exists", path: "output.result" };
+    const prev: Condition = { type: "exists", path: "previous.result" };
     const next = changeConditionType(prev, "equals");
-    expect(next).toMatchObject({ type: "equals", path: "output.result" });
+    expect(next).toMatchObject({ type: "equals", path: "previous.result" });
     expect(validateCondition(next)).toBeNull();
   });
 

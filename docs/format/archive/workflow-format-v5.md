@@ -1,8 +1,10 @@
 # PATH Workflow File Format v5
 
-> **Archived.** This was the `@5` delta document. It has been folded into
-> [`../workflow-format.md`](../workflow-format.md), the one current format reference, which states `@5`
-> in full. This file is kept because the CHANGELOG and closed issues link it.
+> **Superseded by `path/workflow@6`.** This was the `@5` delta document, later folded into
+> [`../workflow-format.md`](../workflow-format.md), which now states `@6` in full. `@6` differs from
+> `@5` only in the condition roots: a condition reads `previous`, not `output` (ADR 0079). Migrate `@5`
+> files with `scripts/migrate-workflow-format-v6.ts`. This file is kept because the CHANGELOG and
+> closed issues link it.
 
 This is the normative definition of `path/workflow@5`. `@path/schema` implements it as zod schemas. The
 engine executes it. The vocabulary follows [CONTEXT.md](../../../CONTEXT.md) (step, worker, task, run,

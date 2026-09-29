@@ -58,7 +58,7 @@ An Architecture Decision Record (ADR) records one decision PATH has made: the sh
 | [0052](0052-person-switch-is-a-shipped-step-template-not-a-controller.md) | `person-switch` is a shipped step-template, not a controller | accepted |
 | [0053](0053-goto-is-a-seqoutcome-jump-caught-by-a-per-file-top-level-walk.md) | `goto` is a `SeqOutcome` jump caught by a per-file top-level walk | accepted |
 | [0054](0054-a-goto-visit-is-scoped-by-a-per-pass-container-run.md) | A goto visit is scoped by a per-pass container run | accepted |
-| [0055](0055-a-goto-target-is-seeded-by-the-gotos-passed-through-output.md) | A goto target is seeded by the goto's passed-through output | accepted |
+| [0055](0055-a-goto-target-is-seeded-by-the-gotos-passed-through-output.md) | A goto target is seeded by the goto's passed-through output | partly superseded by [ADR 0079](0079-a-previous-root-names-the-predecessors-output.md) |
 | [0056](0056-a-goto-names-its-target-by-step-name-checked-at-load-in-path-schema.md) | A goto names its target by step name, checked at load in `@path/schema` | accepted |
 | [0057](0057-controllers-split-into-structure-and-graph-kinds.md) | Controllers split into Structure and Graph kinds; `goto` narrows the no-DAG stance | accepted |
 | [0058](0058-a-goto-is-target-plus-max-jumps-in-path-workflow-5.md) | A goto is `target` + `max_jumps` in `path/workflow@5`, checked by a schema rule module | accepted |
@@ -82,7 +82,7 @@ An Architecture Decision Record (ADR) records one decision PATH has made: the sh
 | [0076](0076-a-runs-files-are-read-through-one-seam.md) | A run's files are read through one seam | accepted |
 | [0077](0077-the-session-hook-exposes-the-reducers-verb.md) | The session hook exposes the reducer's verb | accepted |
 | [0078](0078-a-container-bodys-walk-is-one-adapter.md) | A container body's walk is one adapter, not a second injected walker | accepted |
-| [0079](0079-a-previous-root-names-the-predecessors-output.md) | A `previous` root names the predecessor's output, and `output` means only a step's own output | proposed |
+| [0079](0079-a-previous-root-names-the-predecessors-output.md) | A `previous` root names the predecessor's output, and `output` means only a step's own output | accepted |
 
 ## Superseded decisions
 
@@ -91,3 +91,4 @@ An Architecture Decision Record (ADR) records one decision PATH has made: the sh
 - [0049](0049-instantiation-is-a-detached-copy-that-re-stamps-ids-and-never-rewires.md) — partly superseded by [ADR 0063](0063-the-workflow-template-is-removed-the-step-template-is-the-only-template.md): decision 7 (Workflow-Template instantiation into an empty canvas) no longer applies because the Workflow-Template is removed. The Step-Template parts stand.
 - [0067](0067-a-container-body-walk-cannot-take-a-jump.md) — partly superseded by [ADR 0078](0078-a-container-bodys-walk-is-one-adapter.md): decisions 2–4 (two injected walks plus `runContainerBody`) give way to one injected `walk` and the `walkContainerBody` adapter. Decision 2's `BodyOutcome` and the fail-closed guard stand.
 - [0050](0050-the-template-api-is-id-addressed-and-owns-the-template-write-door.md) — partly superseded by [ADR 0063](0063-the-workflow-template-is-removed-the-step-template-is-the-only-template.md): the `workflow` template kind, its `workflow-template/` directories and its `*.workflow-template.json` suffix are removed. The Step-Template parts stand.
+- [0055](0055-a-goto-target-is-seeded-by-the-gotos-passed-through-output.md) — partly superseded by [ADR 0079](0079-a-previous-root-names-the-predecessors-output.md): decision 5 ("no new interpolation root") gives way to the `previous` root. The pass-through seeding (decisions 1–4) stands and gives `previous` its value after a jump.

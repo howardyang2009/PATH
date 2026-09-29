@@ -109,7 +109,7 @@ describe("person-switch step-template (ADR 0052)", () => {
     };
     const labels = ask.outputSchema.properties.choice.enum;
     expect(branch.arms.map((arm) => arm.when)).toEqual(
-      labels.map((value) => ({ type: "equals", path: "output.choice", value })),
+      labels.map((value) => ({ type: "equals", path: "previous.choice", value })),
     );
     expect(branch.else).toBeUndefined();
 
@@ -140,7 +140,7 @@ describe("person-switch step-template (ADR 0052)", () => {
     for (const id of freshIds) expect(sourceIds.has(id)).toBe(false);
 
     const wf = {
-      format: "path/workflow@5",
+      format: "path/workflow@6",
       id: crypto.randomUUID(),
       name: "person-switch-demo",
       body,

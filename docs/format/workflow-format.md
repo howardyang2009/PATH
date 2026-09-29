@@ -1,13 +1,13 @@
 # PATH Workflow File Format
 
-This is the normative definition of `path/workflow@5`, the one format the engine reads. `@path/schema`
+This is the normative definition of `path/workflow@6`, the one format the engine reads. `@path/schema`
 implements it as zod schemas. The engine executes it. The vocabulary follows
 [CONTEXT.md](../../CONTEXT.md) (step, worker, task, run, controller, checkpoint, config vs context,
 output object, publish, first level, pass).
 
-It is **self-contained**: everything needed to author, validate, or interpret a `@5` file is stated
-here. Superseded formats (`@0`–`@4`) are kept for the record under [`archive/`](archive/); §11 states
-what changed since `@4` and how to migrate an old file. Where this document and an
+It is **self-contained**: everything needed to author, validate, or interpret a `@6` file is stated
+here. Superseded formats (`@0`–`@5`) are kept for the record under [`archive/`](archive/); §11 states
+what changed since `@5` and how to migrate an old file. Where this document and an
 [ADR](../adr/README.md) disagree, the ADR wins on *why* and this document wins on *what the code does*.
 `goto`'s execution model — passes, resume, Complete, and audit events — is specified normatively in
 [`docs/spec/goto.md`](../spec/goto.md); §6.2 here fixes only its file grammar.
@@ -16,13 +16,13 @@ what changed since `@4` and how to migrate an old file. Where this document and 
 
 - A workflow file is a single **JSON** document (UTF-8). JSON is the only syntax.
 - Recommended file naming: `<name>.workflow.json`.
-- Every file declares `"format": "path/workflow@5"`. This is identity and version in one required
+- Every file declares `"format": "path/workflow@6"`. This is identity and version in one required
   string, **exact-match validated**. An engine that does not speak the declared version **fails at
   load**.
 - **The declared version does not track the set of step types.** `format` fixes the *grammar shape* —
   the container rules, the envelope, the common step fields — and it keys the codemod chain (§11). The
   set of valid **leaf step types** is a fact about the **step-plugin registry** the engine loaded, not
-  about the format (§4). A file that uses a plugin-contributed step type is a `@5` file and stays one:
+  about the format (§4). A file that uses a plugin-contributed step type is a `@6` file and stays one:
   a plugin type needs no codemod, because there is no earlier *shape* to lift such a file from. The
   thing it lacks on a given machine is a plugin folder, and the fix is to add one, not to run a script.
   (#315.)
@@ -32,31 +32,31 @@ what changed since `@4` and how to migrate an old file. Where this document and 
   "invalid literal" on `format`:
 
   ```
-  path/workflow@4 is no longer read — run scripts/migrate-workflow-format-v5.ts to migrate this file to path/workflow@5
+  path/workflow@4 is no longer read — run scripts/archive/migrate-workflow-format-v5.ts then scripts/migrate-workflow-format-v6.ts to migrate this file to path/workflow@6
   ```
 
-  The engine reads `@5` only. There is no dual reader. Each codemod migrates exactly one step and skips
+  The engine reads `@6` only. There is no dual reader. Each codemod migrates exactly one step and skips
   anything else silently, so a file more than one version behind names every script it needs; handed an
-  `@0` file, the `@5` script reports "skipped" and leaves it untouched, so to name it alone would name
+  `@0` file, the `@6` script reports "skipped" and leaves it untouched, so to name it alone would name
   a fix that is not one.
 - **A newer version** gets a symmetric pre-check. A well-formed `path/workflow@<n>` with `n` greater
   than the engine's own version gets:
 
   ```
-  path/workflow@6 is newer than this engine reads (path/workflow@5) — upgrade PATH to read it
+  path/workflow@7 is newer than this engine reads (path/workflow@6) — upgrade PATH to read it
   ```
 
   rather than a bare invalid-literal. A malformed version string (a trailing space, a non-numeric or
   zero-padded version, a different prefix) still falls through to the literal mismatch.
 
 Step-Templates and Workflow-Templates stamp the same `FORMAT_VERSION` (ADR 0048 §1), so they read
-`path/workflow@5` too.
+`path/workflow@6` too.
 
 ## 2. Top-level workflow object
 
 | Field | Required | Meaning |
 | --- | --- | --- |
-| `format` | yes | Exactly `"path/workflow@5"`. |
+| `format` | yes | Exactly `"path/workflow@6"`. |
 | `id` | yes | Durable GUID (UUIDv4) — the stable machine identity (§3). |
 | `name` | yes | Workflow name, pattern `^[a-z][a-z0-9-]*$`. |
 | `config` | no | The file's config defaults (§7). |
@@ -676,8 +676,9 @@ caught anywhere below the block, including one nested through a `sequence` or in
 
 Zod-validated structured predicate trees, discriminated on `type`. Predicates: `exists`, `equals`,
 `one-of`, `matches`, `range`, `valid-json`. Combinators: `all`/`any`/`not`. Dot-paths over roots
-`context` and `previous` (the predecessor's output, §6.1). `output` is a deprecated name for
-`previous` here, removed in `@6` (ADR 0079). Error semantics are strict. Interpolation is never evaluated inside condition
+`context` and `previous` (the predecessor's output, §6.1). `output` is not a condition root: it is a
+step's own output, read only in `publish`, and a condition path rooted at it fails at load naming
+`previous` (ADR 0079). Error semantics are strict. Interpolation is never evaluated inside condition
 trees. Conditions appear on `branch` arm `when`s, `while-do` `condition`, and `checkpoint` `condition`.
 
 ## 10. Deferred and owned elsewhere
@@ -697,13 +698,12 @@ trees. Conditions appear on `branch` arm `when`s, `while-do` `condition`, and `c
   built and frozen is ADR 0018; where a plugin lives and what it consists of is ADR 0019; how discovery
   reports a file whose plugin is absent is [server-api-v0.md §6](../api/server-api-v0.md).
 
-## 11. Changes since `@4` and migration
+## 11. Changes since `@5` and migration
 
-`@5` adds one grammar change: the seventh reserved member, `goto` (§6.2), because an engine that reads
-`@4` does not know the type, and a file that may carry one must say so in `format` where an older engine
-refuses it legibly (§1) rather than at an unknown node deep in the body. The envelope does not change: a
-goto-free `@4` file is already a valid `@5` file once its `format` string moves. Full superseded
-formats live under [`archive/`](archive/):
+`@6` changes one thing: a condition names its predecessor's output `previous`, not `output` (§9, ADR
+0079). `@5` let `output` mean the predecessor's output in a condition and a step's own output in
+`publish`; `@6` gives each meaning one word. The node grammar and the envelope do not change. Full
+superseded formats live under [`archive/`](archive/):
 
 | Format | File | What it is |
 | --- | --- | --- |
@@ -711,27 +711,28 @@ formats live under [`archive/`](archive/):
 | `@2` | [`archive/workflow-format-v2.md`](archive/workflow-format-v2.md) | Every container slot holds **one node**; `sequence` is added for the multi-node slot. |
 | `@3` | [`archive/workflow-format-v3.md`](archive/workflow-format-v3.md) | A worker is a **name**, not a tagged object; `model`/`options` move to config. |
 | `@4` | [`archive/workflow-format-v4.md`](archive/workflow-format-v4.md) | The file-level `worker_defaults` table and the optional file-level `input` seed. |
-| `@5` | this document | The `goto` controller. |
+| `@5` | [`archive/workflow-format-v5.md`](archive/workflow-format-v5.md) | The `goto` controller. |
+| `@6` | this document | Conditions read `previous`; `output` is only a step's own output. |
 
-Because `@4` and `@5` differ only by the `format` string for every file that exists today, the `@4` →
-`@5` codemod is a **no-op format stamp**: it rewrites `format` to `path/workflow@5`, changes nothing
-else (the file's bytes, formatting included, are carried through), refuses nothing, and is idempotent.
-Run it with:
+The `@5` → `@6` codemod rewrites `format` to `path/workflow@6` and every condition leaf path rooted
+at `output` (`output`, `output.x`) to the same path rooted at `previous`, in a `branch` arm's `when`,
+a `while-do`'s `condition` and a `checkpoint`'s `condition`, through `all` / `any` / `not` at any
+depth. It changes nothing else, keeps the file's bytes where the text allows, refuses nothing, and is
+idempotent. Run it with:
 
 ```
-pnpm tsx scripts/migrate-workflow-format-v5.ts [file …]
+pnpm tsx scripts/migrate-workflow-format-v6.ts [file …]
 ```
 
 With no arguments it discovers every `*.workflow.json`, `*.step-template.json` and
 `*.workflow-template.json` under the current directory (skipping dot directories and `node_modules`)
-and under its `.path/template/`. The engine reads `@5` only — there is no dual reader — so an older file
+and under its `.path/template/`. The engine reads `@6` only — there is no dual reader — so an older file
 loads with a targeted "run the codemod" error naming its whole chain in order, ending with this script
-(§1). The earlier codemods are the hard parts, and they live in
-[`scripts/archive/`](../../scripts/archive): `@1`→`@2` unwraps each `parallel` branch into a node
-(renaming the node to the wrapper's `name` so a `collect` key stays byte-identical), and `@2`→`@3`
-deletes the old `worker` object and hoists its `model`/`options` into the owning object's `config`,
-refusing rather than silently changing meaning when the old value was interpolated or the effective
-worker was `engine`.
+(§1). The earlier codemods live in [`scripts/archive/`](../../scripts/archive): `@4`→`@5` only stamps
+the version, `@1`→`@2` unwraps each `parallel` branch into a node (renaming the node to the wrapper's
+`name` so a `collect` key stays byte-identical), and `@2`→`@3` deletes the old `worker` object and
+hoists its `model`/`options` into the owning object's `config`, refusing rather than silently changing
+meaning when the old value was interpolated or the effective worker was `engine`.
 
 ## 12. Authoring & navigation
 

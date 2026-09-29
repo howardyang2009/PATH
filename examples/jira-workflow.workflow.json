@@ -1,5 +1,5 @@
 {
-  "format": "path/workflow@5",
+  "format": "path/workflow@6",
   "id": "9a9629d2-42a8-46e3-8ed2-d781c254970a",
   "name": "jira-workflow",
   "body": [
@@ -47,7 +47,7 @@
             {
               "when": {
                 "type": "equals",
-                "path": "output.choice",
+                "path": "previous.choice",
                 "value": "backlog"
               },
               "node": {
@@ -61,7 +61,7 @@
             {
               "when": {
                 "type": "equals",
-                "path": "output.choice",
+                "path": "previous.choice",
                 "value": "implement"
               },
               "node": {
@@ -75,7 +75,7 @@
             {
               "when": {
                 "type": "equals",
-                "path": "output.choice",
+                "path": "previous.choice",
                 "value": "pending"
               },
               "node": {
@@ -128,7 +128,7 @@
             {
               "when": {
                 "type": "equals",
-                "path": "output.choice",
+                "path": "previous.choice",
                 "value": "design"
               },
               "node": {
@@ -142,7 +142,7 @@
             {
               "when": {
                 "type": "equals",
-                "path": "output.choice",
+                "path": "previous.choice",
                 "value": "test"
               },
               "node": {
@@ -156,7 +156,7 @@
             {
               "when": {
                 "type": "equals",
-                "path": "output.choice",
+                "path": "previous.choice",
                 "value": "pending"
               },
               "node": {
@@ -209,7 +209,7 @@
             {
               "when": {
                 "type": "equals",
-                "path": "output.choice",
+                "path": "previous.choice",
                 "value": "implement"
               },
               "node": {
@@ -223,7 +223,7 @@
             {
               "when": {
                 "type": "equals",
-                "path": "output.choice",
+                "path": "previous.choice",
                 "value": "close"
               },
               "node": {
@@ -237,7 +237,7 @@
             {
               "when": {
                 "type": "equals",
-                "path": "output.choice",
+                "path": "previous.choice",
                 "value": "pending"
               },
               "node": {
@@ -328,7 +328,7 @@
             {
               "when": {
                 "type": "equals",
-                "path": "output.choice",
+                "path": "previous.choice",
                 "value": "design"
               },
               "node": {
@@ -342,7 +342,7 @@
             {
               "when": {
                 "type": "equals",
-                "path": "output.choice",
+                "path": "previous.choice",
                 "value": "implement"
               },
               "node": {
@@ -356,7 +356,7 @@
             {
               "when": {
                 "type": "equals",
-                "path": "output.choice",
+                "path": "previous.choice",
                 "value": "test"
               },
               "node": {

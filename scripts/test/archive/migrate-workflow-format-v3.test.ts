@@ -52,7 +52,8 @@ function expectSchemaValid(file: string): void {
   const copy = `${file}.lifted.json`;
   writeFileSync(copy, readFileSync(file, "utf8"));
   runCodemod([copy], dir, "archive/migrate-workflow-format-v4.ts");
-  runCodemod([copy], dir, "migrate-workflow-format-v5.ts");
+  runCodemod([copy], dir, "archive/migrate-workflow-format-v5.ts");
+  runCodemod([copy], dir, "migrate-workflow-format-v6.ts");
   const result = safeParseWorkflowFile(JSON.parse(readFileSync(copy, "utf8")), builtinRegistry);
   expect(result.success, result.success ? "" : result.errors.join("\n")).toBe(true);
 }

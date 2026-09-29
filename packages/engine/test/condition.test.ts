@@ -18,7 +18,6 @@ const roots: ConditionRoots = {
     nested: { level: 2 },
     nothing: null,
   },
-  output: { status: "done" },
   previous: { status: "done" },
 };
 

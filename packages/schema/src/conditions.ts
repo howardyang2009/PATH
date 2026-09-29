@@ -4,6 +4,14 @@ import { checkDotPath } from "./dot-path.js";
 import { CONDITION_ROOTS } from "./roots.js";
 
 const ConditionPathSchema = z.string().superRefine((value, ctx) => {
+  // `@5` named the predecessor's output `output` here; say where it went.
+  if (value === "output" || value.startsWith("output.")) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: `"${value}": a condition reads the predecessor's output as "previous", not "output" (ADR 0079)`,
+    });
+    return;
+  }
   const result = checkDotPath(value, CONDITION_ROOTS);
   if (!result.ok) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, message: result.error });

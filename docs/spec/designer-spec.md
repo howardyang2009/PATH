@@ -338,7 +338,7 @@ no link back to the template. The place disarms. Two templates ship in
 `packages/server/template/`: `review-gate`, a `person-activity` review followed by a `branch` on its
 answer; and `person-switch` ([ADR 0052](../adr/0052-person-switch-is-a-shipped-step-template-not-a-controller.md)),
 one `sequence` of a `person-activity` ask whose `outputSchema` is a string enum of labels and a
-`branch` with one arm per label, routed on the ask's `output.choice`.
+`branch` with one arm per label, routed on `previous.choice`, the ask's output.
 
 ### Edit mode: Workflow | Template
 

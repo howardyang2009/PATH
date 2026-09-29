@@ -86,10 +86,10 @@ export function stampNodes(nodes: unknown): WorkflowNode[] {
   return (nodes as AnyNode[]).map(stampNode) as unknown as WorkflowNode[];
 }
 
-/** Stamp `name = id` throughout a workflow file's body and bump `format` to `path/workflow@5`. */
+/** Stamp `name = id` throughout a workflow file's body and bump `format` to `path/workflow@6`. */
 export function stampNames(file: unknown): WorkflowFile {
   const f = { ...(file as AnyNode) };
-  f.format = "path/workflow@5";
+  f.format = "path/workflow@6";
   // a placeholder GUID stand-in; runWorkflow never validates it
   if (f.id === undefined) f.id = "wf-id";
   if (Array.isArray(f.body)) f.body = stampNodes(f.body as AnyNode[]);
@@ -125,7 +125,7 @@ function guidNode(node: AnyNode): AnyNode {
 
 export function stampGuids(file: unknown): WorkflowFile {
   const f = { ...(file as AnyNode) };
-  f.format = "path/workflow@5";
+  f.format = "path/workflow@6";
   f.id = randomUUID(); // always a real GUID — this is the schema-valid stamper
   if (Array.isArray(f.body)) f.body = (f.body as AnyNode[]).map(guidNode);
   return f as unknown as WorkflowFile;

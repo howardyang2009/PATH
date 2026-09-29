@@ -19,7 +19,7 @@ The part that makes PATH different is what happens when work stops:
 
 ## Why PATH
 
-- **JSON, not YAML.** One strict schema (`path/workflow@5`) validates a file before anything runs.
+- **JSON, not YAML.** One strict schema (`path/workflow@6`) validates a file before anything runs.
   Unknown fields are errors, not surprises.
 - **Durable by default.** Every run writes structured rows to SQLite and blobs to a per-project
   `.path/` directory. A crash costs you the unfinished nodes, nothing more.
@@ -96,7 +96,7 @@ the run store (SQLite rows and per-run blobs) beside the workflow files, like `.
 
 ```json
 {
-  "format": "path/workflow@5",
+  "format": "path/workflow@6",
   "id": "d82c9ac6-7abb-46f7-8849-98eb4c590f8f",
   "name": "hello",
   "body": [
@@ -323,7 +323,7 @@ single-origin tool: do not expose it.
 
 | Package | What it is |
 | --- | --- |
-| [`@path/schema`](packages/schema) | The domain. The workflow format (`path/workflow@5`), the registry factory that opens its node union to plugin step types, and the runtime vocabulary: run status, log events, traces, and the v0 wire shapes. |
+| [`@path/schema`](packages/schema) | The domain. The workflow format (`path/workflow@6`), the registry factory that opens its node union to plugin step types, and the runtime vocabulary: run status, log events, traces, and the v0 wire shapes. |
 | [`@path/engine`](packages/engine) | Runs workflows locally and provides the `path` CLI. Discovers leaf step types as plugins under `plugin/step-plugin/` and exposes the `@path/engine/plugin` seam. |
 | [`@path/server`](packages/server) | The HTTP and SSE API over the engine, plus the `path-server` CLI that serves both consoles. |
 | [`@path/client-core`](packages/client-core) | A pure-TypeScript API client: SSE client, run view-model, and run/workflow write surface. No framework, no Node. |
@@ -350,7 +350,7 @@ pnpm release-notes    # dogfood: PATH summarizes its own recent commits
 | Document | Covers |
 | --- | --- |
 | [`CONTEXT.md`](CONTEXT.md) | The canonical glossary. Read this first. |
-| [`docs/format/workflow-format.md`](docs/format/workflow-format.md) | The normative workflow file format (`path/workflow@5`), in full. Superseded formats sit in `docs/format/archive/`. |
+| [`docs/format/workflow-format.md`](docs/format/workflow-format.md) | The normative workflow file format (`path/workflow@6`), in full. Superseded formats sit in `docs/format/archive/`. |
 | [`docs/spec/mvp-spec.md`](docs/spec/mvp-spec.md) | Execution semantics: scheduling, data flow, persistence. |
 | [`docs/spec/person-activity.md`](docs/spec/person-activity.md) | `awaiting`, Complete, and `outputSchema` validation. |
 | [`docs/spec/resume-from-k.md`](docs/spec/resume-from-k.md) | Choosing the rerun boundary K. |

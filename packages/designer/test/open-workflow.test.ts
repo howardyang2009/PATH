@@ -54,7 +54,7 @@ function validFile(): Record<string, unknown> {
               type: "checkpoint",
               id: uuid(11),
               name: "chk",
-              condition: { type: "exists", path: "output.z" },
+              condition: { type: "exists", path: "previous.z" },
             },
           ],
         },

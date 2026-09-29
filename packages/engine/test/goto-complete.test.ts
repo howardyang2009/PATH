@@ -67,7 +67,7 @@ function loop(
     publish: { last: "${output}" },
   };
   return stampNames({
-    format: "path/workflow@5",
+    format: "path/workflow@6",
     id: "wf-id",
     name: "reviews",
     config: { model: "m" },

@@ -2,7 +2,7 @@ import type { ConfigObject } from "./config-value-type.js";
 import type { JsonValue } from "./json-value.js";
 import type { WorkflowNode } from "./node-type.js";
 
-export const FORMAT_VERSION = "path/workflow@5";
+export const FORMAT_VERSION = "path/workflow@6";
 
 // Superseded format strings, each mapped to the ordered codemod chain that lifts a file to the
 // current format. A codemod migrates exactly one step and silently skips anything else, so the
@@ -14,24 +14,32 @@ export const SUPERSEDED_FORMAT_VERSIONS = {
     "scripts/archive/migrate-workflow-format-v2.ts",
     "scripts/archive/migrate-workflow-format-v3.ts",
     "scripts/archive/migrate-workflow-format-v4.ts",
-    "scripts/migrate-workflow-format-v5.ts",
+    "scripts/archive/migrate-workflow-format-v5.ts",
+    "scripts/migrate-workflow-format-v6.ts",
   ],
   "path/workflow@1": [
     "scripts/archive/migrate-workflow-format-v2.ts",
     "scripts/archive/migrate-workflow-format-v3.ts",
     "scripts/archive/migrate-workflow-format-v4.ts",
-    "scripts/migrate-workflow-format-v5.ts",
+    "scripts/archive/migrate-workflow-format-v5.ts",
+    "scripts/migrate-workflow-format-v6.ts",
   ],
   "path/workflow@2": [
     "scripts/archive/migrate-workflow-format-v3.ts",
     "scripts/archive/migrate-workflow-format-v4.ts",
-    "scripts/migrate-workflow-format-v5.ts",
+    "scripts/archive/migrate-workflow-format-v5.ts",
+    "scripts/migrate-workflow-format-v6.ts",
   ],
   "path/workflow@3": [
     "scripts/archive/migrate-workflow-format-v4.ts",
-    "scripts/migrate-workflow-format-v5.ts",
+    "scripts/archive/migrate-workflow-format-v5.ts",
+    "scripts/migrate-workflow-format-v6.ts",
   ],
-  "path/workflow@4": ["scripts/migrate-workflow-format-v5.ts"],
+  "path/workflow@4": [
+    "scripts/archive/migrate-workflow-format-v5.ts",
+    "scripts/migrate-workflow-format-v6.ts",
+  ],
+  "path/workflow@5": ["scripts/migrate-workflow-format-v6.ts"],
 } as const satisfies { [version: string]: readonly string[] };
 
 export interface WorkflowFile {
