@@ -276,7 +276,7 @@ function CombinatorChildren({
 }
 
 /** A leaf predicate's dot-path, with autocomplete against the file's referenceable
- * `context.`/`output.` paths. */
+ * `context.`/`previous.` paths. */
 function PathField({
   path,
   suggestions,

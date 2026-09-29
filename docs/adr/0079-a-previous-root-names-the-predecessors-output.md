@@ -1,6 +1,7 @@
 # A `previous` root names the predecessor's output, and `output` means only a step's own output
 
-**Status:** proposed. Tracks [#681](https://github.com/howardyang2009/PATH/issues/681). Partly
+**Status:** accepted. Phase A shipped in `@5`; Phase B moved the format to `path/workflow@6`.
+Tracks [#681](https://github.com/howardyang2009/PATH/issues/681). Partly
 supersedes decision 5 of
 [ADR 0055](0055-a-goto-target-is-seeded-by-the-gotos-passed-through-output.md) ("no new
 interpolation root"); its pass-through seeding (decisions 1–4) stands and gives `previous` its value

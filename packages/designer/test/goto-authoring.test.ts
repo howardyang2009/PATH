@@ -279,7 +279,7 @@ describe("round-trip", () => {
         node: { ...node, target: "start" } as WorkflowNode,
       }),
     );
-    expect(file.format).toBe("path/workflow@5");
+    expect(file.format).toBe("path/workflow@6");
     const reopened = openWorkflowFile(canonicalSerialize(file), DEFAULT_PLUGINS);
     expect(reopened.status).toBe("opened");
     expect(reopened.status === "opened" && reopened.file).toEqual(file);

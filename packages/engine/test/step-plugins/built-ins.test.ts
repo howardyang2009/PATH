@@ -97,7 +97,7 @@ describe("the `prompt` plugin's two model workers", () => {
     const registry = await loadRegistry();
     const schema = makeWorkflowFileSchema(registry);
     const body = (worker?: string) => ({
-      format: "path/workflow@5",
+      format: "path/workflow@6",
       id: UUID_FILE,
       name: "providers",
       body: [
@@ -121,7 +121,7 @@ describe("the `prompt` plugin's two model workers", () => {
     const schema = makeWorkflowFileSchema(registry);
 
     const result = safeParseWorkflowFileWith(schema, {
-      format: "path/workflow@5",
+      format: "path/workflow@6",
       id: UUID_FILE,
       name: "providers",
       body: [
@@ -148,7 +148,7 @@ describe("the scanned built-ins validate through the schema factory", () => {
     const schema = makeWorkflowFileSchema(registry);
 
     const file = {
-      format: "path/workflow@5",
+      format: "path/workflow@6",
       id: UUID_FILE,
       name: "built-ins",
       body: [
@@ -167,7 +167,7 @@ describe("the scanned built-ins validate through the schema factory", () => {
     const schema = makeWorkflowFileSchema(registry);
 
     const file = {
-      format: "path/workflow@5",
+      format: "path/workflow@6",
       id: UUID_FILE,
       name: "built-ins",
       body: [{ type: "binary", id: UUID_BINARY, name: "build", command: "git", bogus: true }],

@@ -219,8 +219,8 @@ Concurrency exists only inside `parallel` blocks. There is no lookahead and no r
 ### 5.4 Node output objects
 
 - **Step**: its own output (stdout / LLM result / child workflow `output` map), per the format doc.
-- **Checkpoint**: transparent. It forwards its predecessor's output unchanged (its condition's `output`
-  root reads that same object).
+- **Checkpoint**: transparent. It forwards its predecessor's output unchanged (its condition's
+  `previous` root reads that same object).
 - **Sequence**: its **last child's** output object.
 - **Branch**: the taken arm's **node's** output.
 - **While-do**: the **node's** output of the final executed iteration; transparent at zero iterations.

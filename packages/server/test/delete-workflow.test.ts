@@ -8,7 +8,7 @@ import { type PathServerHandle, startPathServer } from "../src/create-server.js"
 let projectDir: string;
 let handle: PathServerHandle;
 
-const BYTES = `${JSON.stringify({ format: "path/workflow@5", id: randomUUID(), name: "draft", body: [] }, null, 2)}\n`;
+const BYTES = `${JSON.stringify({ format: "path/workflow@6", id: randomUUID(), name: "draft", body: [] }, null, 2)}\n`;
 
 beforeEach(() => {
   projectDir = mkdtempSync(join(tmpdir(), "path-delete-workflow-test-"));

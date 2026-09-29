@@ -24,13 +24,12 @@ export const PUBLISH_ROOTS = [
 ] as const satisfies readonly InterpolationRoot[];
 
 /**
- * A condition reads context and the predecessor's output, **not** `config` — a deliberate extension
- * point held open (mvp spec §10). `previous` names the predecessor's output; `output` is its
- * deprecated name until `path/workflow@6` (ADR 0079).
+ * A condition reads context and the predecessor's output (`previous`), **not** `config` — a
+ * deliberate extension point held open (mvp spec §10). `output` is a step's own output, so no
+ * condition reads it (ADR 0079).
  */
 export const CONDITION_ROOTS = [
   "context",
-  "output",
   "previous",
 ] as const satisfies readonly InterpolationRoot[];
 export type ConditionRoot = (typeof CONDITION_ROOTS)[number];

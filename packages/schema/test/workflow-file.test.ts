@@ -23,7 +23,7 @@ function safeParseWorkflowFile(json: unknown) {
 const UUID = "11111111-1111-4111-8111-111111111111";
 
 const minimal = {
-  format: "path/workflow@5",
+  format: "path/workflow@6",
   id: UUID,
   name: "my-workflow",
   body: [{ type: "binary", id: UUID, name: "step-one", command: "echo" }],
@@ -56,7 +56,7 @@ describe("WorkflowFileSchema — envelope", () => {
   });
 
   it("requires an exact format string match", () => {
-    expect(WorkflowFileSchema.safeParse({ ...minimal, format: "path/workflow@5 " }).success).toBe(
+    expect(WorkflowFileSchema.safeParse({ ...minimal, format: "path/workflow@6 " }).success).toBe(
       false,
     );
   });
@@ -739,7 +739,7 @@ describe("safeParseWorkflowFile — actionable errors", () => {
     expect(result.success).toBe(false);
     if (!result.success) {
       expect(result.errors).toEqual([
-        "path/workflow@0 is no longer read — run scripts/archive/migrate-workflow-format-v1.ts then scripts/archive/migrate-workflow-format-v2.ts then scripts/archive/migrate-workflow-format-v3.ts then scripts/archive/migrate-workflow-format-v4.ts then scripts/migrate-workflow-format-v5.ts to migrate this file to path/workflow@5",
+        "path/workflow@0 is no longer read — run scripts/archive/migrate-workflow-format-v1.ts then scripts/archive/migrate-workflow-format-v2.ts then scripts/archive/migrate-workflow-format-v3.ts then scripts/archive/migrate-workflow-format-v4.ts then scripts/archive/migrate-workflow-format-v5.ts then scripts/migrate-workflow-format-v6.ts to migrate this file to path/workflow@6",
       ]);
     }
   });
@@ -749,7 +749,7 @@ describe("safeParseWorkflowFile — actionable errors", () => {
     expect(result.success).toBe(false);
     if (!result.success) {
       expect(result.errors).toEqual([
-        "path/workflow@1 is no longer read — run scripts/archive/migrate-workflow-format-v2.ts then scripts/archive/migrate-workflow-format-v3.ts then scripts/archive/migrate-workflow-format-v4.ts then scripts/migrate-workflow-format-v5.ts to migrate this file to path/workflow@5",
+        "path/workflow@1 is no longer read — run scripts/archive/migrate-workflow-format-v2.ts then scripts/archive/migrate-workflow-format-v3.ts then scripts/archive/migrate-workflow-format-v4.ts then scripts/archive/migrate-workflow-format-v5.ts then scripts/migrate-workflow-format-v6.ts to migrate this file to path/workflow@6",
       ]);
     }
   });
@@ -759,7 +759,7 @@ describe("safeParseWorkflowFile — actionable errors", () => {
     expect(result.success).toBe(false);
     if (!result.success) {
       expect(result.errors).toEqual([
-        "path/workflow@2 is no longer read — run scripts/archive/migrate-workflow-format-v3.ts then scripts/archive/migrate-workflow-format-v4.ts then scripts/migrate-workflow-format-v5.ts to migrate this file to path/workflow@5",
+        "path/workflow@2 is no longer read — run scripts/archive/migrate-workflow-format-v3.ts then scripts/archive/migrate-workflow-format-v4.ts then scripts/archive/migrate-workflow-format-v5.ts then scripts/migrate-workflow-format-v6.ts to migrate this file to path/workflow@6",
       ]);
     }
   });
@@ -769,7 +769,7 @@ describe("safeParseWorkflowFile — actionable errors", () => {
     expect(result.success).toBe(false);
     if (!result.success) {
       expect(result.errors).toEqual([
-        "path/workflow@3 is no longer read — run scripts/archive/migrate-workflow-format-v4.ts then scripts/migrate-workflow-format-v5.ts to migrate this file to path/workflow@5",
+        "path/workflow@3 is no longer read — run scripts/archive/migrate-workflow-format-v4.ts then scripts/archive/migrate-workflow-format-v5.ts then scripts/migrate-workflow-format-v6.ts to migrate this file to path/workflow@6",
       ]);
     }
   });
@@ -779,7 +779,17 @@ describe("safeParseWorkflowFile — actionable errors", () => {
     expect(result.success).toBe(false);
     if (!result.success) {
       expect(result.errors).toEqual([
-        "path/workflow@4 is no longer read — run scripts/migrate-workflow-format-v5.ts to migrate this file to path/workflow@5",
+        "path/workflow@4 is no longer read — run scripts/archive/migrate-workflow-format-v5.ts then scripts/migrate-workflow-format-v6.ts to migrate this file to path/workflow@6",
+      ]);
+    }
+  });
+
+  it("reports the spec §1 targeted error for a superseded @5 file", () => {
+    const result = safeParseWorkflowFile({ ...minimal, format: "path/workflow@5" });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.errors).toEqual([
+        "path/workflow@5 is no longer read — run scripts/migrate-workflow-format-v6.ts to migrate this file to path/workflow@6",
       ]);
     }
   });
@@ -787,21 +797,21 @@ describe("safeParseWorkflowFile — actionable errors", () => {
   // G-S-09 (ADR 0058 §6): the version pre-check is symmetric. A file from a newer PATH gets told to
   // upgrade PATH, not a bare invalid-literal on `format`.
   it("G-S-09: reports a newer format version as newer than this engine reads", () => {
-    const result = safeParseWorkflowFile({ ...minimal, format: "path/workflow@6" });
+    const result = safeParseWorkflowFile({ ...minimal, format: "path/workflow@7" });
     expect(result.success).toBe(false);
     if (!result.success) {
       expect(result.errors).toEqual([
-        "path/workflow@6 is newer than this engine reads (path/workflow@5) — upgrade PATH to read it",
+        "path/workflow@7 is newer than this engine reads (path/workflow@6) — upgrade PATH to read it",
       ]);
     }
   });
 
   it("G-S-09: a malformed version string still gets the literal mismatch", () => {
     for (const format of [
-      "path/workflow@6 ",
+      "path/workflow@7 ",
       "path/workflow@x",
       "path/workflow@06",
-      "workflow@6",
+      "workflow@7",
     ]) {
       const result = safeParseWorkflowFile({ ...minimal, format });
       expect(result.success, format).toBe(false);

@@ -81,7 +81,7 @@ function guarded(
 
 function file(body: unknown[]): WorkflowFile {
   return stampNames({
-    format: "path/workflow@5",
+    format: "path/workflow@6",
     id: "wf-id",
     name: "jumps",
     config: { model: "m" },

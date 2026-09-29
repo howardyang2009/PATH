@@ -61,7 +61,7 @@ function step(name: string, extra: { [key: string]: unknown } = {}) {
 
 function file(body: unknown[], extra: { [key: string]: unknown } = {}): WorkflowFile {
   return stampNames({
-    format: "path/workflow@5",
+    format: "path/workflow@6",
     id: "wf-id",
     name: "jumps",
     config: { model: "claude-sonnet-5" },

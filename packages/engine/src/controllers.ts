@@ -31,7 +31,6 @@ export async function runCheckpointNode(
 ): Promise<SeqOutcome> {
   const { outcome, trace } = evaluateCondition(node.condition, {
     context: exec.context,
-    output: incomingOutput,
     previous: incomingOutput,
   });
   const passed = outcome === "true";
@@ -55,7 +54,7 @@ export async function runBranchNode(
   incomingOutput: JsonValue,
   exec: NodeExecContext,
 ): Promise<SeqOutcome> {
-  const roots = { context: exec.context, output: incomingOutput, previous: incomingOutput };
+  const roots = { context: exec.context, previous: incomingOutput };
   const traces: Trace[] = [];
   for (const [index, arm] of node.arms.entries()) {
     const { outcome, trace } = evaluateCondition(arm.when, roots);
@@ -133,7 +132,6 @@ export async function runWhileDoNode(
   for (;;) {
     const { outcome, trace } = evaluateCondition(node.condition, {
       context: exec.context,
-      output: iterationOutput,
       previous: iterationOutput,
     });
     if (outcome === "error") {

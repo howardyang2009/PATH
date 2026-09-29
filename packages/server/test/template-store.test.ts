@@ -18,7 +18,7 @@ import {
 
 const USER_TEMPLATE = {
   id: "11111111-1111-4111-8111-111111111111",
-  format: "path/workflow@5",
+  format: "path/workflow@6",
   name: "mine",
   description: "a test template",
   body: [],

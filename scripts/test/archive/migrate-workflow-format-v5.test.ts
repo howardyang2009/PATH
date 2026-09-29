@@ -3,8 +3,8 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { safeParseStepTemplate, safeParseWorkflowFile } from "@path/schema";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { builtinRegistry } from "./builtin-registry.js";
-import { runCodemod } from "./run-codemod.js";
+import { builtinRegistry } from "../builtin-registry.js";
+import { runCodemod } from "../run-codemod.js";
 
 /**
  * The `@4` → `@5` codemod, black-box (#621, ADR 0058 §6). `@5` bumps for the `goto` controller, but
@@ -14,7 +14,8 @@ import { runCodemod } from "./run-codemod.js";
  * are: only `format` moves, byte-for-byte (G-S-10); it refuses nothing; it is idempotent; discovery
  * finds all three suffixes.
  */
-const V5 = "migrate-workflow-format-v5.ts";
+const V5 = "archive/migrate-workflow-format-v5.ts";
+const V6 = "migrate-workflow-format-v6.ts";
 
 let dir: string;
 
@@ -59,6 +60,8 @@ describe("migrate-workflow-format-v5 — the no-op format stamp", () => {
     expect(status).toBe(0);
 
     expect(bytes(file)).toBe(text.replace("path/workflow@4", "path/workflow@5"));
+    // `@5` is superseded now, so lift to the read format before loading.
+    runCodemod([file], dir, V6);
     const result = safeParseWorkflowFile(read(file), builtinRegistry);
     expect(result.success, result.success ? "" : result.errors.join("\n")).toBe(true);
   });
@@ -75,6 +78,7 @@ describe("migrate-workflow-format-v5 — the no-op format stamp", () => {
     runCodemod([file], dir, V5);
 
     expect(bytes(file)).toBe(before.replace("path/workflow@4", "path/workflow@5"));
+    runCodemod([file], dir, V6);
     const result = safeParseStepTemplate(read(file), builtinRegistry);
     expect(result.success, result.success ? "" : result.errors.join("\n")).toBe(true);
   });

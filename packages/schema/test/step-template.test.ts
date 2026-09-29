@@ -22,7 +22,7 @@ const UUID = "11111111-1111-4111-8111-111111111111";
 // The ADR's acceptance fixture: a prompt node followed by a `branch` controller — a real fragment,
 // a step plus a top-level controller, carrying its default values inline.
 const minimal = {
-  format: "path/workflow@5",
+  format: "path/workflow@6",
   id: UUID,
   description: "Draft then branch on the review verdict",
   body: [
@@ -49,7 +49,7 @@ describe("StepTemplateSchema — envelope", () => {
 
   it("validates a one-node template (`body: [node]`)", () => {
     const result = safeParseStepTemplate({
-      format: "path/workflow@5",
+      format: "path/workflow@6",
       id: UUID,
       description: "One prompt",
       body: [{ type: "prompt", id: UUID, name: "only", prompt: "Review this diff" }],
@@ -99,12 +99,12 @@ describe("StepTemplateSchema — envelope", () => {
 });
 
 describe("StepTemplateSchema — format stamp", () => {
-  it("requires the current body-grammar stamp, path/workflow@5", () => {
-    expect(StepTemplateSchema.safeParse({ ...minimal, format: "path/workflow@5" }).success).toBe(
+  it("requires the current body-grammar stamp, path/workflow@6", () => {
+    expect(StepTemplateSchema.safeParse({ ...minimal, format: "path/workflow@6" }).success).toBe(
       true,
     );
     expect(StepTemplateSchema.safeParse({ ...minimal, format: "workflow" }).success).toBe(false);
-    expect(StepTemplateSchema.safeParse({ ...minimal, format: "path/workflow@5 " }).success).toBe(
+    expect(StepTemplateSchema.safeParse({ ...minimal, format: "path/workflow@6 " }).success).toBe(
       false,
     );
   });
@@ -134,10 +134,10 @@ describe("StepTemplateSchema — format stamp", () => {
   });
 
   it("rejects a newer stamp with the upgrade-PATH message (G-S-09)", () => {
-    const result = safeParseStepTemplate({ ...minimal, format: "path/workflow@6" });
+    const result = safeParseStepTemplate({ ...minimal, format: "path/workflow@7" });
     expect(result.success).toBe(false);
     if (!result.success)
-      expect(result.errors.join("\n")).toMatch(/path\/workflow@6 is newer than this engine reads/);
+      expect(result.errors.join("\n")).toMatch(/path\/workflow@7 is newer than this engine reads/);
   });
 });
 
@@ -182,7 +182,7 @@ describe("StepTemplateSchema — body is registry-relative, per-node only", () =
 
   it("loads a template whose two nodes share a name — names are resolved at insert, not here", () => {
     const result = safeParseStepTemplate({
-      format: "path/workflow@5",
+      format: "path/workflow@6",
       id: UUID,
       description: "Two same-named steps",
       body: [

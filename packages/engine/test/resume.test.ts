@@ -89,7 +89,7 @@ function tree(body: WorkflowFile["body"], output?: WorkflowFile["output"]): Work
   // stampNames keeps each node's human id in place (so resume matching by id still works) and
   // mirrors it to `name`; runWorkflow takes the object directly, so no UUIDs are needed here.
   return stampNames({
-    format: "path/workflow@5",
+    format: "path/workflow@6",
     name: "resumed",
     config: { model: "m" },
     body,

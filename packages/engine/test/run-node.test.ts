@@ -31,7 +31,7 @@ import { flat } from "./fake-observer.js";
 type Node = WorkflowFile["body"][number];
 
 const file: WorkflowFile = {
-  format: "path/workflow@5",
+  format: "path/workflow@6",
   id: "wf-id",
   name: "walkers",
   body: [],
@@ -448,7 +448,7 @@ describe("runNode — while-do", () => {
       id: "spin-seq",
       name: "spin-seq",
       // Stop once the loop's own output carries two full passes.
-      condition: { type: "not", of: { type: "matches", path: "output", pattern: "\\*!\\*!$" } },
+      condition: { type: "not", of: { type: "matches", path: "previous", pattern: "\\*!\\*!$" } },
       max_iterations: 5,
       node: {
         type: "sequence",
@@ -954,7 +954,7 @@ describe("runNode — worker resolution (file worker_defaults, ADR 0044)", () =>
 
   function fileWith(worker_defaults?: { [type: string]: string }): WorkflowFile {
     return {
-      format: "path/workflow@5",
+      format: "path/workflow@6",
       id: "wf-defaults",
       name: "wf",
       body: [],
@@ -1023,7 +1023,7 @@ describe("runNode — worker resolution (file worker_defaults, ADR 0044)", () =>
     // the parent (ADR 0044). `ctx.run.file` is the child's file inside the nested run, which is
     // what keeps the table from crossing the ref boundary.
     const childWithPrompt: WorkflowFile = {
-      format: "path/workflow@5",
+      format: "path/workflow@6",
       id: "wf-child",
       name: "child",
       body: [{ type: "prompt", id: "inner", name: "inner", prompt: "Hi.", config: { model: "m" } }],
@@ -1068,7 +1068,7 @@ describe("runNode — worker resolution (launch worker-default, ADR 0044)", () =
 
   function fileWith(worker_defaults?: { [type: string]: string }): WorkflowFile {
     return {
-      format: "path/workflow@5",
+      format: "path/workflow@6",
       id: "wf-defaults",
       name: "wf",
       body: [],
@@ -1151,7 +1151,7 @@ describe("runNode — worker resolution (launch worker-default, ADR 0044)", () =
     // outranks an author's per-file default (ADR 0044). Only a `node.worker` pin sits above the
     // launch tier.
     const childWithFileDefault: WorkflowFile = {
-      format: "path/workflow@5",
+      format: "path/workflow@6",
       id: "wf-child",
       name: "child",
       worker_defaults: { prompt: "anthropic" },
@@ -1178,7 +1178,7 @@ describe("runNode — worker resolution (launch worker-default, ADR 0044)", () =
 describe("runNode — workflow step", () => {
   const childPath = () => resolve(fileDir, "child.json");
   const child: WorkflowFile = {
-    format: "path/workflow@5",
+    format: "path/workflow@6",
     id: "wf-id",
     name: "child",
     body: [echo("inner", "done")],

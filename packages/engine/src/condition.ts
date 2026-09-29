@@ -10,7 +10,7 @@ import {
 
 /**
  * The condition evaluator (mvp spec §5.2–5.4, §8.1). Evaluates a predicate tree against the roots
- * `context`/`output`, producing a full per-node trace: dot-path, outcome (`true`/`false`/`error` +
+ * `context`/`previous`, producing a full per-node trace: dot-path, outcome (`true`/`false`/`error` +
  * message) and the value read. Each leaf's value is post-masking (§8.1).
  *
  * Strict semantics — the distinction between a `false` and an `error` leaf:
@@ -37,7 +37,7 @@ export type {
 export { TraceSchema } from "@path/schema";
 
 /**
- * The values a condition reads (format §9): `context` (written from inside) and `output` (the
+ * The values a condition reads (format §9): `context` (written from inside) and `previous` (the
  * predecessor node's output object, checkpoint-transparent per §5.4).
  *
  * Derived from `CONDITION_ROOTS` rather than restating it, so the deferred third root (`config`,

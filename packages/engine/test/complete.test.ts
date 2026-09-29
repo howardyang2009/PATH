@@ -62,7 +62,7 @@ function marker(id: string): WorkflowFile["body"][number] {
 
 function workflow(body: WorkflowFile["body"], output?: WorkflowFile["output"]): WorkflowFile {
   return stampNames({
-    format: "path/workflow@5",
+    format: "path/workflow@6",
     id: "wf-complete",
     name: "complete-wf",
     body,

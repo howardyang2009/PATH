@@ -25,7 +25,7 @@ import { flat } from "./fake-observer.js";
 type Node = WorkflowFile["body"][number];
 
 const file: WorkflowFile = {
-  format: "path/workflow@5",
+  format: "path/workflow@6",
   id: "wf-id",
   name: "walkers",
   body: [],

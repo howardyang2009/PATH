@@ -26,7 +26,7 @@ function stubClient(files: Record<string, unknown | string>): {
 }
 
 function wf(id: string, body: unknown[]): unknown {
-  return { format: "path/workflow@5", id, name: id, body };
+  return { format: "path/workflow@6", id, name: id, body };
 }
 
 /** One file with an awaiting leaf, for the question-shaped assertions. */

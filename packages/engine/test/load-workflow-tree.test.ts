@@ -114,9 +114,9 @@ describe("loadWorkflowTree — superseded format versions", () => {
   // names both codemods in order: the `@2` script migrates `@1` and nothing else, so alone it would
   // leave an `@0` file exactly as unreadable as it was.
   const V1_REJECTION =
-    "path/workflow@1 is no longer read — run scripts/archive/migrate-workflow-format-v2.ts then scripts/archive/migrate-workflow-format-v3.ts then scripts/archive/migrate-workflow-format-v4.ts then scripts/migrate-workflow-format-v5.ts to migrate this file to path/workflow@5";
+    "path/workflow@1 is no longer read — run scripts/archive/migrate-workflow-format-v2.ts then scripts/archive/migrate-workflow-format-v3.ts then scripts/archive/migrate-workflow-format-v4.ts then scripts/archive/migrate-workflow-format-v5.ts then scripts/migrate-workflow-format-v6.ts to migrate this file to path/workflow@6";
   const V0_REJECTION =
-    "path/workflow@0 is no longer read — run scripts/archive/migrate-workflow-format-v1.ts then scripts/archive/migrate-workflow-format-v2.ts then scripts/archive/migrate-workflow-format-v3.ts then scripts/archive/migrate-workflow-format-v4.ts then scripts/migrate-workflow-format-v5.ts to migrate this file to path/workflow@5";
+    "path/workflow@0 is no longer read — run scripts/archive/migrate-workflow-format-v1.ts then scripts/archive/migrate-workflow-format-v2.ts then scripts/archive/migrate-workflow-format-v3.ts then scripts/archive/migrate-workflow-format-v4.ts then scripts/archive/migrate-workflow-format-v5.ts then scripts/migrate-workflow-format-v6.ts to migrate this file to path/workflow@6";
 
   beforeAll(() => {
     dir = mkdtempSync(join(tmpdir(), "path-superseded-format-"));
@@ -170,7 +170,7 @@ describe("loadWorkflowTree — superseded format versions", () => {
     writeFileSync(
       join(dir, "parent.workflow.json"),
       JSON.stringify({
-        format: "path/workflow@5",
+        format: "path/workflow@6",
         id: "9c27e0a3-48bf-4d75-a1e6-3b840f9c62d5",
         name: "parent",
         body: [
@@ -235,7 +235,7 @@ describe("loadWorkflowTree — worker_defaults registry validation (ADR 0044, #5
     writeFileSync(
       join(dir, "wd-parent.workflow.json"),
       JSON.stringify({
-        format: "path/workflow@5",
+        format: "path/workflow@6",
         id: "9c27e0a3-48bf-4d75-a1e6-3b840f9c62d5",
         name: "wd-parent",
         worker_defaults: { prompt: "anthropic" },
@@ -252,7 +252,7 @@ describe("loadWorkflowTree — worker_defaults registry validation (ADR 0044, #5
     writeFileSync(
       join(dir, "wd-child.workflow.json"),
       JSON.stringify({
-        format: "path/workflow@5",
+        format: "path/workflow@6",
         id: "e7c4a1d2-3f88-4b16-9c50-24af6d0b83e1",
         name: "wd-child",
         worker_defaults: { nope: "spawn", prompt: "openai" },
@@ -271,7 +271,7 @@ describe("loadWorkflowTree — worker_defaults registry validation (ADR 0044, #5
     writeFileSync(
       join(dir, "wd-bad.workflow.json"),
       JSON.stringify({
-        format: "path/workflow@5",
+        format: "path/workflow@6",
         id: "b3184ce9-6d20-4f51-92ac-708be1d3a64f",
         name: "wd-bad",
         worker_defaults: { prompt: "openai" },
