@@ -55,12 +55,6 @@ export interface RunsListProps {
   reloadNonce?: number;
   /** The `Resume from …` K-selection affordance; omitted, the panel offers only Resume/Delete. */
   resumeFrom?: ResumeFromAffordance;
-  /**
-   * The watched run's published display status, keyed by run id, so a watched root whose leaf is
-   * parked reads `awaiting` although its summary stays `running` (view-only, ADR 0038). Rows absent
-   * from the map keep their summary status.
-   */
-  displayStatus?: ReadonlyMap<string, RunStatus>;
 }
 
 /** The runs-list read surface: root runs with status, read-only and formatting-only. */
@@ -73,7 +67,6 @@ export function RunsList({
   onDeleted,
   reloadNonce,
   resumeFrom,
-  displayStatus,
 }: RunsListProps) {
   // `null` (nothing open) never reaches a query — the effects short-circuit and the render is idle.
   const scope = typeof workflowId === "string" ? workflowId : undefined;
@@ -152,9 +145,8 @@ export function RunsList({
         ) : (
           <ul className="runs">
             {state.value.map((run) => {
-              // A root with a parked leaf reads `awaiting`: the watched run from its live stream, every
-              // other row from the summary the server derived (ADR 0038).
-              const rowStatus = displayStatus?.get(run.run_id) ?? run.display_status;
+              // The server's display status: a root with a parked leaf reads `awaiting` (ADR 0038).
+              const rowStatus = run.display_status;
               // A live run offers no action: it cannot be resumed, and the server 409s a delete on
               // it.
               const inFlight = rowStatus === "running" || rowStatus === "awaiting";

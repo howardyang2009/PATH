@@ -60,6 +60,7 @@ interface RootRunSummary {
   workflow_id: string | null;
   workflow_path: string | null;
   status: string;
+  display_status: string;
   started_at: string | null;
   finished_at: string | null;
 }

@@ -197,11 +197,6 @@ export function RunDock(props: RunDockProps): JSX.Element {
                     }
                   : undefined
               }
-              // So the row reads `awaiting` while a leaf is parked, though summary status stays
-              // `running` (ADR 0038).
-              displayStatus={
-                props.load.phase === "ready" ? props.load.value.displayStatus : undefined
-              }
             />
           </div>
           <hr
