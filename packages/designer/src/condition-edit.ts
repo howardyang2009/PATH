@@ -29,8 +29,9 @@ export function isLeafConditionType(type: Condition["type"]): boolean {
 /** The default dot-path a fresh leaf predicate reads. */
 const DEFAULT_PATH = "context.value";
 
-/** A fresh, valid leaf predicate — the seed for a new combinator child and the fallback default. */
-function defaultLeaf(): Condition {
+/** A fresh, valid leaf predicate: the seed for a new combinator child, a new `branch` arm,
+ * `while-do` or `checkpoint`, and the fallback default. */
+export function defaultCondition(): Condition {
   return { type: "exists", path: DEFAULT_PATH };
 }
 
@@ -76,11 +77,11 @@ export function defaultConditionOfType(type: Condition["type"]): Condition {
     case "valid-json":
       return { type: "valid-json", path: DEFAULT_PATH };
     case "all":
-      return { type: "all", of: [defaultLeaf()] };
+      return { type: "all", of: [defaultCondition()] };
     case "any":
-      return { type: "any", of: [defaultLeaf()] };
+      return { type: "any", of: [defaultCondition()] };
     case "not":
-      return { type: "not", of: defaultLeaf() };
+      return { type: "not", of: defaultCondition() };
   }
 }
 
@@ -108,7 +109,7 @@ export function changeConditionType(prev: Condition, next: Condition["type"]): C
     if (prev.type === "not") return prev;
     return {
       type: "not",
-      of: prev.type === "all" || prev.type === "any" ? (prev.of[0] ?? defaultLeaf()) : prev,
+      of: prev.type === "all" || prev.type === "any" ? (prev.of[0] ?? defaultCondition()) : prev,
     };
   }
 
@@ -116,7 +117,7 @@ export function changeConditionType(prev: Condition, next: Condition["type"]): C
   const combinator = next as "all" | "any";
   if (prev.type === "all" || prev.type === "any") return { type: combinator, of: prev.of };
   if (prev.type === "not") return { type: combinator, of: [prev.of] };
-  return { type: combinator, of: [defaultLeaf()] };
+  return { type: combinator, of: [defaultCondition()] };
 }
 
 /** Validate a whole condition against the schema; returns the first issue message, or `null` when

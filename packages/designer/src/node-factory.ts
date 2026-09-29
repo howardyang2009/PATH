@@ -1,5 +1,7 @@
 import type { Condition, WorkflowNode } from "@path/schema";
 import { childBodies, uniqueName } from "@path/schema";
+import { defaultCondition } from "./condition-edit.js";
+import { nodeKind } from "./node-kind.js";
 
 /**
  * Minting new nodes for the canvas (designer-spec § Adding; ADR 0015): every node carries a
@@ -8,32 +10,13 @@ import { childBodies, uniqueName } from "@path/schema";
  * occupants never collide.
  */
 
-/** A default placeholder condition for a new `branch` arm, `while-do`, or `checkpoint`; edited
- * later. */
-function defaultCondition(): Condition {
-  return { type: "exists", path: "context.value" };
-}
-
 /** A fresh leaf of `type`, with the type's own required field stubbed empty for the pane to
- * fill. */
+ * fill. A generic registry leaf gets only the envelope: the engine tolerates the empty payload. */
 function makeLeaf(type: string, used: Set<string>): WorkflowNode {
   const base = { id: crypto.randomUUID(), name: uniqueName(type, used), type };
-  switch (type) {
-    case "prompt":
-      return { ...base, prompt: "" } as WorkflowNode;
-    case "binary":
-      return { ...base, command: "" } as WorkflowNode;
-    case "workflow":
-      return { ...base, ref: "" } as WorkflowNode;
-    case "person-activity":
-      // Its `description` is the required field; the cast is needed because a plugin leaf sits
-      // outside the core node union.
-      return { ...base, description: "" } as unknown as WorkflowNode;
-    default:
-      // A generic registry leaf (e.g. `api-call`): only the envelope is minted; the engine
-      // tolerates the empty payload, so no field is stubbed here.
-      return base as unknown as WorkflowNode;
-  }
+  const { stubField } = nodeKind(type);
+  // A plugin leaf sits outside the core node union, hence the cast.
+  return (stubField === null ? base : { ...base, [stubField]: "" }) as unknown as WorkflowNode;
 }
 
 /**

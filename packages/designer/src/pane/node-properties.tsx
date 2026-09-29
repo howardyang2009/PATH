@@ -8,13 +8,14 @@ import {
   type WorkflowNode,
 } from "@path/schema";
 import { ConditionField } from "../condition-builder.js";
+import { defaultCondition } from "../condition-edit.js";
 import { type EditCommit, type EditKey, editKey } from "../edit-key.js";
 import { replaceNode } from "../edit-target.js";
 import { editFile, findById, locate, unwrapEdit } from "../edit-tree.js";
 import { directionGlyph, gotoTargetOptions } from "../goto-view.js";
 import { carriesEnvelope } from "../grammar.js";
 import { referenceablePaths } from "../interp-suggest.js";
-import { kindExplanation } from "../node-kind.js";
+import { nodeKind } from "../node-kind.js";
 import { fillPlaceholderOnTab, IdRow, SelectField, TextField } from "../pane-controls.js";
 import { StepEnvelopeFields } from "./config-region.js";
 import { MaxIterationsField, PaneSection } from "./fields.js";
@@ -65,7 +66,7 @@ export function NodeProperties({
           {role}
         </p>
       ) : null}
-      <p className="pane-explain">{kindExplanation(node.type)}</p>
+      <p className="pane-explain">{nodeKind(node.type).explanation}</p>
       <hr className="pane-divider" />
       {/* Identity is the pane's anchor — which node is this — so `name` and `id` never fold away.
           The kind's own fields are a section: they open expanded, and folding them is an option for
@@ -157,7 +158,7 @@ export function ReferenceList({
 export function armWhen(file: WorkflowFile, branchId: string, armIndex: number): Condition {
   const owner = findById(file.body, branchId);
   const when = owner?.type === "branch" ? owner.arms[armIndex]?.when : undefined;
-  return when ?? { type: "exists", path: "context.value" };
+  return when ?? defaultCondition();
 }
 
 /**

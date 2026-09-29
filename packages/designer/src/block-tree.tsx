@@ -5,7 +5,7 @@ import { ConflictMarker } from "./conflict-context.js";
 import type { SingleSlot } from "./edit-tree.js";
 import type { EditorApi } from "./editor-api.js";
 import { IncomingBadge, useGotoChip, useIsGotoTarget } from "./goto-context.js";
-import { leafChip, leafGlyph, nodeHue } from "./node-kind.js";
+import { nodeKind } from "./node-kind.js";
 import { useGotoJumpsSpent, useNodeRunStatus } from "./run/run-projection.js";
 import { RUN_STATUS_GLYPH } from "./run/run-status.js";
 import { useSelection } from "./selection-context.js";
@@ -87,7 +87,7 @@ function TailSocket({
 /** The block's CSS custom properties, so its border and mouth tint pick up its kind's hue
  * tokens. */
 function hueStyle(node: WorkflowNode): CSSProperties {
-  const kind = nodeHue(node.type);
+  const kind = nodeKind(node.type).hue;
   return { "--block-fg": `var(--k-${kind})`, "--block-bg": `var(--k-${kind}-bg)` } as CSSProperties;
 }
 
@@ -243,7 +243,7 @@ function NodeBlock({
 
 /** A leaf `step` — a chip block, its kind named by the `LLM` / `COMMAND` / plugin-type chip. */
 function LeafStep({ node, editor }: { node: WorkflowNode; editor?: EditorApi }): JSX.Element {
-  const glyph = leafGlyph(node.type);
+  const glyph = nodeKind(node.type).glyph;
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: selectable block; its socket buttons own the actions.
     <div
@@ -259,7 +259,7 @@ function LeafStep({ node, editor }: { node: WorkflowNode; editor?: EditorApi }):
           {glyph}
         </span>
       ) : null}
-      <span className="chip">{leafChip(node.type)}</span>
+      <span className="chip">{nodeKind(node.type).chip}</span>
       <span className="node-name">{node.name}</span>
       <NodeRunBadge id={node.id} />
       <IncomingBadge node={node} />

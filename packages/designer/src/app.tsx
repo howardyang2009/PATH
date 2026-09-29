@@ -16,7 +16,7 @@ import { dirnameOf, NewFileDialog } from "./new-file-dialog.js";
 import { OpenWorkflowDialog } from "./open-existing-dialog.js";
 import { OpenTemplateDialog } from "./open-template-dialog.js";
 import { Palette } from "./palette.js";
-import { PropertiesPane } from "./properties-pane.js";
+import { PropertiesPane } from "./pane/properties-pane.js";
 import { RefTargetDialog } from "./ref-target-dialog.js";
 import { RunDock } from "./run/run-dock.js";
 import { RunProjectionProvider } from "./run/run-projection.js";

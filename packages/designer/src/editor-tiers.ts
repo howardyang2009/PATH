@@ -1,11 +1,8 @@
 import type { WireFieldSpec, WireStepPlugin } from "@path/client-core";
+import { nodeKind } from "./node-kind.js";
 
 /** Editor tiers — a hand-built editor, the registry-driven generic form, else the JSON floor. */
 export type EditorTier = "first-class" | "generic" | "raw-json";
-
-/** Hand-built editors; `binary` is absent because the generic form lays out all its fields (ADR
- * 0018). */
-const FIRST_CLASS = new Set(["prompt", "workflow", "person-activity"]);
 
 /** Does the generic form lay out a control? Only scalars and flat arrays of scalars do. */
 function fieldLaysOut(field: WireFieldSpec): boolean {
@@ -29,7 +26,7 @@ export function pluginFor(type: string, plugins: WireStepPlugin[]): WireStepPlug
 
 /** Resolve the tier for a leaf `type`; an off-registry leaf falls to the JSON floor (ADR 0026). */
 export function editorTier(type: string, plugins: WireStepPlugin[]): EditorTier {
-  if (FIRST_CLASS.has(type)) return "first-class";
+  if (nodeKind(type).firstClass) return "first-class";
   const plugin = pluginFor(type, plugins);
   // an off-registry leaf never reaches an open file (ADR 0026); defensive.
   if (!plugin) return "raw-json";
