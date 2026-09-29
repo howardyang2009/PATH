@@ -82,6 +82,7 @@ An Architecture Decision Record (ADR) records one decision PATH has made: the sh
 | [0076](0076-a-runs-files-are-read-through-one-seam.md) | A run's files are read through one seam | accepted |
 | [0077](0077-the-session-hook-exposes-the-reducers-verb.md) | The session hook exposes the reducer's verb | accepted |
 | [0078](0078-a-container-bodys-walk-is-one-adapter.md) | A container body's walk is one adapter, not a second injected walker | accepted |
+| [0079](0079-a-previous-root-names-the-predecessors-output.md) | A `previous` root names the predecessor's output, and `output` means only a step's own output | proposed |
 
 ## Superseded decisions
 
