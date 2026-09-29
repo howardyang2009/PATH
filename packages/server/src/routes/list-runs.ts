@@ -41,7 +41,11 @@ export function handleListRuns({ res, ctx, query }: ApiRequest): void {
   // Each summary carries the masked-secret *names* its launch recorded (ADR 0046), never values.
   const body: ListRunsResponse = {
     runs: rows.map((row) =>
-      toRootRunSummary(row, ctx.project.archive.launchFacts(row.runId)?.secretKeys),
+      toRootRunSummary(
+        row,
+        ctx.project.archive.displayStatus(row),
+        ctx.project.archive.launchFacts(row.runId)?.secretKeys,
+      ),
     ),
   };
   sendJson(res, 200, body);

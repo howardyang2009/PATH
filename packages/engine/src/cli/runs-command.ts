@@ -90,7 +90,7 @@ async function runRunsListCommand(args: string[], dir: string, io: CliIo): Promi
       return [
         run.runId,
         run.workflowName ?? "-",
-        run.status,
+        archive.displayStatus(run),
         run.startedAt ?? "-",
         run.finishedAt ?? "-",
         resumedFrom,

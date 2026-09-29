@@ -102,6 +102,23 @@ describe("launch parks at an awaiting leaf and tears down (ADR 0039)", () => {
       project.close();
     }
   });
+
+  it("lists the parked root as awaiting by display status, and filters on it (ADR 0038)", async () => {
+    const project = open();
+    try {
+      await project.run(workflow([person("approve")]), dir);
+      const [root] = project.archive.listRoots();
+
+      expect(root!.status).toBe("running");
+      expect(project.archive.displayStatus(root!)).toBe("awaiting");
+      expect(project.archive.listRoots({ status: "awaiting" }).map((r) => r.runId)).toEqual([
+        root!.runId,
+      ]);
+      expect(project.archive.listRoots({ status: "running" })).toEqual([]);
+    } finally {
+      project.close();
+    }
+  });
 });
 
 describe("Complete replays from the root, resolves the leaf, and continues forward", () => {

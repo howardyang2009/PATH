@@ -139,6 +139,7 @@ Response `200 OK`:
     {
       "run_id": "<uuid>",
       "status": "succeeded",
+      "display_status": "succeeded",
       "started_at": "2026-07-21T10:00:00.000Z",
       "finished_at": "2026-07-21T10:02:31.000Z"
     }
@@ -148,6 +149,12 @@ Response `200 OK`:
 
 Most recent first (`ORDER BY started_at DESC`). This is the root-run summary shape only. It has no
 `output`, `usage`, or full tree; fetch `GET /v0/runs/:root_run_id` for that.
+
+`display_status` is the status to show. It equals `status`, except a `running` root with a parked
+`awaiting` leaf below an unbroken chain of `running` ancestors reads `awaiting`. The stored root status
+stays `running` (ADR 0038); the server derives this from the tree at read time. The `status` filter
+matches `display_status`, so `?status=awaiting` lists the parked roots and `?status=running` leaves
+them out.
 
 Each summary also carries `launch_secret_keys` (ADR 0046) **when the launch recorded any**: the
 dot-paths of the operator's config override whose values were `$secret`, names only, never values. A

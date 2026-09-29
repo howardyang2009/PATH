@@ -1,4 +1,5 @@
 import { isRootRun } from "./run-kind.js";
+import type { RunStatus } from "./run-status.js";
 
 /** The run tree as a shared primitive (CONTEXT.md, *run tree*): the runs of one root, keyed by
  * `parentRunId`. Deliberately low — adjacency and a descendant walk, not a nested render model. */
@@ -75,4 +76,30 @@ export function pathToRoot<T extends RunTreeFields>(rows: Iterable<T>, startId: 
     cursor = byId.get(cursor.parentRunId);
   }
   return chain;
+}
+
+/** The status each run should display: its record status, except a `running` run with an `awaiting`
+ * run below it reads `awaiting` (view-only, ADR 0038); one walk per snapshot. */
+export function displayStatusByRun<T extends RunTreeFields & { status: RunStatus }>(
+  rows: Iterable<T> | ReadonlyMap<string, T>,
+): Map<string, RunStatus> {
+  const runs = new Map<string, T>();
+  for (const row of "values" in rows ? rows.values() : rows) runs.set(row.runId, row);
+  const display = new Map<string, RunStatus>();
+  for (const run of runs.values()) display.set(run.runId, run.status);
+
+  for (const run of runs.values()) {
+    if (run.status !== "awaiting") continue;
+    // Walk up from the parked run: its still-`running` ancestors read `awaiting` too.
+    const seen = new Set<string>([run.runId]);
+    let parentId = run.parentRunId;
+    while (parentId !== null && !seen.has(parentId)) {
+      seen.add(parentId);
+      const parent = runs.get(parentId);
+      if (parent === undefined || parent.status !== "running") break;
+      display.set(parentId, "awaiting");
+      parentId = parent.parentRunId;
+    }
+  }
+  return display;
 }

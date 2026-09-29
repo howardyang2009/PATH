@@ -48,7 +48,7 @@ type _WireCarriesEveryRecordField = Assert<
 type _SummaryProjectionMatchesSummary = Assert<
   Equal<
     CamelToSnake<keyof typeof ROOT_RUN_SUMMARY_FIELDS>,
-    keyof Omit<RootRunSummary, "launch_secret_keys">
+    keyof Omit<RootRunSummary, "launch_secret_keys" | "display_status">
   >
 >;
 
@@ -237,24 +237,28 @@ describe("blankRunRecord", () => {
 
 describe("toRootRunSummary", () => {
   it("projects the fields GET /v0/runs returns, and no others", () => {
-    expect(toRootRunSummary(record)).toEqual({
+    expect(toRootRunSummary(record, "succeeded")).toEqual({
       run_id: "run-1",
       workflow_name: "release-notes",
       workflow_id: "018f3a2b-0000-7000-8000-000000000001",
       workflow_path: "release-notes.workflow.json",
       status: "succeeded",
+      display_status: "succeeded",
       started_at: "2026-07-27T10:00:00.000Z",
       finished_at: "2026-07-27T10:00:01.000Z",
     });
   });
 
   it("agrees with the full record on every field they share", () => {
-    const summary = toRootRunSummary(record, ["apiKey"]) as unknown as Record<string, unknown>;
+    const summary = toRootRunSummary(record, "succeeded", ["apiKey"]) as unknown as Record<
+      string,
+      unknown
+    >;
     const wire = toWireRunRecord(record) as unknown as Record<string, unknown>;
     for (const key of Object.keys(summary)) {
-      // `launch_secret_keys` is the one summary-only field (ADR 0046): it rides the summary, not
-      // the record, because the masked secret names live in the tree's frozen launch facts.
-      if (key === "launch_secret_keys") continue;
+      // The summary-only fields: `launch_secret_keys` lives in the tree's frozen launch facts (ADR
+      // 0046), and `display_status` is derived from the tree (ADR 0038).
+      if (key === "launch_secret_keys" || key === "display_status") continue;
       expect(summary[key]).toEqual(wire[key]);
     }
   });
@@ -282,8 +286,10 @@ describe("launch facts on the wire (ADR 0046)", () => {
 
   it("carries the masked-secret names on a root-run summary, and nothing when there are none", () => {
     const row = blankRunRecord({ runId: "r", rootRunId: "r" });
-    expect(toRootRunSummary(row, ["apiKey"])).toMatchObject({ launch_secret_keys: ["apiKey"] });
-    expect(toRootRunSummary(row, [])).not.toHaveProperty("launch_secret_keys");
-    expect(toRootRunSummary(row)).not.toHaveProperty("launch_secret_keys");
+    expect(toRootRunSummary(row, "running", ["apiKey"])).toMatchObject({
+      launch_secret_keys: ["apiKey"],
+    });
+    expect(toRootRunSummary(row, "running", [])).not.toHaveProperty("launch_secret_keys");
+    expect(toRootRunSummary(row, "running")).not.toHaveProperty("launch_secret_keys");
   });
 });

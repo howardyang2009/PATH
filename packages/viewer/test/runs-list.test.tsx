@@ -33,6 +33,7 @@ const SUCCEEDED: RootRunSummary = {
   workflow_id: "wf-alpha",
   workflow_path: "build-report.workflow.json",
   status: "succeeded",
+  display_status: "succeeded",
   started_at: "2026-07-25T09:14:05.000Z",
   finished_at: "2026-07-25T09:14:31.000Z",
 };
@@ -43,6 +44,7 @@ const RUNNING: RootRunSummary = {
   workflow_id: "wf-beta",
   workflow_path: "nightly-sync.workflow.json",
   status: "running",
+  display_status: "running",
   started_at: "2026-07-25T09:20:00.000Z",
   finished_at: null,
 };
@@ -53,6 +55,7 @@ const CANCELLED: RootRunSummary = {
   workflow_id: null,
   workflow_path: null,
   status: "cancelled",
+  display_status: "cancelled",
   started_at: "2026-07-25T09:25:00.000Z",
   finished_at: "2026-07-25T09:25:40.000Z",
 };
@@ -63,6 +66,7 @@ const FAILED: RootRunSummary = {
   workflow_id: "wf-delta",
   workflow_path: "deploy.workflow.json",
   status: "failed",
+  display_status: "failed",
   started_at: "2026-07-25T09:30:00.000Z",
   finished_at: "2026-07-25T09:30:12.000Z",
 };
@@ -175,6 +179,17 @@ describe("RunsList", () => {
     expect(pillOf("run_beta")).toHaveAttribute("data-status", "awaiting");
     // A row the app is not watching has no tree, so it keeps its record status.
     expect(pillOf("run_alpha")).toHaveAttribute("data-status", "succeeded");
+  });
+
+  it("paints an unwatched root awaiting from its summary's display status", async () => {
+    // The server derives display_status from the tree, so a row nobody selected still shows its
+    // parked leaf.
+    const parked: RootRunSummary = { ...RUNNING, display_status: "awaiting" };
+    const { client } = stubClient([parked, SUCCEEDED]);
+    renderList(client, { selectedRootRunId: "run_alpha" });
+    await screen.findByTestId("run-row-run_beta");
+
+    expect(pillOf("run_beta")).toHaveAttribute("data-status", "awaiting");
   });
 
   it("shows a loading state until the runs arrive", async () => {
@@ -572,7 +587,12 @@ describe("RunsList refresh", () => {
     await act(async () => {});
     expect(pillOf(RUNNING.run_id)).toHaveTextContent("running");
 
-    runs[0] = { ...RUNNING, status: "succeeded", finished_at: "2026-07-25T09:20:31.000Z" };
+    runs[0] = {
+      ...RUNNING,
+      status: "succeeded",
+      display_status: "succeeded",
+      finished_at: "2026-07-25T09:20:31.000Z",
+    };
     await tick();
 
     expect(pillOf(RUNNING.run_id)).toHaveTextContent("succeeded");

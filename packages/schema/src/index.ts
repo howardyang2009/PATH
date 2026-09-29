@@ -218,6 +218,7 @@ export {
 } from "./run-status.js";
 export {
   childrenByParent,
+  displayStatusByRun,
   findRootRun,
   pathToRoot,
   type RunTreeFields,

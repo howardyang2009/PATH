@@ -152,9 +152,9 @@ export function RunsList({
         ) : (
           <ul className="runs">
             {state.value.map((run) => {
-              // The watched run shows its published display status, so a parked leaf reads
-              // `awaiting`; rows with no tree behind them keep their summary.
-              const rowStatus = displayStatus?.get(run.run_id) ?? run.status;
+              // A root with a parked leaf reads `awaiting`: the watched run from its live stream, every
+              // other row from the summary the server derived (ADR 0038).
+              const rowStatus = displayStatus?.get(run.run_id) ?? run.display_status;
               // A live run offers no action: it cannot be resumed, and the server 409s a delete on
               // it.
               const inFlight = rowStatus === "running" || rowStatus === "awaiting";

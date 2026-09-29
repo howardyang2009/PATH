@@ -421,6 +421,7 @@ describe("POST /v0/runs + GET /v0/runs/:root_run_id — end to end", () => {
     // Most-recent-first, and the summary shape only (no tree, no output).
     expect(body.runs.map((r) => r.run_id)).toEqual([second.root_run_id, first.root_run_id]);
     expect(Object.keys(body.runs[0]!).sort()).toEqual([
+      "display_status",
       "finished_at",
       "run_id",
       "started_at",
@@ -430,6 +431,7 @@ describe("POST /v0/runs + GET /v0/runs/:root_run_id — end to end", () => {
       "workflow_path",
     ]);
     expect(body.runs[0]!.status).toBe("succeeded");
+    expect(body.runs[0]!.display_status).toBe("succeeded");
     expect(body.runs[0]!.workflow_name).toBe("two-binary-steps");
     expect(body.runs[0]!.workflow_path).toBe("two-binary-steps.workflow.json");
     expect(body.runs[0]!.started_at).toBeTruthy();
