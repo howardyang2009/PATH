@@ -83,6 +83,10 @@ An Architecture Decision Record (ADR) records one decision PATH has made: the sh
 | [0077](0077-the-session-hook-exposes-the-reducers-verb.md) | The session hook exposes the reducer's verb | accepted |
 | [0078](0078-a-container-bodys-walk-is-one-adapter.md) | A container body's walk is one adapter, not a second injected walker | accepted |
 | [0079](0079-a-previous-root-names-the-predecessors-output.md) | A `previous` root names the predecessor's output, and `output` means only a step's own output | accepted |
+| [0080](0080-one-root-table-names-what-each-position-reads.md) | One root table names what each position reads | accepted |
+| [0081](0081-the-resume-gate-lives-in-project-resume.md) | The Resume gate lives in `Project.resume` | accepted |
+| [0082](0082-every-door-that-runs-or-writes-a-file-refuses-duplicate-ids.md) | Every door that runs or writes a file refuses duplicate ids | accepted |
+| [0083](0083-the-template-store-validates-its-own-writes.md) | The template store validates its own writes | accepted |
 
 ## Superseded decisions
 

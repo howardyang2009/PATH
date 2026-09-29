@@ -1,6 +1,6 @@
 import type { ConfigObject, JsonValue } from "@path/schema";
 import { stopCause } from "./cancellation.js";
-import { describeInterpolationError, interpolateValue, interpolationScope } from "./interpolate.js";
+import { describeInterpolationError, interpolateValue, scopeFor } from "./interpolate.js";
 import { OutputParseError, parseStepOutput } from "./parse-output.js";
 import type { StepRequest, StepResult } from "./plugin-seam/seam.js";
 import type { Cancellation, NodeExecContext, RunContext, SeqOutcome } from "./run-context.js";
@@ -152,7 +152,7 @@ export async function runLeafStep(
     };
   }
 
-  const scope = interpolationScope(ctx.stepConfig, ctx.exec.context);
+  const scope = scopeFor("typeField", { config: ctx.stepConfig, context: ctx.exec.context });
   let fields: JsonValue;
   try {
     const raw: { [key: string]: JsonValue } = {};

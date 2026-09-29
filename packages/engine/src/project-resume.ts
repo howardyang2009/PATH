@@ -70,24 +70,35 @@ export type ListEligibleResult =
   | { found: true; rows: EligibilityRow[] };
 
 /**
- * The precondition `resume` and `listEligible` share: the source tree named by `rootRunId` must
- * exist and be terminal. `getRunsForRoot` keys on `root_run_id`, so a child id returns no rows —
- * the same `not-found` case; terminality is read off the root row, a non-terminal source refused
- * whole.
+ * The precondition `resume` and `listEligible` share, and the one Resume gate every door (CLI,
+ * server) reaches. `getRunsForRoot` keys on `root_run_id`, so a child id returns no rows: the same
+ * `not-found` case. A live tree has nothing to resume yet. A plain Resume of a tree where every run
+ * succeeded has nothing to do; a tree with a succeeded root but a non-succeeded detached branch
+ * does (ADR 0009). A rerun boundary K lifts that last refusal (ADR 0032).
  */
 type ResumeSourceProblem =
   | { kind: "not-found"; message: string }
-  | { kind: "non-terminal"; message: string };
+  | { kind: "refused"; message: string };
 
-function checkResumeSource(rows: RunRecord[], rootRunId: string): ResumeSourceProblem | undefined {
+function checkResumeSource(
+  rows: RunRecord[],
+  rootRunId: string,
+  fromBoundary: boolean,
+): ResumeSourceProblem | undefined {
   const root = findRootRun(rows);
   if (rows.length === 0 || !root) {
     return { kind: "not-found", message: `no run found with root run id "${rootRunId}"` };
   }
   if (!isTerminal(root.status)) {
     return {
-      kind: "non-terminal",
-      message: `run "${rootRunId}" is still ${root.status}; resume needs a terminal source run`,
+      kind: "refused",
+      message: `run "${rootRunId}" is still ${root.status}; only a finished run can be resumed`,
+    };
+  }
+  if (!fromBoundary && rows.every((row) => row.status === "succeeded")) {
+    return {
+      kind: "refused",
+      message: `run "${rootRunId}" already succeeded; there is nothing to resume`,
     };
   }
   return undefined;
@@ -119,9 +130,9 @@ export async function resumeProjectRun(
   // The raw predecessor tree, read once. `getRunsForRoot` keys on `root_run_id`, so an unknown or
   // child id yields no rows — the `found: false` case.
   const directRuns = getRunsForRoot(db, rootRunId);
-  const problem = checkResumeSource(directRuns, rootRunId);
+  const problem = checkResumeSource(directRuns, rootRunId, opts.rerunFromRunId !== undefined);
   if (problem !== undefined) {
-    // Unknown root stays `error`; a non-terminal source is a 409 refusal. Both exit 1 on the CLI.
+    // Unknown root stays `error`; a refused source is a 409 refusal. Both exit 1 on the CLI.
     return problem.kind === "not-found"
       ? { found: false, error: problem.message }
       : { found: false, refusal: { status: 409, message: problem.message } };
@@ -186,7 +197,8 @@ export function listEligibleRuns(
 ): ListEligibleResult {
   // The same raw rows `resume` feeds `resolveLegalK`, so the per-row verdict shares one authority.
   const directRuns = getRunsForRoot(db, rootRunId);
-  const problem = checkResumeSource(directRuns, rootRunId);
+  // A listing looks for a boundary K, so a fully succeeded tree is still listed.
+  const problem = checkResumeSource(directRuns, rootRunId, true);
   if (problem !== undefined) return { found: false, error: problem.message };
 
   // DFS pre-order, one row per run; each verdict is the shared legal-K predicate over that run id.

@@ -138,17 +138,42 @@ describe("step nodes", () => {
     ).toBe(true);
   });
 
-  it("does not root-validate interpolation in a registry leaf's string field (plain z.string)", () => {
-    // The closed union typed `command` as `interpolableString(STEP_ROOTS)`, which rejected a
-    // disallowed root at load. A registry leaf declares its fields as plain zod (`command:
-    // z.string()` in the `binary` folder), so a bad interpolation root is no longer a load error
-    // for a leaf field — the engine still interpolates it at run time (#337). Root-scoped positions
-    // the *core* grammar owns (a `while-do` `max_iterations`, the file `output` map) are still
-    // validated.
-    expect(
-      NodeSchema.safeParse({ type: "binary", id: ID, name: "gather", command: "${output.cmd}" })
-        .success,
-    ).toBe(true);
+  it("reads an awaiting step's outputSchema against config alone, the scope Complete has", () => {
+    const AwaitingSchema = makeNodeSchema({
+      "person-activity": {
+        fields: { description: z.string(), outputSchema: z.record(z.string(), z.unknown()) },
+        config: {},
+        workers: {
+          person: { run: () => Promise.reject(), meters: false, needsProcessorSlot: false },
+        },
+        defaultWorker: "person",
+      },
+    });
+    const node = (minimum: string) => ({
+      type: "person-activity",
+      id: ID,
+      name: "ask",
+      description: "Pick one ${context.label}",
+      outputSchema: { type: "number", minimum },
+    });
+    expect(AwaitingSchema.safeParse(node("${config.min}")).success).toBe(true);
+    const refused = AwaitingSchema.safeParse(node("${context.min}"));
+    expect(refused.success).toBe(false);
+    expect(refused.error?.issues[0]?.path).toEqual(["outputSchema", "minimum"]);
+  });
+
+  it("refuses a root a type field may not read, at load, with the field's path", () => {
+    const result = NodeSchema.safeParse({
+      type: "binary",
+      id: ID,
+      name: "gather",
+      command: "echo",
+      args: ["${previous.text}"],
+    });
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect(result.error.issues[0]?.path).toEqual(["args", 0]);
+    expect(result.error.issues[0]?.message).toContain("previous");
   });
 
   it("validates a minimal workflow step", () => {

@@ -91,6 +91,44 @@ export function checkInterpolationSyntax(
   return { ok: true };
 }
 
+/** Every string leaf of `value` that fails `checkInterpolationSyntax`, with its path below
+ * `value`. */
+export function interpolationIssues(
+  value: unknown,
+  allowedRoots: readonly InterpolationRoot[],
+): { path: (string | number)[]; error: string }[] {
+  if (typeof value === "string") {
+    const result = checkInterpolationSyntax(value, allowedRoots);
+    return result.ok
+      ? []
+      : [{ path: [], error: result.error ?? `invalid interpolation in "${value}"` }];
+  }
+  const entries: [string | number, unknown][] = Array.isArray(value)
+    ? value.map((item, index) => [index, item])
+    : value !== null && typeof value === "object"
+      ? Object.entries(value)
+      : [];
+  return entries.flatMap(([key, item]) =>
+    interpolationIssues(item, allowedRoots).map((issue) => ({
+      ...issue,
+      path: [key, ...issue.path],
+    })),
+  );
+}
+
+/** Whether any string leaf of `value` holds a `${}` placeholder, i.e. resolves differently once
+ * interpolated. */
+export function holdsPlaceholder(value: unknown): boolean {
+  if (typeof value === "string") {
+    for (const token of tokenizeInterpolation(value)) if (token.kind === "placeholder") return true;
+    return false;
+  }
+  if (Array.isArray(value)) return value.some(holdsPlaceholder);
+  if (value !== null && typeof value === "object")
+    return Object.values(value).some(holdsPlaceholder);
+  return false;
+}
+
 export function interpolableString(allowedRoots: readonly InterpolationRoot[]) {
   return z.string().superRefine((value, ctx) => {
     const result = checkInterpolationSyntax(value, allowedRoots);

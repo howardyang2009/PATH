@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  duplicateIdErrors,
   type IdentityOccurrence,
   identityIssues,
   nodeIdentityIssues,
@@ -170,5 +171,25 @@ describe("the identity rules each door enforces (ADR 0015)", () => {
     expect(nodeIdentityIssues(shared, ["duplicate-id"]).map((issue) => issue.path)).toEqual([
       ["body", 1],
     ]);
+  });
+});
+
+describe("duplicateIdErrors", () => {
+  it("names both paths, with the workflow's own id in the namespace", () => {
+    const shared: WorkflowFile = {
+      ...nested,
+      body: [{ type: "binary", id: nested.id, name: "one", command: "echo" }],
+    };
+    expect(duplicateIdErrors(shared)).toEqual([
+      `body.0.id: duplicate id "${nested.id}": id already used at id`,
+    ]);
+  });
+
+  it("is empty when every id is unique", () => {
+    const unique: WorkflowFile = {
+      ...nested,
+      body: [{ type: "binary", id: NODE_ID, name: "one", command: "echo" }],
+    };
+    expect(duplicateIdErrors(unique)).toEqual([]);
   });
 });

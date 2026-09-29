@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { dirname, relative, resolve } from "node:path";
 import {
+  duplicateIdErrors,
   makeWorkflowFileSchema,
   safeParseWorkflowFileWith,
   type WorkflowFile,
@@ -80,6 +81,11 @@ export async function loadWorkflowTree(entryPath: string): Promise<LoadResult> {
     const parsed = safeParseWorkflowFileWith(schema, raw);
     if (!parsed.success) {
       errors.push(...parsed.errors.map((e) => `${absPath}: ${e}`));
+      return;
+    }
+    const duplicates = duplicateIdErrors(parsed.data);
+    if (duplicates.length > 0) {
+      errors.push(...duplicates.map((e) => `${absPath}: ${e}`));
       return;
     }
 

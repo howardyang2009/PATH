@@ -148,7 +148,7 @@
               "node": {
                 "type": "goto",
                 "id": "ca8e0932-920e-42c3-8225-5115c02919c1",
-                "name": "goto-2-2",
+                "name": "goto-5",
                 "target": "test",
                 "max_jumps": 3
               }
@@ -162,7 +162,7 @@
               "node": {
                 "type": "goto",
                 "id": "849c19f9-21e7-4f3b-9849-f61c189a022c",
-                "name": "goto-3-2",
+                "name": "goto-6",
                 "target": "pending",
                 "max_jumps": 3
               }
@@ -215,7 +215,7 @@
               "node": {
                 "type": "goto",
                 "id": "49ac2ff5-9006-46db-b5b9-5e64ea75a358",
-                "name": "goto-5",
+                "name": "goto-7",
                 "target": "implement",
                 "max_jumps": 3
               }
@@ -229,7 +229,7 @@
               "node": {
                 "type": "goto",
                 "id": "417282b6-3f7a-4b46-9c0b-050defefed14",
-                "name": "goto-2-3",
+                "name": "goto-8",
                 "target": "close",
                 "max_jumps": 3
               }
@@ -243,7 +243,7 @@
               "node": {
                 "type": "goto",
                 "id": "b848e8a9-5cd1-4c9a-977c-3ac39863febd",
-                "name": "goto-3-3",
+                "name": "goto-9",
                 "target": "pending",
                 "max_jumps": 3
               }
@@ -284,7 +284,7 @@
         {
           "type": "goto",
           "id": "0fa1e9bf-ffe9-4e24-bf1d-fad93231b82e",
-          "name": "goto-6",
+          "name": "goto-16",
           "target": "backlog",
           "max_jumps": 3
         }
@@ -334,7 +334,7 @@
               "node": {
                 "type": "goto",
                 "id": "a731ccad-e2ac-4644-a847-3c3644b1e465",
-                "name": "goto-7",
+                "name": "goto-10",
                 "target": "design",
                 "max_jumps": 3
               }
@@ -348,7 +348,7 @@
               "node": {
                 "type": "goto",
                 "id": "d42c97fa-b7a9-4697-a613-ac1f715071fd",
-                "name": "goto-8",
+                "name": "goto-11",
                 "target": "implement",
                 "max_jumps": 3
               }
@@ -362,7 +362,7 @@
               "node": {
                 "type": "goto",
                 "id": "76c869d7-851a-4302-9631-a7516ec86546",
-                "name": "goto-9",
+                "name": "goto-12",
                 "target": "test",
                 "max_jumps": 3
               }

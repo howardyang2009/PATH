@@ -53,9 +53,13 @@ export async function connectRunViewModel(options: ConnectRunOptions): Promise<C
         quiescent = false;
         model.setStreamPhase("live");
       }
-      const isNewRun = !model.getState().runs.has(event.run_id);
+      const before = model.getState();
+      const isNewRun = !before.runs.has(event.run_id);
+      const parked = [...before.displayStatus.values()].includes("awaiting");
       model.applyEvent(event);
-      if (isNewRun) rehydrate();
+      // What a parked leaf's ancestors show is the server's to derive (ADR 0038): re-read the tree
+      // when a leaf parks, and on any move while one is parked.
+      if (isNewRun || event.type === "step-awaiting" || parked) rehydrate();
     },
     // Stream liveness is state a viewer renders, so it lands in the view-model snapshot, not only
     // here.

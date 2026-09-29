@@ -1,6 +1,6 @@
 import type { RunStatus } from "@path/schema";
 import { describe, expect, it } from "vitest";
-import { buildRunTree, displayStatusByRun } from "../src/run-tree.js";
+import { buildRunTree } from "../src/run-tree.js";
 import type { RunNodeState } from "../src/view-model.js";
 
 function run(
@@ -47,15 +47,18 @@ function shape(
   return { id: node.run.runId, children: node.children.map((child) => shape(child as never)) };
 }
 
+const NO_DISPLAY: ReadonlyMap<string, RunStatus> = new Map();
+
 describe("buildRunTree", () => {
   it("has nothing to render when the root run is not in the map", () => {
-    expect(buildRunTree("root", mapOf(run("child", "root")))).toBeNull();
+    expect(buildRunTree("root", mapOf(run("child", "root")), NO_DISPLAY)).toBeNull();
   });
 
   it("nests each run under the run that spawned it", () => {
     const tree = buildRunTree(
       "root",
       mapOf(run("root", null), run("nested", "root"), run("leaf", "nested")),
+      NO_DISPLAY,
     );
 
     expect(shape(tree)).toEqual({
@@ -67,7 +70,11 @@ describe("buildRunTree", () => {
   // The event stream runs ahead of the last tree read, so a child can name a parent the map has
   // not seen yet. Dropping it would make a run vanish from the tree mid-run.
   it("hangs a run whose parent is not in the map off the root", () => {
-    const tree = buildRunTree("root", mapOf(run("root", null), run("orphan", "not-here")));
+    const tree = buildRunTree(
+      "root",
+      mapOf(run("root", null), run("orphan", "not-here")),
+      NO_DISPLAY,
+    );
 
     expect(shape(tree)).toEqual({ id: "root", children: [{ id: "orphan", children: [] }] });
   });
@@ -80,6 +87,7 @@ describe("buildRunTree", () => {
         run("second", "root", "2026-07-25T10:00:02.000Z"),
         run("first", "root", "2026-07-25T10:00:01.000Z"),
       ),
+      NO_DISPLAY,
     );
 
     expect(shape(tree)).toEqual({
@@ -99,6 +107,7 @@ describe("buildRunTree", () => {
         run("waiting", "root", null),
         run("started", "root", "2026-07-25T10:00:01.000Z"),
       ),
+      NO_DISPLAY,
     );
 
     expect(shape(tree)).toEqual({
@@ -116,6 +125,7 @@ describe("buildRunTree", () => {
     const tree = buildRunTree(
       "root",
       mapOf(run("root", null), run("b", "root", same), run("a", "root", same)),
+      NO_DISPLAY,
     );
 
     expect(shape(tree)).toEqual({
@@ -130,67 +140,24 @@ describe("buildRunTree", () => {
   // No engine-produced tree contains one — every run has exactly one parent, the run that started
   // it — so the walk from the root simply never reaches the pair, rather than looping forever.
   it("terminates on a parent cycle, which only hand-built data can hold", () => {
-    const tree = buildRunTree("root", mapOf(run("root", null), run("a", "b"), run("b", "a")));
+    const tree = buildRunTree(
+      "root",
+      mapOf(run("root", null), run("a", "b"), run("b", "a")),
+      NO_DISPLAY,
+    );
 
     expect(shape(tree)).toEqual({ id: "root", children: [] });
   });
 });
 
-describe("displayStatusByRun", () => {
+describe("buildRunTree — display status", () => {
   const ts = "2026-07-25T10:00:00.000Z";
 
-  it("returns `awaiting` for a running run with an awaiting run anywhere below it", () => {
-    const runs = mapOf(
-      run("root", null),
-      run("mid", "root", ts),
-      run("leaf", "mid", ts, "awaiting"),
-    );
-    const display = displayStatusByRun(runs);
-
-    // Both running ancestors read awaiting through the one shared derivation.
-    expect(display.get("root")).toBe("awaiting");
-    expect(display.get("mid")).toBe("awaiting");
-    expect(display.get("leaf")).toBe("awaiting");
-  });
-
-  it("returns the record status when no descendant is awaiting", () => {
-    const runs = mapOf(run("root", null), run("mid", "root", ts));
-    expect(displayStatusByRun(runs).get("root")).toBe("running");
-  });
-
-  it("returns a run's own status untouched when it is not running", () => {
-    // An awaiting leaf reports awaiting directly; a terminal or pending run is never repainted.
-    const runs = mapOf(run("root", null, ts, "succeeded"), run("leaf", "root", ts, "awaiting"));
-    const display = displayStatusByRun(runs);
-    expect(display.get("leaf")).toBe("awaiting");
-    expect(display.get("root")).toBe("succeeded");
-    expect(displayStatusByRun(mapOf(run("root", null, ts, "pending"))).get("root")).toBe("pending");
-  });
-
-  it("derives only from the given map, so a map without descendants leaves the status unchanged", () => {
-    // The runs list holds only summaries for the runs it is not watching: no descendants, no
-    // repaint.
-    expect(displayStatusByRun(mapOf(run("root", null))).get("root")).toBe("running");
-  });
-
-  it("flips only the branch that holds the awaiting leaf", () => {
-    const runs = mapOf(
-      run("root", null),
-      run("branch-a", "root", ts),
-      run("leaf-a", "branch-a", ts, "awaiting"),
-      run("branch-b", "root", ts),
-      run("leaf-b", "branch-b", ts, "running"),
-    );
-    const display = displayStatusByRun(runs);
-
-    expect(display.get("branch-a")).toBe("awaiting");
-    expect(display.get("branch-b")).toBe("running");
-  });
-
-  it("carries the display status onto each tree node", () => {
+  it("carries the server's display status onto each tree node, else the run's own", () => {
     const tree = buildRunTree(
       "root",
       mapOf(run("root", null), run("leaf", "root", ts, "awaiting")),
+      new Map([["root", "awaiting"]]),
     );
 
     expect(tree?.displayStatus).toBe("awaiting");

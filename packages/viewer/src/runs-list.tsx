@@ -20,6 +20,10 @@ const RUNS_LIMIT = 50;
  */
 export const RUNS_REFRESH_MS = 5000;
 
+/** The statuses a listed run can show: no run is stored `pending`, the engine writes a row
+ * `running` when its step starts. */
+const FILTER_STATUSES = ORDERED_RUN_STATUSES.filter((status) => status !== "pending");
+
 /** One `RunStatus`, or `"all"` for the unfiltered list. */
 type StatusFilter = RunStatus | "all";
 
@@ -55,12 +59,6 @@ export interface RunsListProps {
   reloadNonce?: number;
   /** The `Resume from …` K-selection affordance; omitted, the panel offers only Resume/Delete. */
   resumeFrom?: ResumeFromAffordance;
-  /**
-   * The watched run's published display status, keyed by run id, so a watched root whose leaf is
-   * parked reads `awaiting` although its summary stays `running` (view-only, ADR 0038). Rows absent
-   * from the map keep their summary status.
-   */
-  displayStatus?: ReadonlyMap<string, RunStatus>;
 }
 
 /** The runs-list read surface: root runs with status, read-only and formatting-only. */
@@ -73,7 +71,6 @@ export function RunsList({
   onDeleted,
   reloadNonce,
   resumeFrom,
-  displayStatus,
 }: RunsListProps) {
   // `null` (nothing open) never reaches a query — the effects short-circuit and the render is idle.
   const scope = typeof workflowId === "string" ? workflowId : undefined;
@@ -130,7 +127,7 @@ export function RunsList({
           onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}
         >
           <option value="all">all</option>
-          {ORDERED_RUN_STATUSES.map((status) => (
+          {FILTER_STATUSES.map((status) => (
             <option key={status} value={status}>
               {status}
             </option>
@@ -152,9 +149,8 @@ export function RunsList({
         ) : (
           <ul className="runs">
             {state.value.map((run) => {
-              // The watched run shows its published display status, so a parked leaf reads
-              // `awaiting`; rows with no tree behind them keep their summary.
-              const rowStatus = displayStatus?.get(run.run_id) ?? run.status;
+              // The server's display status: a root with a parked leaf reads `awaiting` (ADR 0038).
+              const rowStatus = run.display_status;
               // A live run offers no action: it cannot be resumed, and the server 409s a delete on
               // it.
               const inFlight = rowStatus === "running" || rowStatus === "awaiting";

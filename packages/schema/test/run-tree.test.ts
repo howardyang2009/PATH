@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { childrenByParent, findRootRun, pathToRoot, subtree } from "../src/run-tree.js";
+import type { RunStatus } from "../src/run-status.js";
+import {
+  childrenByParent,
+  displayStatusByRun,
+  findRootRun,
+  pathToRoot,
+  subtree,
+} from "../src/run-tree.js";
 
 interface Row {
   runId: string;
@@ -107,5 +114,50 @@ describe("pathToRoot", () => {
       { runId: "leaf", parentRunId: "mid" },
     ];
     expect(pathToRoot(partial, "leaf").map((r) => r.runId)).toEqual(["mid", "leaf"]);
+  });
+});
+
+describe("displayStatusByRun", () => {
+  const run = (runId: string, parentRunId: string | null, status: RunStatus = "running") => ({
+    runId,
+    parentRunId,
+    status,
+  });
+
+  it("returns `awaiting` for a running run with an awaiting run anywhere below it", () => {
+    const display = displayStatusByRun([
+      run("root", null),
+      run("mid", "root"),
+      run("leaf", "mid", "awaiting"),
+    ]);
+    expect(display.get("root")).toBe("awaiting");
+    expect(display.get("mid")).toBe("awaiting");
+    expect(display.get("leaf")).toBe("awaiting");
+  });
+
+  it("returns the record status when no descendant is awaiting", () => {
+    expect(displayStatusByRun([run("root", null), run("mid", "root")]).get("root")).toBe("running");
+  });
+
+  it("returns a run's own status untouched when it is not running", () => {
+    const display = displayStatusByRun([
+      run("root", null, "succeeded"),
+      run("leaf", "root", "awaiting"),
+    ]);
+    expect(display.get("leaf")).toBe("awaiting");
+    expect(display.get("root")).toBe("succeeded");
+    expect(displayStatusByRun([run("root", null, "pending")]).get("root")).toBe("pending");
+  });
+
+  it("flips only the branch that holds the awaiting leaf", () => {
+    const display = displayStatusByRun([
+      run("root", null),
+      run("branch-a", "root"),
+      run("leaf-a", "branch-a", "awaiting"),
+      run("branch-b", "root"),
+      run("leaf-b", "branch-b", "running"),
+    ]);
+    expect(display.get("branch-a")).toBe("awaiting");
+    expect(display.get("branch-b")).toBe("running");
   });
 });

@@ -4,6 +4,7 @@ import { useState } from "react";
 import {
   CONDITION_TYPES,
   changeConditionType,
+  defaultCondition,
   defaultScalar,
   isLeafConditionType,
   type ScalarKind,
@@ -244,8 +245,7 @@ function CombinatorChildren({
     onChange({ ...value, of: value.of.map((c, i) => (i === index ? child : c)) });
   const removeChild = (index: number): void =>
     onChange({ ...value, of: value.of.filter((_, i) => i !== index) });
-  const addChild = (): void =>
-    onChange({ ...value, of: [...value.of, { type: "exists", path: "context.value" }] });
+  const addChild = (): void => onChange({ ...value, of: [...value.of, defaultCondition()] });
   return (
     <div className="cond-children">
       {value.of.map((child, index) => (

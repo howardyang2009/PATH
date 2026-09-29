@@ -116,3 +116,18 @@ export function nodeIdentityIssues(
 ): NodeIdentityIssue[] {
   return identityIssues(nodeIdentityOccurrences(file), rules);
 }
+
+/**
+ * The duplicate-`id` refusal every door that runs or writes a file applies (ADR 0015): the
+ * workflow's own `id` shares the nodes' namespace, and Resume pairs nodes by `id`. The load
+ * refinement leaves it out so the Designer can open such a file and name the pair. One line per
+ * offence, naming both paths.
+ */
+export function duplicateIdErrors(file: WorkflowFile): string[] {
+  const occurrences = [workflowIdentityOccurrence(file), ...nodeIdentityOccurrences(file)];
+  return identityIssues(occurrences, ["duplicate-id"]).map((issue) => {
+    const path = [...issue.path, "id"].join(".");
+    const first = [...(issue.firstPath ?? []), "id"].join(".");
+    return `${path}: duplicate id "${String(issue.value)}": id already used at ${first}`;
+  });
+}

@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { kindExplanation, leafChip, leafGlyph, nodeHue } from "../src/node-kind.js";
+import { nodeKind } from "../src/node-kind.js";
+
+const nodeHue = (type: string) => nodeKind(type).hue;
+const leafGlyph = (type: string) => nodeKind(type).glyph;
+const leafChip = (type: string) => nodeKind(type).chip;
+const kindExplanation = (type: string) => nodeKind(type).explanation;
 
 describe("node-kind descriptor", () => {
   it("gives each control block its own hue and leaf steps the step hue", () => {
@@ -42,5 +47,20 @@ describe("node-kind descriptor", () => {
     expect(leafChip("prompt")).toBe("LLM");
     expect(leafChip("binary")).toBe("COMMAND");
     expect(leafChip("api-call")).toBe("API-CALL");
+  });
+
+  it("labels and blurbs a palette card, title-casing an unlisted type", () => {
+    expect(nodeKind("while-do")).toMatchObject({ label: "While-do", blurb: /bounded loop/ });
+    expect(nodeKind("api-call")).toMatchObject({ label: "Api-call", blurb: "A api-call step" });
+  });
+
+  it("names the field a fresh leaf is stubbed with, and which kinds have a hand-built editor", () => {
+    expect(nodeKind("prompt")).toMatchObject({ stubField: "prompt", firstClass: true });
+    expect(nodeKind("binary")).toMatchObject({ stubField: "command", firstClass: false });
+    expect(nodeKind("person-activity")).toMatchObject({
+      stubField: "description",
+      firstClass: true,
+    });
+    expect(nodeKind("api-call")).toMatchObject({ stubField: null, firstClass: false });
   });
 });

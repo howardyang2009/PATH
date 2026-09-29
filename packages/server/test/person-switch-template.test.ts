@@ -129,7 +129,7 @@ describe("person-switch step-template (ADR 0052)", () => {
     expect(Object.keys(registry)).not.toContain("person-switch");
   });
 
-  it("instantiates with fresh ids, runs to Awaiting at the ask, and Complete runs only the chosen arm", async () => {
+  it("instantiates with fresh ids, runs to Awaiting at the ask, and Complete jumps back through only the chosen arm", async () => {
     const entry = await personSwitch();
     const source = entry.body as WorkflowNode[];
     const body = instantiate(source);
@@ -149,16 +149,23 @@ describe("person-switch step-template (ADR 0052)", () => {
     try {
       expect((await project.run(wf, dir)).status).toBe("awaiting");
       const rootRunId = project.archive.listRoots()[0]!.runId;
-      const ask = byName(body, "choose");
+      const ask = byName(body, "choice");
       const leaf = project.archive.tree(rootRunId)!.runs.find((r) => r.status === "awaiting")!;
       expect(leaf.nodeId).toBe(ask.id);
 
+      // Each arm is a goto back to the switch, so Complete takes only the chosen arm's jump and
+      // the ask parks again in the next pass.
       const done = await project.complete(wf, leaf.runId, { choice: "option-b" }, dir);
-      expect(done.ok && done.status).toBe("succeeded");
+      expect(done.ok && done.status).toBe("awaiting");
 
       const runs = project.archive.tree(rootRunId)!.runs;
-      expect(runs.find((r) => r.nodeId === byName(body, "option-b").id)?.status).toBe("succeeded");
-      expect(runs.find((r) => r.nodeId === byName(body, "option-a").id)).toBeUndefined();
+      expect(runs.some((r) => r.nodeId === byName(body, "goto-2").id)).toBe(true);
+      expect(runs.find((r) => r.nodeId === byName(body, "goto-1").id)).toBeUndefined();
+      expect(runs.find((r) => r.nodeId === byName(body, "goto-3").id)).toBeUndefined();
+      expect(runs.filter((r) => r.nodeId === ask.id).map((r) => r.status)).toEqual([
+        "succeeded",
+        "awaiting",
+      ]);
     } finally {
       project.close();
     }

@@ -576,7 +576,8 @@ for strings deliberately left unparsed.)
 - Unresolvable paths are errors (strict).
 - **Evaluated positions** (an allowlist; inert everywhere else, notably ids, `type` tags, `format`,
   `join`, `ref`, `target`, and condition trees, which have their own language):
-  - step payload fields (`prompt`, `command`, `args`, `cwd`)
+  - step payload fields: every field a step type declares (`prompt`, `command`, `args`, `cwd`,
+    `description`, `outputSchema`, `assignee`), checked for roots at load
   - `input` values (§6.1)
   - `publish` values (§6.2) and workflow `output` values (§6.4)
   - `max_iterations` and `max_jumps`
@@ -584,7 +585,9 @@ for strings deliberately left unparsed.)
   `worker` is a plain name string, and `config` (including `config.model` / `config.options`) is
   literal — neither is an evaluated position.
 - **Roots**: `config` and `context`. In `input` maps only, the additional root `previous` (§6.1). In
-  `publish` maps only, the additional root `output` (the step's own output object). Bare roots are valid (`"${output}"`, `"${context}"`). Paths are plain dot-paths
+  `publish` maps only, the additional root `output` (the step's own output object). A
+  `person-activity` `outputSchema` reads `config` only: Complete resolves it again, where no context
+  exists (ADR 0040). Bare roots are valid (`"${output}"`, `"${context}"`). Paths are plain dot-paths
   (numeric segments index arrays; no wildcards).
 
 ## 7. Config

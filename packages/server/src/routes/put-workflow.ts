@@ -1,11 +1,8 @@
 import { relative, resolve } from "node:path";
 import {
-  identityIssues,
-  nodeIdentityOccurrences,
+  duplicateIdErrors,
   safeParseWorkflowFile,
   type WirePutWorkflowResponse,
-  type WorkflowFile,
-  workflowIdentityOccurrence,
 } from "@path/schema";
 import { z } from "zod";
 import { conditionalWrite, PRECONDITION_FAILED } from "../artifact-file.js";
@@ -26,19 +23,6 @@ const PutWorkflowBodySchema = z
     workflow: z.record(z.string(), z.unknown()),
   })
   .strict();
-
-/**
- * The internally-duplicate-`id` check this door owns (ADR 0015); the workflow's own `id` shares the
- * nodes' namespace. Each issue becomes one `error.details` line naming both offending paths.
- */
-function duplicateIdErrors(file: WorkflowFile): string[] {
-  const occurrences = [workflowIdentityOccurrence(file), ...nodeIdentityOccurrences(file)];
-  return identityIssues(occurrences, ["duplicate-id"]).map((issue) => {
-    const path = [...issue.path, "id"].join(".");
-    const first = [...(issue.firstPath ?? []), "id"].join(".");
-    return `${path}: duplicate id "${String(issue.value)}": id already used at ${first}`;
-  });
-}
 
 /**
  * `PUT /v0/workflows` (server-api-v0.md §7, ADR 0016): the write door for create and overwrite. The

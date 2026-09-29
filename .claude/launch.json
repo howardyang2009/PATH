@@ -2,6 +2,19 @@
   "version": "0.0.1",
   "configurations": [
     {
+      "name": "path-server",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "exec",
+        "tsx",
+        "packages/server/bin/path-server.ts",
+        ".",
+        "--port",
+        "8787"
+      ],
+      "port": 8787
+    },
+    {
       "name": "viewer",
       "runtimeExecutable": "pnpm",
       "runtimeArgs": [

@@ -88,9 +88,6 @@ export function App({ client }: { client: PathApiClient }) {
               ? { runs: load.value.runs, selectedRunId, rootFile, dirty: false }
               : undefined
           }
-          // The watched run's display status, so its row reads `awaiting` while a leaf is parked
-          // (ADR 0038).
-          displayStatus={load.phase === "ready" ? load.value.displayStatus : undefined}
         />
       }
       detail={

@@ -60,6 +60,9 @@ export interface RunTreeResponse {
   status: RunStatus;
   output: JsonValue | null;
   runs: WireRunRecord[];
+  /** The status to show per run id: a run's own status, except a `running` run with a parked
+   * `awaiting` leaf below it reads `awaiting` (view-only, ADR 0038). */
+  display_status: { [run_id: string]: RunStatus };
   /**
    * What the run was launched with (ADR 0046); `config` is masked, so a `$secret` reads as its
    * `[secret:<key>]` token.
@@ -74,6 +77,9 @@ export interface RootRunSummary {
   workflow_id: string | null;
   workflow_path: string | null;
   status: RunStatus;
+  /** The status to show: `status`, except a `running` root with a parked leaf reads `awaiting`
+   * (view-only, ADR 0038). */
+  display_status: RunStatus;
   started_at: string | null;
   finished_at: string | null;
   /** The launch config keys recorded as secrets (ADR 0046) — names only; present only when the
@@ -326,11 +332,16 @@ export const ROOT_RUN_SUMMARY_FIELDS = {
  * The root-run summary `GET /v0/runs` returns — a projection of the full record, plus the run's
  * masked secret keys.
  */
-export function toRootRunSummary(row: RunRecord, launchSecretKeys?: string[]): RootRunSummary {
+export function toRootRunSummary(
+  row: RunRecord,
+  displayStatus: RunStatus,
+  launchSecretKeys?: string[],
+): RootRunSummary {
   const summary: Record<string, unknown> = {};
   for (const camel of Object.keys(ROOT_RUN_SUMMARY_FIELDS)) {
     summary[camelToSnake(camel)] = (row as unknown as Record<string, unknown>)[camel];
   }
+  summary.display_status = displayStatus;
   if (launchSecretKeys !== undefined && launchSecretKeys.length > 0)
     summary.launch_secret_keys = launchSecretKeys;
   return summary as unknown as RootRunSummary;

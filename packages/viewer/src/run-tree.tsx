@@ -6,6 +6,7 @@ import {
   nodeLabel,
   type RunFileSet,
   type RunNodeState,
+  type RunStatus,
   type RunTreeNode,
 } from "@path/client-core";
 import { useState } from "react";
@@ -23,6 +24,8 @@ export interface RunTreeProps {
   /** The run whose I/O the node pane is showing, if any. */
   selectedRunId: string | null;
   onSelectRun: (runId: string) => void;
+  /** The server's display status per run (ADR 0038). */
+  displayStatus: ReadonlyMap<string, RunStatus>;
   /**
    * The files a run's node ids resolve against, for an awaiting leaf's assignee chip — the node may
    * sit in a nested file, not only the root.
@@ -35,11 +38,12 @@ export function RunTree({
   runs,
   selectedRunId,
   onSelectRun,
+  displayStatus,
   runFiles = EMPTY_RUN_FILE_SET,
 }: RunTreeProps) {
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set<string>());
 
-  const root = buildRunTree(rootRunId, runs);
+  const root = buildRunTree(rootRunId, runs, displayStatus);
   if (!root) return <p className="pane-note">No runs recorded for this root run.</p>;
 
   const tree: TreeView = {

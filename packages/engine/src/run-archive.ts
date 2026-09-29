@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import {
+  displayStatusByRun,
   findRootRun,
   isReuseRow,
   type JsonValue,
@@ -39,8 +40,11 @@ import {
  * those stay with the server and the CLI.
  */
 export interface RunArchive {
-  /** Root runs, most recent first (server-api-v0.md §3). */
+  /** Root runs, most recent first (server-api-v0.md §3). `status` matches the display status. */
   listRoots(options?: ListRootsOptions): RunRecord[];
+  /** The status a root shows: its own, except a `running` root with a parked leaf reads
+   * `awaiting` (ADR 0038). */
+  displayStatus(root: RunRecord): RunStatus;
   /** Which of the given run ids still have rows; pagination and existence are separate
    * questions. */
   existingRunIds(ids: readonly string[]): Set<string>;
@@ -123,13 +127,33 @@ export interface RunTree {
   events(afterSeq?: number): LogEvent[];
 }
 
+function rootDisplayStatus(db: Database.Database, root: RunRecord): RunStatus {
+  if (root.status !== "running") return root.status;
+  return displayStatusByRun(getRunsForRoot(db, root.runId)).get(root.runId) ?? root.status;
+}
+
 /** An archive over an already-open db, used where the db's lifetime belongs to someone else. */
 export function createRunArchive(db: Database.Database, projectDir: string): RunArchive {
   const dir = resolve(projectDir);
 
   return {
     listRoots(options: ListRootsOptions = {}): RunRecord[] {
-      return listRootRuns(db, options);
+      const { status } = options;
+      if (status !== "running" && status !== "awaiting") return listRootRuns(db, options);
+      // A root is never stored `awaiting` (ADR 0038): both filters read the running roots and keep
+      // those whose display status matches, then apply the page limit.
+      const running = listRootRuns(db, {
+        ...options,
+        status: "running",
+        limit: Number.MAX_SAFE_INTEGER,
+      });
+      return running
+        .filter((root) => rootDisplayStatus(db, root) === status)
+        .slice(0, options.limit ?? 50);
+    },
+
+    displayStatus(root: RunRecord): RunStatus {
+      return rootDisplayStatus(db, root);
     },
 
     existingRunIds(ids: readonly string[]): Set<string> {

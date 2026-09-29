@@ -11,7 +11,6 @@ import {
   type RunTreeResponse,
 } from "@path/schema";
 import { runStatusAfter } from "./event-outcome.js";
-import { displayStatusByRun } from "./run-tree.js";
 
 /** Framework-agnostic view-model for one root run: `hydrate` seeds the run tree from
  * `GET /v0/runs/:root_run_id`, `applyEvent` folds the live stream. Pure data-in, snapshot-out. */
@@ -44,8 +43,8 @@ export interface RunViewState {
   narrative: readonly LogEvent[];
   /** Liveness of the event stream feeding `narrative`. */
   stream: StreamPhase;
-  /** The status each run should display — `displayStatusByRun` owns the rule (view-only, ADR 0038).
-   * A run the map lacks falls back to its record status. */
+  /** The status each run should display, as the server derived it at the last tree read (ADR
+   * 0038). A run whose status an event has moved since shows its own status. */
   displayStatus: ReadonlyMap<string, RunStatus>;
   /** The last failure message each run reached, keyed by run id. The error text rides the
    * `step-finished` event, not the run record (mvp spec §8.1), so it is folded here. */
@@ -65,6 +64,9 @@ export class RunViewModel {
   private narrative: LogEvent[] = [];
   private seenSeqs = new Set<number>();
   private lastErrorById = new Map<string, string>();
+  /** The server's display status per run, and each run's own status when it was read. */
+  private serverDisplay = new Map<string, RunStatus>();
+  private readStatus = new Map<string, RunStatus>();
   private output: JsonValue | null = null;
   private launchFacts: LaunchFacts | undefined = undefined;
   private rootStatus: RunStatus = "pending";
@@ -100,6 +102,9 @@ export class RunViewModel {
         node.finishedAt ??= existing.finishedAt;
       }
       this.runs.set(row.run_id, node);
+      this.readStatus.set(row.run_id, row.status);
+      const display = tree.display_status[row.run_id];
+      if (display !== undefined) this.serverDisplay.set(row.run_id, display);
     }
     this.output = tree.output;
     // Decoded through the shared inverse; left absent (not `{}`) when the response has no
@@ -196,10 +201,22 @@ export class RunViewModel {
       runs,
       narrative: [...this.narrative],
       stream: this.streamPhase,
-      displayStatus: displayStatusByRun(runs),
+      displayStatus: this.displayStatus(runs),
       lastError: new Map(this.lastErrorById),
       awaitingRunIds,
     };
+  }
+
+  private displayStatus(runs: ReadonlyMap<string, RunNodeState>): Map<string, RunStatus> {
+    const display = new Map<string, RunStatus>();
+    for (const run of runs.values()) {
+      const unmoved = this.readStatus.get(run.runId) === run.status;
+      display.set(
+        run.runId,
+        (unmoved ? this.serverDisplay.get(run.runId) : undefined) ?? run.status,
+      );
+    }
+    return display;
   }
 
   private commit(): void {

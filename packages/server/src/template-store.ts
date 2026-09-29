@@ -76,9 +76,11 @@ export type WritableTemplate =
   | { ok: true; entry: TemplateEntry }
   | { ok: false; status: 403 | 404; message: string };
 
-/** A write that landed, addressed by the project-relative path the reply carries. */
+/** A write that landed, addressed by the project-relative path the reply carries. A payload that
+ * fails the registry-relative envelope is the `400`, its issues in `details`. */
 export type TemplateWrite =
-  | { ok: true; relativePath: string; etag: string }
+  | { ok: true; id: string; relativePath: string; etag: string }
+  | { ok: false; status: 400; message: string; details?: string[] }
   | { ok: false; status: 403 | 404 | 409 | 412; message: string };
 
 export type TemplateRemove = { ok: true } | { ok: false; status: 403 | 404; message: string };
@@ -99,10 +101,11 @@ export interface TemplateStore {
   /** The user entry `id` names, for a door that changes one. */
   writable(id: string): WritableTemplate;
   /** Create a user template under `name`; the name is the file stem, so this door never renames.
-   * An existing name is the `409` (ADR 0050 decision 6). */
+   * The payload must be a valid envelope whose `id` no entry holds; an existing name or id is the
+   * `409` (ADR 0050 decision 6). */
   create(kind: TemplateKind, name: string, payload: unknown): TemplateWrite;
-  /** Overwrite the user template `id` names, gated on the `If-Match` the caller read from
-   * §10.2. */
+  /** Overwrite the user template `id` names with a valid envelope carrying that same `id`, gated
+   * on the `If-Match` the caller read from §10.2. */
   update(id: string, payload: unknown, ifMatch: string | undefined): TemplateWrite;
   /** Remove the user template `id` names. §10.5 carries no precondition. */
   remove(id: string): TemplateRemove;
@@ -221,7 +224,17 @@ export function discoverTemplates(
     return { ok: true, entry };
   };
 
+  const validate = (
+    payload: unknown,
+  ): { ok: true; id: string } | { ok: false; status: 400; message: string; details: string[] } => {
+    const parsed = safeParseStepTemplateWith(stepSchema, payload);
+    return parsed.success
+      ? { ok: true, id: parsed.data.id }
+      : { ok: false, status: 400, message: "template validation failed", details: parsed.errors };
+  };
+
   const writeAt = (
+    id: string,
     absPath: string,
     payload: unknown,
     precondition: { ifMatch: string | undefined; rule: "create-or-overwrite" | "overwrite" },
@@ -230,7 +243,7 @@ export function discoverTemplates(
     if (!written.ok) {
       return { ok: false, status: 412, message: PRECONDITION_FAILED[written.conflict] };
     }
-    return { ok: true, relativePath: relative(projectDir, absPath), etag: written.etag };
+    return { ok: true, id, relativePath: relative(projectDir, absPath), etag: written.etag };
   };
 
   return {
@@ -241,8 +254,19 @@ export function discoverTemplates(
       return found.ok ? { ok: true, entry: found.entry } : found;
     },
     create(kind, name, payload) {
+      const valid = validate(payload);
+      if (!valid.ok) return valid;
+      // A taken id would make the scan flag one of the two entries invalid.
+      const holder = byId.get(valid.id);
+      if (holder !== undefined) {
+        return {
+          ok: false,
+          status: 409,
+          message: `template id "${valid.id}" is already used by ${holder.origin} template "${holder.name}"`,
+        };
+      }
       const absPath = join(userTemplateRoot(projectDir), KIND_DIR[kind], `${name}${SUFFIX[kind]}`);
-      const written = writeAt(absPath, payload, {
+      const written = writeAt(valid.id, absPath, payload, {
         ifMatch: undefined,
         rule: "create-or-overwrite",
       });
@@ -259,7 +283,12 @@ export function discoverTemplates(
     update(id, payload, ifMatch) {
       const found = locate(id);
       if (!found.ok) return found;
-      return writeAt(found.entry.absPath, payload, { ifMatch, rule: "overwrite" });
+      if ((payload as { id?: unknown } | null)?.id !== id) {
+        return { ok: false, status: 400, message: "template id in body must match the URL id" };
+      }
+      const valid = validate(payload);
+      if (!valid.ok) return valid;
+      return writeAt(id, found.entry.absPath, payload, { ifMatch, rule: "overwrite" });
     },
     remove(id) {
       const found = locate(id);

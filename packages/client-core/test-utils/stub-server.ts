@@ -1,4 +1,5 @@
 import { type FetchLike, PathApiClient, type WireStepPlugin } from "@path/client-core";
+import { displayStatusByRun, fromWireRunRecord, type WireRunRecord } from "@path/schema";
 
 /**
  * A stand-in `path-server` for the Viewer and Designer tests: one injected `fetch` routing every v0
@@ -241,17 +242,19 @@ export function stubClient(options: StubServerOptions = {}): PathApiClient {
     }
     if (input === "/v0/runs" || input.startsWith("/v0/runs?")) {
       calls?.listRuns.push(input.slice("/v0/runs".length));
-      return json(options.runs ?? { runs: [] }, 200);
+      return json(withSummaryDisplay(options.runs ?? { runs: [] }), 200);
     }
     const treeMatch = /^\/v0\/runs\/([^/?]+)$/.exec(input);
     if (treeMatch && (init?.method ?? "GET") === "GET") {
       return json(
-        options.tree ?? {
-          root_run_id: decodeURIComponent(treeMatch[1]!),
-          status: "pending",
-          output: null,
-          runs: [],
-        },
+        withTreeDisplay(
+          options.tree ?? {
+            root_run_id: decodeURIComponent(treeMatch[1]!),
+            status: "pending",
+            output: null,
+            runs: [],
+          },
+        ),
         options.treeStatus ?? 200,
       );
     }
@@ -366,4 +369,24 @@ function templateWriteOf(url: string, init: RequestInit | undefined): TemplateWr
 function blobKeyOf(url: string): string | null {
   const match = /^\/v0\/runs\/[^/]+\/blobs\/([^/]+)\/([^/?]+)$/.exec(url);
   return match ? `${decodeURIComponent(match[1]!)}/${decodeURIComponent(match[2]!)}` : null;
+}
+
+/** A canned tree answered as the server would: `display_status` derived from its rows (ADR 0038)
+ * unless the test set one. */
+function withTreeDisplay(tree: unknown): unknown {
+  const body = tree as { runs?: WireRunRecord[]; display_status?: unknown };
+  if (!Array.isArray(body.runs) || body.display_status !== undefined) return tree;
+  const display = displayStatusByRun(body.runs.map(fromWireRunRecord));
+  return { ...body, display_status: Object.fromEntries(display) };
+}
+
+/** A canned run list answered as the server would: a summary without `display_status` shows its
+ * own `status`. */
+function withSummaryDisplay(list: unknown): unknown {
+  const body = list as { runs?: { status?: unknown; display_status?: unknown }[] };
+  if (!Array.isArray(body.runs)) return list;
+  return {
+    ...body,
+    runs: body.runs.map((run) => ({ display_status: run.status, ...run })),
+  };
 }

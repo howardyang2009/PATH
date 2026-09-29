@@ -8,7 +8,7 @@ import { nodeIdentityIssues } from "./node-identity.js";
 import type { WorkflowNode } from "./node-type.js";
 import { makeNodeSchema, type StepPluginRegistry } from "./nodes.js";
 import { publishSetIssues } from "./publish-set.js";
-import { STEP_ROOTS } from "./roots.js";
+import { ROOTS } from "./roots.js";
 import { collectWorkerDefaultIssues } from "./worker-defaults.js";
 import {
   FORMAT_VERSION,
@@ -33,7 +33,7 @@ function buildBaseWorkflowFileSchema(bodySchema: z.ZodType<WorkflowNode[]>) {
       // (format doc §6.3).
       input: z.record(z.string(), interpolatedJsonValue([])).optional(),
       body: bodySchema,
-      output: z.record(z.string(), interpolatedJsonValue(STEP_ROOTS)).optional(),
+      output: z.record(z.string(), interpolatedJsonValue(ROOTS.fileOutput)).optional(),
       // The file worker-default table (ADR 0044): shape only — registry-relative validity is an
       // engine-load check.
       worker_defaults: z.record(z.string().min(1), z.string().min(1)).optional(),

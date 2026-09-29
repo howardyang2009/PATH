@@ -1,4 +1,5 @@
 import type { WireStepPlugin } from "@path/client-core";
+import { nodeKind } from "./node-kind.js";
 
 /**
  * The palette's categories, split across the two rail tabs. The **Nodes** tab: **Step** — one
@@ -28,46 +29,30 @@ export interface PaletteSubTab {
   readonly entries: readonly PaletteEntry[];
 }
 
-function titleCase(name: string): string {
-  return name.charAt(0).toUpperCase() + name.slice(1);
-}
-
-function leafBlurb(name: string): string {
-  if (name === "prompt") return "LLM prompt against a model";
-  if (name === "binary") return "A command with args and cwd";
-  if (name === "person-activity") return "An offline activity a person completes";
-  return `A ${name} step`;
+/** A palette card for `kind`, its label, blurb and hue read from the one node-kind table. */
+function entry(kind: string): PaletteEntry {
+  const { label, blurb, hue } = nodeKind(kind);
+  return { kind, label, blurb, hue };
 }
 
 function stepGroup(plugins: WireStepPlugin[]): PaletteGroup {
-  const fromRegistry: PaletteEntry[] = plugins.map((plugin) => ({
-    kind: plugin.name,
-    label: titleCase(plugin.name),
-    blurb: leafBlurb(plugin.name),
-    hue: "step",
-  }));
-  const workflowRef: PaletteEntry = {
-    kind: "workflow",
-    label: "Workflow",
-    blurb: "A sub-workflow reference",
-    hue: "workflow",
+  return {
+    title: "Step",
+    entries: [...plugins.map((plugin) => entry(plugin.name)), entry("workflow")],
   };
-  return { title: "Step", entries: [...fromRegistry, workflowRef] };
 }
 
 /** The five Structure Controllers, checkpoint included, fixed by the grammar (§ What is
  * authorable). */
 const STRUCTURE_CONTROLLERS: readonly PaletteEntry[] = [
-  { kind: "parallel", label: "Parallel", blurb: "Branches with a join mode", hue: "parallel" },
-  { kind: "branch", label: "Branch", blurb: "First-match arms with an else", hue: "branch" },
-  { kind: "while-do", label: "While-do", blurb: "A bounded loop over one body", hue: "while" },
-  { kind: "sequence", label: "Sequence", blurb: "An ordered stack of nodes", hue: "sequence" },
-  { kind: "checkpoint", label: "Checkpoint", blurb: "An assertion on the run", hue: "checkpoint" },
-];
+  "parallel",
+  "branch",
+  "while-do",
+  "sequence",
+  "checkpoint",
+].map(entry);
 
-const GRAPH_CONTROLLERS: readonly PaletteEntry[] = [
-  { kind: "goto", label: "Goto", blurb: "A bounded jump to a first-level node", hue: "goto" },
-];
+const GRAPH_CONTROLLERS: readonly PaletteEntry[] = ["goto"].map(entry);
 
 /** Controllers, split into a Structure tab and a Graph tab. */
 const CONTROLLERS: PaletteGroup = {

@@ -823,10 +823,8 @@ describe("safeParseWorkflowFile — actionable errors", () => {
   });
 
   it("reports a readable error for bad ${} syntax in a disallowed position", () => {
-    // A registry leaf's own fields are plain zod now (#337), so the bad-root check lives on the
-    // core grammar the file schema still owns — here the file `output` map,
-    // `interpolatedJsonValue(STEP_ROOTS)`: `output` is not a STEP root, so referencing it is a load
-    // error naming the root.
+    // The file `output` map reads `ROOTS.fileOutput`: `output` is not among them, so referencing
+    // it is a load error naming the root.
     const result = safeParseWorkflowFile({
       ...minimal,
       output: { bad: "${output.cmd}" },

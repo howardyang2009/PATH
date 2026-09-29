@@ -1,9 +1,4 @@
-import {
-  type ConfigObject,
-  PUBLISH_ROOTS,
-  type WorkflowFile,
-  type WorkflowNode,
-} from "@path/schema";
+import { type ConfigObject, ROOTS, type WorkflowFile, type WorkflowNode } from "@path/schema";
 import { useState } from "react";
 import { type ConfigRow, configRows, dropConfigKey, setConfigKey } from "../config-inheritance.js";
 import { renderConfigValue } from "../config-value.js";
@@ -221,7 +216,7 @@ export function ConfigRowField({
 /**
  * The interpolable **input** object: a live-validated JSON textarea whose `${…}` placeholders
  * reference `config.` / `context.` / `previous.` dot-paths — the roots a step may read before it
- * runs (`INPUT_ROOTS`; its own `output` does not exist yet). An unclosed or ill-typed placeholder is
+ * runs (`ROOTS.input`; its own `output` does not exist yet). An unclosed or ill-typed placeholder is
  * reported and never committed.
  */
 export function InputEditor({
@@ -267,7 +262,7 @@ export function PublishParseFields({
   // `publish` key, and a row edit folds to one undo entry scoped by node.
   const { rows, setRow, addRow, removeRow } = useKeyedRows(
     () => keyedRowsOf(rec(node).publish),
-    PUBLISH_ROOTS,
+    ROOTS.publish,
     editKey(node.id, "publish"),
     (map, key) =>
       commit(
@@ -289,7 +284,7 @@ export function PublishParseFields({
               // biome-ignore lint/suspicious/noArrayIndexKey: rows are positional; the undo fold keys by index.
               key={index}
               row={row}
-              roots={PUBLISH_ROOTS}
+              roots={ROOTS.publish}
               keyLabel="Publish key"
               valueLabel="Publish value"
               removeLabel="Remove publish"

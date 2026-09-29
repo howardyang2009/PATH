@@ -507,6 +507,13 @@ Context ──shared blackboard──> all steps of one workflow-run (isolated p
   iteration's, a `goto` target gets the goto's passed-through output, and a workflow-run's first node
   gets the run's input. `output` is a different root: a step's **own** output, read in `publish`
   ([ADR 0079](https://github.com/howardyang2009/PATH/blob/main/docs/adr/0079-a-previous-root-names-the-predecessors-output.md)).
+- **Root position** — a place in a workflow file where a `${dot.path}` or a condition path is read:
+  a step's `input` map, its `publish` map, a condition, a type field, an awaiting step's
+  `outputSchema`, a loop or jump limit (`max_iterations`, `max_jumps`), and the file `output` map.
+  Each position reads a fixed set of roots, declared once in `@path/schema` (`ROOTS`); the load, the
+  engine's scopes and the Designer's editors all read that one table. A person-activity
+  `outputSchema` reads `config` alone, because Complete resolves it again where no context exists
+  ([ADR 0080](https://github.com/howardyang2009/PATH/blob/main/docs/adr/0080-one-root-table-names-what-each-position-reads.md)).
 - **Publish set** — of a node: the set of `publish` keys declared on that node, plus the publish sets
   of every node reachable through its child bodies (the nested block grammar), through any depth of
   nesting. It **excludes** the file that a nested `workflow` step refs, because that file has its own

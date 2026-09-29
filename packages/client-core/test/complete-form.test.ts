@@ -87,6 +87,17 @@ describe("coerceCompleteOutput", () => {
 });
 
 describe("validateCompleteDraft", () => {
+  it("leaves a schema that reads ${config.x} to the server, which holds the config", () => {
+    const configured: JsonValue = {
+      type: "object",
+      properties: { pick: { type: "string", enum: ["${config.choice}"] } },
+    };
+    expect(validateCompleteDraft(configured, { pick: "yes" })).toEqual({
+      fieldErrors: {},
+      formErrors: [],
+    });
+  });
+
   it("flags missing required fields and a bad enum, from the route's own validator", () => {
     const fields = buildCompleteFields(schema);
     const out = coerceCompleteOutput(fields, { approved: true, riskLevel: "extreme" });

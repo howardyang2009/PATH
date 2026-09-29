@@ -321,3 +321,50 @@ describe("loadWorkflowTree — worker_defaults registry validation (ADR 0044, #5
     }
   });
 });
+
+// Resume pairs nodes by `id`, so a file whose ids collide never runs; the workflow's own `id`
+// shares the namespace (ADR 0015).
+describe("loadWorkflowTree — duplicate ids", () => {
+  let dir: string;
+
+  beforeAll(() => {
+    dir = mkdtempSync(join(tmpdir(), "path-duplicate-id-load-"));
+    writeFileSync(
+      join(dir, "dup.workflow.json"),
+      JSON.stringify({
+        format: "path/workflow@6",
+        id: "5d0e7a8c-2b1f-4c3d-9e4a-6f7b8c9d0e1f",
+        name: "dup",
+        body: [
+          {
+            type: "binary",
+            id: "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+            name: "one",
+            command: "echo",
+          },
+          {
+            type: "binary",
+            id: "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+            name: "two",
+            command: "echo",
+          },
+        ],
+      }),
+    );
+  });
+
+  afterAll(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("refuses a file whose nodes share an id, naming both paths", async () => {
+    const path = join(dir, "dup.workflow.json");
+    const result = await loadWorkflowTree(path);
+    expect(result).toEqual({
+      success: false,
+      errors: [
+        `${path}: body.1.id: duplicate id "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d": id already used at body.0.id`,
+      ],
+    });
+  });
+});

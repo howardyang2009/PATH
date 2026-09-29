@@ -1,9 +1,4 @@
-import {
-  makeStepTemplateSchema,
-  NameSchema,
-  safeParseStepTemplateWith,
-  type WireTemplateWriteResponse,
-} from "@path/schema";
+import { NameSchema, type WireTemplateWriteResponse } from "@path/schema";
 import { z } from "zod";
 import { readRequestBody, sendError } from "../http-json.js";
 import { templatesOf } from "../template-store.js";
@@ -34,22 +29,19 @@ export async function handlePostTemplates({ req, res, ctx }: ApiRequest): Promis
   // The raw `body` sub-object, not zod's parsed copy, so the author's key order is preserved.
   const rawBody = (body.raw as { body: unknown }).body;
 
-  // Registry-relative validation of the step-template envelope; it surfaces the client-minted `id`.
-  const validation = safeParseStepTemplateWith(makeStepTemplateSchema(ctx.stepPlugins), rawBody);
-  if (!validation.success) {
-    sendError(res, 400, "template validation failed", validation.errors);
-    return;
-  }
-  const envelopeId = validation.data.id;
-
-  // Create-only: an existing name is never a blind overwrite (ADR 0050), and is this door's `409`.
+  // The store validates the envelope, refuses a taken name or id, and writes.
   const written = templatesOf(ctx).create(kind, name, rawBody);
   if (!written.ok) {
-    sendError(res, written.status, written.message);
+    sendError(
+      res,
+      written.status,
+      written.message,
+      "details" in written ? written.details : undefined,
+    );
     return;
   }
   const reply: WireTemplateWriteResponse = {
-    id: envelopeId,
+    id: written.id,
     relative_path: written.relativePath,
     etag: written.etag,
   };

@@ -17,7 +17,7 @@ import {
   describeInterpolationError,
   InterpolationError,
   interpolateValue,
-  interpolationScope,
+  scopeFor,
 } from "./interpolate.js";
 import { finishSucceeded, type LeafStepNode, runLeafStep, type StepContext } from "./leaf-step.js";
 import { resolveChildRef } from "./ref-tree.js";
@@ -191,7 +191,7 @@ export async function executeWorkflowRun(params: WorkflowRunParams): Promise<Run
     try {
       const workflowOutput = interpolateValue(
         file.output as JsonValue,
-        interpolationScope(fileConfig, context),
+        scopeFor("fileOutput", { config: fileConfig, context }),
       );
       return succeed(workflowOutput);
     } catch (err) {
@@ -333,7 +333,11 @@ export async function runNode(
     // A still-parked sibling: the walk parks again; only the last such Complete runs the tail.
     return { status: "awaiting" };
   } else {
-    const scope = { ...interpolationScope(stepConfig, exec.context), previous: incomingOutput };
+    const scope = scopeFor("input", {
+      config: stepConfig,
+      context: exec.context,
+      previous: incomingOutput,
+    });
     let stepInput: JsonValue;
     try {
       stepInput = node.input !== undefined ? interpolateValue(node.input, scope) : incomingOutput;
@@ -360,7 +364,11 @@ export async function runNode(
   if (outcome.status !== "succeeded") return outcome;
 
   if (node.publish) {
-    const publishScope = interpolationScope(stepConfig, exec.context, outcome.output);
+    const publishScope = scopeFor("publish", {
+      config: stepConfig,
+      context: exec.context,
+      output: outcome.output,
+    });
     const updates: { [key: string]: JsonValue } = {};
     try {
       for (const [key, expr] of Object.entries(node.publish)) {

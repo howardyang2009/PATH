@@ -102,6 +102,23 @@ describe("launch parks at an awaiting leaf and tears down (ADR 0039)", () => {
       project.close();
     }
   });
+
+  it("lists the parked root as awaiting by display status, and filters on it (ADR 0038)", async () => {
+    const project = open();
+    try {
+      await project.run(workflow([person("approve")]), dir);
+      const [root] = project.archive.listRoots();
+
+      expect(root!.status).toBe("running");
+      expect(project.archive.displayStatus(root!)).toBe("awaiting");
+      expect(project.archive.listRoots({ status: "awaiting" }).map((r) => r.runId)).toEqual([
+        root!.runId,
+      ]);
+      expect(project.archive.listRoots({ status: "running" })).toEqual([]);
+    } finally {
+      project.close();
+    }
+  });
 });
 
 describe("Complete replays from the root, resolves the leaf, and continues forward", () => {
@@ -447,6 +464,29 @@ describe("Complete — the frozen launch config (ADR 0046)", () => {
       // The tail ran for the first time here, and read the config the launch recorded — not the
       // file default, and not nothing.
       expect(project.archive.tree(rootRunId)!.output()).toEqual({ seen: "launched-with-this" });
+    } finally {
+      project.close();
+    }
+  });
+
+  it("validates against an outputSchema interpolated over the launch config", async () => {
+    const project = open();
+    try {
+      const ask = {
+        ...(person("ask") as object),
+        outputSchema: {
+          type: "object",
+          properties: { pick: { type: "string", enum: ["${config.choice}"] } },
+        },
+      } as unknown as WorkflowFile["body"][number];
+      const wf = workflow([ask]);
+      await project.run(wf, dir, { operatorConfig: { choice: "yes" } });
+      const leaf = awaitingLeaf(project, project.archive.listRoots()[0]!.runId);
+
+      const refused = await project.complete(wf, leaf.runId, { pick: "no" }, dir);
+      expect(refused.ok).toBe(false);
+      const done = await project.complete(wf, leaf.runId, { pick: "yes" }, dir);
+      expect(done.ok).toBe(true);
     } finally {
       project.close();
     }

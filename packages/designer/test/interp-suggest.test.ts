@@ -1,4 +1,4 @@
-import { FORMAT_VERSION, STEP_ROOTS, type WorkflowFile } from "@path/schema";
+import { FORMAT_VERSION, ROOTS, type WorkflowFile } from "@path/schema";
 import { describe, expect, it } from "vitest";
 import { parseInputDraft, referenceablePaths } from "../src/interp-suggest.js";
 
@@ -35,7 +35,7 @@ function file(): WorkflowFile {
 
 describe("referenceablePaths", () => {
   it("offers config keys, published context keys, and each root prefix for a step's input", () => {
-    const paths = referenceablePaths(file(), STEP_ROOTS);
+    const paths = referenceablePaths(file(), ROOTS.typeField);
     expect(paths).toContain("config.");
     expect(paths).toContain("context.");
     expect(paths).toContain("config.model");
@@ -49,25 +49,25 @@ describe("referenceablePaths", () => {
 
 describe("parseInputDraft", () => {
   it("accepts an object with valid placeholders", () => {
-    const result = parseInputDraft('{ "q": "${context.score}", "n": 3 }', STEP_ROOTS);
+    const result = parseInputDraft('{ "q": "${context.score}", "n": 3 }', ROOTS.typeField);
     expect(result).toEqual({ ok: true, value: { q: "${context.score}", n: 3 } });
   });
 
   it("accepts any JSON value: a literal and an array (§6.1)", () => {
-    expect(parseInputDraft("3", STEP_ROOTS)).toEqual({ ok: true, value: 3 });
-    expect(parseInputDraft('["${context.a}", 2]', STEP_ROOTS)).toEqual({
+    expect(parseInputDraft("3", ROOTS.typeField)).toEqual({ ok: true, value: 3 });
+    expect(parseInputDraft('["${context.a}", 2]', ROOTS.typeField)).toEqual({
       ok: true,
       value: ["${context.a}", 2],
     });
   });
 
   it("accepts a whole-string interpolation authored raw, without JSON quotes (§6.1/§6.6)", () => {
-    expect(parseInputDraft("${context.final_notes}", STEP_ROOTS)).toEqual({
+    expect(parseInputDraft("${context.final_notes}", ROOTS.typeField)).toEqual({
       ok: true,
       value: "${context.final_notes}",
     });
     // The quoted form parses as the same string.
-    expect(parseInputDraft('"${context.final_notes}"', STEP_ROOTS)).toEqual({
+    expect(parseInputDraft('"${context.final_notes}"', ROOTS.typeField)).toEqual({
       ok: true,
       value: "${context.final_notes}",
     });
@@ -75,11 +75,11 @@ describe("parseInputDraft", () => {
 
   it("rejects malformed JSON, an unclosed placeholder, and an illegal root", () => {
     // Starts with `{`, so it is taken as structured JSON and its parse error is reported.
-    expect(parseInputDraft("{ not json", STEP_ROOTS).ok).toBe(false);
-    expect(parseInputDraft('{ "x": "${context.a" }', STEP_ROOTS).ok).toBe(false);
+    expect(parseInputDraft("{ not json", ROOTS.typeField).ok).toBe(false);
+    expect(parseInputDraft('{ "x": "${context.a" }', ROOTS.typeField).ok).toBe(false);
     // `output` is not a legal input root — checked at every string leaf, raw whole-string included.
-    expect(parseInputDraft('{ "x": "${output.a}" }', STEP_ROOTS).ok).toBe(false);
-    expect(parseInputDraft("${output.a}", STEP_ROOTS).ok).toBe(false);
-    expect(parseInputDraft("${context.a", STEP_ROOTS).ok).toBe(false);
+    expect(parseInputDraft('{ "x": "${output.a}" }', ROOTS.typeField).ok).toBe(false);
+    expect(parseInputDraft("${output.a}", ROOTS.typeField).ok).toBe(false);
+    expect(parseInputDraft("${context.a", ROOTS.typeField).ok).toBe(false);
   });
 });

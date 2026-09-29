@@ -1,22 +1,21 @@
 import type { WireStepPlugin } from "@path/client-core";
 import {
-  CONDITION_ROOTS,
   type Condition,
-  INPUT_ROOTS,
   type InterpolationRoot,
-  PUBLISH_ROOTS,
-  STEP_ROOTS,
+  nodePositions,
+  ROOTS,
   type WorkflowFile,
   type WorkflowNode,
 } from "@path/schema";
 import { ConditionField } from "../condition-builder.js";
+import { defaultCondition } from "../condition-edit.js";
 import { type EditCommit, type EditKey, editKey } from "../edit-key.js";
 import { replaceNode } from "../edit-target.js";
 import { editFile, findById, locate, unwrapEdit } from "../edit-tree.js";
 import { directionGlyph, gotoTargetOptions } from "../goto-view.js";
 import { carriesEnvelope } from "../grammar.js";
 import { referenceablePaths } from "../interp-suggest.js";
-import { kindExplanation } from "../node-kind.js";
+import { nodeKind } from "../node-kind.js";
 import { fillPlaceholderOnTab, IdRow, SelectField, TextField } from "../pane-controls.js";
 import { StepEnvelopeFields } from "./config-region.js";
 import { MaxIterationsField, PaneSection } from "./fields.js";
@@ -57,7 +56,7 @@ export function NodeProperties({
   };
   const site = locate(file, node.id);
   const role = occupantRole(site, file);
-  const condSuggest = referenceablePaths(file, CONDITION_ROOTS);
+  const condSuggest = referenceablePaths(file, ROOTS.condition);
 
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: delegated Tab handling for wrapped inputs.
@@ -67,7 +66,7 @@ export function NodeProperties({
           {role}
         </p>
       ) : null}
-      <p className="pane-explain">{kindExplanation(node.type)}</p>
+      <p className="pane-explain">{nodeKind(node.type).explanation}</p>
       <hr className="pane-divider" />
       {/* Identity is the pane's anchor — which node is this — so `name` and `id` never fold away.
           The kind's own fields are a section: they open expanded, and folding them is an option for
@@ -130,17 +129,8 @@ export function ReferenceSection({
   node: WorkflowNode;
   site: ReturnType<typeof locate>;
 }): JSX.Element | null {
-  const roots = new Set<InterpolationRoot>();
-  if (site?.where === "arm") for (const root of CONDITION_ROOTS) roots.add(root);
-  if (node.type === "while-do") {
-    for (const root of CONDITION_ROOTS) roots.add(root);
-    for (const root of STEP_ROOTS) roots.add(root);
-  } else if (node.type === "checkpoint") {
-    for (const root of CONDITION_ROOTS) roots.add(root);
-  } else if (carriesEnvelope(node.type)) {
-    for (const root of INPUT_ROOTS) roots.add(root);
-    for (const root of PUBLISH_ROOTS) roots.add(root);
-  }
+  const roots = new Set<InterpolationRoot>(nodePositions(node.type).flatMap((p) => ROOTS[p]));
+  if (site?.where === "arm") for (const root of ROOTS.condition) roots.add(root);
   if (roots.size === 0) return null;
   return <ReferenceList ownerId={node.id} paths={referenceablePaths(file, [...roots])} />;
 }
@@ -168,7 +158,7 @@ export function ReferenceList({
 export function armWhen(file: WorkflowFile, branchId: string, armIndex: number): Condition {
   const owner = findById(file.body, branchId);
   const when = owner?.type === "branch" ? owner.arms[armIndex]?.when : undefined;
-  return when ?? { type: "exists", path: "context.value" };
+  return when ?? defaultCondition();
 }
 
 /**

@@ -467,8 +467,8 @@ describe("Project.resume — Resume-from-K (#444)", () => {
         .tree(originalRootId)!
         .runs.find((r) => r.nodeId === "b")!.runId;
 
-      // A succeeded source is a valid Resume-from-K target — the already-succeeded gate is a route
-      // concern, relaxed there; `Project.resume` itself just resolves and re-runs.
+      // A succeeded source is a valid Resume-from-K target: the already-succeeded gate is relaxed
+      // when a boundary is given.
       const result = await project.resume(kabc, originalRootId, dir, { rerunFromRunId: bRunId });
       if (!result.found) throw new Error(`expected found:true, got ${JSON.stringify(result)}`);
       expect(result.status).toBe("succeeded");
@@ -524,6 +524,24 @@ describe("Project.resume — Resume-from-K (#444)", () => {
       if (result.found || !("refusal" in result)) throw new Error("expected a refusal");
       expect(result.refusal.status).toBe(400);
       // No successor tree was created — validation happens before any run starts.
+      expect(project.archive.listRoots().length).toBe(before);
+    } finally {
+      project.close();
+    }
+  });
+  it("refuses a plain Resume of a succeeded root with a 409, starting no successor", async () => {
+    const project = open();
+    try {
+      await project.run(kabc, dir);
+      const originalRootId = project.archive.listRoots()[0]!.runId;
+      const before = project.archive.listRoots().length;
+
+      const result = await project.resume(kabc, originalRootId, dir);
+      if (result.found || !("refusal" in result)) throw new Error("expected a refusal");
+      expect(result.refusal).toEqual({
+        status: 409,
+        message: `run "${originalRootId}" already succeeded; there is nothing to resume`,
+      });
       expect(project.archive.listRoots().length).toBe(before);
     } finally {
       project.close();

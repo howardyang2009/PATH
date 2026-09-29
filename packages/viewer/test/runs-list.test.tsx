@@ -1,10 +1,8 @@
 import {
-  displayStatusByRun,
   type FetchLike,
   PathApiClient,
   PathApiError,
   type RootRunSummary,
-  type RunNodeState,
 } from "@path/client-core";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -33,6 +31,7 @@ const SUCCEEDED: RootRunSummary = {
   workflow_id: "wf-alpha",
   workflow_path: "build-report.workflow.json",
   status: "succeeded",
+  display_status: "succeeded",
   started_at: "2026-07-25T09:14:05.000Z",
   finished_at: "2026-07-25T09:14:31.000Z",
 };
@@ -43,6 +42,7 @@ const RUNNING: RootRunSummary = {
   workflow_id: "wf-beta",
   workflow_path: "nightly-sync.workflow.json",
   status: "running",
+  display_status: "running",
   started_at: "2026-07-25T09:20:00.000Z",
   finished_at: null,
 };
@@ -53,6 +53,7 @@ const CANCELLED: RootRunSummary = {
   workflow_id: null,
   workflow_path: null,
   status: "cancelled",
+  display_status: "cancelled",
   started_at: "2026-07-25T09:25:00.000Z",
   finished_at: "2026-07-25T09:25:40.000Z",
 };
@@ -63,41 +64,10 @@ const FAILED: RootRunSummary = {
   workflow_id: "wf-delta",
   workflow_path: "deploy.workflow.json",
   status: "failed",
+  display_status: "failed",
   started_at: "2026-07-25T09:30:00.000Z",
   finished_at: "2026-07-25T09:30:12.000Z",
 };
-
-/**
- * A run-tree node rooted at run_beta, defaulting every field so a test overrides only what it
- * asserts on — the same shape the awaiting-pill test builds inline, hoisted so the in-flight tests
- * reuse it.
- */
-function awaitingNode(over: Partial<RunNodeState> & { runId: string }): RunNodeState {
-  return {
-    rootRunId: "run_beta",
-    parentRunId: "run_beta",
-    nodeId: over.runId,
-    nodeName: over.runId,
-    workerName: null,
-    iteration: null,
-    pass: null,
-    status: "running",
-    startedAt: null,
-    finishedAt: null,
-    inputRef: null,
-    outputRef: null,
-    usage: null,
-    estimatedCostUsd: null,
-    resumedFromRootRunId: null,
-    rerunFromNodePath: null,
-    reusedFromRunId: null,
-    reusedFromRootRunId: null,
-    workflowId: null,
-    workflowName: null,
-    workflowPath: null,
-    ...over,
-  };
-}
 
 function renderList(
   client: PathApiClient,
@@ -159,22 +129,14 @@ describe("RunsList", () => {
     expect(pillOf("run_alpha")).toHaveAttribute("data-status", "succeeded");
   });
 
-  it("paints the watched root awaiting when the view publishes that display status (record stays running)", async () => {
-    const { client } = stubClient([RUNNING, SUCCEEDED]);
-    // The app hands the watched run's published display status — the shared derivation run over the
-    // watched tree — so run_beta (running) has a parked leaf and reads awaiting; its summary status
-    // stays running, and a row the view does not hold keeps its summary status.
-    const runs = new Map<string, RunNodeState>([
-      ["run_beta", awaitingNode({ runId: "run_beta", parentRunId: null, status: "running" })],
-      ["leaf", awaitingNode({ runId: "leaf", parentRunId: "run_beta", status: "awaiting" })],
-    ]);
-
-    renderList(client, { selectedRootRunId: "run_beta", displayStatus: displayStatusByRun(runs) });
+  it("paints each row with the server's display status, so a parked root reads awaiting", async () => {
+    // The server derives display_status from the tree; the list shows it whatever is selected.
+    const parked: RootRunSummary = { ...RUNNING, display_status: "awaiting" };
+    const { client } = stubClient([parked, SUCCEEDED]);
+    renderList(client, { selectedRootRunId: "run_alpha" });
     await screen.findByTestId("run-row-run_beta");
 
     expect(pillOf("run_beta")).toHaveAttribute("data-status", "awaiting");
-    // A row the app is not watching has no tree, so it keeps its record status.
-    expect(pillOf("run_alpha")).toHaveAttribute("data-status", "succeeded");
   });
 
   it("shows a loading state until the runs arrive", async () => {
@@ -242,6 +204,22 @@ describe("RunsList", () => {
 
     await waitFor(() => expect(urls).toHaveLength(2));
     expect(urls[1]).toBe("/v0/runs?limit=50&status=failed");
+  });
+
+  it("offers every status a listed run can show, and no pending", async () => {
+    const { client } = stubClient([RUNNING]);
+    renderList(client);
+
+    const options = [...(screen.getByLabelText("Status") as HTMLSelectElement).options];
+    expect(options.map((option) => option.value)).toEqual([
+      "all",
+      "running",
+      "awaiting",
+      "succeeded",
+      "failed",
+      "cancelled",
+    ]);
+    await screen.findByTestId(`run-row-${RUNNING.run_id}`);
   });
 
   it("re-reads immediately when the reload nonce changes, without a loading flash", async () => {
@@ -519,17 +497,12 @@ describe("RunsList", () => {
     });
 
     it("offers no actions when a running root reads awaiting through its parked leaf", async () => {
-      const { client } = stubClient([RUNNING]);
-      const runs = new Map<string, RunNodeState>([
-        ["run_beta", awaitingNode({ runId: "run_beta", parentRunId: null, status: "running" })],
-        ["leaf", awaitingNode({ runId: "leaf", parentRunId: "run_beta", status: "awaiting" })],
-      ]);
+      const { client } = stubClient([{ ...RUNNING, display_status: "awaiting" }]);
       // The affordance present and this row selected is the one case that would otherwise offer
-      // `Resume from …`; the published display status is what makes the row read in flight.
+      // `Resume from …`; the server's display status is what makes the row read in flight.
       renderList(client, {
         selectedRootRunId: "run_beta",
-        resumeFrom: { runs, selectedRunId: null, rootFile: null, dirty: false },
-        displayStatus: displayStatusByRun(runs),
+        resumeFrom: { runs: new Map(), selectedRunId: null, rootFile: null, dirty: false },
       });
 
       fireEvent.click(await screen.findByTestId(`run-row-run_beta`));
@@ -572,7 +545,12 @@ describe("RunsList refresh", () => {
     await act(async () => {});
     expect(pillOf(RUNNING.run_id)).toHaveTextContent("running");
 
-    runs[0] = { ...RUNNING, status: "succeeded", finished_at: "2026-07-25T09:20:31.000Z" };
+    runs[0] = {
+      ...RUNNING,
+      status: "succeeded",
+      display_status: "succeeded",
+      finished_at: "2026-07-25T09:20:31.000Z",
+    };
     await tick();
 
     expect(pillOf(RUNNING.run_id)).toHaveTextContent("succeeded");

@@ -139,6 +139,7 @@ Response `200 OK`:
     {
       "run_id": "<uuid>",
       "status": "succeeded",
+      "display_status": "succeeded",
       "started_at": "2026-07-21T10:00:00.000Z",
       "finished_at": "2026-07-21T10:02:31.000Z"
     }
@@ -148,6 +149,12 @@ Response `200 OK`:
 
 Most recent first (`ORDER BY started_at DESC`). This is the root-run summary shape only. It has no
 `output`, `usage`, or full tree; fetch `GET /v0/runs/:root_run_id` for that.
+
+`display_status` is the status to show. It equals `status`, except a `running` root with a parked
+`awaiting` leaf below an unbroken chain of `running` ancestors reads `awaiting`. The stored root status
+stays `running` (ADR 0038); the server derives this from the tree at read time. The `status` filter
+matches `display_status`, so `?status=awaiting` lists the parked roots and `?status=running` leaves
+them out.
 
 Each summary also carries `launch_secret_keys` (ADR 0046) **when the launch recorded any**: the
 dot-paths of the operator's config override whose values were `$secret`, names only, never values. A
@@ -193,6 +200,10 @@ snake_case):
 
 - The top-level `status` and `output` mirror the root row (the first entry of `runs`,
   `parent_run_id: null`). They are duplicated at the top for a client that only wants the summary.
+- `display_status` maps every run id to the status to show: the run's own status, except a `running`
+  run with a parked `awaiting` leaf below an unbroken chain of `running` runs reads `awaiting`
+  (ADR 0038). Clients show it as given. The event stream carries no display status, so a client
+  reads the tree again when a leaf parks and on any event while one is parked.
 - `workflow_id`, `workflow_name`, and `workflow_path` carry the producing workflow's source identity
   (ADR 0006, #202). They are **root-only**: non-null on the root row (`parent_run_id: null`), null on
   every nested row. `workflow_path` is relative to the store dir, and null for a server-hosted run that
@@ -344,8 +355,9 @@ Responses:
   also lands here when `rerun_from_run_id` names no run of the tree, or resolves to an illegal locus
   (spec §5 reasons 1 and 3).
 - `409 Conflict` — the run is not in a resumable state, each case named distinctly: still `running`
-  (nothing to resume yet); already `succeeded` (nothing to resume — **relaxed** when `rerun_from_run_id`
-  is supplied); it carries no recorded `workflow_path` (a pre-#169 run), so the server cannot know which
+  (nothing to resume yet); every run of its tree `succeeded` (nothing to resume — **relaxed** when
+  `rerun_from_run_id` is supplied; a succeeded root with a non-`succeeded` detached branch is
+  resumable, ADR 0009); it carries no recorded `workflow_path` (a pre-#169 run), so the server cannot know which
   file to re-run; or the file now at that path is a **different workflow** (its `id` no longer matches
   the run's, ADR 0006). The path is recovered from the row, not re-confirmed by the operator, so a
   swapped file is refused rather than run against the predecessor's restored context. A Resume-from-K
@@ -936,6 +948,8 @@ Responses:
 - `400 Bad Request` — body is not valid JSON, fails the envelope schema, `name` violates `NameSchema`,
   `kind` is not `"step"`, or `body` fails `makeStepTemplateSchema(registry)`.
 - `409 Conflict` — a template of that `name` already exists in `.path/template/<kind-dir>/`.
+  Also `409` when the body's `id` is already held by any template, shipped or user, so a save-as
+  never makes the next scan flag a duplicate.
 - `403 Forbidden` — the origin gate rejected the request (§2.1).
 
 ### 10.4 `PUT /v0/templates/:id` — update a user template
