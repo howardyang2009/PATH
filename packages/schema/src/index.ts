@@ -115,6 +115,7 @@ export { must } from "./must.js";
 // route's duplicate-`id` check and the Designer's pre-parse open gate all read these, so the three
 // doors cannot disagree about which occurrence offends, which one already held the value, and why.
 export {
+  duplicateIdErrors,
   type IdentityOccurrence,
   identityIssues,
   type NodeIdentityIssue,
