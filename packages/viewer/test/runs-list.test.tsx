@@ -206,6 +206,22 @@ describe("RunsList", () => {
     expect(urls[1]).toBe("/v0/runs?limit=50&status=failed");
   });
 
+  it("offers every status a listed run can show, and no pending", async () => {
+    const { client } = stubClient([RUNNING]);
+    renderList(client);
+
+    const options = [...(screen.getByLabelText("Status") as HTMLSelectElement).options];
+    expect(options.map((option) => option.value)).toEqual([
+      "all",
+      "running",
+      "awaiting",
+      "succeeded",
+      "failed",
+      "cancelled",
+    ]);
+    await screen.findByTestId(`run-row-${RUNNING.run_id}`);
+  });
+
   it("re-reads immediately when the reload nonce changes, without a loading flash", async () => {
     const { client, urls } = stubClient([RUNNING]);
 

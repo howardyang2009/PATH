@@ -20,6 +20,10 @@ const RUNS_LIMIT = 50;
  */
 export const RUNS_REFRESH_MS = 5000;
 
+/** The statuses a listed run can show: no run is stored `pending`, the engine writes a row
+ * `running` when its step starts. */
+const FILTER_STATUSES = ORDERED_RUN_STATUSES.filter((status) => status !== "pending");
+
 /** One `RunStatus`, or `"all"` for the unfiltered list. */
 type StatusFilter = RunStatus | "all";
 
@@ -123,7 +127,7 @@ export function RunsList({
           onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}
         >
           <option value="all">all</option>
-          {ORDERED_RUN_STATUSES.map((status) => (
+          {FILTER_STATUSES.map((status) => (
             <option key={status} value={status}>
               {status}
             </option>
