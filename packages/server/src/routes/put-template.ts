@@ -1,8 +1,4 @@
-import {
-  makeStepTemplateSchema,
-  safeParseStepTemplateWith,
-  type WireTemplateWriteResponse,
-} from "@path/schema";
+import type { WireTemplateWriteResponse } from "@path/schema";
 import { readJsonBody, sendError } from "../http-json.js";
 import { firstHeader } from "../origin-gate.js";
 import { templatesOf } from "../template-store.js";
@@ -29,31 +25,17 @@ export async function handlePutTemplate({
     return;
   }
 
-  const store = templatesOf(ctx);
-  const found = store.writable(id);
-  if (!found.ok) {
-    sendError(res, found.status, found.message);
-    return;
-  }
-
-  const rawBody = raw.value as Record<string, unknown>;
-  if (rawBody.id !== id) {
-    sendError(res, 400, "template id in body must match the URL id");
-    return;
-  }
-
-  const validation = safeParseStepTemplateWith(makeStepTemplateSchema(ctx.stepPlugins), rawBody);
-  if (!validation.success) {
-    sendError(res, 400, "template validation failed", validation.errors);
-    return;
-  }
-
   // Precondition (ADR 0016): `If-Match` carrying the §10.2 etag is required, and absent or stale is
-  // a `412`. The store's one call reads, decides and writes, so the check has no suspension point
-  // before it and only an *external* writer can invalidate the token.
-  const written = store.update(id, rawBody, firstHeader(req.headers["if-match"]));
+  // a `412`. The store's one call resolves, validates, decides and writes, so the check has no
+  // suspension point before it and only an *external* writer can invalidate the token.
+  const written = templatesOf(ctx).update(id, raw.value, firstHeader(req.headers["if-match"]));
   if (!written.ok) {
-    sendError(res, written.status, written.message);
+    sendError(
+      res,
+      written.status,
+      written.message,
+      "details" in written ? written.details : undefined,
+    );
     return;
   }
   const reply: WireTemplateWriteResponse = {

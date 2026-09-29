@@ -937,6 +937,8 @@ Responses:
 - `400 Bad Request` — body is not valid JSON, fails the envelope schema, `name` violates `NameSchema`,
   `kind` is not `"step"`, or `body` fails `makeStepTemplateSchema(registry)`.
 - `409 Conflict` — a template of that `name` already exists in `.path/template/<kind-dir>/`.
+  Also `409` when the body's `id` is already held by any template, shipped or user, so a save-as
+  never makes the next scan flag a duplicate.
 - `403 Forbidden` — the origin gate rejected the request (§2.1).
 
 ### 10.4 `PUT /v0/templates/:id` — update a user template
