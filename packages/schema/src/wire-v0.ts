@@ -60,6 +60,9 @@ export interface RunTreeResponse {
   status: RunStatus;
   output: JsonValue | null;
   runs: WireRunRecord[];
+  /** The status to show per run id: a run's own status, except a `running` run with a parked
+   * `awaiting` leaf below it reads `awaiting` (view-only, ADR 0038). */
+  display_status: { [run_id: string]: RunStatus };
   /**
    * What the run was launched with (ADR 0046); `config` is masked, so a `$secret` reads as its
    * `[secret:<key>]` token.

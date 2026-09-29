@@ -200,6 +200,10 @@ snake_case):
 
 - The top-level `status` and `output` mirror the root row (the first entry of `runs`,
   `parent_run_id: null`). They are duplicated at the top for a client that only wants the summary.
+- `display_status` maps every run id to the status to show: the run's own status, except a `running`
+  run with a parked `awaiting` leaf below an unbroken chain of `running` runs reads `awaiting`
+  (ADR 0038). Clients show it as given. The event stream carries no display status, so a client
+  reads the tree again when a leaf parks and on any event while one is parked.
 - `workflow_id`, `workflow_name`, and `workflow_path` carry the producing workflow's source identity
   (ADR 0006, #202). They are **root-only**: non-null on the root row (`parent_run_id: null`), null on
   every nested row. `workflow_path` is relative to the store dir, and null for a server-hosted run that

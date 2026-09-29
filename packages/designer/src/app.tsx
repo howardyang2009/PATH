@@ -308,7 +308,7 @@ export function App({
           />
         }
         canvas={
-          <RunProjectionProvider runs={run.runsForProjection}>
+          <RunProjectionProvider view={run.projectionView}>
             <SelectionProvider value={{ selectedId, onSelect: setSelectedId }}>
               <Canvas
                 session={session}

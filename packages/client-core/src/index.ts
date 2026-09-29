@@ -121,7 +121,7 @@ export {
   runFileSetFromDisk,
   runFileSetOf,
 } from "./run-file-set.js";
-export { buildRunTree, displayStatusByRun, type RunTreeNode } from "./run-tree.js";
+export { buildRunTree, type RunTreeNode } from "./run-tree.js";
 export {
   type RunEventSubscription,
   type SubscribeRunEventsOptions,

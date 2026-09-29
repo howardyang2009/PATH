@@ -1,10 +1,10 @@
-import { childrenByParent, displayStatusByRun, type RunStatus } from "@path/schema";
+import { childrenByParent, type RunStatus } from "@path/schema";
 import type { RunNodeState } from "./view-model.js";
 
 /** One run and the runs it spawned, nested; `children` is in execution order. */
 export interface RunTreeNode {
   run: RunNodeState;
-  /** The status every surface shows for this run — see {@link displayStatusByRun}. */
+  /** The status every surface shows for this run: the server's display status (ADR 0038). */
   displayStatus: RunStatus;
   children: RunTreeNode[];
 }
@@ -14,6 +14,7 @@ export interface RunTreeNode {
 export function buildRunTree(
   rootRunId: string,
   runs: ReadonlyMap<string, RunNodeState>,
+  displayStatus: ReadonlyMap<string, RunStatus>,
 ): RunTreeNode | null {
   const root = runs.get(rootRunId);
   if (!root) return null;
@@ -24,10 +25,9 @@ export function buildRunTree(
   for (const siblings of byParent.values()) siblings.sort(byStartOrder);
 
   // Every run has exactly one parent, so the walk down from the root terminates.
-  const display = displayStatusByRun(runs);
   const nest = (run: RunNodeState): RunTreeNode => ({
     run,
-    displayStatus: display.get(run.runId) ?? run.status,
+    displayStatus: displayStatus.get(run.runId) ?? run.status,
     children: (byParent.get(run.runId) ?? []).map(nest),
   });
   return nest(root);
@@ -42,5 +42,3 @@ function byStartOrder(a: RunNodeState, b: RunNodeState): number {
   }
   return a.runId < b.runId ? -1 : a.runId > b.runId ? 1 : 0;
 }
-
-export { displayStatusByRun };

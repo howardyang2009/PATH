@@ -1,19 +1,16 @@
-import {
-  displayStatusByRun,
-  isPassRun,
-  type RunNodeState,
-  type RunStatus,
-} from "@path/client-core";
+import { isPassRun, type RunNodeState, type RunStatus } from "@path/client-core";
 import { createContext, type ReactNode, useContext, useMemo } from "react";
 
 /**
  * The canvas projection (surface 6, ADR 0025): each node's runs folded to one status, keyed by the
  * node's durable `id`. A node with any run executing projects `running`; otherwise the status of
- * its most-recently started run, read through `displayStatusByRun` (ADR 0038). Pass rows and
+ * its most-recently started run, read through the server's display status (ADR 0038). Pass rows and
  * `nodeId: null` root runs project nothing onto the canvas (ADR 0054).
  */
-export function projectRunStatus(runs: ReadonlyMap<string, RunNodeState>): Map<string, RunStatus> {
-  const display = displayStatusByRun(runs);
+export function projectRunStatus(
+  runs: ReadonlyMap<string, RunNodeState>,
+  display: ReadonlyMap<string, RunStatus>,
+): Map<string, RunStatus> {
   const byNode = new Map<string, RunNodeState[]>();
   for (const run of runs.values()) {
     if (run.nodeId === null || isPassRun(run)) continue;
@@ -58,15 +55,25 @@ interface RunProjection {
 const RunProjectionContext = createContext<RunProjection | null>(null);
 
 export function RunProjectionProvider({
-  runs,
+  view,
   children,
 }: {
-  runs: ReadonlyMap<string, RunNodeState> | null;
+  /** The watched run's rows and the server's display status; `null` when nothing is watched. */
+  view: {
+    runs: ReadonlyMap<string, RunNodeState>;
+    displayStatus: ReadonlyMap<string, RunStatus>;
+  } | null;
   children: ReactNode;
 }): JSX.Element {
   const projected = useMemo(
-    () => (runs ? { status: projectRunStatus(runs), jumpsSpent: projectJumpsSpent(runs) } : null),
-    [runs],
+    () =>
+      view
+        ? {
+            status: projectRunStatus(view.runs, view.displayStatus),
+            jumpsSpent: projectJumpsSpent(view.runs),
+          }
+        : null,
+    [view],
   );
   return (
     <RunProjectionContext.Provider value={projected}>{children}</RunProjectionContext.Provider>

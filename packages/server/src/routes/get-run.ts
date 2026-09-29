@@ -1,4 +1,4 @@
-import { must, toWireLaunchFacts, toWireRunRecord } from "@path/schema";
+import { displayStatusByRun, must, toWireLaunchFacts, toWireRunRecord } from "@path/schema";
 import { sendError, sendJson } from "../http-json.js";
 import { resolveTree } from "./resolve-run.js";
 import type { ApiRequest } from "./route-context.js";
@@ -23,6 +23,7 @@ export function handleGetRun({ res, ctx, params: [rootRunId] }: ApiRequest<[stri
     status: rootRow.status,
     output: tree.output() ?? null,
     runs: tree.runs.map(toWireRunRecord),
+    display_status: Object.fromEntries(displayStatusByRun(tree.runs)),
     ...(launchFacts === undefined ? {} : { launch_facts: toWireLaunchFacts(launchFacts) }),
   });
 }

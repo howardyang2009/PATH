@@ -27,8 +27,8 @@ export function useRunWatch(client: PathApiClient, rootWorkflowId: string | null
   const load = useRunView(client, rootRunId);
   // The root run has no `nodeId`, so it projects onto no canvas node; the App badges the breadcrumb
   // with it.
-  const runsForProjection = load.phase === "ready" ? load.value.runs : null;
-  // The breadcrumb badge reads the root's **display** status (`displayStatusByRun`, ADR 0038); the
+  const projectionView = load.phase === "ready" ? load.value : null;
+  // The breadcrumb badge reads the root's **display** status, the server's (ADR 0038); the
   // raw status is the fallback before the root's row lands in the map.
   const workflowRunStatus =
     load.phase === "ready" && rootRunId !== null
@@ -58,7 +58,7 @@ export function useRunWatch(client: PathApiClient, rootWorkflowId: string | null
 
   return {
     load,
-    runsForProjection,
+    projectionView,
     workflowRunStatus,
     rootRunId,
     selectedRunId,

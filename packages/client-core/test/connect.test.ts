@@ -1,4 +1,4 @@
-import type { WireRunRecord } from "@path/schema";
+import { displayStatusByRun, fromWireRunRecord, type WireRunRecord } from "@path/schema";
 import { describe, expect, it } from "vitest";
 import { type FetchLike, PathApiClient } from "../src/api-client.js";
 import { connectRunViewModel } from "../src/connect.js";
@@ -78,7 +78,14 @@ function stubFetch(
     state.treeReads += 1;
     const runs = trees.length > 1 ? trees.shift()! : trees[0]!;
     return new Response(
-      JSON.stringify({ root_run_id: ROOT, status: "running", output: null, runs }),
+      JSON.stringify({
+        root_run_id: ROOT,
+        status: "running",
+        output: null,
+        runs,
+        // The server's derivation (ADR 0038), so the stub answers what `GET /v0/runs/:id` would.
+        display_status: Object.fromEntries(displayStatusByRun(runs.map(fromWireRunRecord))),
+      }),
       {
         status: 200,
         headers: { "Content-Type": "application/json" },
@@ -201,7 +208,14 @@ describe("connectRunViewModel", () => {
 
   it("reports waiting (not reconnecting) while a leaf is parked, then live again on completion", async () => {
     const stream = new EventStream();
-    const stub = stubFetch([[ROOT_ROW, record({ run_id: CHILD })]], stream);
+    // The tree read after the park shows the leaf awaiting, as the server's would.
+    const stub = stubFetch(
+      [
+        [ROOT_ROW, record({ run_id: CHILD })],
+        [ROOT_ROW, record({ run_id: CHILD, status: "awaiting" })],
+      ],
+      stream,
+    );
     const client = new PathApiClient({ baseUrl: "", fetch: stub.fetch });
 
     const connected = await connectRunViewModel({ client, rootRunId: ROOT, idlePollMs: 20 });
@@ -223,6 +237,8 @@ describe("connectRunViewModel", () => {
       assignee: null,
     });
     await waitFor(() => connected.model.getState().runs.get(CHILD)?.status === "awaiting");
+    // The park re-reads the tree, so the root shows the server's `awaiting` (ADR 0038).
+    await waitFor(() => connected.model.getState().displayStatus.get(ROOT) === "awaiting");
     stream.end();
 
     // The stream reads as waiting, and re-opening it to poll does not flicker back to live.

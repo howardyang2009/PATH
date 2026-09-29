@@ -1,5 +1,4 @@
 import {
-  displayStatusByRun,
   type PathApiClient,
   type RunNodeState,
   runFileSetOf,
@@ -354,9 +353,11 @@ describe("awaiting detail panel — inline Complete (NodeIo)", () => {
       ],
       ["run_legal", runState()],
     ]);
-    // The view publishes the derived fact (the shared derivation, exercised here through the real
-    // function); the pane only renders what it is given.
-    const view = { displayStatus: displayStatusByRun(runs), lastError: new Map<string, string>() };
+    // The view publishes the server's display status; the pane only renders what it is given.
+    const view = {
+      displayStatus: new Map([["run_root", "awaiting" as const]]),
+      lastError: new Map<string, string>(),
+    };
     render(
       <NodeIo
         client={stubClient()}

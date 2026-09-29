@@ -116,6 +116,7 @@ export function RunDetail({
         <RunTree
           rootRunId={rootRunId}
           runs={state.runs}
+          displayStatus={state.displayStatus}
           selectedRunId={selectedRunId}
           onSelectRun={onSelectRun}
           runFiles={runFiles}

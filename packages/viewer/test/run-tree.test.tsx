@@ -1,4 +1,4 @@
-import type { RunNodeState } from "@path/client-core";
+import type { RunNodeState, RunStatus } from "@path/client-core";
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { RunTree } from "../src/run-tree.js";
@@ -33,8 +33,20 @@ function run(overrides: Partial<RunNodeState> & { runId: string }): RunNodeState
 }
 
 function tree(...runs: RunNodeState[]) {
+  return treeWithDisplay(new Map(), ...runs);
+}
+
+function treeWithDisplay(displayStatus: ReadonlyMap<string, RunStatus>, ...runs: RunNodeState[]) {
   const map = new Map(runs.map((entry) => [entry.runId, entry]));
-  return render(<RunTree rootRunId={ROOT} runs={map} selectedRunId={null} onSelectRun={vi.fn()} />);
+  return render(
+    <RunTree
+      rootRunId={ROOT}
+      runs={map}
+      displayStatus={displayStatus}
+      selectedRunId={null}
+      onSelectRun={vi.fn()}
+    />,
+  );
 }
 
 const ROOT_RUN = run({ runId: ROOT, parentRunId: null, nodeId: null });
@@ -83,6 +95,7 @@ describe("RunTree", () => {
       <RunTree
         rootRunId={ROOT}
         runs={new Map<string, RunNodeState>()}
+        displayStatus={new Map()}
         selectedRunId={null}
         onSelectRun={vi.fn()}
       />,
@@ -110,10 +123,14 @@ describe("RunTree", () => {
     expect(rootRow).toHaveTextContent(ROOT);
   });
 
-  it("paints a running ancestor of an awaiting leaf as awaiting in the rail (view-only)", () => {
-    // root (running) → mid (running) → leaf (awaiting). The two ancestors show `awaiting`; the
-    // record status stays running (ADR 0038) — the pill is the only place this derivation lands.
-    tree(
+  it("paints each row with the server's display status, so running ancestors read awaiting", () => {
+    // root (running) → mid (running) → leaf (awaiting). The server's display status says the
+    // ancestors show `awaiting`; the record status stays running (ADR 0038).
+    treeWithDisplay(
+      new Map([
+        [ROOT, "awaiting"],
+        ["run_mid", "awaiting"],
+      ]),
       ROOT_RUN,
       run({
         runId: "run_mid",
@@ -154,7 +171,15 @@ describe("RunTree", () => {
       [ROOT, ROOT_RUN],
       ["run_a", run({ runId: "run_a", nodeId: "step-a" })],
     ]);
-    render(<RunTree rootRunId={ROOT} runs={map} selectedRunId="run_a" onSelectRun={vi.fn()} />);
+    render(
+      <RunTree
+        rootRunId={ROOT}
+        runs={map}
+        displayStatus={new Map()}
+        selectedRunId="run_a"
+        onSelectRun={vi.fn()}
+      />,
+    );
 
     expect(screen.getByTestId("tree-row-run_a")).toHaveAttribute("aria-current", "true");
     expect(screen.getByTestId(`tree-row-${ROOT}`)).not.toHaveAttribute("aria-current");

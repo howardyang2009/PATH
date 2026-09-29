@@ -1,4 +1,4 @@
-import type { RunNodeState } from "@path/client-core";
+import type { RunNodeState, RunStatus } from "@path/client-core";
 import { describe, expect, it } from "vitest";
 import { projectJumpsSpent, projectRunStatus } from "../src/run/run-projection.js";
 
@@ -34,10 +34,13 @@ function mapOf(...runs: RunNodeState[]): Map<string, RunNodeState> {
   return new Map(runs.map((r) => [r.runId, r]));
 }
 
+const NO_DISPLAY: ReadonlyMap<string, RunStatus> = new Map();
+
 describe("projectRunStatus (#372 canvas projection)", () => {
   it("keys the projection by a run's node id", () => {
     const projected = projectRunStatus(
       mapOf(run({ runId: "r1", nodeId: "node-a", status: "succeeded" })),
+      NO_DISPLAY,
     );
     expect(projected.get("node-a")).toBe("succeeded");
   });
@@ -45,6 +48,7 @@ describe("projectRunStatus (#372 canvas projection)", () => {
   it("ignores the implicit root run, which has no node id", () => {
     const projected = projectRunStatus(
       mapOf(run({ runId: "root", nodeId: null, status: "running" })),
+      NO_DISPLAY,
     );
     expect(projected.size).toBe(0);
   });
@@ -66,6 +70,7 @@ describe("projectRunStatus (#372 canvas projection)", () => {
           startedAt: "2026-01-01T00:00:05Z",
         }),
       ),
+      NO_DISPLAY,
     );
     expect(projected.get("loop")).toBe("running");
   });
@@ -87,19 +92,20 @@ describe("projectRunStatus (#372 canvas projection)", () => {
           startedAt: "2026-01-01T00:00:05Z",
         }),
       ),
+      NO_DISPLAY,
     );
     expect(projected.get("loop")).toBe("failed");
   });
 
-  it("projects `awaiting` for a running node that holds an awaiting run below it", () => {
+  it("projects the server's display status, so a running node over a parked leaf reads awaiting", () => {
     // A `workflow` step's run is the nested run's root (ADR 0038): it stays `running` while a leaf
-    // in the sub-workflow parks, so the node reads `awaiting` — the same repaint every other run
-    // surface shows.
+    // in the sub-workflow parks; the server's display status says `awaiting`.
     const projected = projectRunStatus(
       mapOf(
         run({ runId: "sub-root", nodeId: "revise", status: "running" }),
         run({ runId: "leaf", nodeId: "approve", parentRunId: "sub-root", status: "awaiting" }),
       ),
+      new Map([["sub-root", "awaiting"]]),
     );
     expect(projected.get("revise")).toBe("awaiting");
     expect(projected.get("approve")).toBe("awaiting");
@@ -151,11 +157,11 @@ describe("goto passes in the canvas projection (#620)", () => {
   );
 
   it("skips pass rows, so the goto that opened them takes no status", () => {
-    expect(projectRunStatus(passRuns).has("g")).toBe(false);
+    expect(projectRunStatus(passRuns, NO_DISPLAY).has("g")).toBe(false);
   });
 
   it("projects a node revisited in several passes as its latest run", () => {
-    expect(projectRunStatus(passRuns).get("step")).toBe("succeeded");
+    expect(projectRunStatus(passRuns, NO_DISPLAY).get("step")).toBe("succeeded");
   });
 
   it("counts a goto's jumps spent as the pass rows it opened", () => {

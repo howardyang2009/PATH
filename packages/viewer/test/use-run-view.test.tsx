@@ -25,6 +25,7 @@ const TREE = {
       estimated_cost_usd: null,
     },
   ],
+  display_status: { [ROOT]: "running" },
 };
 
 /** Records the abort signal of every event-stream request, so teardown is observable. */
