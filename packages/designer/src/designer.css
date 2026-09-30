@@ -2165,6 +2165,19 @@ body {
   outline-offset: 1px;
 }
 
+/* A shipped file row is not a button: its name, then its one action, Copy to mine. */
+.open-workflow-tree .workflow-row--shipped {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: default;
+}
+
+.open-workflow-tree .workflow-row--shipped .workflow-file-name {
+  flex: 1;
+  min-width: 0;
+}
+
 .workflow-file-name {
   display: block;
   font-family: var(--font-mono);

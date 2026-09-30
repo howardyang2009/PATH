@@ -48,12 +48,13 @@ const FILES = {
 };
 
 describe("open existing — empty-canvas entry point", () => {
-  it("leaves shipped workflows out of the picker", async () => {
+  it("offers Copy to mine on a shipped workflow, then opens the copy", async () => {
     const shipped = { ...row("notes/main.workflow.json"), origin: "shipped" };
+    const copyPath = "users/local/workflow/notes/main.workflow.json";
     render(
       <App
         client={stubClient({
-          files: FILES,
+          files: { ...FILES, [copyPath]: JSON.stringify(fileNamed(5, "main", "copied-step")) },
           workflows: { workflows: [...DISCOVERY.workflows, shipped] },
         })}
       />,
@@ -61,8 +62,42 @@ describe("open existing — empty-canvas entry point", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "Open workflow" }));
     const dialog = await screen.findByRole("dialog", { name: "Open a workflow" });
-    await within(dialog).findByRole("button", { name: /mine/ });
-    expect(within(dialog).queryByRole("button", { name: /shipped/ })).toBeNull();
+    fireEvent.click(await within(dialog).findByRole("button", { name: /shipped/ }));
+    fireEvent.click(within(dialog).getByRole("button", { name: /notes/ }));
+    // A shipped file is never opened in place: its row offers only the copy.
+    expect(within(dialog).queryByRole("button", { name: "main.workflow.json" })).toBeNull();
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Copy main.workflow.json to mine" }),
+    );
+
+    await screen.findByText("copied-step");
+    expect(screen.queryByRole("dialog", { name: "Open a workflow" })).not.toBeInTheDocument();
+  });
+
+  it("keeps the picker open with the server's refusal when a copy already exists", async () => {
+    const shipped = { ...row("solo.workflow.json"), origin: "shipped" };
+    render(
+      <App
+        client={stubClient({
+          files: FILES,
+          workflows: { workflows: [shipped] },
+          onCopy: () =>
+            new Response(JSON.stringify({ error: { message: "already exists" } }), {
+              status: 409,
+              headers: { "Content-Type": "application/json" },
+            }),
+        })}
+      />,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "Open workflow" }));
+    const dialog = await screen.findByRole("dialog", { name: "Open a workflow" });
+    fireEvent.click(await within(dialog).findByRole("button", { name: /shipped/ }));
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Copy solo.workflow.json to mine" }),
+    );
+
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent("already exists");
   });
 
   it("offers Open workflow beside New workflow on the empty canvas", async () => {
