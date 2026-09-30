@@ -334,11 +334,13 @@ A place runs Instantiation
 ([ADR 0049](../adr/0049-instantiation-is-a-detached-copy-that-re-stamps-ids-and-never-rewires.md)):
 every node gets a fresh id, a name that collides with one in the file becomes `name-2`, and every other
 value is copied verbatim. The inserted nodes are ordinary nodes, edited in the pane like any other, with
-no link back to the template. The place disarms. Two templates ship in
-`packages/server/shipped/template/`: `review-gate`, a `person-activity` review followed by a `branch` on its
-answer; and `person-switch` ([ADR 0052](../adr/0052-person-switch-is-a-shipped-step-template-not-a-controller.md)),
+no link back to the template. The place disarms. Three templates ship in
+`packages/server/shipped/template/`: `review-gate`, a `person-activity` review followed by a `branch` on
+its answer; `person-switch` ([ADR 0052](../adr/0052-person-switch-is-a-shipped-step-template-not-a-controller.md)),
 one `sequence` of a `person-activity` ask whose `outputSchema` is a string enum of labels and a
-`branch` with one arm per label, routed on `previous.choice`, the ask's output.
+`branch` with one arm per label, routed on `previous.choice`, the ask's output; and `git-get-commit`, a
+`binary` `git log --stat` over `config.commit_range` in `config.repo_path` that publishes the log as
+`raw_changes`.
 
 ### Edit mode: Workflow | Template
 
