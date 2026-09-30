@@ -511,9 +511,11 @@ workflow files and returns them. It flags each whether it is a **root** (referen
 discovered workflow) or also reachable as a nested `workflow` ref. It is a pure read, with no new engine
 exec path.
 
-**Scan.** Recursively collect every `*.workflow.json` under the project root (the repo convention; there
-is no bare `workflow.json`). Skip `.path/`, `node_modules`, and any directory whose name starts with
-`.`. Symlinks are **not** followed. The loader canonicalizes lexically (`resolve`, not `realpath`), and
+**Scan.** Recursively collect every `*.workflow.json` under the two authored workflow roots:
+`users/<user-id>/workflow/` (`<user-id>` is `local` until the Server knows who is asking) and
+`shared/workflow/` ([ADR 0085](../adr/0085-discovery-lists-only-the-authored-workflow-roots.md)).
+Nothing else under the project root is listed. A missing root lists nothing. Skip `node_modules` and any
+directory whose name starts with `.`. Symlinks are **not** followed. The loader canonicalizes lexically (`resolve`, not `realpath`), and
 a match of that avoids the alias of a nested file as a root
 ([valid-root-detection.md](../archive/research/valid-root-detection.md)).
 
@@ -536,7 +538,8 @@ Response `200 OK`:
 {
   "workflows": [
     {
-      "relative_path": "release-notes.workflow.json",
+      "relative_path": "users/local/workflow/release-notes.workflow.json",
+      "origin": "user",
       "id": "<uuid>",
       "name": "release-notes",
       "valid": true,
@@ -544,7 +547,8 @@ Response `200 OK`:
       "error": null
     },
     {
-      "relative_path": "lib/draft.workflow.json",
+      "relative_path": "users/local/workflow/lib/draft.workflow.json",
+      "origin": "user",
       "id": "<uuid>",
       "name": "draft",
       "valid": true,
@@ -552,7 +556,8 @@ Response `200 OK`:
       "error": null
     },
     {
-      "relative_path": "broken.workflow.json",
+      "relative_path": "shared/workflow/broken.workflow.json",
+      "origin": "shared",
       "id": null,
       "name": null,
       "valid": false,
@@ -566,6 +571,7 @@ Response `200 OK`:
 | Field | Type | Meaning |
 | --- | --- | --- |
 | `relative_path` | string | Path relative to the project root — the **exact string** a client feeds back as §2 `workflow_path` (same resolution). The launch handle. |
+| `origin` | `"user"` \| `"shared"` | Which authored root it was scanned from. |
 | `id` | string \| null | The workflow's source-identity GUID (top-level `id`, ADR 0006). Best-effort shallow-parsed for an invalid file so the list stays human-legible; `null` when even the top-level parse fails. |
 | `name` | string \| null | The workflow's human `name` (same best-effort rule as `id`). |
 | `valid` | boolean | `loadWorkflowTree(f).success` — a static load + schema/ref/cycle validate that never executes a step. It is **registry-relative**: a file naming a step type this tree holds no plugin for is `false`. |

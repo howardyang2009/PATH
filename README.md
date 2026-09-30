@@ -62,7 +62,9 @@ pnpm serve
 ```
 
 This builds both consoles and starts `path-server` on <http://localhost:8080>. The viewer lives at
-`/viewer/` (bare `/` redirects there), and the designer at `/designer/`. For UI work, run
+`/viewer/` (bare `/` redirects there), and the designer at `/designer/`. The consoles list only the
+workflows under `users/local/workflow/` and `shared/workflow/`, so move `hello.workflow.json` into one of
+them to see it there. For UI work, run
 `pnpm --filter @path/viewer run dev` or `pnpm --filter @path/designer run dev` instead; each dev
 server proxies API calls to a running `path-server`.
 

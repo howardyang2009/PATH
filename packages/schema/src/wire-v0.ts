@@ -188,6 +188,8 @@ export interface WireError {
  */
 export interface WorkflowSummary {
   relative_path: string;
+  /** Which authored root it was scanned from (ADR 0085). */
+  origin: "shared" | "user";
   id: string | null;
   name: string | null;
   valid: boolean;

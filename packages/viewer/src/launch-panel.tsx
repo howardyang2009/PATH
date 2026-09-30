@@ -10,6 +10,7 @@ import {
   countWorkflowLeaves,
   isFolderOnOpenChain,
   nextOpenFolder,
+  ORIGIN_FOLDER,
   workflowBaseName,
 } from "@path/client-core";
 import { useMemo, useState } from "react";
@@ -68,7 +69,8 @@ export function LaunchPanel({ client, onLaunched }: LaunchPanelProps) {
   const [expanded, setExpanded] = useState<string | null>(null);
   // The deepest open folder path; a folder is expanded when it is this path or a prefix of it, so
   // opening a sibling collapses the previous one automatically (one open folder per level).
-  const [openFolder, setOpenFolder] = useState<string | null>(null);
+  // The user's own workflows start open.
+  const [openFolder, setOpenFolder] = useState<string | null>(ORIGIN_FOLDER.user);
   const [filter, setFilter] = useState<WorkflowFilter>("all");
 
   const { load: state } = useResource(

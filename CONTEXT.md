@@ -622,7 +622,9 @@ Rule of thumb: **Config flows in from outside. Context is written from inside.**
   schema-valid workflow. It is launchable on its own with the right input and config
   (workflow-as-step). "Root" here names a file's position in the discovered ref graph. It is distinct
   from a **root run** (an execution's top run) and from the implicit **root step**. Workflow discovery
-  lists *both* kinds and flags each as root or nested. It reports existence, validity, and root-ness. It
+  scans only the authored workflow roots, `users/<user-id>/workflow/` and `shared/workflow/`
+  ([ADR 0085](https://github.com/howardyang2009/PATH/blob/main/docs/adr/0085-discovery-lists-only-the-authored-workflow-roots.md)),
+  tags each file with its `origin`, lists *both* kinds and flags each as root or nested. It reports existence, validity, and root-ness. It
   promises nothing about standalone launch-readiness (ADR 0011, server-api-v0.md §6). The validity it
   reports is **registry-relative** (Step-type plugins): a file naming a step type this tree holds no
   plugin for is reported **invalid**, not valid-but-unlaunchable, because it is invalid against the only

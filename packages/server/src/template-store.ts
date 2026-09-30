@@ -9,6 +9,7 @@ import {
   type WireError,
 } from "@path/schema";
 import { conditionalWrite, PRECONDITION_FAILED, removeArtifact } from "./artifact-file.js";
+import { authoredRoot } from "./authored-roots.js";
 import { strongEtag } from "./etag.js";
 
 // The Template store (ADR 0050, ADR 0084): Server-owned, engine-blind discovery of
@@ -21,20 +22,6 @@ export type TemplateOrigin = "shipped" | "shared" | "user";
 const SUFFIX: Record<TemplateKind, string> = {
   step: ".step-template.json",
 };
-
-/** The one user until the Server knows who is asking. */
-export const DEFAULT_USER_ID = "local";
-
-/** `shared/template/` under a project: writable templates the whole team owns. */
-function sharedTemplateRoot(projectDir: string): string {
-  return join(projectDir, "shared", "template");
-}
-
-/** `users/<user-id>/template/` under a project: the writable templates one user owns, and where
- * save-as lands. */
-function userTemplateRoot(projectDir: string): string {
-  return join(projectDir, "users", DEFAULT_USER_ID, "template");
-}
 
 /** The shipped (read-only) template root: `packages/server/shipped/template`. A missing directory
  * scans as an empty contribution, never a Server-start failure; a caller (a test) may inject a
@@ -193,8 +180,8 @@ export function discoverTemplates(
 
   const roots: { root: string; origin: TemplateOrigin; readOnly: boolean }[] = [
     { root: shippedDir, origin: "shipped", readOnly: true },
-    { root: sharedTemplateRoot(projectDir), origin: "shared", readOnly: false },
-    { root: userTemplateRoot(projectDir), origin: "user", readOnly: false },
+    { root: authoredRoot(projectDir, "shared", "template"), origin: "shared", readOnly: false },
+    { root: authoredRoot(projectDir, "user", "template"), origin: "user", readOnly: false },
   ];
 
   const located: LocatedTemplate[] = [];
@@ -282,7 +269,8 @@ export function discoverTemplates(
           message: `template id "${valid.id}" is already used by ${holder.origin} template "${holder.name}"`,
         };
       }
-      const absPath = join(userTemplateRoot(projectDir), `${name}${SUFFIX[kind]}`);
+      // Save-as lands in the current user's own folder.
+      const absPath = join(authoredRoot(projectDir, "user", "template"), `${name}${SUFFIX[kind]}`);
       const written = writeAt(valid.id, absPath, payload, {
         ifMatch: undefined,
         rule: "create-or-overwrite",

@@ -1,6 +1,7 @@
 // The folder tree behind every workflow picker: `GET /v0/workflows` returns a flat list, and each
-// `relative_path` is a real filesystem path, so a nested workflow lives inside its folders. A level
-// shows only its own children; folders open one per level as an accordion.
+// `relative_path` is a real filesystem path, so a nested workflow lives inside its folders. The top
+// level is one folder per origin (ADR 0085). A level shows only its own children; folders open one
+// per level as an accordion.
 
 import type { WorkflowSummary } from "@path/schema";
 
@@ -37,11 +38,26 @@ export function parentFolderPath(path: string): string | null {
   return slash === -1 ? null : path.slice(0, slash);
 }
 
-/** Group flat workflow summaries into a folder tree by splitting each `relative_path` on `/`. */
+/** The top-level tree folder of each origin. */
+export const ORIGIN_FOLDER: Record<WorkflowSummary["origin"], string> = {
+  user: "mine",
+  shared: "shared",
+};
+
+/** `users/<user-id>/workflow/` or `shared/workflow/`: the authored root a path starts with. */
+const AUTHORED_ROOT = /^(?:users\/[^/]+|shared)\/workflow\//;
+
+/** A workflow's place in the tree: its origin's folder, then its path inside that origin's root. */
+export function workflowTreePath(workflow: WorkflowSummary): string {
+  return `${ORIGIN_FOLDER[workflow.origin]}/${workflow.relative_path.replace(AUTHORED_ROOT, "")}`;
+}
+
+/** Group flat workflow summaries into a folder tree by splitting each {@link workflowTreePath} on
+ * `/`. */
 export function buildWorkflowTree(workflows: readonly WorkflowSummary[]): WorkflowTreeNode[] {
   const root: WorkflowTreeFolder = { kind: "folder", name: "", path: "", children: [] };
   for (const workflow of workflows) {
-    const segments = workflow.relative_path.split("/");
+    const segments = workflowTreePath(workflow).split("/");
     segments.pop(); // the file name — the leaf, not a folder
     let cursor = root;
     let prefix = "";

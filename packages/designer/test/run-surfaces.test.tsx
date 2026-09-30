@@ -395,6 +395,7 @@ describe("Designer run surfaces (#372)", () => {
         workflows: [
           {
             relative_path: ROOT_PATH,
+            origin: "user",
             id: WF_ID,
             name: "root-flow",
             valid: true,
@@ -403,6 +404,7 @@ describe("Designer run surfaces (#372)", () => {
           },
           {
             relative_path: OTHER_PATH,
+            origin: "user",
             id: OTHER_WF_ID,
             name: "other-flow",
             valid: true,

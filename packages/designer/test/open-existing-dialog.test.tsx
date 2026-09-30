@@ -30,7 +30,15 @@ function fileNamed(id: number, name: string, stepName: string): Record<string, u
 
 /** A discovery row as the server returns it — only `relative_path` steers the picker. */
 function row(path: string): Record<string, unknown> {
-  return { relative_path: path, id: null, name: null, valid: true, is_root: true, error: null };
+  return {
+    relative_path: path,
+    origin: "user",
+    id: null,
+    name: null,
+    valid: true,
+    is_root: true,
+    error: null,
+  };
 }
 
 const DISCOVERY = { workflows: [row(BETA_PATH), row(ALPHA_PATH)] };

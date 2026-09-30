@@ -408,6 +408,7 @@ describe("PathApiClient", () => {
         workflows: [
           {
             relative_path: "release-notes.workflow.json",
+            origin: "user",
             id: "w1",
             name: "release-notes",
             valid: true,
@@ -416,6 +417,7 @@ describe("PathApiClient", () => {
           },
           {
             relative_path: "broken.workflow.json",
+            origin: "user",
             id: null,
             name: null,
             valid: false,
@@ -430,6 +432,7 @@ describe("PathApiClient", () => {
     const res = await client.listWorkflows();
     expect(res.workflows[0]).toMatchObject({
       relative_path: "release-notes.workflow.json",
+      origin: "user",
       is_root: true,
     });
     expect(res.workflows[1]).toMatchObject({

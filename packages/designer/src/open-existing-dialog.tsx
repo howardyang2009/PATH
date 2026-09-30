@@ -4,6 +4,7 @@ import {
   countWorkflowLeaves,
   isFolderOnOpenChain,
   nextOpenFolder,
+  ORIGIN_FOLDER,
   workflowBaseName,
 } from "@path/client-core";
 import { useMemo, useState } from "react";
@@ -36,7 +37,8 @@ export function OpenWorkflowDialog({
   onCancel: () => void;
 }): JSX.Element {
   // The deepest open folder path (accordion, one open folder per level; see `workflow-tree`).
-  const [openFolder, setOpenFolder] = useState<string | null>(null);
+  // The user's own workflows start open.
+  const [openFolder, setOpenFolder] = useState<string | null>(ORIGIN_FOLDER.user);
   // `null` until a scan lands, which reads as "still discovering". A failed scan with nothing
   // behind it reads as an empty list here, so the dialog still opens with its "no workflows" note.
   const workflows = discoveredWorkflows(discovery);

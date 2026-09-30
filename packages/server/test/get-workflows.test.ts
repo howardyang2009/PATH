@@ -35,6 +35,11 @@ function workflow(name: string, refs: string[] = []): string {
   return JSON.stringify({ format: "path/workflow@6", id: uuid(), name, body });
 }
 
+/** A path inside the current user's workflow root, where discovery looks (ADR 0085). */
+function u(relPath: string): string {
+  return join("users", "local", "workflow", relPath);
+}
+
 function write(relPath: string, content: string): void {
   const abs = join(projectDir, relPath);
   mkdirSync(join(abs, ".."), { recursive: true });
@@ -53,19 +58,22 @@ function byPath(body: ListWorkflowsResponse): Map<string, WorkflowSummary> {
 
 describe("GET /v0/workflows", () => {
   it("lists all workflows, flagging a nested ref as is_root: false and its parent true", async () => {
-    write("release-notes.workflow.json", workflow("release-notes", ["./lib/draft.workflow.json"]));
-    write("lib/draft.workflow.json", workflow("draft"));
+    write(
+      u("release-notes.workflow.json"),
+      workflow("release-notes", ["./lib/draft.workflow.json"]),
+    );
+    write(u("lib/draft.workflow.json"), workflow("draft"));
 
     const { status, body } = await listWorkflows();
     expect(status).toBe(200);
     const wf = byPath(body);
 
-    expect(wf.get("release-notes.workflow.json")).toMatchObject({
+    expect(wf.get(u("release-notes.workflow.json"))).toMatchObject({
       valid: true,
       is_root: true,
       name: "release-notes",
     });
-    expect(wf.get(join("lib", "draft.workflow.json"))).toMatchObject({
+    expect(wf.get(u(join("lib", "draft.workflow.json")))).toMatchObject({
       valid: true,
       is_root: false,
       name: "draft",
@@ -79,32 +87,32 @@ describe("GET /v0/workflows", () => {
   });
 
   it("flags a standalone workflow as a root and carries its id/name", async () => {
-    write("solo.workflow.json", workflow("solo"));
+    write(u("solo.workflow.json"), workflow("solo"));
     const wf = byPath((await listWorkflows()).body);
-    const solo = wf.get("solo.workflow.json")!;
+    const solo = wf.get(u("solo.workflow.json"))!;
     expect(solo).toMatchObject({ valid: true, is_root: true, name: "solo", error: null });
     expect(solo.id).toMatch(/^[0-9a-f-]{36}$/);
   });
 
   it("marks a file that is both a valid root and another root's nested ref as is_root: false", async () => {
     // C -> A -> B. A loads on its own (a valid root) yet is referenced by C, so it is not a root.
-    write("a.workflow.json", workflow("a", ["./b.workflow.json"]));
-    write("b.workflow.json", workflow("b"));
-    write("c.workflow.json", workflow("c", ["./a.workflow.json"]));
+    write(u("a.workflow.json"), workflow("a", ["./b.workflow.json"]));
+    write(u("b.workflow.json"), workflow("b"));
+    write(u("c.workflow.json"), workflow("c", ["./a.workflow.json"]));
 
     const wf = byPath((await listWorkflows()).body);
-    expect(wf.get("a.workflow.json")).toMatchObject({ valid: true, is_root: false });
-    expect(wf.get("b.workflow.json")).toMatchObject({ valid: true, is_root: false });
-    expect(wf.get("c.workflow.json")).toMatchObject({ valid: true, is_root: true });
+    expect(wf.get(u("a.workflow.json"))).toMatchObject({ valid: true, is_root: false });
+    expect(wf.get(u("b.workflow.json"))).toMatchObject({ valid: true, is_root: false });
+    expect(wf.get(u("c.workflow.json"))).toMatchObject({ valid: true, is_root: true });
   });
 
   it("reports a schema-invalid file as valid: false, is_root: null, with a best-effort id/name", async () => {
     write(
-      "broken.workflow.json",
+      u("broken.workflow.json"),
       JSON.stringify({ format: "path/workflow@2", id: uuid(), name: "broken", bogus: true }),
     );
 
-    const broken = byPath((await listWorkflows()).body).get("broken.workflow.json")!;
+    const broken = byPath((await listWorkflows()).body).get(u("broken.workflow.json"))!;
     expect(broken.valid).toBe(false);
     expect(broken.is_root).toBeNull();
     expect(broken.name).toBe("broken"); // shallow-parsed even though the schema load failed
@@ -117,7 +125,7 @@ describe("GET /v0/workflows", () => {
   // workflow-format-v2.md §1) — so the operator reads the fix in the workflow list itself.
   it("reports a superseded @1 file as invalid, with the codemod named in its error", async () => {
     write(
-      "old.workflow.json",
+      u("old.workflow.json"),
       JSON.stringify({
         format: "path/workflow@1",
         id: uuid(),
@@ -127,64 +135,92 @@ describe("GET /v0/workflows", () => {
       }),
     );
 
-    const old = byPath((await listWorkflows()).body).get("old.workflow.json")!;
+    const old = byPath((await listWorkflows()).body).get(u("old.workflow.json"))!;
     expect(old).toMatchObject({ valid: false, is_root: null, name: "old" });
     expect(old.error?.message).toBe(
-      `${join(projectDir, "old.workflow.json")}: path/workflow@1 is no longer read — run scripts/archive/migrate-workflow-format-v2.ts then scripts/archive/migrate-workflow-format-v3.ts then scripts/archive/migrate-workflow-format-v4.ts then scripts/archive/migrate-workflow-format-v5.ts then scripts/migrate-workflow-format-v6.ts to migrate this file to path/workflow@6`,
+      `${join(projectDir, u("old.workflow.json"))}: path/workflow@1 is no longer read — run scripts/archive/migrate-workflow-format-v2.ts then scripts/archive/migrate-workflow-format-v3.ts then scripts/archive/migrate-workflow-format-v4.ts then scripts/archive/migrate-workflow-format-v5.ts then scripts/migrate-workflow-format-v6.ts to migrate this file to path/workflow@6`,
     );
     expect(old.error?.details).toHaveLength(1);
   });
 
   it("yields null id/name for a syntactically broken file", async () => {
-    write("garbage.workflow.json", "{ not valid json");
+    write(u("garbage.workflow.json"), "{ not valid json");
 
-    const garbage = byPath((await listWorkflows()).body).get("garbage.workflow.json")!;
+    const garbage = byPath((await listWorkflows()).body).get(u("garbage.workflow.json"))!;
     expect(garbage).toMatchObject({ valid: false, is_root: null, id: null, name: null });
     expect(garbage.error?.message).toBeTruthy();
   });
 
-  it("skips .path/, node_modules, and dot-directories", async () => {
-    write("real.workflow.json", workflow("real"));
-    write(".path/internal.workflow.json", workflow("internal"));
-    write("node_modules/dep/dep.workflow.json", workflow("dep"));
-    write(".hidden/secret.workflow.json", workflow("secret"));
+  it("lists only the user and shared workflow roots, each row carrying its origin", async () => {
+    write(u("mine.workflow.json"), workflow("mine"));
+    write("shared/workflow/team/ours.workflow.json", workflow("ours"));
+    write("examples/sample.workflow.json", workflow("sample"));
+    write("top.workflow.json", workflow("top"));
+    write("users/someone-else/workflow/theirs.workflow.json", workflow("theirs"));
+
+    const rows = (await listWorkflows()).body.workflows.map((w) => [w.relative_path, w.origin]);
+    expect(rows).toEqual([
+      [u("mine.workflow.json"), "user"],
+      [join("shared", "workflow", "team", "ours.workflow.json"), "shared"],
+    ]);
+  });
+
+  it("still flags a user workflow that a shared one refs as nested", async () => {
+    write(u("child.workflow.json"), workflow("child"));
+    write(
+      "shared/workflow/parent.workflow.json",
+      workflow("parent", ["../../users/local/workflow/child.workflow.json"]),
+    );
+
+    const wf = byPath((await listWorkflows()).body);
+    expect(wf.get(u("child.workflow.json"))).toMatchObject({ valid: true, is_root: false });
+    expect(wf.get(join("shared", "workflow", "parent.workflow.json"))).toMatchObject({
+      is_root: true,
+    });
+  });
+
+  it("skips node_modules and dot-directories", async () => {
+    write(u("real.workflow.json"), workflow("real"));
+    write(u(".path/internal.workflow.json"), workflow("internal"));
+    write(u("node_modules/dep/dep.workflow.json"), workflow("dep"));
+    write(u(".hidden/secret.workflow.json"), workflow("secret"));
 
     const paths = (await listWorkflows()).body.workflows.map((w) => w.relative_path);
-    expect(paths).toEqual(["real.workflow.json"]);
+    expect(paths).toEqual([u("real.workflow.json")]);
   });
 
   it("does not follow or list a symlink, so a nested file is not aliased as a root", async () => {
     // A real nested workflow, plus a root-level symlink pointing at it. Following the symlink would
     // surface the nested file under a second path with is_root: true (valid-root-detection.md).
-    write("parent.workflow.json", workflow("parent", ["./lib/child.workflow.json"]));
-    write("lib/child.workflow.json", workflow("child"));
+    write(u("parent.workflow.json"), workflow("parent", ["./lib/child.workflow.json"]));
+    write(u("lib/child.workflow.json"), workflow("child"));
     symlinkSync(
-      join(projectDir, "lib", "child.workflow.json"),
-      join(projectDir, "alias.workflow.json"),
+      join(projectDir, u("lib/child.workflow.json")),
+      join(projectDir, u("alias.workflow.json")),
     );
 
     const { body } = await listWorkflows();
     const paths = body.workflows.map((w) => w.relative_path).sort();
-    expect(paths).toEqual([join("lib", "child.workflow.json"), "parent.workflow.json"]);
+    expect(paths).toEqual([u(join("lib", "child.workflow.json")), u("parent.workflow.json")]);
     // The child appears once, as a non-root; there is no aliased root entry.
     const wf = byPath(body);
-    expect(wf.get(join("lib", "child.workflow.json"))).toMatchObject({ is_root: false });
-    expect(wf.has("alias.workflow.json")).toBe(false);
+    expect(wf.get(u(join("lib", "child.workflow.json")))).toMatchObject({ is_root: false });
+    expect(wf.has(u("alias.workflow.json"))).toBe(false);
   });
 
   it("does not descend into a symlinked directory", async () => {
-    write("real.workflow.json", workflow("real"));
-    write("target/inside.workflow.json", workflow("inside"));
-    symlinkSync(join(projectDir, "target"), join(projectDir, "linkdir"));
+    write(u("real.workflow.json"), workflow("real"));
+    write(u("target/inside.workflow.json"), workflow("inside"));
+    symlinkSync(join(projectDir, u("target")), join(projectDir, u("linkdir")));
 
     const paths = (await listWorkflows()).body.workflows.map((w) => w.relative_path).sort();
     // The real file inside `target/` is listed once via its own path; the `linkdir/` alias is not
     // followed, so `linkdir/inside.workflow.json` never appears.
-    expect(paths).toEqual(["real.workflow.json", join("target", "inside.workflow.json")]);
+    expect(paths).toEqual([u("real.workflow.json"), u(join("target", "inside.workflow.json"))]);
   });
 
   it("returns relative_path as the exact launch handle POST /v0/runs accepts", async () => {
-    write("deep/nested/flow.workflow.json", workflow("flow"));
+    write(u("deep/nested/flow.workflow.json"), workflow("flow"));
     const { body } = await listWorkflows();
     const handlePath = body.workflows[0]!.relative_path;
 

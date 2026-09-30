@@ -88,6 +88,7 @@ An Architecture Decision Record (ADR) records one decision PATH has made: the sh
 | [0082](0082-every-door-that-runs-or-writes-a-file-refuses-duplicate-ids.md) | Every door that runs or writes a file refuses duplicate ids | accepted |
 | [0083](0083-the-template-store-validates-its-own-writes.md) | The template store validates its own writes | accepted |
 | [0084](0084-authored-files-live-in-shipped-shared-and-per-user-folders.md) | Authored files live in shipped, shared and per-user folders | accepted |
+| [0085](0085-discovery-lists-only-the-authored-workflow-roots.md) | Discovery lists only the authored workflow roots | accepted |
 
 ## Superseded decisions
 

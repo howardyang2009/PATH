@@ -141,6 +141,7 @@ export {
   countWorkflowLeaves,
   isFolderOnOpenChain,
   nextOpenFolder,
+  ORIGIN_FOLDER,
   parentFolderPath,
   type WorkflowTreeFolder,
   type WorkflowTreeLeaf,
