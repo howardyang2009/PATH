@@ -11,6 +11,7 @@ export interface RouteContext {
    * request. */
   stepPlugins: LoadedStepPluginRegistry;
   shippedTemplateDir?: string;
+  shippedWorkflowDir?: string;
 }
 
 /** One matched request: the raw HTTP pair, the context, and what the path and query decoded to. */

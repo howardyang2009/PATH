@@ -13,9 +13,10 @@ import {
 
 /** A discovery row where only `relative_path` steers the tree; the rest is filled to a valid
  * shape. */
-function wf(relativePath: string): WorkflowSummary {
+function wf(relativePath: string, origin: WorkflowSummary["origin"] = "user"): WorkflowSummary {
   return {
     relative_path: relativePath,
+    origin,
     id: null,
     name: null,
     valid: true,
@@ -39,26 +40,53 @@ describe("workflowBaseName / parentFolderPath", () => {
   });
 });
 
+/** The children of the one origin folder a user-only tree has. */
+function mine(tree: WorkflowTreeNode[]): WorkflowTreeNode[] {
+  expect(tree).toHaveLength(1);
+  const top = folder(tree[0]!);
+  expect(top).toMatchObject({ name: "mine", path: "mine" });
+  return top.children;
+}
+
 describe("buildWorkflowTree", () => {
-  it("groups nested files under their folders and keeps top-level files at the root", () => {
-    const tree = buildWorkflowTree([wf("lib/draft.workflow.json"), wf("release.workflow.json")]);
+  it("puts each origin in its own top folder, below its authored root", () => {
+    const tree = buildWorkflowTree([
+      wf("users/local/workflow/a.workflow.json"),
+      wf("shared/workflow/team/b.workflow.json", "shared"),
+    ]);
+
+    expect(tree.map((n) => folder(n).name)).toEqual(["mine", "shared"]);
+    expect(folder(tree[0]!).children).toMatchObject([{ kind: "file" }]);
+    const team = folder(folder(tree[1]!).children[0]!);
+    expect(team).toMatchObject({ name: "team", path: "shared/team" });
+  });
+
+  it("groups nested files under their folders and keeps top-level files at the origin folder", () => {
+    const tree = mine(
+      buildWorkflowTree([
+        wf("users/local/workflow/lib/draft.workflow.json"),
+        wf("users/local/workflow/release.workflow.json"),
+      ]),
+    );
 
     // Folders sort before files at each level.
     expect(tree.map((n) => n.kind)).toEqual(["folder", "file"]);
     const lib = folder(tree[0]!);
     expect(lib.name).toBe("lib");
-    expect(lib.path).toBe("lib");
+    expect(lib.path).toBe("mine/lib");
     expect(lib.children).toHaveLength(1);
     expect(lib.children[0]).toMatchObject({ kind: "file" });
   });
 
   it("sorts each level folders-first then files, alphabetically", () => {
-    const tree = buildWorkflowTree([
-      wf("beta.workflow.json"),
-      wf("alpha.workflow.json"),
-      wf("zeta/one.workflow.json"),
-      wf("alpha-dir/one.workflow.json"),
-    ]);
+    const tree = mine(
+      buildWorkflowTree([
+        wf("beta.workflow.json"),
+        wf("alpha.workflow.json"),
+        wf("zeta/one.workflow.json"),
+        wf("alpha-dir/one.workflow.json"),
+      ]),
+    );
     // alpha-dir + zeta (folders) come first, alpha + beta (files) after — each group alphabetical.
     expect(
       tree.map((n) => (n.kind === "folder" ? n.name : workflowBaseName(n.workflow.relative_path))),

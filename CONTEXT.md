@@ -340,7 +340,7 @@ and issues use them exactly.
   or executes it — is
   [ADR 0051](https://github.com/howardyang2009/PATH/blob/main/docs/adr/0051-a-template-is-a-server-authoring-artifact-not-a-step-plugin.md).
 - **Step-Template** — the old name of the **Template**, from when a Workflow-Template also existed
-  (ADR 0063). It survives only in file names (`*.step-template.json`, `step-template/`), the wire kind
+  (ADR 0063). It survives only in the file suffix (`*.step-template.json`), the wire kind
   `"step"`, and code identifiers; say **Template**.
 - **Workflow-Template** — *removed* ([ADR 0063](https://github.com/howardyang2009/PATH/blob/main/docs/adr/0063-the-workflow-template-is-removed-the-step-template-is-the-only-template.md)).
   It was a whole workflow kept as a template. A starting-point workflow is now just a workflow, copied
@@ -384,17 +384,21 @@ and issues use them exactly.
   Designer's toolbar **Workflow | Template** switch picks which of the two kinds of file the session
   edits; author mode is template mode with a template source open.
 - **Template store** — where the Server keeps templates and how it resolves one. It is a
-  **two-directory union** over two origins: `packages/server/template/step-template/` holds the
-  **shipped** templates (`read_only`, portable within a fork lineage) and `.path/template/step-template/`
-  holds the **user** templates (writable, project-scoped). A file's **kind** is read from its suffix
-  (`*.step-template.json`, the only kind since ADR 0063), never from its bytes. The Server builds one
-  **id-index** across both directories, so a single `:id` lookup spans both origins (a GUID is globally
+  **three-directory union** over three origins: `packages/server/shipped/template/` holds the
+  **shipped** templates (`read_only`, portable within a fork lineage), `shared/template/` holds the
+  **shared** templates (writable, team-owned), and `users/<user-id>/template/` holds the **user**
+  templates (writable, one user's own; `<user-id>` is `local` until the Server knows who is asking).
+  Each root is scanned at any depth, since subfolders only organize. A file's **kind** is read from its
+  suffix (`*.step-template.json`, the only kind since ADR 0063), never from its bytes or folder
+  ([ADR 0084](https://github.com/howardyang2009/PATH/blob/main/docs/adr/0084-authored-files-live-in-shipped-shared-and-per-user-folders.md)). The Server builds one
+  **id-index** across all three directories, so a single `:id` lookup spans every origin (a GUID is globally
   unique,
   [ADR 0006](https://github.com/howardyang2009/PATH/blob/main/docs/adr/0006-workflow-and-node-identity-guid-plus-name.md)).
-  A duplicate id across origins lists **both** entries and flags the **user** one invalid; a template
+  A duplicate id lists **both** entries and flags the later one invalid (shipped, then shared, then
+  user); a template
   that fails to parse invalidates **only its own entry**, never Server start
   ([ADR 0048](https://github.com/howardyang2009/PATH/blob/main/docs/adr/0048-the-step-template-schema-is-an-envelope-over-a-validated-workflow-body.md)).
-  Reads serve the union; writes land in `.path/template/` alone. It is the substrate the **Template API**
+  Reads serve the union; save-as lands in `users/<user-id>/template/`. It is the substrate the **Template API**
   reads and writes, and because a template is Server-owned and engine-blind
   ([ADR 0051](https://github.com/howardyang2009/PATH/blob/main/docs/adr/0051-a-template-is-a-server-authoring-artifact-not-a-step-plugin.md)),
   no run ever reads it.
@@ -409,12 +413,12 @@ and issues use them exactly.
   /v0/templates/:id` returns a **parsed envelope** plus an
   `etag` (sha256 of the on-disk bytes), not the raw bytes the workflow read serves (§7.1), because a
   template is never id-less. `POST /v0/templates` is **save-as** — create-only, writing a client-minted
-  envelope to `.path/template/` alone, `409` on a name collision. `PUT /v0/templates/:id` is
+  envelope to `users/<user-id>/template/` alone, `409` on a name collision. `PUT /v0/templates/:id` is
   **update-only**, `If-Match`-gated, `403` on a shipped (read-only) target, `404` on an unknown id, and it
   cannot rename. It is the write door **author-mode save** rides: ADR 0049's "ordinary file editing
   round-trip" is this precondition-gated write, not a Workflow write. `DELETE /v0/templates/:id` removes a
   user template (`204`), `403` on shipped, `404` on unknown. The two write doors stay **disjoint**: `PUT
-  /v0/workflows` refuses a `.path/template/` path, so a template is written
+  /v0/workflows` refuses a `shared/template/` or `users/<user-id>/template/` path, so a template is written
   only through this API and becomes runnable only by **Instantiation**. Fixed by
   [ADR 0050](https://github.com/howardyang2009/PATH/blob/main/docs/adr/0050-the-template-api-is-id-addressed-and-owns-the-template-write-door.md);
   the endpoint surface is `docs/api/server-api-v0.md` §10.
@@ -618,11 +622,21 @@ Rule of thumb: **Config flows in from outside. Context is written from inside.**
   schema-valid workflow. It is launchable on its own with the right input and config
   (workflow-as-step). "Root" here names a file's position in the discovered ref graph. It is distinct
   from a **root run** (an execution's top run) and from the implicit **root step**. Workflow discovery
-  lists *both* kinds and flags each as root or nested. It reports existence, validity, and root-ness. It
+  scans only the authored workflow roots, `users/<user-id>/workflow/` and `shared/workflow/`
+  ([ADR 0085](https://github.com/howardyang2009/PATH/blob/main/docs/adr/0085-discovery-lists-only-the-authored-workflow-roots.md)),
+  plus the Server's shipped workflows, tags each file with its `origin`, lists *both* kinds and flags
+  each as root or nested. It reports existence, validity, and root-ness. It
   promises nothing about standalone launch-readiness (ADR 0011, server-api-v0.md §6). The validity it
   reports is **registry-relative** (Step-type plugins): a file naming a step type this tree holds no
   plugin for is reported **invalid**, not valid-but-unlaunchable, because it is invalid against the only
   registry this tree has (#315).
+- **Shipped workflow** — a read-only `*.workflow.json` the Server ships under
+  `packages/server/shipped/workflow/`, listed with `origin: "shipped"`. It is a starting point, not a
+  Workflow-Template: it is never launched or edited in place. **Copy** puts its top-level folder (or the
+  file alone, when it sits directly under the shipped root) into `users/<user-id>/workflow/` with fresh
+  ids, from the Viewer's workflow list or the Designer's Open picker, and the copy is an ordinary user
+  workflow
+  ([ADR 0086](https://github.com/howardyang2009/PATH/blob/main/docs/adr/0086-shipped-workflows-are-copied-before-they-run.md)).
 
 ## Resume
 

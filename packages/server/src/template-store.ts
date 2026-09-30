@@ -1,5 +1,5 @@
-import { readdirSync, readFileSync } from "node:fs";
-import { join, relative, resolve, sep } from "node:path";
+import { type Dirent, readdirSync, readFileSync } from "node:fs";
+import { basename, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   makeStepTemplateSchema,
@@ -9,32 +9,26 @@ import {
   type WireError,
 } from "@path/schema";
 import { conditionalWrite, PRECONDITION_FAILED, removeArtifact } from "./artifact-file.js";
+import { authoredRoot } from "./authored-roots.js";
 import { strongEtag } from "./etag.js";
 
-// The Template store (ADR 0050): Server-owned, engine-blind discovery of shipped∪user authoring
-// templates. A template is typed by its file **suffix**, never its bytes, so the two maps below are
-// the whole classification. The Step-Template is the only kind.
+// The Template store (ADR 0050, ADR 0084): Server-owned, engine-blind discovery of
+// shipped∪shared∪user authoring templates. A template is typed by its file **suffix**, never its
+// bytes or its folder. The Step-Template is the only kind.
 
 export type TemplateKind = "step";
-export type TemplateOrigin = "shipped" | "user";
+export type TemplateOrigin = "shipped" | "shared" | "user";
 
 const SUFFIX: Record<TemplateKind, string> = {
   step: ".step-template.json",
 };
 
-const KIND_DIR: Record<TemplateKind, string> = {
-  step: "step-template",
-};
-
-/** The `.path/template/` root under a project, where every writable (user) template lives. */
-function userTemplateRoot(projectDir: string): string {
-  return join(projectDir, ".path", "template");
-}
-
-/** The shipped (read-only) template root: `packages/server/template`. A missing directory scans as
- * an empty contribution, never a Server-start failure; a caller (a test) may inject a different
- * root. */
-export const DEFAULT_SHIPPED_TEMPLATE_DIR = fileURLToPath(new URL("../template", import.meta.url));
+/** The shipped (read-only) template root: `packages/server/shipped/template`. A missing directory
+ * scans as an empty contribution, never a Server-start failure; a caller (a test) may inject a
+ * different root. */
+export const DEFAULT_SHIPPED_TEMPLATE_DIR = fileURLToPath(
+  new URL("../shipped/template", import.meta.url),
+);
 
 /** The shipped root the union scans: the context override, or the package-relative default. */
 export function shippedTemplateDir(ctx: { shippedTemplateDir?: string }): string {
@@ -111,18 +105,29 @@ export interface TemplateStore {
   remove(id: string): TemplateRemove;
 }
 
-/** The names of files directly under `dir` that end with `suffix`, sorted; `[]` when `dir` is
- * absent. */
-function templateFiles(dir: string, suffix: string): string[] {
-  let names: string[];
-  try {
-    names = readdirSync(dir, { withFileTypes: true })
-      .filter((e) => e.isFile() && e.name.endsWith(suffix))
-      .map((e) => e.name);
-  } catch {
-    return [];
-  }
-  return names.sort();
+/** Every file under `root`, at any depth, that ends with `suffix`, as sorted absolute paths; `[]`
+ * when `root` is absent. Folders only organize, so dot-directories are skipped and symlinks are
+ * neither followed nor listed, as workflow discovery does. */
+function templateFiles(root: string, suffix: string): string[] {
+  const found: string[] = [];
+  const walk = (dir: string): void => {
+    let entries: Dirent[];
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (entry.isSymbolicLink()) continue;
+      if (entry.isDirectory()) {
+        if (!entry.name.startsWith(".")) walk(join(dir, entry.name));
+      } else if (entry.isFile() && entry.name.endsWith(suffix)) {
+        found.push(join(dir, entry.name));
+      }
+    }
+  };
+  walk(root);
+  return found.sort();
 }
 
 /** The validity/identity facts of one step-template file's bytes. Never throws — malformed JSON is
@@ -161,10 +166,10 @@ function classify(
 }
 
 /**
- * Discover the shipped∪user template union, fresh (no cache). Scans the two roots, types each file
- * by its suffix, validates its body registry-relative, and builds the `id → entry` index. A
- * duplicate id across origins invalidates the later (user) entry, never the earlier one and never
- * the scan.
+ * Discover the shipped∪shared∪user template union, fresh (no cache). Scans the three roots, types
+ * each file by its suffix, validates its body registry-relative, and builds the `id → entry` index.
+ * A duplicate id invalidates the later entry (shipped, then shared, then user), never the earlier
+ * one and never the scan.
  */
 export function discoverTemplates(
   projectDir: string,
@@ -175,18 +180,17 @@ export function discoverTemplates(
 
   const roots: { root: string; origin: TemplateOrigin; readOnly: boolean }[] = [
     { root: shippedDir, origin: "shipped", readOnly: true },
-    { root: userTemplateRoot(projectDir), origin: "user", readOnly: false },
+    { root: authoredRoot(projectDir, "shared", "template"), origin: "shared", readOnly: false },
+    { root: authoredRoot(projectDir, "user", "template"), origin: "user", readOnly: false },
   ];
 
   const located: LocatedTemplate[] = [];
   for (const { root, origin, readOnly } of roots) {
     for (const kind of ["step"] as const) {
       const suffix = SUFFIX[kind];
-      const dir = join(root, KIND_DIR[kind]);
-      for (const fileName of templateFiles(dir, suffix)) {
-        const absPath = join(dir, fileName);
+      for (const absPath of templateFiles(root, suffix)) {
         const bytes = readFileSync(absPath);
-        const name = fileName.slice(0, -suffix.length);
+        const name = basename(absPath).slice(0, -suffix.length);
         located.push({
           name,
           kind,
@@ -265,7 +269,8 @@ export function discoverTemplates(
           message: `template id "${valid.id}" is already used by ${holder.origin} template "${holder.name}"`,
         };
       }
-      const absPath = join(userTemplateRoot(projectDir), KIND_DIR[kind], `${name}${SUFFIX[kind]}`);
+      // Save-as lands in the current user's own folder.
+      const absPath = join(authoredRoot(projectDir, "user", "template"), `${name}${SUFFIX[kind]}`);
       const written = writeAt(valid.id, absPath, payload, {
         ifMatch: undefined,
         rule: "create-or-overwrite",
@@ -300,11 +305,12 @@ export function discoverTemplates(
 }
 
 /** Whether `workflowPath` addresses a template, which the workflow doors refuse (§10.6): anything
- * lexically under `.path/template/`, resolved first so a `../` detour is caught too. */
+ * lexically under `shared/template/` or `users/<user-id>/template/`, resolved first so a `../`
+ * detour is caught too. */
 export function isTemplatePath(projectDir: string, workflowPath: string): boolean {
-  const relFromRoot = relative(projectDir, resolve(projectDir, workflowPath));
-  const templateDir = join(".path", "template");
-  return relFromRoot === templateDir || relFromRoot.startsWith(`${templateDir}${sep}`);
+  const parts = relative(projectDir, resolve(projectDir, workflowPath)).split(sep);
+  if (parts[0] === "shared") return parts[1] === "template";
+  return parts[0] === "users" && parts.length >= 3 && parts[2] === "template";
 }
 
 /** What the template doors read the store through: the project, its frozen registry, and the

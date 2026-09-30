@@ -511,9 +511,13 @@ workflow files and returns them. It flags each whether it is a **root** (referen
 discovered workflow) or also reachable as a nested `workflow` ref. It is a pure read, with no new engine
 exec path.
 
-**Scan.** Recursively collect every `*.workflow.json` under the project root (the repo convention; there
-is no bare `workflow.json`). Skip `.path/`, `node_modules`, and any directory whose name starts with
-`.`. Symlinks are **not** followed. The loader canonicalizes lexically (`resolve`, not `realpath`), and
+**Scan.** Recursively collect every `*.workflow.json` under the two authored workflow roots:
+`users/<user-id>/workflow/` (`<user-id>` is `local` until the Server knows who is asking) and
+`shared/workflow/` ([ADR 0085](../adr/0085-discovery-lists-only-the-authored-workflow-roots.md)),
+plus the Server's shipped root, `packages/server/shipped/workflow/`
+([ADR 0086](../adr/0086-shipped-workflows-are-copied-before-they-run.md)). Nothing else under the
+project root is listed. A missing root lists nothing. Skip `node_modules` and any
+directory whose name starts with `.`. Symlinks are **not** followed. The loader canonicalizes lexically (`resolve`, not `realpath`), and
 a match of that avoids the alias of a nested file as a root
 ([valid-root-detection.md](../archive/research/valid-root-detection.md)).
 
@@ -536,7 +540,8 @@ Response `200 OK`:
 {
   "workflows": [
     {
-      "relative_path": "release-notes.workflow.json",
+      "relative_path": "users/local/workflow/release-notes.workflow.json",
+      "origin": "user",
       "id": "<uuid>",
       "name": "release-notes",
       "valid": true,
@@ -544,7 +549,8 @@ Response `200 OK`:
       "error": null
     },
     {
-      "relative_path": "lib/draft.workflow.json",
+      "relative_path": "users/local/workflow/lib/draft.workflow.json",
+      "origin": "user",
       "id": "<uuid>",
       "name": "draft",
       "valid": true,
@@ -552,7 +558,8 @@ Response `200 OK`:
       "error": null
     },
     {
-      "relative_path": "broken.workflow.json",
+      "relative_path": "shared/workflow/broken.workflow.json",
+      "origin": "shared",
       "id": null,
       "name": null,
       "valid": false,
@@ -565,7 +572,8 @@ Response `200 OK`:
 
 | Field | Type | Meaning |
 | --- | --- | --- |
-| `relative_path` | string | Path relative to the project root — the **exact string** a client feeds back as §2 `workflow_path` (same resolution). The launch handle. |
+| `relative_path` | string | Path relative to the project root — the **exact string** a client feeds back as §2 `workflow_path` (same resolution). The launch handle. A `shipped` row is the exception: its path is relative to the shipped root, and it is the §7.3 `shipped_path`, not a launch handle. |
+| `origin` | `"user"` \| `"shared"` \| `"shipped"` | Which root it was scanned from. |
 | `id` | string \| null | The workflow's source-identity GUID (top-level `id`, ADR 0006). Best-effort shallow-parsed for an invalid file so the list stays human-legible; `null` when even the top-level parse fails. |
 | `name` | string \| null | The workflow's human `name` (same best-effort rule as `id`). |
 | `valid` | boolean | `loadWorkflowTree(f).success` — a static load + schema/ref/cycle validate that never executes a step. It is **registry-relative**: a file naming a step type this tree holds no plugin for is `false`. |
@@ -717,7 +725,7 @@ blind delete, as there is no blind overwrite.
 It respects the edit lease (ADR 0017). A live lease held by **another** session is a `409`. The caller
 names its own session in `session_id`; its own lease, or an expired one, is removed with the file.
 
-A template path (anything under `.path/template/`) is refused,
+A template path (anything under `shared/template/` or `users/<user-id>/template/`) is refused,
 as `PUT /v0/workflows` refuses one (§10.6). A template is deleted through `DELETE /v0/templates/:id`
 (§10.5). Other workflows that reference the deleted file keep their `ref`. The Designer reports it as
 a dangling ref.
@@ -731,6 +739,29 @@ Responses:
   symlink (same confinement as §7).
 - `409 Conflict` — another session holds a live edit lease on the file.
 - `412 Precondition Failed` — no `If-Match`, or an `If-Match` that does not match the file's bytes.
+
+### 7.3 `POST /v0/workflows/copy` — copy a shipped workflow
+
+Origin-gated (§2.1). Copies a shipped workflow into `users/<user-id>/workflow/`, so the user can
+launch and edit it ([ADR 0086](../adr/0086-shipped-workflows-are-copied-before-they-run.md)). A
+shipped workflow is never launched or written in place.
+
+Request body: `{ "shipped_path": "<relative_path of a shipped row>" }`.
+
+The copy unit is the file's **top-level folder** under the shipped root, so the relative refs inside
+it still resolve. A file directly under the shipped root is copied alone. Each `*.workflow.json` in
+the unit gets a fresh workflow `id` and fresh node ids (`instantiateWorkflow`); other files copy
+verbatim. The copy is **create-only**.
+
+Responses:
+
+- `201 Created` — `{ "relative_path": "<project-relative path of the copied file>" }`, a launch
+  handle.
+- `400 Bad Request` — the body is not `{ shipped_path }`.
+- `403 Forbidden` — a cross-origin caller, rejected by the origin gate (§2.1).
+- `404 Not Found` — `shipped_path` is not a `*.workflow.json` file under the shipped root, or escapes
+  it.
+- `409 Conflict` — the target file or folder already exists.
 
 ## 8. `GET /v0/step-plugins` — the authoring registry
 
@@ -827,22 +858,26 @@ removed the Workflow-Template). The wire keeps `kind`, always `"step"`.
 is selected by identity, so `:id` is the template's own GUID — a step-template's envelope `id`
 ([ADR 0048](../adr/0048-the-step-template-schema-is-an-envelope-over-a-validated-workflow-body.md)). A
 GUID is globally unique ([ADR 0006](../adr/0006-workflow-and-node-identity-guid-plus-name.md)), so one id
-lookup spans both origins.
+lookup spans every origin.
 
-**The union is a two-directory scan.** Discovery reads, fresh on each request (no cache, like §6):
+**The union is a three-directory scan** ([ADR 0084](../adr/0084-authored-files-live-in-shipped-shared-and-per-user-folders.md)).
+Discovery reads, fresh on each request (no cache, like §6), each root at any depth; subfolders only
+organize, and dot-directories and symlinks are skipped:
 
-| Root | Kind subdir | `origin` | `read_only` | File suffix |
-| --- | --- | --- | --- | --- |
-| `packages/server/template/` | `step-template/` | `shipped` | `true` | `*.step-template.json` |
-| `.path/template/` | `step-template/` | `user` | `false` | `*.step-template.json` |
+| Root | `origin` | `read_only` | File suffix |
+| --- | --- | --- | --- |
+| `packages/server/shipped/template/` | `shipped` | `true` | `*.step-template.json` |
+| `shared/template/` | `shared` | `false` | `*.step-template.json` |
+| `users/<user-id>/template/` | `user` | `false` | `*.step-template.json` |
 
-The `kind` of a file is its suffix, never its bytes. A leftover `*.workflow-template.json` file is
+`<user-id>` is `local` until the Server knows who is asking. The `kind` of a file is its suffix, never
+its bytes or folder. A leftover `*.workflow-template.json` file is
 ignored. The scan also builds the `id → entry` index the by-id routes resolve against; a file's path
-stays inside the store, so a door addresses a template by `id` and never by `absPath`. An id shared
-by a user and a shipped file (reachable
-only when a user hand-copies a shipped file — save-as always mints a fresh id,
+stays inside the store, so a door addresses a template by `id` and never by `absPath`. An id held by
+two files (reachable only when someone hand-copies a file — save-as always mints a fresh id,
 [ADR 0049](../adr/0049-instantiation-is-a-detached-copy-that-re-stamps-ids-and-never-rewires.md)) lists
-**both**, with the **user** entry flagged `valid: false` (duplicate id). A **name** collision across
+**both**, with the later entry in scan order (shipped, shared, user) flagged `valid: false` (duplicate
+id). A **name** collision across
 origins is not a collision (distinct ids, distinct palette rows). A malformed, duplicate-id, or
 unregistered-type template invalidates *that one entry* and never the Server start
 ([ADR 0048](../adr/0048-the-step-template-schema-is-an-envelope-over-a-validated-workflow-body.md)).
@@ -858,7 +893,7 @@ workflow discovery (§6). Registry-relative validity rides each entry.
 | `name` | string | The file stem (`NameSchema`), the palette label. |
 | `description` | string | The palette blurb ([ADR 0048](../adr/0048-the-step-template-schema-is-an-envelope-over-a-validated-workflow-body.md)); a step-template's required envelope field. |
 | `kind` | `"step"` | Which suffix the file carried; always `"step"`. |
-| `origin` | `"shipped" \| "user"` | Which root it was scanned from. |
+| `origin` | `"shipped" \| "shared" \| "user"` | Which root it was scanned from. |
 | `read_only` | boolean | `true` for `shipped`, `false` for `user`. |
 | `valid` | boolean | Whether the body validates registry-relative. |
 | `error` | object \| null | The shared error envelope when `valid: false`, else `null`. |
@@ -905,7 +940,7 @@ unchanged.
 | `id` | string | The template GUID. |
 | `name` | string | Derived from the file stem. |
 | `kind` | `"step"` | The file's kind. |
-| `origin` | `"shipped" \| "user"` | Scan root. |
+| `origin` | `"shipped" \| "shared" \| "user"` | Scan root. |
 | `read_only` | boolean | `true` for shipped. |
 | `format` | string | The envelope `format` stamp (`"path/workflow@6"`). |
 | `description` | string | The envelope description. |
@@ -924,7 +959,8 @@ Responses:
 
 ### 10.3 `POST /v0/templates` — save-as (create a user template)
 
-Origin-gated (§2.1). Writes to `.path/template/` **only**; a shipped path is never a target. The
+Origin-gated (§2.1). Writes to `users/<user-id>/template/` **only**; a shipped or shared path is never
+a target. The
 Server is identity-agnostic ([ADR 0015](../adr/0015-designer-node-identity-client-mints-preserve-on-save.md)):
 the client **mints the envelope `id`** and sends it inside `body`; the Server writes verbatim and
 serializes the raw request object (author key order preserved, as §7).
@@ -933,12 +969,12 @@ Request body:
 
 | Field | Type | Meaning |
 | --- | --- | --- |
-| `kind` | `"step"` | Selects the `<kind-dir>` and the suffix; any other value is a `400`. |
+| `kind` | `"step"` | Selects the suffix; any other value is a `400`. |
 | `name` | string | The file stem; must match `NameSchema` (`^[a-z][a-z0-9-]*$`). |
 | `description` | string | The template's blurb (a step-template's required field). |
 | `body` | object | The step-template envelope, carrying the client-minted `id`. |
 
-The write lands at `.path/template/<kind-dir>/<name>.<suffix>`, creating the directory chain
+The write lands at `users/<user-id>/template/<name>.<suffix>`, creating the directory chain
 (`mkdirSync` recursive, as §7). It is **create-only** — no blind overwrite; content changes go through
 §10.4.
 
@@ -947,8 +983,8 @@ Responses:
 - `201 Created` — `{ "id": "<envelope id>", "relative_path": "<path under project root>", "etag": "<sha256>" }`.
 - `400 Bad Request` — body is not valid JSON, fails the envelope schema, `name` violates `NameSchema`,
   `kind` is not `"step"`, or `body` fails `makeStepTemplateSchema(registry)`.
-- `409 Conflict` — a template of that `name` already exists in `.path/template/<kind-dir>/`.
-  Also `409` when the body's `id` is already held by any template, shipped or user, so a save-as
+- `409 Conflict` — a template of that `name` already exists in `users/<user-id>/template/`.
+  Also `409` when the body's `id` is already held by any template of any origin, so a save-as
   never makes the next scan flag a duplicate.
 - `403 Forbidden` — the origin gate rejected the request (§2.1).
 
@@ -990,7 +1026,7 @@ Responses:
 
 A template file lives under the project root, so `PUT /v0/workflows` (§7) *could* address it by path.
 It does not: to keep one addressing scheme per artifact, **`PUT /v0/workflows` rejects a path under
-`.path/template/`** (`400`/`404`), and `GET /v0/workflows` (§6) already scans `*.workflow.json` only, so
+`shared/template/` or `users/<user-id>/template/`** (`400`/`404`), and `GET /v0/workflows` (§6) already scans `*.workflow.json` only, so
 a template never surfaces as a launchable workflow. A template is written only through `/v0/templates`, and reaches a runnable
 `*.workflow.json` only by Instantiation
 ([ADR 0049](../adr/0049-instantiation-is-a-detached-copy-that-re-stamps-ids-and-never-rewires.md)).

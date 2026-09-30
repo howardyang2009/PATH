@@ -12,7 +12,7 @@ import {
   TemplateFileName,
   WorkflowFileName,
 } from "./editing-toolbar.js";
-import { dirnameOf, NewFileDialog } from "./new-file-dialog.js";
+import { DEFAULT_WORKFLOW_DIRECTORY, dirnameOf, NewFileDialog } from "./new-file-dialog.js";
 import { OpenWorkflowDialog } from "./open-existing-dialog.js";
 import { OpenTemplateDialog } from "./open-template-dialog.js";
 import { Palette } from "./palette.js";
@@ -116,7 +116,9 @@ export function App({
   // Workflow discovery, loaded once for the whole surface: the problems pass, the open-existing
   // picker, the first-save directory list, and the ref-target picker all project this one snapshot,
   // so a save that writes a file (or a scan landing mid-dialog) reads the same everywhere.
-  const discovery = useWorkflowDiscovery(client, session.saveState.phase);
+  // Bumped after a copy, which writes files outside a save, so discovery sees them.
+  const [discoveryKey, setDiscoveryKey] = useState(0);
+  const discovery = useWorkflowDiscovery(client, session.saveState.phase, discoveryKey);
   // Re-listed after each save, so a Save-As template shows up in the palette.
   const templateList = useTemplateList(client, session.saveState.phase);
 
@@ -164,6 +166,14 @@ export function App({
   const openExisting = (path: string): void => {
     setOpenExistingOpen(false);
     if (confirmDiscard()) session.apply({ type: "openLoading", path });
+  };
+
+  // Copy a shipped workflow into the user's folder (ADR 0086), then open the copy. A refusal
+  // (a `409` for an existing copy) rejects, and the picker shows it.
+  const copyShipped = async (shippedPath: string): Promise<void> => {
+    const { relativePath } = await client.copyShippedWorkflow(shippedPath);
+    setDiscoveryKey((key) => key + 1);
+    openExisting(relativePath);
   };
 
   // The run surfaces, gathered into one module (`useRunWatch`); the App reads its derived values
@@ -437,7 +447,7 @@ export function App({
           discovery={discovery}
           title="Save workflow as"
           workflowName={`${openedFile.name}-copy`}
-          initialDirectory={activePath ? dirnameOf(activePath) : ""}
+          initialDirectory={activePath ? dirnameOf(activePath) : DEFAULT_WORKFLOW_DIRECTORY}
           create={(path) => session.saveAs({ kind: "workflow-copy", path })}
           onCreated={() => setSaveAsDialog(null)}
           onCancel={() => setSaveAsDialog(null)}
@@ -449,6 +459,7 @@ export function App({
         <OpenWorkflowDialog
           discovery={discovery}
           onOpen={openExisting}
+          onCopy={copyShipped}
           onCancel={() => setOpenExistingOpen(false)}
         />
       ) : null}

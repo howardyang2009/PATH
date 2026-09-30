@@ -37,6 +37,7 @@ const DISCOVERY = {
   workflows: [
     {
       relative_path: PARENT_PATH,
+      origin: "user",
       id: uuid(1),
       name: "parent-flow",
       valid: true,
@@ -45,6 +46,7 @@ const DISCOVERY = {
     },
     {
       relative_path: "flows/other.workflow.json",
+      origin: "user",
       id: uuid(9),
       name: "other",
       valid: true,

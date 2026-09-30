@@ -4,6 +4,7 @@ import {
   countWorkflowLeaves,
   isFolderOnOpenChain,
   nextOpenFolder,
+  ORIGIN_FOLDER,
   workflowBaseName,
 } from "@path/client-core";
 import { useMemo, useState } from "react";
@@ -20,26 +21,38 @@ import { type DiscoveryLoad, discoveredWorkflows } from "./discovery.js";
  * Discovery is presented as the same **folder tree** the Viewer's WORKFLOWS panel draws (the shared
  * `workflow-tree` seam): each level shows only its own children — the workflow files that sit
  * there, plus the folders that hold a workflow below — and a folder opens one-per-level as an
- * accordion. A folder click walks in; a file click opens that workflow. The dialog owns only the
- * tree's open-state; the App loads discovery (`discovery.ts`) and decides what a pick does (discard
- * the current stack and open the chosen file), because that touches the whole session.
+ * accordion. A folder click walks in; a file click opens that workflow. A shipped workflow is never
+ * opened in place (ADR 0086): its row offers Copy to mine, and the App opens the copy. The dialog
+ * owns only the tree's open-state and a failed copy's message; the App loads discovery
+ * (`discovery.ts`) and decides what a pick does, because that touches the whole session.
  */
 export function OpenWorkflowDialog({
   discovery,
   onOpen,
+  onCopy,
   onCancel,
 }: {
   discovery: DiscoveryLoad;
   /** Open this already-discovered workflow at its project-relative path as a fresh root. */
   onOpen: (path: string) => void;
+  /** Copy the shipped workflow at this shipped path into the user's folder and open the copy. */
+  onCopy: (shippedPath: string) => Promise<void>;
   /** Dismiss without opening anything; the current canvas stays as it was. */
   onCancel: () => void;
 }): JSX.Element {
   // The deepest open folder path (accordion, one open folder per level; see `workflow-tree`).
-  const [openFolder, setOpenFolder] = useState<string | null>(null);
+  // The user's own workflows start open.
+  const [openFolder, setOpenFolder] = useState<string | null>(ORIGIN_FOLDER.user);
   // `null` until a scan lands, which reads as "still discovering". A failed scan with nothing
   // behind it reads as an empty list here, so the dialog still opens with its "no workflows" note.
-  const workflows = discoveredWorkflows(discovery);
+  const workflows = discoveredWorkflows(discovery, { withShipped: true });
+  const [copyError, setCopyError] = useState<string | null>(null);
+  const copy = (shippedPath: string): void => {
+    setCopyError(null);
+    onCopy(shippedPath).catch((error: unknown) =>
+      setCopyError(error instanceof Error ? error.message : String(error)),
+    );
+  };
 
   const tree = useMemo(() => (workflows ? buildWorkflowTree(workflows) : []), [workflows]);
 
@@ -61,9 +74,15 @@ export function OpenWorkflowDialog({
               openFolder={openFolder}
               onToggleFolder={(path) => setOpenFolder((prev) => nextOpenFolder(prev, path))}
               onOpen={onOpen}
+              onCopy={copy}
             />
           </div>
         )}
+        {copyError !== null ? (
+          <p className="pane-note pane-error" role="alert">
+            {copyError}
+          </p>
+        ) : null}
         <div className="dialog-actions">
           <button type="button" onClick={onCancel}>
             Cancel
@@ -92,6 +111,7 @@ function WorkflowTree({
   openFolder,
   onToggleFolder,
   onOpen,
+  onCopy,
 }: {
   nodes: WorkflowTreeNode[];
   depth: number;
@@ -100,6 +120,7 @@ function WorkflowTree({
   openFolder: string | null;
   onToggleFolder: (path: string) => void;
   onOpen: (path: string) => void;
+  onCopy: (shippedPath: string) => void;
 }): JSX.Element {
   return (
     <ul className="workflows" aria-label={label}>
@@ -119,8 +140,24 @@ function WorkflowTree({
                 openFolder={openFolder}
                 onToggleFolder={onToggleFolder}
                 onOpen={onOpen}
+                onCopy={onCopy}
               />
             )}
+          </li>
+        ) : node.workflow.origin === "shipped" ? (
+          <li key={`shipped:${node.workflow.relative_path}`}>
+            <div className="workflow-row workflow-row--shipped" style={indent(depth)}>
+              <span className="workflow-file-name">
+                {workflowBaseName(node.workflow.relative_path)}
+              </span>
+              <button
+                type="button"
+                aria-label={`Copy ${workflowBaseName(node.workflow.relative_path)} to mine`}
+                onClick={() => onCopy(node.workflow.relative_path)}
+              >
+                Copy to mine
+              </button>
+            </div>
           </li>
         ) : (
           <li key={node.workflow.relative_path}>

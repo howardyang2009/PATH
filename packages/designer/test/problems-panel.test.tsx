@@ -50,6 +50,7 @@ function canonical(f: Record<string, unknown>): string {
 function summary(relativePath: string) {
   return {
     relative_path: relativePath,
+    origin: "user",
     id: null,
     name: null,
     valid: true,

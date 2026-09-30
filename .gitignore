@@ -6,6 +6,11 @@ dist/
 *.tsbuildinfo
 *.workflow.json.editing
 .pnpm-store/
-# Scratch workflows an operator runs from the repo root: samples live in examples/ and docs/.
+# Scratch workflows an operator runs from the repo root: shipped ones live in
+# packages/server/shipped/workflow/.
 /*.workflow.json
 .idea/
+# Authored files an operator makes while running from the repo root (ADR 0084): shipped content
+# lives in packages/server/shipped/.
+/users/
+/shared/

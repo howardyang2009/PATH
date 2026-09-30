@@ -408,6 +408,7 @@ describe("PathApiClient", () => {
         workflows: [
           {
             relative_path: "release-notes.workflow.json",
+            origin: "user",
             id: "w1",
             name: "release-notes",
             valid: true,
@@ -416,6 +417,7 @@ describe("PathApiClient", () => {
           },
           {
             relative_path: "broken.workflow.json",
+            origin: "user",
             id: null,
             name: null,
             valid: false,
@@ -430,6 +432,7 @@ describe("PathApiClient", () => {
     const res = await client.listWorkflows();
     expect(res.workflows[0]).toMatchObject({
       relative_path: "release-notes.workflow.json",
+      origin: "user",
       is_root: true,
     });
     expect(res.workflows[1]).toMatchObject({
@@ -515,7 +518,7 @@ describe("PathApiClient", () => {
       return json(
         {
           id: "t2",
-          relative_path: ".path/template/step-template/copy.step-template.json",
+          relative_path: "users/local/template/copy.step-template.json",
           etag: '"new"',
         },
         201,
@@ -531,7 +534,7 @@ describe("PathApiClient", () => {
     });
     expect(res).toEqual({
       id: "t2",
-      relativePath: ".path/template/step-template/copy.step-template.json",
+      relativePath: "users/local/template/copy.step-template.json",
       etag: '"new"',
     });
     expect(stub.urls[0]).toBe("http://localhost:8080/v0/templates");
@@ -550,7 +553,7 @@ describe("PathApiClient", () => {
       sent = init;
       return json({
         id: "t 1",
-        relative_path: ".path/template/step-template/x.step-template.json",
+        relative_path: "users/local/template/x.step-template.json",
         etag: '"next"',
       });
     });

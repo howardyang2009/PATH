@@ -5,6 +5,7 @@ import { LaunchPanel } from "../src/launch-panel.js";
 
 const ROOT: WorkflowSummary = {
   relative_path: "release-notes.workflow.json",
+  origin: "user",
   id: "8f1c",
   name: "release-notes",
   valid: true,
@@ -13,6 +14,7 @@ const ROOT: WorkflowSummary = {
 };
 const NESTED: WorkflowSummary = {
   relative_path: "lib/draft.workflow.json",
+  origin: "user",
   id: "c47e",
   name: "draft",
   valid: true,
@@ -21,6 +23,7 @@ const NESTED: WorkflowSummary = {
 };
 const BROKEN: WorkflowSummary = {
   relative_path: "broken.workflow.json",
+  origin: "user",
   id: null,
   name: null,
   valid: false,
@@ -57,13 +60,24 @@ function stubClient(opts: {
   stepPlugins?: unknown;
   startResponse?: unknown;
   startStatus?: number;
+  /** A `POST /v0/workflows/copy` status and body; a 201 then adds `copied` to the listing. */
+  copy?: { status: number; body: unknown; copied?: WorkflowSummary };
 }): { client: PathApiClient; calls: Recorded[] } {
   const calls: Recorded[] = [];
+  let workflows = opts.workflows;
   const fetch: FetchLike = async (url, init) => {
     const method = init?.method ?? "GET";
     calls.push({ method, url, body: init?.body ? JSON.parse(init.body as string) : undefined });
+    if (url === "/v0/workflows/copy" && opts.copy) {
+      const { status, body, copied } = opts.copy;
+      if (copied) workflows = [...workflows, copied];
+      return new Response(JSON.stringify(body), {
+        status,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
     if (url === "/v0/workflows") {
-      return new Response(JSON.stringify({ workflows: opts.workflows }), {
+      return new Response(JSON.stringify({ workflows }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
       });
@@ -96,13 +110,13 @@ describe("LaunchPanel", () => {
     const { client } = stubClient({ workflows: [ROOT, NESTED] });
     mount(client);
 
-    // A top-level file shows at the top level, flagged root.
+    // A file at the user root shows under the "mine" folder, open by default, flagged root.
     expect(await screen.findByTestId("workflow-row-release-notes.workflow.json")).toHaveTextContent(
       "root",
     );
     // A nested file is hidden until its folder is opened — the top level shows the folder, not the
     // file.
-    const folder = screen.getByTestId("workflow-folder-lib");
+    const folder = screen.getByTestId("workflow-folder-mine/lib");
     expect(screen.queryByTestId("workflow-row-lib/draft.workflow.json")).toBeNull();
 
     fireEvent.click(folder);
@@ -115,16 +129,16 @@ describe("LaunchPanel", () => {
     const { client } = stubClient({ workflows: [A, B] });
     mount(client);
 
-    fireEvent.click(await screen.findByTestId("workflow-folder-alpha"));
+    fireEvent.click(await screen.findByTestId("workflow-folder-mine/alpha"));
     expect(screen.getByTestId("workflow-row-alpha/one.workflow.json")).toBeInTheDocument();
 
     // Opening beta collapses alpha (one open folder per level).
-    fireEvent.click(screen.getByTestId("workflow-folder-beta"));
+    fireEvent.click(screen.getByTestId("workflow-folder-mine/beta"));
     expect(screen.getByTestId("workflow-row-beta/two.workflow.json")).toBeInTheDocument();
     expect(screen.queryByTestId("workflow-row-alpha/one.workflow.json")).toBeNull();
 
     // Clicking the open folder again collapses it.
-    fireEvent.click(screen.getByTestId("workflow-folder-beta"));
+    fireEvent.click(screen.getByTestId("workflow-folder-mine/beta"));
     expect(screen.queryByTestId("workflow-row-beta/two.workflow.json")).toBeNull();
   });
 
@@ -138,13 +152,13 @@ describe("LaunchPanel", () => {
     // root — only the root workflow survives; the nested file's folder drops out entirely.
     fireEvent.change(filter, { target: { value: "root" } });
     expect(screen.getByTestId("workflow-row-release-notes.workflow.json")).toBeInTheDocument();
-    expect(screen.queryByTestId("workflow-folder-lib")).toBeNull();
+    expect(screen.queryByTestId("workflow-folder-mine/lib")).toBeNull();
     expect(screen.queryByTestId("workflow-row-broken.workflow.json")).toBeNull();
 
     // nested — only the nested ref, under its folder (open the folder to reach the row).
     fireEvent.change(filter, { target: { value: "nested" } });
     expect(screen.queryByTestId("workflow-row-release-notes.workflow.json")).toBeNull();
-    fireEvent.click(screen.getByTestId("workflow-folder-lib"));
+    fireEvent.click(screen.getByTestId("workflow-folder-mine/lib"));
     expect(screen.getByTestId("workflow-row-lib/draft.workflow.json")).toBeInTheDocument();
 
     // invalid — only the invalid file (a top-level file, no folder).
@@ -155,7 +169,7 @@ describe("LaunchPanel", () => {
     // all — the top-level rows are back, and the nested file's folder returns.
     fireEvent.change(filter, { target: { value: "all" } });
     expect(screen.getByTestId("workflow-row-release-notes.workflow.json")).toBeInTheDocument();
-    expect(screen.getByTestId("workflow-folder-lib")).toBeInTheDocument();
+    expect(screen.getByTestId("workflow-folder-mine/lib")).toBeInTheDocument();
     expect(screen.getByTestId("workflow-row-broken.workflow.json")).toBeInTheDocument();
   });
 
@@ -401,5 +415,57 @@ describe("LaunchPanel", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("workflow validation failed");
     expect(screen.getByTestId("launch-input")).toBeInTheDocument();
     expect(onLaunched).not.toHaveBeenCalled();
+  });
+  describe("shipped workflows", () => {
+    const SHIPPED: WorkflowSummary = {
+      relative_path: "notes/main.workflow.json",
+      origin: "shipped",
+      id: "5a1e",
+      name: "main",
+      valid: true,
+      is_root: true,
+      error: null,
+    };
+    const COPY: WorkflowSummary = {
+      ...SHIPPED,
+      relative_path: "users/local/workflow/notes/main.workflow.json",
+      origin: "user",
+      id: "c0p1",
+    };
+
+    it("offers a copy instead of a launch, then opens the copy's launch form", async () => {
+      const { client, calls } = stubClient({
+        workflows: [SHIPPED],
+        copy: { status: 201, body: { relative_path: COPY.relative_path }, copied: COPY },
+      });
+      mount(client);
+
+      fireEvent.click(await screen.findByTestId("workflow-folder-shipped"));
+      fireEvent.click(screen.getByTestId("workflow-folder-shipped/notes"));
+      fireEvent.click(screen.getByTestId(`workflow-row-${SHIPPED.relative_path}`));
+      expect(screen.queryByTestId(`launch-form-${SHIPPED.relative_path}`)).toBeNull();
+
+      fireEvent.click(screen.getByTestId(`copy-${SHIPPED.relative_path}-submit`));
+      expect(await screen.findByTestId(`launch-form-${COPY.relative_path}`)).toBeInTheDocument();
+      expect(calls.find((c) => c.url === "/v0/workflows/copy")?.body).toEqual({
+        shipped_path: SHIPPED.relative_path,
+      });
+    });
+
+    it("shows the server's refusal when a copy already exists", async () => {
+      const { client } = stubClient({
+        workflows: [SHIPPED],
+        copy: { status: 409, body: { error: { message: "already exists" } } },
+      });
+      mount(client);
+
+      fireEvent.click(await screen.findByTestId("workflow-folder-shipped"));
+      fireEvent.click(screen.getByTestId("workflow-folder-shipped/notes"));
+      fireEvent.click(screen.getByTestId(`workflow-row-${SHIPPED.relative_path}`));
+      fireEvent.click(screen.getByTestId(`copy-${SHIPPED.relative_path}-submit`));
+      expect(await screen.findByTestId(`copy-${SHIPPED.relative_path}-error`)).toHaveTextContent(
+        "already exists",
+      );
+    });
   });
 });

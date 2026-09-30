@@ -59,7 +59,7 @@ describe("template store — create", () => {
     expect(created.ok).toBe(true);
     if (!created.ok) return;
     expect(created.relativePath).toBe(
-      join(".path", "template", "step-template", "mine.step-template.json"),
+      join("users", "local", "template", "mine.step-template.json"),
     );
     expect(existsSync(join(projectDir, created.relativePath))).toBe(true);
   });
@@ -72,7 +72,7 @@ describe("template store — create", () => {
     if (refused.ok) return;
     expect(refused.status).toBe(400);
     expect("details" in refused && refused.details?.length).toBeTruthy();
-    expect(existsSync(join(projectDir, ".path", "template"))).toBe(false);
+    expect(existsSync(join(projectDir, "users"))).toBe(false);
   });
 
   it("refuses an id another template holds as 409, naming the holder", async () => {

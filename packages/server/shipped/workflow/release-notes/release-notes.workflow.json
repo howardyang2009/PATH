@@ -1,7 +1,7 @@
 {
   "format": "path/workflow@6",
   "id": "7eae7dae-ee36-4d05-80b0-8fc895783d69",
-  "name": "w1",
+  "name": "release-notes",
   "config": {
     "repo_path": ".",
     "commit_range": "HEAD~15..HEAD",
@@ -153,7 +153,7 @@
           "draft": "${output.draft}",
           "verdict": "${output.verdict}"
         },
-        "ref": "w2.workflow.json"
+        "ref": "revise.workflow.json"
       }
     },
     {

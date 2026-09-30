@@ -46,6 +46,22 @@ function renderDiscovery(client: PathApiClient, phase: SaveState["phase"] = "idl
   );
 }
 
+describe("discoveredWorkflows", () => {
+  it("leaves shipped rows out unless asked, since only the Open picker copies one", () => {
+    const load = {
+      phase: "ready" as const,
+      workflows: [
+        { relative_path: "users/local/workflow/a.workflow.json", origin: "user" },
+        { relative_path: "b.workflow.json", origin: "shipped" },
+      ] as never[],
+    };
+    expect(discoveredWorkflows(load)?.map((w) => w.relative_path)).toEqual([
+      "users/local/workflow/a.workflow.json",
+    ]);
+    expect(discoveredWorkflows(load, { withShipped: true })).toHaveLength(2);
+  });
+});
+
 describe("useWorkflowDiscovery", () => {
   it("is loading — not empty — until the first scan lands", async () => {
     const { client } = clientOver([ok(["a.workflow.json"])]);

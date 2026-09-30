@@ -6,16 +6,17 @@ import { App } from "../src/app.js";
 /**
  * #390 — new-file placement + naming. An author starts a workflow from scratch (no path, no lease
  * until the first save), builds a body on the empty canvas, and the first Save opens the placement
- * dialog: a directory picker confined to the project root, a suffix-enforced filename, and an
+ * dialog: a directory picker confined to the authored roots, a suffix-enforced filename, and an
  * exclusive create that refuses an existing path rather than overwriting it. On success the path
  * exists, the lease is acquired, and launch enables.
  */
 
-/** Discovery body giving the picker a real subdirectory beside the always-present project root. */
+/** Discovery body giving the picker a real subdirectory beside the always-present authored roots. */
 const DISCOVERY = {
   workflows: [
     {
       relative_path: "flows/existing.workflow.json",
+      origin: "user",
       id: null,
       name: null,
       valid: true,
@@ -59,7 +60,7 @@ describe("from-scratch buffer — no path, no lease until first save", () => {
 });
 
 describe("first-save placement dialog", () => {
-  it("prefills the name, enforces the .workflow.json suffix, and confines the directory to the root", async () => {
+  it("prefills the name, enforces the .workflow.json suffix, and confines the directory to the authored roots", async () => {
     render(<App client={stubClient({ workflows: DISCOVERY })} />);
     fireEvent.click(await screen.findByRole("button", { name: "New workflow" }));
     buildAPromptBody();
@@ -71,10 +72,12 @@ describe("first-save placement dialog", () => {
     // text.
     expect(within(dialog).getByLabelText("Filename")).toHaveValue("untitled");
     expect(within(dialog).getByText(".workflow.json")).toBeInTheDocument();
-    // The directory picker defaults to the project root and offers the discovered subdirectory.
+    // The directory picker defaults to the user's own workflow folder and offers the shared folder
+    // and the discovered subdirectory, never the project root.
     const directory = within(dialog).getByLabelText<HTMLSelectElement>("Directory");
-    expect(directory.value).toBe("");
-    expect(within(dialog).getByRole("option", { name: "(project root)" })).toBeInTheDocument();
+    expect(directory.value).toBe("users/local/workflow");
+    expect(within(dialog).getByRole("option", { name: "shared/workflow" })).toBeInTheDocument();
+    expect(within(dialog).queryByRole("option", { name: "(project root)" })).toBeNull();
     await waitFor(() =>
       expect(within(dialog).getByRole("option", { name: "flows" })).toBeInTheDocument(),
     );

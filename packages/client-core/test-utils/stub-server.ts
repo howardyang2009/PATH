@@ -132,6 +132,9 @@ export interface StubServerOptions {
   /** Body for `GET /v0/workflows` — discovery, the new-file dialog's directory source (#390).
    * Default: empty. */
   workflows?: unknown;
+  /** Override `POST /v0/workflows/copy` per call. Default: 201, the copy under
+   * `users/local/workflow/`. */
+  onCopy?: (body: { shipped_path: string }) => Response;
   /** Body for `GET /v0/templates` — the palette's template list (#577). Default: empty. */
   templates?: unknown;
   /** Status for the template-list response, for the failure path. */
@@ -296,7 +299,7 @@ export function stubClient(options: StubServerOptions = {}): PathApiClient {
         return json(
           {
             id: created.id,
-            relative_path: `.path/template/step-template/${name}.step-template.json`,
+            relative_path: `users/local/template/${name}.step-template.json`,
             etag: '"created"',
           },
           201,
@@ -320,6 +323,12 @@ export function stubClient(options: StubServerOptions = {}): PathApiClient {
       const bodies = options.templateBodies ?? {};
       if (!(id in bodies)) return json({ error: { message: `not found: template ${id}` } }, 404);
       return json(bodies[id], 200);
+    }
+    if (input === "/v0/workflows/copy" && init?.method === "POST") {
+      const b = body as { shipped_path: string };
+      return options.onCopy
+        ? options.onCopy(b)
+        : json({ relative_path: `users/local/workflow/${b.shipped_path}` }, 201);
     }
     if (input === "/v0/workflows" && (init?.method ?? "GET") === "GET") {
       return json(options.workflows ?? { workflows: [] }, 200);

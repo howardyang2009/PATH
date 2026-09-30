@@ -12,7 +12,7 @@ export interface TemplateSaveInput {
 }
 
 /**
- * The save-as-template dialog: a new user template always lands in `.path/template/step-template/`,
+ * The save-as-template dialog: a new user template always lands in `users/<user-id>/template/`,
  * so the author picks only the name and description (required — it is the palette blurb). Prefills
  * from an opened template's copy or a workflow's name. Create is create-only: a taken name is
  * refused, never overwritten.

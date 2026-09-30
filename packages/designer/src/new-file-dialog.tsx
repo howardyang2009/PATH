@@ -2,6 +2,13 @@ import { useMemo, useState } from "react";
 import { type DiscoveryLoad, discoveredWorkflows } from "./discovery.js";
 import type { SaveAsResult } from "./use-open-file.js";
 
+/** Where a new workflow lands by default: the one user's own folder, until the Server knows who is
+ * asking (ADR 0084). */
+export const DEFAULT_WORKFLOW_DIRECTORY = "users/local/workflow";
+
+/** The team's own workflow folder (ADR 0084). */
+const SHARED_WORKFLOW_DIRECTORY = "shared/workflow";
+
 /**
  * The first-save dialog for a from-scratch buffer (designer-spec § New-file placement and naming):
  * placement is decided here, at the first save, as an exclusive create — an existing path is
@@ -13,7 +20,7 @@ export function NewFileDialog({
   discovery,
   workflowName,
   title = "Save new workflow",
-  initialDirectory = "",
+  initialDirectory = DEFAULT_WORKFLOW_DIRECTORY,
   create,
   onCreated,
   onCancel,
@@ -24,7 +31,8 @@ export function NewFileDialog({
   workflowName: string;
   /** The dialog title; workflow-mode Save as… passes "Save workflow as". */
   title?: string;
-  /** The preselected directory; Save as… starts in the source file's directory. */
+  /** The preselected directory; a new file starts in the user folder, Save as… in the source
+   * file's directory. */
   initialDirectory?: string;
   /** Run the exclusive create against the composed path; the dialog reads its outcome. */
   create: (targetPath: string) => Promise<SaveAsResult>;
@@ -38,10 +46,14 @@ export function NewFileDialog({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // The project's directories for the picker — the parent of every discovered workflow, plus the
-  // root. A failed scan is not fatal: the root is always offered, so a save can still proceed.
+  // The picker's directories: the two authored roots plus the parent of every discovered workflow
+  // (ADR 0085). A failed scan is not fatal: the roots are always offered, so a save can proceed.
   const directories = useMemo(() => {
-    const dirs = new Set<string>(["", initialDirectory]);
+    const dirs = new Set<string>([
+      DEFAULT_WORKFLOW_DIRECTORY,
+      SHARED_WORKFLOW_DIRECTORY,
+      initialDirectory,
+    ]);
     for (const wf of discoveredWorkflows(discovery) ?? []) dirs.add(dirnameOf(wf.relative_path));
     return [...dirs].sort();
   }, [discovery, initialDirectory]);

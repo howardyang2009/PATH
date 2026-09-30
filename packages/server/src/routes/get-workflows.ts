@@ -1,21 +1,29 @@
-import { readdirSync, readFileSync } from "node:fs";
+import { type Dirent, readdirSync, readFileSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import { loadWorkflowTree } from "@path/engine";
 import type { ListWorkflowsResponse, WorkflowSummary } from "@path/schema";
+import { authoredRoot } from "../authored-roots.js";
 import { sendJson } from "../http-json.js";
+import { shippedWorkflowDir } from "../shipped-workflows.js";
 import type { ApiRequest } from "./route-context.js";
 
 /**
- * Every `*.workflow.json` under `root`, as absolute paths, sorted. Skips `.path/`, `node_modules`,
- * and any dot-directory. Symlinks are neither followed nor listed: the loader canonicalizes
- * lexically (`resolve`, not `realpath`), so following one would alias a nested file as a discovered
- * root.
+ * Every `*.workflow.json` under `root`, as absolute paths, sorted; `[]` when `root` is absent.
+ * Skips `node_modules` and any dot-directory. Symlinks are neither followed nor listed: the loader
+ * canonicalizes lexically (`resolve`, not `realpath`), so following one would alias a nested file
+ * as a discovered root.
  */
 function scanWorkflowFiles(root: string): string[] {
   const found: string[] = [];
 
   function walk(dir: string): void {
-    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    let entries: Dirent[];
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
       // Checked before isDirectory()/isFile(): a symlink reports neither.
       if (entry.isSymbolicLink()) continue;
       if (entry.isDirectory()) {
@@ -46,19 +54,32 @@ function shallowIdentity(absPath: string): { id: string | null; name: string | n
 }
 
 /**
- * `GET /v0/workflows` (server-api-v0.md §6): discover every workflow under the project root, each
- * flagged `is_root`. A file that loaded is `is_root: false` exactly when some valid root referenced
- * it, `true` otherwise; a file that failed to load carries `is_root: null` (no ref set) and its
- * error.
+ * `GET /v0/workflows` (server-api-v0.md §6, ADR 0085, ADR 0086): discover every workflow in the
+ * user, shared and shipped roots, each flagged `is_root`. A file that loaded is `is_root: false`
+ * exactly when some valid root referenced it, `true` otherwise; a file that failed to load carries
+ * `is_root: null` (no ref set) and its error.
  */
 export async function handleGetWorkflows({ res, ctx }: ApiRequest): Promise<void> {
   // `resolve`d so scan paths (`join` off this root) match `loadWorkflowTree`'s keys exactly; the
   // map lookups below assume that equality.
   const projectDir = resolve(ctx.project.dir);
-  const absPaths = scanWorkflowFiles(projectDir);
+  const roots: { dir: string; origin: WorkflowSummary["origin"] }[] = [
+    { dir: authoredRoot(projectDir, "user", "workflow"), origin: "user" },
+    { dir: authoredRoot(projectDir, "shared", "workflow"), origin: "shared" },
+    { dir: resolve(shippedWorkflowDir(ctx)), origin: "shipped" },
+  ];
+  const scanned = roots.flatMap(({ dir, origin }) =>
+    scanWorkflowFiles(dir).map((absPath) => ({ absPath, origin })),
+  );
+  // A shipped file is named relative to the shipped root, the handle Copy takes.
+  const shippedDir = resolve(shippedWorkflowDir(ctx));
 
   const loaded = await Promise.all(
-    absPaths.map(async (absPath) => ({ absPath, result: await loadWorkflowTree(absPath) })),
+    scanned.map(async ({ absPath, origin }) => ({
+      absPath,
+      origin,
+      result: await loadWorkflowTree(absPath),
+    })),
   );
 
   // A discovered file reachable as a *valid* root's nested ref.
@@ -70,12 +91,13 @@ export async function handleGetWorkflows({ res, ctx }: ApiRequest): Promise<void
     }
   }
 
-  const workflows: WorkflowSummary[] = loaded.map(({ absPath, result }) => {
-    const relativePath = relative(projectDir, absPath);
+  const workflows: WorkflowSummary[] = loaded.map(({ absPath, origin, result }) => {
+    const relativePath = relative(origin === "shipped" ? shippedDir : projectDir, absPath);
     if (result.success) {
       const file = result.workflow.rootFile;
       return {
         relative_path: relativePath,
+        origin,
         id: file.id,
         name: file.name,
         valid: true,
@@ -86,6 +108,7 @@ export async function handleGetWorkflows({ res, ctx }: ApiRequest): Promise<void
     const { id, name } = shallowIdentity(absPath);
     return {
       relative_path: relativePath,
+      origin,
       id,
       name,
       valid: false,

@@ -49,15 +49,16 @@ function workflowFile(overrides: Record<string, unknown> = {}): Record<string, u
   };
 }
 
-/** Write a file into a template root's `<kindDir>`, returning its bytes on disk. */
+/** Write a file into a template root's `<folder>` (`""` for the root itself), returning its bytes
+ * on disk. */
 function writeTemplate(
   root: string,
-  kindDir: string,
+  folder: string,
   fileStem: string,
   suffix: string,
   content: Record<string, unknown>,
 ): string {
-  const dir = join(root, kindDir);
+  const dir = join(root, folder);
   mkdirSync(dir, { recursive: true });
   const bytes = `${JSON.stringify(content, null, 2)}\n`;
   writeFileSync(join(dir, `${fileStem}${suffix}`), bytes);
@@ -71,10 +72,10 @@ async function start(): Promise<PathServerHandle> {
 
 describe("GET /v0/templates", () => {
   it("lists the shipped∪user union thin, with origin/read_only and no body", async () => {
-    writeTemplate(shippedDir, "step-template", "review", ".step-template.json", stepTemplate());
+    writeTemplate(shippedDir, "", "review", ".step-template.json", stepTemplate());
     writeTemplate(
-      `${projectDir}/.path/template`,
-      "step-template",
+      `${projectDir}/users/local/template`,
+      "",
       "nightly",
       ".step-template.json",
       stepTemplate(),
@@ -105,10 +106,36 @@ describe("GET /v0/templates", () => {
     });
   });
 
-  it("ignores a former *.workflow-template.json file (ADR 0063: the Step-Template is the only kind)", async () => {
-    writeTemplate(shippedDir, "step-template", "review", ".step-template.json", stepTemplate());
+  it("lists shared and user templates at any folder depth", async () => {
     writeTemplate(
-      `${projectDir}/.path/template`,
+      `${projectDir}/shared/template`,
+      "git",
+      "team",
+      ".step-template.json",
+      stepTemplate(),
+    );
+    writeTemplate(
+      `${projectDir}/users/local/template`,
+      "git/deep",
+      "mine",
+      ".step-template.json",
+      stepTemplate(),
+    );
+
+    const { url } = await start();
+    const { templates } = (await (await fetch(`${url}/v0/templates`)).json()) as {
+      templates: Record<string, unknown>[];
+    };
+    expect(templates).toEqual([
+      expect.objectContaining({ name: "team", origin: "shared", read_only: false, valid: true }),
+      expect.objectContaining({ name: "mine", origin: "user", read_only: false, valid: true }),
+    ]);
+  });
+
+  it("ignores a former *.workflow-template.json file (ADR 0063: the Step-Template is the only kind)", async () => {
+    writeTemplate(shippedDir, "", "review", ".step-template.json", stepTemplate());
+    writeTemplate(
+      `${projectDir}/users/local/template`,
       "workflow-template",
       "nightly",
       ".workflow-template.json",
@@ -127,10 +154,10 @@ describe("GET /v0/templates", () => {
   });
 
   it("invalidates only the offending entry (unregistered step type), never the scan", async () => {
-    writeTemplate(shippedDir, "step-template", "good", ".step-template.json", stepTemplate());
+    writeTemplate(shippedDir, "", "good", ".step-template.json", stepTemplate());
     writeTemplate(
       shippedDir,
-      "step-template",
+      "",
       "bad",
       ".step-template.json",
       stepTemplate({ body: [{ type: "no-such-type", id: randomUUID(), name: "x" }] }),
@@ -148,16 +175,10 @@ describe("GET /v0/templates", () => {
 
   it("lists both of a cross-origin duplicate id and flags the user one invalid", async () => {
     const id = randomUUID();
+    writeTemplate(shippedDir, "", "shared", ".step-template.json", stepTemplate({ id }));
     writeTemplate(
-      shippedDir,
-      "step-template",
-      "shared",
-      ".step-template.json",
-      stepTemplate({ id }),
-    );
-    writeTemplate(
-      `${projectDir}/.path/template`,
-      "step-template",
+      `${projectDir}/users/local/template`,
+      "",
       "copy",
       ".step-template.json",
       stepTemplate({ id }),
@@ -175,7 +196,7 @@ describe("GET /v0/templates", () => {
 describe("GET /v0/templates/:id", () => {
   it("returns a parsed envelope and a byte-exact etag", async () => {
     const tpl = stepTemplate();
-    const bytes = writeTemplate(shippedDir, "step-template", "review", ".step-template.json", tpl);
+    const bytes = writeTemplate(shippedDir, "", "review", ".step-template.json", tpl);
 
     const { url } = await start();
     const res = await fetch(`${url}/v0/templates/${tpl.id}`);
@@ -198,7 +219,7 @@ describe("GET /v0/templates/:id", () => {
 
   it("returns 200 with valid:false and the body for an invalid template", async () => {
     const tpl = stepTemplate({ body: [{ type: "no-such-type", id: randomUUID(), name: "x" }] });
-    writeTemplate(shippedDir, "step-template", "bad", ".step-template.json", tpl);
+    writeTemplate(shippedDir, "", "bad", ".step-template.json", tpl);
 
     const { url } = await start();
     const res = await fetch(`${url}/v0/templates/${tpl.id}`);
@@ -215,7 +236,7 @@ describe("GET /v0/templates/:id", () => {
 });
 
 describe("POST /v0/templates", () => {
-  it("creates a user template under .path/template and returns 201", async () => {
+  it("creates a user template under users/local/template and returns 201", async () => {
     const body = stepTemplate();
     const { url } = await start();
     const res = await fetch(`${url}/v0/templates`, {
@@ -224,7 +245,7 @@ describe("POST /v0/templates", () => {
       body: JSON.stringify({ kind: "step", name: "my-fragment", description: "blurb", body }),
     });
     expect(res.status).toBe(201);
-    const rel = ".path/template/step-template/my-fragment.step-template.json";
+    const rel = "users/local/template/my-fragment.step-template.json";
     expect(await res.json()).toMatchObject({ id: body.id, relative_path: rel });
     expect(existsSync(join(projectDir, rel))).toBe(true);
   });
@@ -242,7 +263,7 @@ describe("POST /v0/templates", () => {
       }),
     });
     expect(res.status).toBe(400);
-    expect(existsSync(join(projectDir, ".path/template/workflow-template"))).toBe(false);
+    expect(existsSync(join(projectDir, "users/local/template/workflow-template"))).toBe(false);
   });
 
   it("409s a name collision", async () => {
@@ -281,8 +302,8 @@ describe("PUT /v0/templates/:id", () => {
   }> {
     const tpl = stepTemplate();
     const bytes = writeTemplate(
-      `${projectDir}/.path/template`,
-      "step-template",
+      `${projectDir}/users/local/template`,
+      "",
       "editable",
       ".step-template.json",
       tpl,
@@ -301,7 +322,7 @@ describe("PUT /v0/templates/:id", () => {
     });
     expect(res.status).toBe(200);
     const onDisk = readFileSync(
-      join(projectDir, ".path/template/step-template/editable.step-template.json"),
+      join(projectDir, "users/local/template/editable.step-template.json"),
       "utf8",
     );
     expect(onDisk).toBe(`${JSON.stringify(updated, null, 2)}\n`);
@@ -336,7 +357,7 @@ describe("PUT /v0/templates/:id", () => {
 
   it("403s a shipped template and 404s an unknown id", async () => {
     const shipped = stepTemplate();
-    const bytes = writeTemplate(shippedDir, "step-template", "ro", ".step-template.json", shipped);
+    const bytes = writeTemplate(shippedDir, "", "ro", ".step-template.json", shipped);
     const { url } = await start();
     const ro = await fetch(`${url}/v0/templates/${shipped.id}`, {
       method: "PUT",
@@ -357,22 +378,16 @@ describe("PUT /v0/templates/:id", () => {
 describe("DELETE /v0/templates/:id", () => {
   it("removes a user template (204), 403s shipped, 404s unknown", async () => {
     const user = stepTemplate();
-    writeTemplate(
-      `${projectDir}/.path/template`,
-      "step-template",
-      "gone",
-      ".step-template.json",
-      user,
-    );
+    writeTemplate(`${projectDir}/users/local/template`, "", "gone", ".step-template.json", user);
     const shipped = stepTemplate();
-    writeTemplate(shippedDir, "step-template", "keep", ".step-template.json", shipped);
+    writeTemplate(shippedDir, "", "keep", ".step-template.json", shipped);
     const { url } = await start();
 
     const del = await fetch(`${url}/v0/templates/${user.id}`, { method: "DELETE" });
     expect(del.status).toBe(204);
-    expect(
-      existsSync(join(projectDir, ".path/template/step-template/gone.step-template.json")),
-    ).toBe(false);
+    expect(existsSync(join(projectDir, "users/local/template/gone.step-template.json"))).toBe(
+      false,
+    );
 
     expect((await fetch(`${url}/v0/templates/${shipped.id}`, { method: "DELETE" })).status).toBe(
       403,
@@ -384,7 +399,7 @@ describe("DELETE /v0/templates/:id", () => {
 });
 
 describe("the two write doors are disjoint (§10.6)", () => {
-  it("PUT /v0/workflows refuses a .path/template/ path", async () => {
+  it("PUT /v0/workflows refuses a users/<id>/template/ or shared/template/ path", async () => {
     const { url } = await start();
     const put = (path: string) =>
       fetch(`${url}/v0/workflows`, {
@@ -392,6 +407,8 @@ describe("the two write doors are disjoint (§10.6)", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ workflow_path: path, workflow: workflowFile() }),
       });
-    expect((await put(".path/template/step-template/nightly.workflow.json")).status).toBe(400);
+    expect((await put("users/local/template/nightly.workflow.json")).status).toBe(400);
+    expect((await put("shared/template/git/nightly.workflow.json")).status).toBe(400);
+    expect((await put("users/local/workflow/nightly.workflow.json")).status).toBe(201);
   });
 });
