@@ -11,12 +11,14 @@ import {
   workflowBaseName,
 } from "../src/workflow-tree.js";
 
-/** A discovery row where only `relative_path` steers the tree; the rest is filled to a valid
- * shape. */
+/** A discovery row where `origin` and the path inside its root steer the tree; the rest is filled to
+ * a valid shape. */
 function wf(relativePath: string, origin: WorkflowSummary["origin"] = "user"): WorkflowSummary {
   return {
     relative_path: relativePath,
     origin,
+    root_path: relativePath.replace(/^(?:users\/local|shared)\/workflow\//, ""),
+    action: origin === "shipped" ? "copy" : "open",
     id: null,
     name: null,
     valid: true,

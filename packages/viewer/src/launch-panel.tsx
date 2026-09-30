@@ -102,9 +102,10 @@ export function LaunchPanel({ client, onLaunched }: LaunchPanelProps) {
   const toggleFile = (path: string): void =>
     setExpanded((current) => (current === path ? null : path));
   // A copy lands in the user's folder: re-scan, then open its folder and its launch form.
-  const showCopy = (relativePath: string): void => {
+  const showCopy = (copy: { relativePath: string; rootPath: string }): void => {
+    const { relativePath } = copy;
     refetch();
-    const treePath = workflowTreePath({ origin: "user", relative_path: relativePath });
+    const treePath = workflowTreePath({ origin: "user", root_path: copy.rootPath });
     setOpenFolder(parentFolderPath(treePath));
     setExpanded(relativePath);
   };
@@ -188,7 +189,7 @@ function WorkflowTree({
   expanded: string | null;
   onToggleFile: (path: string) => void;
   onLaunched: (rootRunId: string) => void;
-  onCopied: (relativePath: string) => void;
+  onCopied: (copy: { relativePath: string; rootPath: string }) => void;
   isFolderOpen: (path: string) => boolean;
   onToggleFolder: (path: string) => void;
 }) {
@@ -227,9 +228,9 @@ function WorkflowTree({
               onToggle={() => onToggleFile(node.workflow.relative_path)}
             />
             {expanded === node.workflow.relative_path &&
-              (node.workflow.valid && node.workflow.origin === "shipped" ? (
+              (node.workflow.action === "copy" ? (
                 <CopyShipped client={client} workflow={node.workflow} onCopied={onCopied} />
-              ) : node.workflow.valid ? (
+              ) : node.workflow.action === "open" && node.workflow.valid ? (
                 <LaunchForm
                   key={node.workflow.relative_path}
                   client={client}
@@ -272,15 +273,14 @@ function CopyShipped({
 }: {
   client: PathApiClient;
   workflow: WorkflowSummary;
-  onCopied: (relativePath: string) => void;
+  onCopied: (copy: { relativePath: string; rootPath: string }) => void;
 }) {
   const [phase, setPhase] = useState<"idle" | "sending" | { error: string }>("idle");
   const copy = (): void => {
     setPhase("sending");
-    client.copyShippedWorkflow(workflow.relative_path).then(
-      ({ relativePath }) => onCopied(relativePath),
-      (error: unknown) => setPhase({ error: errorMessage(error) }),
-    );
+    client
+      .copyShippedWorkflow(workflow.relative_path)
+      .then(onCopied, (error: unknown) => setPhase({ error: errorMessage(error) }));
   };
   const testId = `copy-${workflow.relative_path}`;
 

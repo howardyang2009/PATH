@@ -11,8 +11,8 @@ import { tmpdir } from "node:os";
 import { join, relative, sep } from "node:path";
 import { loadWorkflowTree } from "@path/engine";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { DEFAULT_SHIPPED_DIR } from "../src/authored-layout.js";
 import { type PathServerHandle, startPathServer } from "../src/create-server.js";
-import { DEFAULT_SHIPPED_WORKFLOW_DIR } from "../src/shipped-workflows.js";
 
 let projectDir: string;
 let shippedDir: string;
@@ -80,7 +80,7 @@ describe("POST /v0/workflows/copy", () => {
     const res = await copy("solo.workflow.json");
     expect(res.status).toBe(201);
     const target = join("users", "local", "workflow", "solo.workflow.json");
-    expect(await res.json()).toEqual({ relative_path: target });
+    expect(await res.json()).toEqual({ relative_path: target, root_path: "solo.workflow.json" });
 
     const copied = readJson(target);
     expect(copied).toMatchObject({ name: "solo" });
@@ -99,11 +99,25 @@ describe("POST /v0/workflows/copy", () => {
     const res = await copy("notes/lib/child.workflow.json");
     expect(res.status).toBe(201);
     const root = join("users", "local", "workflow", "notes");
-    expect(await res.json()).toEqual({ relative_path: join(root, "lib", "child.workflow.json") });
+    expect(await res.json()).toEqual({
+      relative_path: join(root, "lib", "child.workflow.json"),
+      root_path: join("notes", "lib", "child.workflow.json"),
+    });
 
     expect(readFileSync(join(projectDir, root, "README.md"), "utf8")).toBe("read me");
     const loaded = await loadWorkflowTree(join(projectDir, root, "main.workflow.json"));
     expect(loaded.success).toBe(true);
+  });
+
+  it("400s a folder with a broken workflow file and leaves nothing behind", async () => {
+    writeShipped("notes/main.workflow.json", workflow("main"));
+    writeShipped("notes/broken.workflow.json", "{ not json");
+
+    const res = await copy("notes/main.workflow.json");
+    expect(res.status).toBe(400);
+    const userRoot = join(projectDir, "users", "local", "workflow");
+    expect(existsSync(join(userRoot, "notes"))).toBe(false);
+    expect(existsSync(userRoot) ? readdirSync(userRoot) : []).toEqual([]);
   });
 
   it("refuses to overwrite an existing copy (409)", async () => {
@@ -129,11 +143,11 @@ function shippedFiles(dir: string): string[] {
 
 describe("shipped workflows", () => {
   it("each one loads valid and refs only files in its own top-level folder", async () => {
-    const files = shippedFiles(DEFAULT_SHIPPED_WORKFLOW_DIR);
+    const files = shippedFiles(DEFAULT_SHIPPED_DIR.workflow);
     expect(files.length).toBeGreaterThan(0);
 
     for (const file of files) {
-      const abs = join(DEFAULT_SHIPPED_WORKFLOW_DIR, file);
+      const abs = join(DEFAULT_SHIPPED_DIR.workflow, file);
       const loaded = await loadWorkflowTree(abs);
       expect({ file, success: loaded.success }).toEqual({ file, success: true });
       if (!loaded.success) continue;
@@ -141,7 +155,7 @@ describe("shipped workflows", () => {
       // Copy moves one top-level folder (or one top-level file), so every ref must stay inside it.
       const [top] = file.split(sep);
       for (const key of loaded.workflow.files.keys()) {
-        const within = relative(DEFAULT_SHIPPED_WORKFLOW_DIR, key);
+        const within = relative(DEFAULT_SHIPPED_DIR.workflow, key);
         expect({ file, ref: within }).toEqual({
           file,
           ref: file.includes(sep) ? expect.stringMatching(new RegExp(`^${top}\\${sep}`)) : file,

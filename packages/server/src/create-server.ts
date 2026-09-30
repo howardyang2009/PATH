@@ -2,6 +2,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { type LoadedStepPluginRegistry, loadStepPluginRegistry, openProject } from "@path/engine";
+import { authoredLayout } from "./authored-layout.js";
 import { sendError } from "./http-json.js";
 import { createLiveRuns } from "./live-runs.js";
 import { enforceSameOrigin } from "./origin-gate.js";
@@ -120,8 +121,10 @@ export async function startPathServer(
     project,
     live,
     stepPlugins: registry,
-    shippedTemplateDir,
-    shippedWorkflowDir,
+    layout: authoredLayout({
+      projectDir,
+      shippedDir: { template: shippedTemplateDir, workflow: shippedWorkflowDir },
+    }),
   };
   const server = createServer((req, res) => {
     handleRequest(req, res, ctx, absStaticDir, absDesignerStaticDir).catch((err) => {

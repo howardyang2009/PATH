@@ -12,7 +12,7 @@ import {
   TemplateFileName,
   WorkflowFileName,
 } from "./editing-toolbar.js";
-import { DEFAULT_WORKFLOW_DIRECTORY, dirnameOf, NewFileDialog } from "./new-file-dialog.js";
+import { dirnameOf, NewFileDialog } from "./new-file-dialog.js";
 import { OpenWorkflowDialog } from "./open-existing-dialog.js";
 import { OpenTemplateDialog } from "./open-template-dialog.js";
 import { Palette } from "./palette.js";
@@ -447,7 +447,7 @@ export function App({
           discovery={discovery}
           title="Save workflow as"
           workflowName={`${openedFile.name}-copy`}
-          initialDirectory={activePath ? dirnameOf(activePath) : DEFAULT_WORKFLOW_DIRECTORY}
+          initialDirectory={activePath ? dirnameOf(activePath) : undefined}
           create={(path) => session.saveAs({ kind: "workflow-copy", path })}
           onCreated={() => setSaveAsDialog(null)}
           onCancel={() => setSaveAsDialog(null)}

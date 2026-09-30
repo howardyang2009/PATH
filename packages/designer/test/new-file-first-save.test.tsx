@@ -17,6 +17,8 @@ const DISCOVERY = {
     {
       relative_path: "flows/existing.workflow.json",
       origin: "user",
+      root_path: "flows/existing.workflow.json",
+      action: "open",
       id: null,
       name: null,
       valid: true,

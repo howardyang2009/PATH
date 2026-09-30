@@ -45,7 +45,7 @@ export async function handleResumeRun({
   // Recover and re-validate the workflow as it stands now: gone → `404`, now-invalid → `400`, no
   // longer this run's workflow (id changed, ADR 0006) → `409`. No `escapesRoot`: the path came from
   // our own row.
-  const prepared = await prepareRunWorkflow(ctx.project.dir, root, {
+  const prepared = await prepareRunWorkflow(ctx.layout, root, {
     notFound: () => `workflow file for run "${rootRunId}" not found at "${root.workflowPath}"`,
     noPath: () => `run "${rootRunId}" has no recorded workflow path and cannot be resumed`,
     swapped: (workflowPath) =>

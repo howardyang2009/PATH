@@ -1,8 +1,7 @@
-import { resolve } from "node:path";
 import type { WireCopyWorkflowResponse } from "@path/schema";
 import { z } from "zod";
 import { readRequestBody, sendError, sendJson } from "../http-json.js";
-import { copyShippedWorkflow, shippedWorkflowDir } from "../shipped-workflows.js";
+import { copyShippedWorkflow } from "../shipped-workflows.js";
 import type { ApiRequest } from "./route-context.js";
 
 const CopyWorkflowBodySchema = z.object({ shipped_path: z.string().min(1) }).strict();
@@ -16,15 +15,14 @@ export async function handlePostWorkflowCopy({ req, res, ctx }: ApiRequest): Pro
   const body = await readRequestBody(req, res, CopyWorkflowBodySchema);
   if (!body) return;
 
-  const copied = copyShippedWorkflow(
-    resolve(ctx.project.dir),
-    shippedWorkflowDir(ctx),
-    body.data.shipped_path,
-  );
+  const copied = copyShippedWorkflow(ctx.layout, body.data.shipped_path);
   if (!copied.ok) {
     sendError(res, copied.status, copied.message);
     return;
   }
-  const reply: WireCopyWorkflowResponse = { relative_path: copied.relativePath };
+  const reply: WireCopyWorkflowResponse = {
+    relative_path: copied.relativePath,
+    root_path: copied.rootPath,
+  };
   sendJson(res, 201, reply);
 }

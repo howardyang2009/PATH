@@ -20,7 +20,7 @@ function clientOver(responses: (() => Promise<Response>)[]): {
   return { client: new PathApiClient({ baseUrl: "", fetch }), calls: () => calls };
 }
 
-const workflow = (relative_path: string) => ({ relative_path }) as never;
+const workflow = (relative_path: string) => ({ relative_path, action: "open" }) as never;
 
 function ok(paths: string[]): () => Promise<Response> {
   return () =>
@@ -47,18 +47,21 @@ function renderDiscovery(client: PathApiClient, phase: SaveState["phase"] = "idl
 }
 
 describe("discoveredWorkflows", () => {
-  it("leaves shipped rows out unless asked, since only the Open picker copies one", () => {
+  it("keeps only rows to open unless asked, since only the Open picker copies one", () => {
     const load = {
       phase: "ready" as const,
-      workflows: [
-        { relative_path: "users/local/workflow/a.workflow.json", origin: "user" },
-        { relative_path: "b.workflow.json", origin: "shipped" },
-      ] as never[],
+      scan: {
+        workflows: [
+          { relative_path: "users/local/workflow/a.workflow.json", action: "open" },
+          { relative_path: "b.workflow.json", action: "copy" },
+        ] as never[],
+        roots: [],
+      },
     };
     expect(discoveredWorkflows(load)?.map((w) => w.relative_path)).toEqual([
       "users/local/workflow/a.workflow.json",
     ]);
-    expect(discoveredWorkflows(load, { withShipped: true })).toHaveLength(2);
+    expect(discoveredWorkflows(load, { withCopies: true })).toHaveLength(2);
   });
 });
 

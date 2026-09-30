@@ -36,6 +36,7 @@ export {
   type WireRunRecord,
   type WireStepPlugin,
   type WorkflowFile,
+  type WorkflowRootSummary,
   type WorkflowSummary,
 } from "@path/schema";
 

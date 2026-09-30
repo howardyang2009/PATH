@@ -33,6 +33,8 @@ function row(path: string): Record<string, unknown> {
   return {
     relative_path: path,
     origin: "user",
+    root_path: path,
+    action: "open",
     id: null,
     name: null,
     valid: true,
@@ -49,7 +51,7 @@ const FILES = {
 
 describe("open existing — empty-canvas entry point", () => {
   it("offers Copy to mine on a shipped workflow, then opens the copy", async () => {
-    const shipped = { ...row("notes/main.workflow.json"), origin: "shipped" };
+    const shipped = { ...row("notes/main.workflow.json"), origin: "shipped", action: "copy" };
     const copyPath = "users/local/workflow/notes/main.workflow.json";
     render(
       <App
@@ -74,8 +76,25 @@ describe("open existing — empty-canvas entry point", () => {
     expect(screen.queryByRole("dialog", { name: "Open a workflow" })).not.toBeInTheDocument();
   });
 
+  it("shows a broken shipped workflow's error instead of offering a copy", async () => {
+    const broken = {
+      ...row("solo.workflow.json"),
+      origin: "shipped",
+      action: "none",
+      valid: false,
+      error: { message: "unexpected token" },
+    };
+    render(<App client={stubClient({ workflows: { workflows: [broken] } })} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Open workflow" }));
+    const dialog = await screen.findByRole("dialog", { name: "Open a workflow" });
+    fireEvent.click(await within(dialog).findByRole("button", { name: /shipped/ }));
+    expect(within(dialog).getByText("unexpected token")).toBeInTheDocument();
+    expect(within(dialog).queryByRole("button", { name: /Copy solo/ })).toBeNull();
+  });
+
   it("keeps the picker open with the server's refusal when a copy already exists", async () => {
-    const shipped = { ...row("solo.workflow.json"), origin: "shipped" };
+    const shipped = { ...row("solo.workflow.json"), origin: "shipped", action: "copy" };
     render(
       <App
         client={stubClient({

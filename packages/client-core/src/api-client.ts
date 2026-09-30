@@ -190,12 +190,12 @@ export function listWorkflows(http: HttpTransport): Promise<ListWorkflowsRespons
 export async function copyShippedWorkflow(
   http: HttpTransport,
   shippedPath: string,
-): Promise<{ relativePath: string }> {
+): Promise<{ relativePath: string; rootPath: string }> {
   const reply = await http.requestJson<WireCopyWorkflowResponse>("/v0/workflows/copy", {
     method: "POST",
     body: { shipped_path: shippedPath },
   });
-  return { relativePath: reply.relative_path };
+  return { relativePath: reply.relative_path, rootPath: reply.root_path };
 }
 
 export function getStepPlugins(http: HttpTransport): Promise<StepPluginsResponse> {
@@ -480,11 +480,11 @@ export class PathApiClient {
 
   /** `POST /v0/workflows/copy` — copy a shipped workflow (a `shipped` row's `relative_path`) into
    * the user's own folder. Create-only: an existing copy is a `409`. */
-  copyShippedWorkflow(shippedPath: string): Promise<{ relativePath: string }> {
+  copyShippedWorkflow(shippedPath: string): Promise<{ relativePath: string; rootPath: string }> {
     return copyShippedWorkflow(this.http, shippedPath);
   }
 
-  /** `GET /v0/templates` — the shipped∪user authoring-template union (server-api-v0.md §10.1, ADR
+  /** `GET /v0/templates` — the shipped∪shared∪user authoring-template union (server-api-v0.md §10.1, ADR
    * 0050); a **thin** list (no `body`) whose every entry carries its own `valid`/`error`, so a
    * broken template lists rather than vanishing.
    */

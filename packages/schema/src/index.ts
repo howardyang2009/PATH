@@ -277,6 +277,7 @@ export {
   type WireRunRecord,
   type WireTemplateWriteResponse,
   type WireWorkflowLease,
+  type WorkflowRootSummary,
   type WorkflowSummary,
 } from "./wire-v0.js";
 // The launch channel of ADR 0044's registry-relative `worker_defaults` validation: the operator
