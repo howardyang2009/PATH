@@ -364,18 +364,19 @@ pnpm release-notes    # dogfood: PATH summarizes its own recent commits
 
 ## Status
 
-The latest release is **v0.6.4** (2026-09-27). The workflow format is `path/workflow@5` and the store
+The latest release is **v0.6.5** (2026-09-30). The workflow format is `path/workflow@6` and the store
 schema is `SCHEMA_VERSION` 13. `main` is green: `pnpm typecheck` is clean across all packages and
-**2585 tests pass** — schema 453, engine 937, server 290, designer 461, viewer 195, client-core 216,
-scripts 33.
+**2654 tests pass** — schema 464, engine 946, server 321, designer 471, viewer 199, client-core 213,
+scripts 40.
 
 The MVP is done, and all three wayfinder maps are closed: #1 spec, #29 server API, and #40 viewer. No
-product gap is open. v0.6.4 shipped authoring reuse (Step-Templates #459; the Workflow-Template #460
-was removed by ADR 0063), the person-switch template #477, and the goto Graph Controller #478. Work
-continues on the [#109 v-next register](https://github.com/howardyang2009/PATH/issues/109).
+product gap is open. v0.6.5 shipped the `previous` root (#681, ADR 0079) and the authored layout:
+workflows and templates live in shipped, shared, and per-user folders (ADR 0084–0087). Work continues
+on the [#109 v-next register](https://github.com/howardyang2009/PATH/issues/109).
 
 | Release | Date | Headline |
 | --- | --- | --- |
+| v0.6.5 | 2026-09-30 | `previous` root, format `@6`; shipped, shared, and per-user authored folders. |
 | v0.6.4 | 2026-09-27 | goto Graph Controller, Step-Templates and the Template store, format `@5`; DB break. |
 | v0.6.3 | 2026-09-20 | `person-activity` + `awaiting`, durable Complete, four-tier worker defaults, format `@4`. |
 | v0.6.2 | 2026-09-09 | Resume-from-chosen-K (`--from`, `--list-eligible`), per-iteration `while-do` scopes. |
