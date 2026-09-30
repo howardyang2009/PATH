@@ -6,6 +6,8 @@ import { LaunchPanel } from "../src/launch-panel.js";
 const ROOT: WorkflowSummary = {
   relative_path: "release-notes.workflow.json",
   origin: "user",
+  root_path: "release-notes.workflow.json",
+  action: "open",
   id: "8f1c",
   name: "release-notes",
   valid: true,
@@ -15,6 +17,8 @@ const ROOT: WorkflowSummary = {
 const NESTED: WorkflowSummary = {
   relative_path: "lib/draft.workflow.json",
   origin: "user",
+  root_path: "lib/draft.workflow.json",
+  action: "open",
   id: "c47e",
   name: "draft",
   valid: true,
@@ -24,6 +28,8 @@ const NESTED: WorkflowSummary = {
 const BROKEN: WorkflowSummary = {
   relative_path: "broken.workflow.json",
   origin: "user",
+  root_path: "broken.workflow.json",
+  action: "open",
   id: null,
   name: null,
   valid: false,
@@ -124,8 +130,18 @@ describe("LaunchPanel", () => {
   });
 
   it("navigates folders as an accordion: opening one folder collapses the previously open sibling", async () => {
-    const A: WorkflowSummary = { ...NESTED, relative_path: "alpha/one.workflow.json", name: "one" };
-    const B: WorkflowSummary = { ...NESTED, relative_path: "beta/two.workflow.json", name: "two" };
+    const A: WorkflowSummary = {
+      ...NESTED,
+      relative_path: "alpha/one.workflow.json",
+      root_path: "alpha/one.workflow.json",
+      name: "one",
+    };
+    const B: WorkflowSummary = {
+      ...NESTED,
+      relative_path: "beta/two.workflow.json",
+      root_path: "beta/two.workflow.json",
+      name: "two",
+    };
     const { client } = stubClient({ workflows: [A, B] });
     mount(client);
 
@@ -420,6 +436,8 @@ describe("LaunchPanel", () => {
     const SHIPPED: WorkflowSummary = {
       relative_path: "notes/main.workflow.json",
       origin: "shipped",
+      root_path: "notes/main.workflow.json",
+      action: "copy",
       id: "5a1e",
       name: "main",
       valid: true,
@@ -430,13 +448,19 @@ describe("LaunchPanel", () => {
       ...SHIPPED,
       relative_path: "users/local/workflow/notes/main.workflow.json",
       origin: "user",
+      root_path: "notes/main.workflow.json",
+      action: "open",
       id: "c0p1",
     };
 
     it("offers a copy instead of a launch, then opens the copy's launch form", async () => {
       const { client, calls } = stubClient({
         workflows: [SHIPPED],
-        copy: { status: 201, body: { relative_path: COPY.relative_path }, copied: COPY },
+        copy: {
+          status: 201,
+          body: { relative_path: COPY.relative_path, root_path: COPY.root_path },
+          copied: COPY,
+        },
       });
       mount(client);
 
@@ -450,6 +474,25 @@ describe("LaunchPanel", () => {
       expect(calls.find((c) => c.url === "/v0/workflows/copy")?.body).toEqual({
         shipped_path: SHIPPED.relative_path,
       });
+    });
+
+    it("shows a broken shipped workflow's error, with no copy on offer", async () => {
+      const BROKEN_SHIPPED: WorkflowSummary = {
+        ...SHIPPED,
+        action: "none",
+        valid: false,
+        is_root: null,
+        error: { message: "unexpected token" },
+      };
+      mount(stubClient({ workflows: [BROKEN_SHIPPED] }).client);
+
+      fireEvent.click(await screen.findByTestId("workflow-folder-shipped"));
+      fireEvent.click(screen.getByTestId("workflow-folder-shipped/notes"));
+      fireEvent.click(screen.getByTestId(`workflow-row-${SHIPPED.relative_path}`));
+      expect(screen.getByTestId(`workflow-error-${SHIPPED.relative_path}`)).toHaveTextContent(
+        "unexpected token",
+      );
+      expect(screen.queryByTestId(`copy-${SHIPPED.relative_path}-submit`)).toBeNull();
     });
 
     it("shows the server's refusal when a copy already exists", async () => {

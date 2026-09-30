@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
-import { resolve } from "node:path";
 import { type LoadedWorkflow, loadWorkflowTree } from "@path/engine";
 import { type ConfigObject, type JsonValue, mapEnv, type RunRecord } from "@path/schema";
+import type { AuthoredLayout } from "./authored-layout.js";
 import { confineToProjectRoot } from "./confine.js";
 
 /**
@@ -40,21 +40,23 @@ export interface NotFoundMessages {
   escapesRoot?(workflowPath: string): string;
 }
 
-/** Resolve a path within the project root, confirm it exists, then load and validate it. 404 when
- * it escapes or is missing, 400 when it fails to load; a missing tail reads as `notFound`, not an
- * escape. */
+/** Resolve a path within the project root, confirm it may run and exists, then load and validate
+ * it. 404 when it escapes or is missing, 403 for a shipped file, 400 when it fails to load; a
+ * missing tail reads as `notFound`, not an escape. */
 export async function prepareWorkflow(
-  projectDir: string,
+  layout: AuthoredLayout,
   workflowPath: string,
   messages: NotFoundMessages,
 ): Promise<PreparedWorkflow> {
-  const absPath = confineToProjectRoot(resolve(projectDir), workflowPath, {
+  const absPath = confineToProjectRoot(layout.projectDir, workflowPath, {
     allowMissingTail: true,
   });
   if (!absPath) {
     const escaped = (messages.escapesRoot ?? messages.notFound)(workflowPath);
     return { ok: false, refusal: { status: 404, message: escaped } };
   }
+  const refusal = layout.workflowRefusal(workflowPath, "run");
+  if (refusal !== undefined) return { ok: false, refusal };
   if (!existsSync(absPath)) {
     return { ok: false, refusal: { status: 404, message: messages.notFound(workflowPath) } };
   }
@@ -80,14 +82,14 @@ export interface RunWorkflowMessages extends NotFoundMessages {
  * confirm it is still the same workflow by id (ADR 0006); a predecessor with no recorded id skips
  * that check. */
 export async function prepareRunWorkflow(
-  projectDir: string,
+  layout: AuthoredLayout,
   root: Pick<RunRecord, "workflowId" | "workflowPath">,
   messages: RunWorkflowMessages,
 ): Promise<PreparedWorkflow> {
   if (!root.workflowPath) {
     return { ok: false, refusal: { status: 409, message: messages.noPath() } };
   }
-  const prepared = await prepareWorkflow(projectDir, root.workflowPath, messages);
+  const prepared = await prepareWorkflow(layout, root.workflowPath, messages);
   if (!prepared.ok) return prepared;
   if (root.workflowId && prepared.workflow.rootFile.id !== root.workflowId) {
     return { ok: false, refusal: { status: 409, message: messages.swapped(root.workflowPath) } };

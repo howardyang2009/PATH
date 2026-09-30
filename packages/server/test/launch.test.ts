@@ -1,6 +1,7 @@
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { authoredLayout } from "../src/authored-layout.js";
 import { operatorConfigEnvError, prepareWorkflow } from "../src/launch.js";
 
 /**
@@ -32,10 +33,23 @@ describe("operatorConfigEnvError (ADR 0012)", () => {
 });
 
 describe("prepareWorkflow", () => {
+  const layout = authoredLayout({ projectDir: fixturesDir });
   const notFound = (p: string) => `not found: ${p}`;
 
+  it("403s a shipped workflow, which never runs in place", async () => {
+    const shipped = authoredLayout({
+      projectDir: fixturesDir,
+      shippedDir: { workflow: fixturesDir },
+    });
+    const prepared = await prepareWorkflow(shipped, "two-binary-steps.workflow.json", { notFound });
+    expect(prepared).toEqual({
+      ok: false,
+      refusal: { status: 403, message: "a shipped workflow must be copied before it runs" },
+    });
+  });
+
   it("loads a valid workflow within the project root", async () => {
-    const prepared = await prepareWorkflow(fixturesDir, "two-binary-steps.workflow.json", {
+    const prepared = await prepareWorkflow(layout, "two-binary-steps.workflow.json", {
       notFound,
     });
     expect(prepared.ok).toBe(true);
@@ -48,7 +62,7 @@ describe("prepareWorkflow", () => {
 
   it("404s an escaping path with escapesRoot when given, else folds into notFound", async () => {
     // Fresh-launch shape: escape and not-found are distinct messages.
-    const distinct = await prepareWorkflow(fixturesDir, "../../etc/passwd", {
+    const distinct = await prepareWorkflow(layout, "../../etc/passwd", {
       notFound,
       escapesRoot: (p) => `escaped: ${p}`,
     });
@@ -58,7 +72,7 @@ describe("prepareWorkflow", () => {
     expect(distinct.refusal.message).toBe("escaped: ../../etc/passwd");
 
     // Resume shape: no escapesRoot, so an escape reuses the notFound wording (one 404 for both).
-    const folded = await prepareWorkflow(fixturesDir, "../../etc/passwd", { notFound });
+    const folded = await prepareWorkflow(layout, "../../etc/passwd", { notFound });
     expect(folded.ok).toBe(false);
     if (folded.ok) return;
     expect(folded.refusal.status).toBe(404);
@@ -66,7 +80,7 @@ describe("prepareWorkflow", () => {
   });
 
   it("404s a missing file with the caller's notFound message", async () => {
-    const prepared = await prepareWorkflow(fixturesDir, "does-not-exist.workflow.json", {
+    const prepared = await prepareWorkflow(layout, "does-not-exist.workflow.json", {
       notFound,
     });
     expect(prepared.ok).toBe(false);
@@ -76,7 +90,7 @@ describe("prepareWorkflow", () => {
   });
 
   it("400s an invalid file, carrying the loader's per-file errors as details", async () => {
-    const prepared = await prepareWorkflow(fixturesDir, "invalid-schema.workflow.json", {
+    const prepared = await prepareWorkflow(layout, "invalid-schema.workflow.json", {
       notFound,
     });
     expect(prepared.ok).toBe(false);

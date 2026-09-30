@@ -1,25 +1,41 @@
-import type { PathApiClient, WorkflowSummary } from "@path/client-core";
+import type { PathApiClient, WorkflowRootSummary, WorkflowSummary } from "@path/client-core";
 import { useCallback, useMemo } from "react";
 import { useScanOnSave } from "./scan-on-save.js";
 import type { SaveState } from "./session-reducer.js";
+
+/** One landed discovery scan: the workflows, and the writable roots a new one may land in. */
+export interface DiscoveryScan {
+  workflows: readonly WorkflowSummary[];
+  roots: readonly WorkflowRootSummary[];
+}
 
 /** The Designer's workflow discovery: one `GET /v0/workflows` scan for the whole surface. `null`
  * means **not scanned yet** (or every scan failed); `[]` means **scanned, none exist**. */
 export type DiscoveryLoad =
   | { phase: "loading" }
-  /** A scan failed. `workflows` is the last successful one, or `null` if none ever landed. */
-  | { phase: "error"; message: string; workflows: readonly WorkflowSummary[] | null }
-  | { phase: "ready"; workflows: readonly WorkflowSummary[] };
+  /** A scan failed. `scan` is the last successful one, or `null` if none ever landed. */
+  | { phase: "error"; message: string; scan: DiscoveryScan | null }
+  | { phase: "ready"; scan: DiscoveryScan };
 
-/** The discovered workflows, or `null` before a scan lands. Shipped rows are left out unless
- * `withShipped`: only the Open picker shows them, to copy one (ADR 0086), since a shipped file is
- * never opened or ref'd in place. */
+function scanOf(load: DiscoveryLoad): DiscoveryScan | null {
+  return load.phase === "loading" ? null : load.scan;
+}
+
+/** The discovered workflows, or `null` before a scan lands. Only rows the Server offers to `open`
+ * are kept unless `withCopies`: the Open picker also shows the rows to copy (ADR 0086), since a
+ * shipped file is never opened or ref'd in place. */
 export function discoveredWorkflows(
   load: DiscoveryLoad,
-  { withShipped = false }: { withShipped?: boolean } = {},
+  { withCopies = false }: { withCopies?: boolean } = {},
 ): readonly WorkflowSummary[] | null {
-  if (load.phase === "loading" || load.workflows === null) return null;
-  return withShipped ? load.workflows : load.workflows.filter((w) => w.origin !== "shipped");
+  const workflows = scanOf(load)?.workflows ?? null;
+  if (workflows === null) return null;
+  return withCopies ? workflows : workflows.filter((w) => w.action === "open");
+}
+
+/** The writable workflow roots' project paths, the user's own first; `[]` before a scan lands. */
+export function discoveredRoots(load: DiscoveryLoad): readonly string[] {
+  return (scanOf(load)?.roots ?? []).map((root) => root.relative_path);
 }
 
 /** Load discovery once, and re-scan when a save **lands** (`savePhase` becomes `saved`) or
@@ -32,16 +48,16 @@ export function useWorkflowDiscovery(
 ): DiscoveryLoad {
   // A new `rescanKey` gives the read a new identity, which is what makes `useScanOnSave` re-scan.
   // biome-ignore lint/correctness/useExhaustiveDependencies: rescanKey is the re-scan trigger.
-  const listWorkflows = useCallback(
-    async () => (await client.listWorkflows()).workflows,
-    [client, rescanKey],
-  );
+  const listWorkflows = useCallback(async (): Promise<DiscoveryScan> => {
+    const { workflows, roots } = await client.listWorkflows();
+    return { workflows, roots };
+  }, [client, rescanKey]);
   const load = useScanOnSave(listWorkflows, savePhase, RESCAN_ON);
   // Mapped once per scan result, so a consumer keyed on this object does not re-run every render.
   return useMemo(() => {
-    if (load.phase === "ready") return { phase: "ready", workflows: load.value };
+    if (load.phase === "ready") return { phase: "ready", scan: load.value };
     if (load.phase === "error")
-      return { phase: "error", message: load.message, workflows: load.lastGood };
+      return { phase: "error", message: load.message, scan: load.lastGood };
     return load;
   }, [load]);
 }

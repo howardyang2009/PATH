@@ -396,6 +396,8 @@ describe("Designer run surfaces (#372)", () => {
           {
             relative_path: ROOT_PATH,
             origin: "user",
+            root_path: ROOT_PATH,
+            action: "open",
             id: WF_ID,
             name: "root-flow",
             valid: true,
@@ -405,6 +407,8 @@ describe("Designer run surfaces (#372)", () => {
           {
             relative_path: OTHER_PATH,
             origin: "user",
+            root_path: OTHER_PATH,
+            action: "open",
             id: OTHER_WF_ID,
             name: "other-flow",
             valid: true,

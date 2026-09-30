@@ -45,7 +45,7 @@ export function OpenWorkflowDialog({
   const [openFolder, setOpenFolder] = useState<string | null>(ORIGIN_FOLDER.user);
   // `null` until a scan lands, which reads as "still discovering". A failed scan with nothing
   // behind it reads as an empty list here, so the dialog still opens with its "no workflows" note.
-  const workflows = discoveredWorkflows(discovery, { withShipped: true });
+  const workflows = discoveredWorkflows(discovery, { withCopies: true });
   const [copyError, setCopyError] = useState<string | null>(null);
   const copy = (shippedPath: string): void => {
     setCopyError(null);
@@ -144,7 +144,18 @@ function WorkflowTree({
               />
             )}
           </li>
-        ) : node.workflow.origin === "shipped" ? (
+        ) : node.workflow.action === "none" ? (
+          <li key={`shipped:${node.workflow.relative_path}`}>
+            <div className="workflow-row workflow-row--shipped" style={indent(depth)}>
+              <span className="workflow-file-name">
+                {workflowBaseName(node.workflow.relative_path)}
+              </span>
+              <span className="pane-note pane-error">
+                {node.workflow.error?.message ?? "This workflow could not be loaded."}
+              </span>
+            </div>
+          </li>
+        ) : node.workflow.action === "copy" ? (
           <li key={`shipped:${node.workflow.relative_path}`}>
             <div className="workflow-row workflow-row--shipped" style={indent(depth)}>
               <span className="workflow-file-name">

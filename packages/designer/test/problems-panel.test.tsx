@@ -51,6 +51,8 @@ function summary(relativePath: string) {
   return {
     relative_path: relativePath,
     origin: "user",
+    root_path: relativePath,
+    action: "open",
     id: null,
     name: null,
     valid: true,

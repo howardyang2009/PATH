@@ -407,7 +407,7 @@ and issues use them exactly.
   *path* because a run is launched by where the file lives (ADR 0016, §7), a template is **addressed by
   its GUID**: `GET`/`PUT`/`DELETE /v0/templates/:id`, where `:id` is a template's envelope `id`. A
   GUID is globally unique (ADR 0006), so one lookup spans both origins. The Server resolves `:id` through
-  the **Template store** index (the shipped + user two-directory union, suffix-typed). `GET /v0/templates` lists that union **thin** (`id`, `name`,
+  the **Template store** index (the shipped, shared and user three-root union, suffix-typed). `GET /v0/templates` lists that union **thin** (`id`, `name`,
   `description`, `kind`, `origin`, `read_only`, `valid`, `error`; no `body`) with an optional `?kind=`
   filter; duplicate-id and per-entry validity are the **Template store**'s (ADR 0048). `GET
   /v0/templates/:id` returns a **parsed envelope** plus an
@@ -637,6 +637,18 @@ Rule of thumb: **Config flows in from outside. Context is written from inside.**
   ids, from the Viewer's workflow list or the Designer's Open picker, and the copy is an ordinary user
   workflow
   ([ADR 0086](https://github.com/howardyang2009/PATH/blob/main/docs/adr/0086-shipped-workflows-are-copied-before-they-run.md)).
+  The Server enforces this: every workflow door that writes, deletes, launches, resumes or completes
+  refuses a shipped path with `403`, even when the shipped root lies inside the project.
+- **Authored layout** — the one Server module that knows where authored files live: the shipped,
+  shared and per-user roots of each kind (`workflow`, `template`), which of them are writable, their
+  precedence (shipped, then shared, then user) and the current user id. Every door asks it where a path
+  sits; discovery, the Template store and the workflow store scan through it, and discovery sends the
+  writable workflow roots to clients, so no client carries the folder layout
+  ([ADR 0087](https://github.com/howardyang2009/PATH/blob/main/docs/adr/0087-the-authored-layout-decides-where-a-file-lives-and-who-may-write-it.md)).
+- **Row action** — what a picker offers for one discovered workflow, decided by the Server and sent
+  as its `action`: `open` a user or shared file, `copy` a valid shipped one, or `none` for an invalid
+  shipped one. The Viewer's workflow list and the Designer's pickers switch on it instead of on
+  `origin`.
 
 ## Resume
 

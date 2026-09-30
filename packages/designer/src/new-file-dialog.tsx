@@ -1,13 +1,6 @@
 import { useMemo, useState } from "react";
-import { type DiscoveryLoad, discoveredWorkflows } from "./discovery.js";
+import { type DiscoveryLoad, discoveredRoots, discoveredWorkflows } from "./discovery.js";
 import type { SaveAsResult } from "./use-open-file.js";
-
-/** Where a new workflow lands by default: the one user's own folder, until the Server knows who is
- * asking (ADR 0084). */
-export const DEFAULT_WORKFLOW_DIRECTORY = "users/local/workflow";
-
-/** The team's own workflow folder (ADR 0084). */
-const SHARED_WORKFLOW_DIRECTORY = "shared/workflow";
 
 /**
  * The first-save dialog for a from-scratch buffer (designer-spec § New-file placement and naming):
@@ -20,7 +13,7 @@ export function NewFileDialog({
   discovery,
   workflowName,
   title = "Save new workflow",
-  initialDirectory = DEFAULT_WORKFLOW_DIRECTORY,
+  initialDirectory,
   create,
   onCreated,
   onCancel,
@@ -31,8 +24,8 @@ export function NewFileDialog({
   workflowName: string;
   /** The dialog title; workflow-mode Save as… passes "Save workflow as". */
   title?: string;
-  /** The preselected directory; a new file starts in the user folder, Save as… in the source
-   * file's directory. */
+  /** The preselected directory: Save as… passes the source file's directory. Without one, a new
+   * file starts in the first writable root the Server lists, the user's own (ADR 0084). */
   initialDirectory?: string;
   /** Run the exclusive create against the composed path; the dialog reads its outcome. */
   create: (targetPath: string) => Promise<SaveAsResult>;
@@ -41,29 +34,32 @@ export function NewFileDialog({
   /** Dismiss without saving; the from-scratch buffer stays on the canvas untouched. */
   onCancel: () => void;
 }): JSX.Element {
-  const [directory, setDirectory] = useState(initialDirectory);
+  const roots = discoveredRoots(discovery);
+  const [picked, setDirectory] = useState<string | undefined>(initialDirectory);
+  // `null` until a directory is picked or discovery lands a root to default to.
+  const directory = picked ?? roots[0] ?? null;
   const [stem, setStem] = useState(workflowName);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // The picker's directories: the two authored roots plus the parent of every discovered workflow
-  // (ADR 0085). A failed scan is not fatal: the roots are always offered, so a save can proceed.
+  // The picker's directories: the Server's writable roots plus the parent of every discovered
+  // workflow (ADR 0085), and the preselected one.
   const directories = useMemo(() => {
-    const dirs = new Set<string>([
-      DEFAULT_WORKFLOW_DIRECTORY,
-      SHARED_WORKFLOW_DIRECTORY,
-      initialDirectory,
-    ]);
+    const dirs = new Set<string>(discoveredRoots(discovery));
+    if (initialDirectory !== undefined) dirs.add(initialDirectory);
     for (const wf of discoveredWorkflows(discovery) ?? []) dirs.add(dirnameOf(wf.relative_path));
     return [...dirs].sort();
   }, [discovery, initialDirectory]);
 
   const cleanStem = normalizeStem(stem);
-  const targetPath = useMemo(() => composePath(directory, cleanStem), [directory, cleanStem]);
-  const canSubmit = cleanStem !== "" && !submitting;
+  const targetPath = useMemo(
+    () => (directory === null ? null : composePath(directory, cleanStem)),
+    [directory, cleanStem],
+  );
+  const canSubmit = cleanStem !== "" && !submitting && targetPath !== null;
 
   const submit = (): void => {
-    if (!canSubmit) return;
+    if (!canSubmit || targetPath === null) return;
     setSubmitting(true);
     setError(null);
     void create(targetPath).then((result) => {
@@ -89,7 +85,8 @@ export function NewFileDialog({
           <select
             className="new-file-directory"
             aria-label="Directory"
-            value={directory}
+            value={directory ?? ""}
+            disabled={directory === null}
             onChange={(event) => setDirectory(event.target.value)}
           >
             {directories.map((dir) => (
@@ -120,7 +117,13 @@ export function NewFileDialog({
         </label>
 
         <p className="new-file-target" data-testid="new-file-target">
-          Saves to <code>{targetPath}</code>
+          {targetPath === null ? (
+            "Finding your workflow folder…"
+          ) : (
+            <>
+              Saves to <code>{targetPath}</code>
+            </>
+          )}
         </p>
 
         {error !== null && (

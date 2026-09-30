@@ -1,6 +1,5 @@
-import { type Dirent, readdirSync, readFileSync } from "node:fs";
-import { basename, join, relative, resolve, sep } from "node:path";
-import { fileURLToPath } from "node:url";
+import { readFileSync } from "node:fs";
+import { basename, join, relative } from "node:path";
 import {
   makeStepTemplateSchema,
   type StepPluginRegistry,
@@ -9,7 +8,7 @@ import {
   type WireError,
 } from "@path/schema";
 import { conditionalWrite, PRECONDITION_FAILED, removeArtifact } from "./artifact-file.js";
-import { authoredRoot } from "./authored-roots.js";
+import { AUTHORED_SUFFIX, type AuthoredLayout, type AuthoredOrigin } from "./authored-layout.js";
 import { strongEtag } from "./etag.js";
 
 // The Template store (ADR 0050, ADR 0084): Server-owned, engine-blind discovery of
@@ -17,23 +16,9 @@ import { strongEtag } from "./etag.js";
 // bytes or its folder. The Step-Template is the only kind.
 
 export type TemplateKind = "step";
-export type TemplateOrigin = "shipped" | "shared" | "user";
+export type TemplateOrigin = AuthoredOrigin;
 
-const SUFFIX: Record<TemplateKind, string> = {
-  step: ".step-template.json",
-};
-
-/** The shipped (read-only) template root: `packages/server/shipped/template`. A missing directory
- * scans as an empty contribution, never a Server-start failure; a caller (a test) may inject a
- * different root. */
-export const DEFAULT_SHIPPED_TEMPLATE_DIR = fileURLToPath(
-  new URL("../shipped/template", import.meta.url),
-);
-
-/** The shipped root the union scans: the context override, or the package-relative default. */
-export function shippedTemplateDir(ctx: { shippedTemplateDir?: string }): string {
-  return ctx.shippedTemplateDir ?? DEFAULT_SHIPPED_TEMPLATE_DIR;
-}
+const SUFFIX = AUTHORED_SUFFIX.template;
 
 /**
  * One discovered template. `id`/`description`/`format`/`body` are best-effort even when the entry
@@ -105,31 +90,6 @@ export interface TemplateStore {
   remove(id: string): TemplateRemove;
 }
 
-/** Every file under `root`, at any depth, that ends with `suffix`, as sorted absolute paths; `[]`
- * when `root` is absent. Folders only organize, so dot-directories are skipped and symlinks are
- * neither followed nor listed, as workflow discovery does. */
-function templateFiles(root: string, suffix: string): string[] {
-  const found: string[] = [];
-  const walk = (dir: string): void => {
-    let entries: Dirent[];
-    try {
-      entries = readdirSync(dir, { withFileTypes: true });
-    } catch {
-      return;
-    }
-    for (const entry of entries) {
-      if (entry.isSymbolicLink()) continue;
-      if (entry.isDirectory()) {
-        if (!entry.name.startsWith(".")) walk(join(dir, entry.name));
-      } else if (entry.isFile() && entry.name.endsWith(suffix)) {
-        found.push(join(dir, entry.name));
-      }
-    }
-  };
-  walk(root);
-  return found.sort();
-}
-
 /** The validity/identity facts of one step-template file's bytes. Never throws — malformed JSON is
  * invalid. */
 function classify(
@@ -172,37 +132,24 @@ function classify(
  * one and never the scan.
  */
 export function discoverTemplates(
-  projectDir: string,
-  shippedDir: string,
+  layout: AuthoredLayout,
   registry: StepPluginRegistry,
 ): TemplateStore {
+  const { projectDir } = layout;
   const stepSchema = makeStepTemplateSchema(registry);
 
-  const roots: { root: string; origin: TemplateOrigin; readOnly: boolean }[] = [
-    { root: shippedDir, origin: "shipped", readOnly: true },
-    { root: authoredRoot(projectDir, "shared", "template"), origin: "shared", readOnly: false },
-    { root: authoredRoot(projectDir, "user", "template"), origin: "user", readOnly: false },
-  ];
-
-  const located: LocatedTemplate[] = [];
-  for (const { root, origin, readOnly } of roots) {
-    for (const kind of ["step"] as const) {
-      const suffix = SUFFIX[kind];
-      for (const absPath of templateFiles(root, suffix)) {
-        const bytes = readFileSync(absPath);
-        const name = basename(absPath).slice(0, -suffix.length);
-        located.push({
-          name,
-          kind,
-          origin,
-          readOnly,
-          absPath,
-          etag: strongEtag(bytes),
-          ...classify(bytes, stepSchema),
-        });
-      }
-    }
-  }
+  const located: LocatedTemplate[] = layout.files("template").map(({ absPath, root }) => {
+    const bytes = readFileSync(absPath);
+    return {
+      name: basename(absPath).slice(0, -SUFFIX.length),
+      kind: "step",
+      origin: root.origin,
+      readOnly: !root.writable,
+      absPath,
+      etag: strongEtag(bytes),
+      ...classify(bytes, stepSchema),
+    };
+  });
 
   const byId = new Map<string, LocatedTemplate>();
   for (const entry of located) {
@@ -270,7 +217,7 @@ export function discoverTemplates(
         };
       }
       // Save-as lands in the current user's own folder.
-      const absPath = join(authoredRoot(projectDir, "user", "template"), `${name}${SUFFIX[kind]}`);
+      const absPath = join(layout.root("user", "template").dir, `${name}${SUFFIX}`);
       const written = writeAt(valid.id, absPath, payload, {
         ifMatch: undefined,
         rule: "create-or-overwrite",
@@ -304,26 +251,12 @@ export function discoverTemplates(
   };
 }
 
-/** Whether `workflowPath` addresses a template, which the workflow doors refuse (§10.6): anything
- * lexically under `shared/template/` or `users/<user-id>/template/`, resolved first so a `../`
- * detour is caught too. */
-export function isTemplatePath(projectDir: string, workflowPath: string): boolean {
-  const parts = relative(projectDir, resolve(projectDir, workflowPath)).split(sep);
-  if (parts[0] === "shared") return parts[1] === "template";
-  return parts[0] === "users" && parts.length >= 3 && parts[2] === "template";
-}
-
-/** What the template doors read the store through: the project, its frozen registry, and the
- * shipped root. */
-export interface TemplateStoreContext {
-  project: { dir: string };
-  stepPlugins: StepPluginRegistry;
-  shippedTemplateDir?: string;
-}
-
 /** The template union one server serves, scanned fresh for this request. */
-export function templatesOf(ctx: TemplateStoreContext): TemplateStore {
-  return discoverTemplates(resolve(ctx.project.dir), shippedTemplateDir(ctx), ctx.stepPlugins);
+export function templatesOf(ctx: {
+  layout: AuthoredLayout;
+  stepPlugins: StepPluginRegistry;
+}): TemplateStore {
+  return discoverTemplates(ctx.layout, ctx.stepPlugins);
 }
 
 /** One entry as its thin wire row (§10.1): everything but the body. */

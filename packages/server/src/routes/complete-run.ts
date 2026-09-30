@@ -65,7 +65,7 @@ export async function handleCompleteRun({
 
   // Recover and re-validate the workflow as it stands now: the node lookup below must be a lookup
   // in *this run's* file (matching id, ADR 0006), not merely one sharing the node's id.
-  const prepared = await prepareRunWorkflow(ctx.project.dir, root, {
+  const prepared = await prepareRunWorkflow(ctx.layout, root, {
     notFound: () => `workflow file for run "${rootRunId}" not found at "${root.workflowPath}"`,
     noPath: () => `run "${rootRunId}" has no recorded workflow path and cannot be completed`,
     swapped: (workflowPath) =>

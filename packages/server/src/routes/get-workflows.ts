@@ -1,43 +1,9 @@
-import { type Dirent, readdirSync, readFileSync } from "node:fs";
-import { join, relative, resolve } from "node:path";
+import { readFileSync } from "node:fs";
+import { relative } from "node:path";
 import { loadWorkflowTree } from "@path/engine";
 import type { ListWorkflowsResponse, WorkflowSummary } from "@path/schema";
-import { authoredRoot } from "../authored-roots.js";
 import { sendJson } from "../http-json.js";
-import { shippedWorkflowDir } from "../shipped-workflows.js";
 import type { ApiRequest } from "./route-context.js";
-
-/**
- * Every `*.workflow.json` under `root`, as absolute paths, sorted; `[]` when `root` is absent.
- * Skips `node_modules` and any dot-directory. Symlinks are neither followed nor listed: the loader
- * canonicalizes lexically (`resolve`, not `realpath`), so following one would alias a nested file
- * as a discovered root.
- */
-function scanWorkflowFiles(root: string): string[] {
-  const found: string[] = [];
-
-  function walk(dir: string): void {
-    let entries: Dirent[];
-    try {
-      entries = readdirSync(dir, { withFileTypes: true });
-    } catch {
-      return;
-    }
-    for (const entry of entries) {
-      // Checked before isDirectory()/isFile(): a symlink reports neither.
-      if (entry.isSymbolicLink()) continue;
-      if (entry.isDirectory()) {
-        if (entry.name === "node_modules" || entry.name.startsWith(".")) continue;
-        walk(join(dir, entry.name));
-      } else if (entry.isFile() && entry.name.endsWith(".workflow.json")) {
-        found.push(join(dir, entry.name));
-      }
-    }
-  }
-
-  walk(root);
-  return found.sort();
-}
 
 /** Best-effort top-level `id`/`name` so an invalid entry stays human-legible in the list; `null`
  * when the shallow parse cannot recover either field. */
@@ -60,24 +26,12 @@ function shallowIdentity(absPath: string): { id: string | null; name: string | n
  * `is_root: null` (no ref set) and its error.
  */
 export async function handleGetWorkflows({ res, ctx }: ApiRequest): Promise<void> {
-  // `resolve`d so scan paths (`join` off this root) match `loadWorkflowTree`'s keys exactly; the
-  // map lookups below assume that equality.
-  const projectDir = resolve(ctx.project.dir);
-  const roots: { dir: string; origin: WorkflowSummary["origin"] }[] = [
-    { dir: authoredRoot(projectDir, "user", "workflow"), origin: "user" },
-    { dir: authoredRoot(projectDir, "shared", "workflow"), origin: "shared" },
-    { dir: resolve(shippedWorkflowDir(ctx)), origin: "shipped" },
-  ];
-  const scanned = roots.flatMap(({ dir, origin }) =>
-    scanWorkflowFiles(dir).map((absPath) => ({ absPath, origin })),
-  );
-  // A shipped file is named relative to the shipped root, the handle Copy takes.
-  const shippedDir = resolve(shippedWorkflowDir(ctx));
-
+  const { layout } = ctx;
+  const scanned = layout.files("workflow");
   const loaded = await Promise.all(
-    scanned.map(async ({ absPath, origin }) => ({
+    scanned.map(async ({ absPath, root }) => ({
       absPath,
-      origin,
+      root,
       result: await loadWorkflowTree(absPath),
     })),
   );
@@ -91,13 +45,20 @@ export async function handleGetWorkflows({ res, ctx }: ApiRequest): Promise<void
     }
   }
 
-  const workflows: WorkflowSummary[] = loaded.map(({ absPath, origin, result }) => {
-    const relativePath = relative(origin === "shipped" ? shippedDir : projectDir, absPath);
+  const workflows: WorkflowSummary[] = loaded.map(({ absPath, root, result }) => {
+    // A writable row is named by its project path, the launch and open handle; a shipped row by
+    // its path in the shipped root, the handle Copy takes.
+    const rootPath = relative(root.dir, absPath);
+    const place = {
+      relative_path: root.writable ? relative(layout.projectDir, absPath) : rootPath,
+      origin: root.origin,
+      root_path: rootPath,
+      action: root.writable ? "open" : result.success ? "copy" : "none",
+    } as const;
     if (result.success) {
       const file = result.workflow.rootFile;
       return {
-        relative_path: relativePath,
-        origin,
+        ...place,
         id: file.id,
         name: file.name,
         valid: true,
@@ -107,8 +68,7 @@ export async function handleGetWorkflows({ res, ctx }: ApiRequest): Promise<void
     }
     const { id, name } = shallowIdentity(absPath);
     return {
-      relative_path: relativePath,
-      origin,
+      ...place,
       id,
       name,
       valid: false,
@@ -117,6 +77,14 @@ export async function handleGetWorkflows({ res, ctx }: ApiRequest): Promise<void
     };
   });
 
-  const body: ListWorkflowsResponse = { workflows };
+  const roots = layout
+    .roots("workflow")
+    .flatMap((root) =>
+      root.origin === "shipped"
+        ? []
+        : [{ origin: root.origin, relative_path: relative(layout.projectDir, root.dir) }],
+    )
+    .reverse();
+  const body: ListWorkflowsResponse = { workflows, roots };
   sendJson(res, 200, body);
 }

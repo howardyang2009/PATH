@@ -3,12 +3,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadStepPluginRegistry } from "@path/engine";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { authoredLayout } from "../src/authored-layout.js";
 import { strongEtag } from "../src/etag.js";
-import {
-  DEFAULT_SHIPPED_TEMPLATE_DIR,
-  discoverTemplates,
-  type TemplateStore,
-} from "../src/template-store.js";
+import { discoverTemplates, type TemplateStore } from "../src/template-store.js";
 
 /**
  * The template store's own interface: an id lookup plus its own writes. These drive the store
@@ -29,11 +26,7 @@ let projectDir: string;
 let store: TemplateStore;
 
 async function openStore(): Promise<TemplateStore> {
-  return discoverTemplates(
-    projectDir,
-    DEFAULT_SHIPPED_TEMPLATE_DIR,
-    await loadStepPluginRegistry(),
-  );
+  return discoverTemplates(authoredLayout({ projectDir }), await loadStepPluginRegistry());
 }
 
 beforeEach(async () => {

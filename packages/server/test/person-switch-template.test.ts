@@ -10,11 +10,8 @@ import {
   type WorkflowNode,
 } from "@path/schema";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import {
-  DEFAULT_SHIPPED_TEMPLATE_DIR,
-  discoverTemplates,
-  type TemplateEntry,
-} from "../src/template-store.js";
+import { authoredLayout } from "../src/authored-layout.js";
+import { discoverTemplates, type TemplateEntry } from "../src/template-store.js";
 
 /**
  * The shipped `person-switch` Step-Template (#581, ADR 0052): a `person-activity` ask followed by a
@@ -35,7 +32,7 @@ afterEach(() => {
 
 async function personSwitch(): Promise<TemplateEntry> {
   const registry = await loadStepPluginRegistry();
-  const entry = discoverTemplates(dir, DEFAULT_SHIPPED_TEMPLATE_DIR, registry).entries.find(
+  const entry = discoverTemplates(authoredLayout({ projectDir: dir }), registry).entries.find(
     (e) => e.kind === "step" && e.name === "person-switch",
   );
   if (!entry) throw new Error("person-switch step-template is not shipped");

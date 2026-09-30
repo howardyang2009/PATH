@@ -1,15 +1,8 @@
-import { relative, resolve } from "node:path";
-import {
-  duplicateIdErrors,
-  safeParseWorkflowFile,
-  type WirePutWorkflowResponse,
-} from "@path/schema";
+import type { WirePutWorkflowResponse } from "@path/schema";
 import { z } from "zod";
-import { conditionalWrite, PRECONDITION_FAILED } from "../artifact-file.js";
-import { confineToProjectRoot } from "../confine.js";
 import { readRequestBody, sendError } from "../http-json.js";
 import { firstHeader } from "../origin-gate.js";
-import { isTemplatePath } from "../template-store.js";
+import { workflowsOf } from "../workflow-store.js";
 import type { ApiRequest } from "./route-context.js";
 
 /**
@@ -31,61 +24,29 @@ const PutWorkflowBodySchema = z
 export async function handlePutWorkflow({ req, res, ctx }: ApiRequest): Promise<void> {
   const body = await readRequestBody(req, res, PutWorkflowBodySchema);
   if (!body) return;
-  const { workflow_path: workflowPath } = body.data;
-
-  // The two write doors are disjoint (§10.6): a template is written only through `/v0/templates`.
-  if (isTemplatePath(resolve(ctx.project.dir), workflowPath)) {
-    sendError(res, 400, "workflow path must not be a template path");
-    return;
-  }
 
   // Serialize the *raw* object, not zod's parsed copy, so the author's key order survives (ADR
   // 0016).
   const rawWorkflow = (body.raw as { workflow: unknown }).workflow;
-
-  // Path confinement (404) before schema (400): a path that escapes the root or traverses a symlink
-  // is refused regardless of what the body says.
-  const absPath = confineToProjectRoot(resolve(ctx.project.dir), workflowPath, {
-    allowMissingTail: true,
-  });
-  if (absPath === undefined) {
-    sendError(res, 404, "not found");
-    return;
-  }
-
-  // Parsed against the registry frozen at server start (ADR 0018), like every other door that
-  // validates a file: a per-save folder re-scan would answer a different registry.
-  const validation = safeParseWorkflowFile(rawWorkflow, ctx.stepPlugins);
-  if (!validation.success) {
-    sendError(res, 400, "workflow validation failed", validation.errors);
-    return;
-  }
-  const duplicates = duplicateIdErrors(validation.data);
-  if (duplicates.length > 0) {
-    sendError(res, 400, "workflow validation failed", duplicates);
-    return;
-  }
-
-  // One call reads, decides and writes (ADR 0016): `If-Match` present is overwrite-only, absent is
-  // create-only, and every conflict is a `412` here.
-  const written = conditionalWrite(absPath, {
-    ifMatch: firstHeader(req.headers["if-match"]),
-    rule: "create-or-overwrite",
-    payload: rawWorkflow,
-  });
+  const written = workflowsOf(ctx).write(
+    body.data.workflow_path,
+    rawWorkflow,
+    firstHeader(req.headers["if-match"]),
+  );
   if (!written.ok) {
-    sendError(res, 412, PRECONDITION_FAILED[written.conflict]);
+    sendError(res, written.status, written.message, written.details);
     return;
   }
-  const { etag, created } = written;
-  const relativePath = relative(resolve(ctx.project.dir), absPath);
   // The reply is the shared wire shape the client decodes, so a renamed field is a compile error
   // here.
   const reply: WirePutWorkflowResponse = {
-    relative_path: relativePath,
-    id: validation.data.id,
-    etag,
+    relative_path: written.relativePath,
+    id: written.id,
+    etag: written.etag,
   };
-  res.writeHead(created ? 201 : 200, { "Content-Type": "application/json", ETag: etag });
+  res.writeHead(written.created ? 201 : 200, {
+    "Content-Type": "application/json",
+    ETag: written.etag,
+  });
   res.end(JSON.stringify(reply));
 }

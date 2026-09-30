@@ -3,7 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadStepPluginRegistry } from "@path/engine";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { DEFAULT_SHIPPED_TEMPLATE_DIR, discoverTemplates } from "../src/template-store.js";
+import { authoredLayout } from "../src/authored-layout.js";
+import { discoverTemplates } from "../src/template-store.js";
 
 /**
  * The templates shipped in `packages/server/shipped/template/` (#578, #579) are read-only source
@@ -24,7 +25,7 @@ afterEach(() => {
 describe("shipped templates", () => {
   it("ship at least one step-template, and every shipped template is valid", async () => {
     const registry = await loadStepPluginRegistry();
-    const { entries } = discoverTemplates(projectDir, DEFAULT_SHIPPED_TEMPLATE_DIR, registry);
+    const { entries } = discoverTemplates(authoredLayout({ projectDir: projectDir }), registry);
 
     expect(entries.some((entry) => entry.kind === "step")).toBe(true);
     for (const entry of entries) {

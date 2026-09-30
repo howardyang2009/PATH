@@ -174,9 +174,11 @@ export interface WirePutWorkflowResponse {
   etag: string;
 }
 
-/** `POST /v0/workflows/copy` reply (server-api-v0.md §7.3): where the copied workflow now lives. */
+/** `POST /v0/workflows/copy` reply (server-api-v0.md §7.3): where the copied workflow now lives, by
+ * its project path and its path inside the user's workflow root. */
 export interface WireCopyWorkflowResponse {
   relative_path: string;
+  root_path: string;
 }
 
 /** The shared error envelope for every non-2xx response (server-api-v0.md §1). */
@@ -192,10 +194,15 @@ export interface WireError {
  * presentation hint, not a launchability gate (ADR 0011).
  */
 export interface WorkflowSummary {
+  /** The handle `action` takes: a project path for `open`, a shipped path for `copy`. */
   relative_path: string;
-  /** Which root it was scanned from (ADR 0085, ADR 0086). A `shipped` row's `relative_path` is
-   * relative to the shipped root: a Copy handle, not a launch handle. */
+  /** Which root it was scanned from (ADR 0085, ADR 0086). */
   origin: "shipped" | "shared" | "user";
+  /** Its path inside its origin's root, where a picker places it. */
+  root_path: string;
+  /** What a picker offers, decided by the Server: `open` a writable file (launch or edit it),
+   * `copy` a valid shipped one into the user's folder, or `none` for an invalid shipped one. */
+  action: "open" | "copy" | "none";
   id: string | null;
   name: string | null;
   valid: boolean;
@@ -203,8 +210,16 @@ export interface WorkflowSummary {
   error: WireError["error"] | null;
 }
 
+/** A writable workflow root (ADR 0084), by its project path. */
+export interface WorkflowRootSummary {
+  origin: "shared" | "user";
+  relative_path: string;
+}
+
 export interface ListWorkflowsResponse {
   workflows: WorkflowSummary[];
+  /** The writable workflow roots, the user's own first: where a new workflow may land. */
+  roots: WorkflowRootSummary[];
 }
 
 /**

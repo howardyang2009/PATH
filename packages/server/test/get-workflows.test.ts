@@ -171,8 +171,56 @@ describe("GET /v0/workflows", () => {
 
     const rows = (await listWorkflows()).body.workflows.map((w) => [w.relative_path, w.origin]);
     expect(rows).toEqual([
-      [u("mine.workflow.json"), "user"],
       [join("shared", "workflow", "team", "ours.workflow.json"), "shared"],
+      [u("mine.workflow.json"), "user"],
+    ]);
+  });
+
+  it("names each row's place in its root and the action a picker offers", async () => {
+    write(u("lib/mine.workflow.json"), workflow("mine"));
+    write("shared/workflow/broken.workflow.json", "{ not json");
+    writeFileSync(join(shippedDir, "good.workflow.json"), workflow("good"));
+    writeFileSync(join(shippedDir, "bad.workflow.json"), "{ not json");
+
+    const rows = (await listWorkflows()).body.workflows.map((w) => ({
+      relative_path: w.relative_path,
+      origin: w.origin,
+      root_path: w.root_path,
+      action: w.action,
+    }));
+    expect(rows).toEqual([
+      {
+        relative_path: "bad.workflow.json",
+        origin: "shipped",
+        root_path: "bad.workflow.json",
+        action: "none",
+      },
+      {
+        relative_path: "good.workflow.json",
+        origin: "shipped",
+        root_path: "good.workflow.json",
+        action: "copy",
+      },
+      {
+        relative_path: join("shared", "workflow", "broken.workflow.json"),
+        origin: "shared",
+        root_path: "broken.workflow.json",
+        action: "open",
+      },
+      {
+        relative_path: u(join("lib", "mine.workflow.json")),
+        origin: "user",
+        root_path: join("lib", "mine.workflow.json"),
+        action: "open",
+      },
+    ]);
+  });
+
+  it("lists the writable workflow roots, the user's own first", async () => {
+    const { body } = await listWorkflows();
+    expect(body.roots).toEqual([
+      { origin: "user", relative_path: join("users", "local", "workflow") },
+      { origin: "shared", relative_path: join("shared", "workflow") },
     ]);
   });
 

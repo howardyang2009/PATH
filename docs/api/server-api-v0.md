@@ -86,7 +86,10 @@ Responses:
   `worker_defaults` entry that names an absent step type or a worker the type does not ship (ADR 0044
   launch channel, #518). `error.details` carries the validation issues, one per bad entry.
 - `404 Not Found` — `workflow_path` resolves outside the project root, or the file does not exist.
-- `403 Forbidden` — a cross-origin caller, rejected by the origin gate (§2.1) before the body is read.
+- `403 Forbidden` — a cross-origin caller, rejected by the origin gate (§2.1) before the body is read;
+  or `workflow_path` lies in the shipped workflow root, which never runs in place
+  ([ADR 0086](../adr/0086-shipped-workflows-are-copied-before-they-run.md)). The same refusal applies
+  to resume (§4.3) and complete (§4.4) of a run recorded at such a path.
 
 ### 2.1 Origin gate (CSRF, #237)
 
@@ -542,6 +545,8 @@ Response `200 OK`:
     {
       "relative_path": "users/local/workflow/release-notes.workflow.json",
       "origin": "user",
+      "root_path": "release-notes.workflow.json",
+      "action": "open",
       "id": "<uuid>",
       "name": "release-notes",
       "valid": true,
@@ -551,6 +556,8 @@ Response `200 OK`:
     {
       "relative_path": "users/local/workflow/lib/draft.workflow.json",
       "origin": "user",
+      "root_path": "lib/draft.workflow.json",
+      "action": "open",
       "id": "<uuid>",
       "name": "draft",
       "valid": true,
@@ -560,12 +567,18 @@ Response `200 OK`:
     {
       "relative_path": "shared/workflow/broken.workflow.json",
       "origin": "shared",
+      "root_path": "broken.workflow.json",
+      "action": "open",
       "id": null,
       "name": null,
       "valid": false,
       "is_root": null,
       "error": { "message": "unexpected token in JSON at position 12", "details": "..." }
     }
+  ],
+  "roots": [
+    { "origin": "user", "relative_path": "users/local/workflow" },
+    { "origin": "shared", "relative_path": "shared/workflow" }
   ]
 }
 ```
@@ -574,11 +587,16 @@ Response `200 OK`:
 | --- | --- | --- |
 | `relative_path` | string | Path relative to the project root — the **exact string** a client feeds back as §2 `workflow_path` (same resolution). The launch handle. A `shipped` row is the exception: its path is relative to the shipped root, and it is the §7.3 `shipped_path`, not a launch handle. |
 | `origin` | `"user"` \| `"shared"` \| `"shipped"` | Which root it was scanned from. |
+| `root_path` | string | The file's path inside its origin's root: where a picker places it under the origin's folder. |
+| `action` | `"open"` \| `"copy"` \| `"none"` | What a picker offers, decided by the Server: `open` a user or shared file (launch or edit it; an invalid one still opens for repair), `copy` a valid shipped file (§7.3), `none` for an invalid shipped file. `relative_path` is the handle this action takes. |
 | `id` | string \| null | The workflow's source-identity GUID (top-level `id`, ADR 0006). Best-effort shallow-parsed for an invalid file so the list stays human-legible; `null` when even the top-level parse fails. |
 | `name` | string \| null | The workflow's human `name` (same best-effort rule as `id`). |
 | `valid` | boolean | `loadWorkflowTree(f).success` — a static load + schema/ref/cycle validate that never executes a step. It is **registry-relative**: a file naming a step type this tree holds no plugin for is `false`. |
 | `is_root` | boolean \| null | `true` unreferenced; `false` reachable as another discovered workflow's nested ref; `null` when `valid: false`. |
 | `error` | object \| null | The shared error shape (§1) when `valid: false` (bad JSON, schema violation, missing ref, cycle, unknown step type, broken plugin folder); `null` otherwise. |
+
+`roots` lists the writable workflow roots by project path, the user's own first: where a new workflow
+may land. A client reads them here instead of carrying the folder layout itself.
 
 - **A file whose step-type plugin is absent is `valid: false`, not valid-but-unlaunchable**
   ([#315](https://github.com/howardyang2009/PATH/issues/315)). The set of valid leaf step types is a fact
@@ -675,13 +693,15 @@ Responses:
   ```
   The same value is returned in the `ETag` response header.
 - `400 Bad Request` — the body is not valid JSON, the envelope is malformed (`workflow_path` missing or
-  empty, `workflow` absent), or `workflow` fails `@path/schema` (including a duplicate `id`, or an
-  absent `id`). `error.details` carries the validation issues.
+  empty, `workflow` absent), `workflow_path` is a template path (§10.6), or `workflow` fails
+  `@path/schema` (including a duplicate `id`, or an absent `id`). `error.details` carries the
+  validation issues.
 - `404 Not Found` — `workflow_path` resolves outside the project root, or any component of the resolved
   path is a symlink. The write refuses to *traverse* a symlink (a per-component check), a stronger
   stance than discovery's, which only refuses to *list* one. A symlinked parent directory could
   otherwise redirect the write outside the root even when the lexical path stays inside.
-- `403 Forbidden` — a cross-origin caller, rejected by the origin gate (§2.1) before the body is read.
+- `403 Forbidden` — a cross-origin caller, rejected by the origin gate (§2.1) before the body is read;
+  or `workflow_path` lies in the shipped workflow root, which is read-only.
 - `412 Precondition Failed` — the conditional header did not hold: an `If-Match` mismatch (the file
   changed or is gone), or a create-only write (no `If-Match`) against a path that already exists.
 
@@ -734,7 +754,8 @@ Responses:
 
 - `204 No Content` — deleted, no body.
 - `400 Bad Request` — `path` is a template path.
-- `403 Forbidden` — a cross-origin caller, rejected by the origin gate (§2.1).
+- `403 Forbidden` — a cross-origin caller, rejected by the origin gate (§2.1); or `path` lies in the
+  shipped workflow root, which is read-only.
 - `404 Not Found` — the file does not exist, `path` escapes the project root, or a path component is a
   symlink (same confinement as §7).
 - `409 Conflict` — another session holds a live edit lease on the file.
@@ -751,13 +772,16 @@ Request body: `{ "shipped_path": "<relative_path of a shipped row>" }`.
 The copy unit is the file's **top-level folder** under the shipped root, so the relative refs inside
 it still resolve. A file directly under the shipped root is copied alone. Each `*.workflow.json` in
 the unit gets a fresh workflow `id` and fresh node ids (`instantiateWorkflow`); other files copy
-verbatim. The copy is **create-only**.
+verbatim. The copy is **create-only** and all or nothing: it is staged in a dot-folder of the user's
+workflow root, which discovery skips, then renamed into place, so a failed copy leaves no partial
+folder behind.
 
 Responses:
 
-- `201 Created` — `{ "relative_path": "<project-relative path of the copied file>" }`, a launch
-  handle.
-- `400 Bad Request` — the body is not `{ shipped_path }`.
+- `201 Created` — `{ "relative_path": "<project-relative path of the copied file>", "root_path":
+  "<its path inside the user's workflow root>" }`. `relative_path` is a launch handle.
+- `400 Bad Request` — the body is not `{ shipped_path }`, or a workflow file in the copy unit does not
+  parse, so nothing is copied.
 - `403 Forbidden` — a cross-origin caller, rejected by the origin gate (§2.1).
 - `404 Not Found` — `shipped_path` is not a `*.workflow.json` file under the shipped root, or escapes
   it.
@@ -844,7 +868,7 @@ The Server-owned, engine-blind authoring artifacts of the Wayfinder map
 [#563](https://github.com/howardyang2009/PATH/issues/563)). A **Template** expands into ordinary nodes
 before any run, so the engine never reads one (CONTEXT.md § Templates,
 [ADR 0048](../adr/0048-the-step-template-schema-is-an-envelope-over-a-validated-workflow-body.md)). The
-Designer reaches templates only over these routes: it lists the shipped∪user union for the palette,
+Designer reaches templates only over these routes: it lists the shipped∪shared∪user union for the palette,
 reads one to instantiate it ([ADR 0049](../adr/0049-instantiation-is-a-detached-copy-that-re-stamps-ids-and-never-rewires.md)),
 and — for author-mode editing — creates, updates, and deletes the user-writable ones. The addressing
 model, the discovery mechanism, and the write-door split are

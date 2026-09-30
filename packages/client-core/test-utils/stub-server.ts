@@ -1,4 +1,9 @@
-import { type FetchLike, PathApiClient, type WireStepPlugin } from "@path/client-core";
+import {
+  type FetchLike,
+  PathApiClient,
+  type WireStepPlugin,
+  type WorkflowRootSummary,
+} from "@path/client-core";
 import { displayStatusByRun, fromWireRunRecord, type WireRunRecord } from "@path/schema";
 
 /**
@@ -8,6 +13,12 @@ import { displayStatusByRun, fromWireRunRecord, type WireRunRecord } from "@path
  */
 
 /** The built-in registry leaf types the Designer ships editors for: `prompt` and `binary`. */
+/** The writable workflow roots a real Server lists for the default user. */
+export const DEFAULT_ROOTS: WorkflowRootSummary[] = [
+  { origin: "user", relative_path: "users/local/workflow" },
+  { origin: "shared", relative_path: "shared/workflow" },
+];
+
 export const DEFAULT_PLUGINS: WireStepPlugin[] = [
   {
     name: "binary",
@@ -130,7 +141,7 @@ export interface StubServerOptions {
    * successor. */
   onResumeRun?: (call: { rootRunId: string; body: unknown }) => Response;
   /** Body for `GET /v0/workflows` — discovery, the new-file dialog's directory source (#390).
-   * Default: empty. */
+   * Default: empty. A body without `roots` gets {@link DEFAULT_ROOTS}. */
   workflows?: unknown;
   /** Override `POST /v0/workflows/copy` per call. Default: 201, the copy under
    * `users/local/workflow/`. */
@@ -328,10 +339,14 @@ export function stubClient(options: StubServerOptions = {}): PathApiClient {
       const b = body as { shipped_path: string };
       return options.onCopy
         ? options.onCopy(b)
-        : json({ relative_path: `users/local/workflow/${b.shipped_path}` }, 201);
+        : json(
+            { relative_path: `users/local/workflow/${b.shipped_path}`, root_path: b.shipped_path },
+            201,
+          );
     }
     if (input === "/v0/workflows" && (init?.method ?? "GET") === "GET") {
-      return json(options.workflows ?? { workflows: [] }, 200);
+      const discovery = (options.workflows ?? { workflows: [] }) as Record<string, unknown>;
+      return json({ roots: DEFAULT_ROOTS, ...discovery }, 200);
     }
     if (input === "/v0/workflows" && init?.method === "PUT") {
       const ifMatch = (init.headers as Record<string, string>)?.["If-Match"] ?? null;

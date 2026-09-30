@@ -4,6 +4,7 @@ import { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import type { LoadedStepPluginRegistry, Project } from "@path/engine";
 import { describe, expect, it } from "vitest";
+import { authoredLayout } from "../src/authored-layout.js";
 import type { LiveRuns, StartRunOptions } from "../src/live-runs.js";
 import { handlePostRuns as handlePostRunsWithRequest } from "../src/routes/post-runs.js";
 import type { RouteContext } from "../src/routes/route-context.js";
@@ -70,6 +71,7 @@ function context(live: LiveRuns): RouteContext {
     project: { dir: fixturesDir } as unknown as Project,
     live,
     stepPlugins: {} as unknown as LoadedStepPluginRegistry,
+    layout: authoredLayout({ projectDir: fixturesDir }),
   };
 }
 
