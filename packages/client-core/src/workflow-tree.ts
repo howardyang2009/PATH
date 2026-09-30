@@ -42,13 +42,17 @@ export function parentFolderPath(path: string): string | null {
 export const ORIGIN_FOLDER: Record<WorkflowSummary["origin"], string> = {
   user: "mine",
   shared: "shared",
+  shipped: "shipped",
 };
 
 /** `users/<user-id>/workflow/` or `shared/workflow/`: the authored root a path starts with. */
 const AUTHORED_ROOT = /^(?:users\/[^/]+|shared)\/workflow\//;
 
-/** A workflow's place in the tree: its origin's folder, then its path inside that origin's root. */
-export function workflowTreePath(workflow: WorkflowSummary): string {
+/** A workflow's place in the tree: its origin's folder, then its path inside that origin's root. A
+ * shipped `relative_path` is already relative to its root. */
+export function workflowTreePath(
+  workflow: Pick<WorkflowSummary, "origin" | "relative_path">,
+): string {
   return `${ORIGIN_FOLDER[workflow.origin]}/${workflow.relative_path.replace(AUTHORED_ROOT, "")}`;
 }
 

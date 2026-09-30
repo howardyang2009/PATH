@@ -6,15 +6,18 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { type PathServerHandle, startPathServer } from "../src/create-server.js";
 
 let projectDir: string;
+let shippedDir: string;
 let handle: PathServerHandle;
 
 beforeEach(() => {
   projectDir = mkdtempSync(join(tmpdir(), "path-workflows-test-"));
+  shippedDir = mkdtempSync(join(tmpdir(), "path-workflows-shipped-"));
 });
 
 afterEach(async () => {
   if (handle) await handle.close();
   rmSync(projectDir, { recursive: true, force: true });
+  rmSync(shippedDir, { recursive: true, force: true });
 });
 
 let idCounter = 0;
@@ -47,7 +50,15 @@ function write(relPath: string, content: string): void {
 }
 
 async function listWorkflows(): Promise<{ status: number; body: ListWorkflowsResponse }> {
-  handle = await startPathServer(projectDir);
+  handle = await startPathServer(
+    projectDir,
+    0,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    shippedDir,
+  );
   const res = await fetch(`${handle.url}/v0/workflows`);
   return { status: res.status, body: (await res.json()) as ListWorkflowsResponse };
 }
@@ -163,6 +174,25 @@ describe("GET /v0/workflows", () => {
       [u("mine.workflow.json"), "user"],
       [join("shared", "workflow", "team", "ours.workflow.json"), "shared"],
     ]);
+  });
+
+  it("lists shipped workflows relative to the shipped root, flagging their nested refs", async () => {
+    mkdirSync(join(shippedDir, "notes"));
+    writeFileSync(
+      join(shippedDir, "notes", "main.workflow.json"),
+      workflow("main", ["./child.workflow.json"]),
+    );
+    writeFileSync(join(shippedDir, "notes", "child.workflow.json"), workflow("child"));
+
+    const wf = byPath((await listWorkflows()).body);
+    expect(wf.get(join("notes", "main.workflow.json"))).toMatchObject({
+      origin: "shipped",
+      is_root: true,
+    });
+    expect(wf.get(join("notes", "child.workflow.json"))).toMatchObject({
+      origin: "shipped",
+      is_root: false,
+    });
   });
 
   it("still flags a user workflow that a shared one refs as nested", async () => {

@@ -11,10 +11,13 @@ import {
   isFolderOnOpenChain,
   nextOpenFolder,
   ORIGIN_FOLDER,
+  parentFolderPath,
   workflowBaseName,
+  workflowTreePath,
 } from "@path/client-core";
 import { useMemo, useState } from "react";
 import { LaunchForm } from "./launch-form.js";
+import { errorMessage } from "./load-state.js";
 import { PaneError, PaneLoading } from "./pane-note.js";
 import { useResource } from "./use-resource.js";
 
@@ -73,7 +76,7 @@ export function LaunchPanel({ client, onLaunched }: LaunchPanelProps) {
   const [openFolder, setOpenFolder] = useState<string | null>(ORIGIN_FOLDER.user);
   const [filter, setFilter] = useState<WorkflowFilter>("all");
 
-  const { load: state } = useResource(
+  const { load: state, refetch } = useResource(
     () => client.listWorkflows().then((res) => res.workflows),
     [client],
   );
@@ -98,6 +101,13 @@ export function LaunchPanel({ client, onLaunched }: LaunchPanelProps) {
   const toggleFolder = (path: string): void => setOpenFolder((prev) => nextOpenFolder(prev, path));
   const toggleFile = (path: string): void =>
     setExpanded((current) => (current === path ? null : path));
+  // A copy lands in the user's folder: re-scan, then open its folder and its launch form.
+  const showCopy = (relativePath: string): void => {
+    refetch();
+    const treePath = workflowTreePath({ origin: "user", relative_path: relativePath });
+    setOpenFolder(parentFolderPath(treePath));
+    setExpanded(relativePath);
+  };
 
   return (
     <div className="launch-panel">
@@ -139,6 +149,7 @@ export function LaunchPanel({ client, onLaunched }: LaunchPanelProps) {
             expanded={expanded}
             onToggleFile={toggleFile}
             onLaunched={onLaunched}
+            onCopied={showCopy}
             isFolderOpen={isFolderOpen}
             onToggleFolder={toggleFolder}
           />
@@ -166,6 +177,7 @@ function WorkflowTree({
   expanded,
   onToggleFile,
   onLaunched,
+  onCopied,
   isFolderOpen,
   onToggleFolder,
 }: {
@@ -176,6 +188,7 @@ function WorkflowTree({
   expanded: string | null;
   onToggleFile: (path: string) => void;
   onLaunched: (rootRunId: string) => void;
+  onCopied: (relativePath: string) => void;
   isFolderOpen: (path: string) => boolean;
   onToggleFolder: (path: string) => void;
 }) {
@@ -199,6 +212,7 @@ function WorkflowTree({
                 expanded={expanded}
                 onToggleFile={onToggleFile}
                 onLaunched={onLaunched}
+                onCopied={onCopied}
                 isFolderOpen={isFolderOpen}
                 onToggleFolder={onToggleFolder}
               />
@@ -213,7 +227,9 @@ function WorkflowTree({
               onToggle={() => onToggleFile(node.workflow.relative_path)}
             />
             {expanded === node.workflow.relative_path &&
-              (node.workflow.valid ? (
+              (node.workflow.valid && node.workflow.origin === "shipped" ? (
+                <CopyShipped client={client} workflow={node.workflow} onCopied={onCopied} />
+              ) : node.workflow.valid ? (
                 <LaunchForm
                   key={node.workflow.relative_path}
                   client={client}
@@ -242,6 +258,58 @@ function WorkflowTree({
         ),
       )}
     </ul>
+  );
+}
+
+/**
+ * A shipped workflow's expansion (ADR 0086): it is read-only and never launched in place, so it
+ * offers one action, a copy into the user's own folder. A `409` means a copy already exists.
+ */
+function CopyShipped({
+  client,
+  workflow,
+  onCopied,
+}: {
+  client: PathApiClient;
+  workflow: WorkflowSummary;
+  onCopied: (relativePath: string) => void;
+}) {
+  const [phase, setPhase] = useState<"idle" | "sending" | { error: string }>("idle");
+  const copy = (): void => {
+    setPhase("sending");
+    client.copyShippedWorkflow(workflow.relative_path).then(
+      ({ relativePath }) => onCopied(relativePath),
+      (error: unknown) => setPhase({ error: errorMessage(error) }),
+    );
+  };
+  const testId = `copy-${workflow.relative_path}`;
+
+  return (
+    <div className="launch-form" data-testid={`${testId}-form`}>
+      <p className="pane-note">
+        Shipped workflows are read-only. Copy it to your folder to launch it.
+      </p>
+      <div className="launch-actions">
+        <button
+          type="button"
+          className="launch-submit"
+          data-testid={`${testId}-submit`}
+          disabled={phase === "sending"}
+          onClick={copy}
+        >
+          {phase === "sending" ? "Copying…" : "Copy to mine"}
+        </button>
+      </div>
+      {typeof phase === "object" && (
+        <p
+          className="pane-note pane-error launch-error"
+          data-testid={`${testId}-error`}
+          role="alert"
+        >
+          {phase.error}
+        </p>
+      )}
+    </div>
   );
 }
 

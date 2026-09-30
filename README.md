@@ -64,7 +64,7 @@ pnpm serve
 This builds both consoles and starts `path-server` on <http://localhost:8080>. The viewer lives at
 `/viewer/` (bare `/` redirects there), and the designer at `/designer/`. The consoles list only the
 workflows under `users/local/workflow/` and `shared/workflow/`, so move `hello.workflow.json` into one of
-them to see it there. For UI work, run
+them to see it there. They also list the shipped workflows; **Copy to mine** puts one in your folder. For UI work, run
 `pnpm --filter @path/viewer run dev` or `pnpm --filter @path/designer run dev` instead; each dev
 server proxies API calls to a running `path-server`.
 
@@ -74,7 +74,8 @@ server proxies API calls to a running `path-server`.
 packages/
   schema/                   the domain: the workflow format, its zod schemas, the plugin registry factory
   engine/                   the runner and the `path` CLI; leaf step types live in plugin/step-plugin/
-  server/                   the HTTP + SSE API and the `path-server` bin that serves both consoles
+  server/                   the HTTP + SSE API and the `path-server` bin that serves both consoles;
+                            shipped/ holds the workflows and templates every project sees
   client-core/              the framework-free API client both consoles share
   viewer/                   the React run console
   designer/                 the React authoring console

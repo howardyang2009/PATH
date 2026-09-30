@@ -14,6 +14,7 @@ import type {
   StartRunRequest,
   StartRunResponse,
   StepPluginsResponse,
+  WireCopyWorkflowResponse,
   WireLeaseOpRequest,
   WireLockHeldBody,
   WireLockRequest,
@@ -182,6 +183,19 @@ export interface WorkflowFileRaw {
 
 export function listWorkflows(http: HttpTransport): Promise<ListWorkflowsResponse> {
   return http.requestJson<ListWorkflowsResponse>("/v0/workflows");
+}
+
+/** `POST /v0/workflows/copy` (server-api-v0.md §7.3, ADR 0086): copy a shipped workflow into the
+ * user's own folder; the reply names the copy's project-relative path. */
+export async function copyShippedWorkflow(
+  http: HttpTransport,
+  shippedPath: string,
+): Promise<{ relativePath: string }> {
+  const reply = await http.requestJson<WireCopyWorkflowResponse>("/v0/workflows/copy", {
+    method: "POST",
+    body: { shipped_path: shippedPath },
+  });
+  return { relativePath: reply.relative_path };
 }
 
 export function getStepPlugins(http: HttpTransport): Promise<StepPluginsResponse> {
@@ -462,6 +476,12 @@ export class PathApiClient {
    */
   listWorkflows(): Promise<ListWorkflowsResponse> {
     return listWorkflows(this.http);
+  }
+
+  /** `POST /v0/workflows/copy` — copy a shipped workflow (a `shipped` row's `relative_path`) into
+   * the user's own folder. Create-only: an existing copy is a `409`. */
+  copyShippedWorkflow(shippedPath: string): Promise<{ relativePath: string }> {
+    return copyShippedWorkflow(this.http, shippedPath);
   }
 
   /** `GET /v0/templates` — the shipped∪user authoring-template union (server-api-v0.md §10.1, ADR

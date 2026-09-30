@@ -60,13 +60,24 @@ function stubClient(opts: {
   stepPlugins?: unknown;
   startResponse?: unknown;
   startStatus?: number;
+  /** A `POST /v0/workflows/copy` status and body; a 201 then adds `copied` to the listing. */
+  copy?: { status: number; body: unknown; copied?: WorkflowSummary };
 }): { client: PathApiClient; calls: Recorded[] } {
   const calls: Recorded[] = [];
+  let workflows = opts.workflows;
   const fetch: FetchLike = async (url, init) => {
     const method = init?.method ?? "GET";
     calls.push({ method, url, body: init?.body ? JSON.parse(init.body as string) : undefined });
+    if (url === "/v0/workflows/copy" && opts.copy) {
+      const { status, body, copied } = opts.copy;
+      if (copied) workflows = [...workflows, copied];
+      return new Response(JSON.stringify(body), {
+        status,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
     if (url === "/v0/workflows") {
-      return new Response(JSON.stringify({ workflows: opts.workflows }), {
+      return new Response(JSON.stringify({ workflows }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
       });
@@ -404,5 +415,57 @@ describe("LaunchPanel", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("workflow validation failed");
     expect(screen.getByTestId("launch-input")).toBeInTheDocument();
     expect(onLaunched).not.toHaveBeenCalled();
+  });
+  describe("shipped workflows", () => {
+    const SHIPPED: WorkflowSummary = {
+      relative_path: "notes/main.workflow.json",
+      origin: "shipped",
+      id: "5a1e",
+      name: "main",
+      valid: true,
+      is_root: true,
+      error: null,
+    };
+    const COPY: WorkflowSummary = {
+      ...SHIPPED,
+      relative_path: "users/local/workflow/notes/main.workflow.json",
+      origin: "user",
+      id: "c0p1",
+    };
+
+    it("offers a copy instead of a launch, then opens the copy's launch form", async () => {
+      const { client, calls } = stubClient({
+        workflows: [SHIPPED],
+        copy: { status: 201, body: { relative_path: COPY.relative_path }, copied: COPY },
+      });
+      mount(client);
+
+      fireEvent.click(await screen.findByTestId("workflow-folder-shipped"));
+      fireEvent.click(screen.getByTestId("workflow-folder-shipped/notes"));
+      fireEvent.click(screen.getByTestId(`workflow-row-${SHIPPED.relative_path}`));
+      expect(screen.queryByTestId(`launch-form-${SHIPPED.relative_path}`)).toBeNull();
+
+      fireEvent.click(screen.getByTestId(`copy-${SHIPPED.relative_path}-submit`));
+      expect(await screen.findByTestId(`launch-form-${COPY.relative_path}`)).toBeInTheDocument();
+      expect(calls.find((c) => c.url === "/v0/workflows/copy")?.body).toEqual({
+        shipped_path: SHIPPED.relative_path,
+      });
+    });
+
+    it("shows the server's refusal when a copy already exists", async () => {
+      const { client } = stubClient({
+        workflows: [SHIPPED],
+        copy: { status: 409, body: { error: { message: "already exists" } } },
+      });
+      mount(client);
+
+      fireEvent.click(await screen.findByTestId("workflow-folder-shipped"));
+      fireEvent.click(screen.getByTestId("workflow-folder-shipped/notes"));
+      fireEvent.click(screen.getByTestId(`workflow-row-${SHIPPED.relative_path}`));
+      fireEvent.click(screen.getByTestId(`copy-${SHIPPED.relative_path}-submit`));
+      expect(await screen.findByTestId(`copy-${SHIPPED.relative_path}-error`)).toHaveTextContent(
+        "already exists",
+      );
+    });
   });
 });

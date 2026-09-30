@@ -147,4 +147,5 @@ export {
   type WorkflowTreeLeaf,
   type WorkflowTreeNode,
   workflowBaseName,
+  workflowTreePath,
 } from "./workflow-tree.js";

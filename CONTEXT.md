@@ -624,11 +624,18 @@ Rule of thumb: **Config flows in from outside. Context is written from inside.**
   from a **root run** (an execution's top run) and from the implicit **root step**. Workflow discovery
   scans only the authored workflow roots, `users/<user-id>/workflow/` and `shared/workflow/`
   ([ADR 0085](https://github.com/howardyang2009/PATH/blob/main/docs/adr/0085-discovery-lists-only-the-authored-workflow-roots.md)),
-  tags each file with its `origin`, lists *both* kinds and flags each as root or nested. It reports existence, validity, and root-ness. It
+  plus the Server's shipped workflows, tags each file with its `origin`, lists *both* kinds and flags
+  each as root or nested. It reports existence, validity, and root-ness. It
   promises nothing about standalone launch-readiness (ADR 0011, server-api-v0.md §6). The validity it
   reports is **registry-relative** (Step-type plugins): a file naming a step type this tree holds no
   plugin for is reported **invalid**, not valid-but-unlaunchable, because it is invalid against the only
   registry this tree has (#315).
+- **Shipped workflow** — a read-only `*.workflow.json` the Server ships under
+  `packages/server/shipped/workflow/`, listed with `origin: "shipped"`. It is a starting point, not a
+  Workflow-Template: it is never launched or edited in place. **Copy** puts its top-level folder (or the
+  file alone, when it sits directly under the shipped root) into `users/<user-id>/workflow/` with fresh
+  ids, and the copy is an ordinary user workflow
+  ([ADR 0086](https://github.com/howardyang2009/PATH/blob/main/docs/adr/0086-shipped-workflows-are-copied-before-they-run.md)).
 
 ## Resume
 

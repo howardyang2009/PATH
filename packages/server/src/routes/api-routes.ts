@@ -16,6 +16,7 @@ import { handleGetWorkflows } from "./get-workflows.js";
 import { handleListRuns } from "./list-runs.js";
 import { handlePostRuns } from "./post-runs.js";
 import { handlePostTemplates } from "./post-templates.js";
+import { handlePostWorkflowCopy } from "./post-workflow-copy.js";
 import { handlePutTemplate } from "./put-template.js";
 import { handlePutWorkflow } from "./put-workflow.js";
 import { handleResumeRun } from "./resume-run.js";
@@ -64,6 +65,7 @@ const API_ROUTES: readonly ApiRoute[] = [
   { method: "PUT", path: "/v0/workflows", handle: handlePutWorkflow },
   { method: "GET", path: "/v0/workflows/file", handle: handleGetWorkflowFile },
   { method: "DELETE", path: "/v0/workflows/file", handle: handleDeleteWorkflow },
+  { method: "POST", path: "/v0/workflows/copy", handle: handlePostWorkflowCopy },
   { method: "POST", path: "/v0/workflows/lock", handle: handleWorkflowLock },
   { method: "POST", path: "/v0/workflows/lock/heartbeat", handle: handleWorkflowLockHeartbeat },
   { method: "POST", path: "/v0/workflows/lock/release", handle: handleWorkflowLockRelease },

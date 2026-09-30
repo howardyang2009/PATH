@@ -19,8 +19,8 @@ const PostTemplateBodySchema = z
 
 /**
  * `POST /v0/templates` (server-api-v0.md §10.3): **create-only** save-as into
- * `users/<user-id>/template/` alone. The client mints the envelope `id` and the server writes it verbatim, never to a shipped
- * path. A name that already exists is a `409`; content changes go through `PUT` (§10.4).
+ * `users/<user-id>/template/` alone. The client mints the envelope `id` and the server writes it
+ * verbatim, never to a shipped path. A name that already exists is a `409`; content changes go through `PUT` (§10.4).
  */
 export async function handlePostTemplates({ req, res, ctx }: ApiRequest): Promise<void> {
   const body = await readRequestBody(req, res, PostTemplateBodySchema);

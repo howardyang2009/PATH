@@ -22,7 +22,11 @@ export function useWorkflowDiscovery(
   client: PathApiClient,
   savePhase: SaveState["phase"],
 ): DiscoveryLoad {
-  const listWorkflows = useCallback(async () => (await client.listWorkflows()).workflows, [client]);
+  // A shipped workflow is copied from the Viewer, never opened or ref'd in place (ADR 0086).
+  const listWorkflows = useCallback(
+    async () => (await client.listWorkflows()).workflows.filter((w) => w.origin !== "shipped"),
+    [client],
+  );
   const load = useScanOnSave(listWorkflows, savePhase, RESCAN_ON);
   // Mapped once per scan result, so a consumer keyed on this object does not re-run every render.
   return useMemo(() => {

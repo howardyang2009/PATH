@@ -265,6 +265,7 @@ export {
   toRootRunSummary,
   toWireLaunchFacts,
   toWireRunRecord,
+  type WireCopyWorkflowResponse,
   type WireError,
   type WireLaunchFacts,
   type WireLeaseOpRequest,

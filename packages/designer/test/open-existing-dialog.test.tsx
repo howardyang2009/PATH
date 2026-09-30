@@ -48,6 +48,23 @@ const FILES = {
 };
 
 describe("open existing — empty-canvas entry point", () => {
+  it("leaves shipped workflows out of the picker", async () => {
+    const shipped = { ...row("notes/main.workflow.json"), origin: "shipped" };
+    render(
+      <App
+        client={stubClient({
+          files: FILES,
+          workflows: { workflows: [...DISCOVERY.workflows, shipped] },
+        })}
+      />,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "Open workflow" }));
+    const dialog = await screen.findByRole("dialog", { name: "Open a workflow" });
+    await within(dialog).findByRole("button", { name: /mine/ });
+    expect(within(dialog).queryByRole("button", { name: /shipped/ })).toBeNull();
+  });
+
   it("offers Open workflow beside New workflow on the empty canvas", async () => {
     render(<App client={stubClient()} />);
     expect(await screen.findByRole("button", { name: "Open workflow" })).toBeInTheDocument();

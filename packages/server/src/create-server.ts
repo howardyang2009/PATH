@@ -100,6 +100,7 @@ export async function startPathServer(
   designerStaticDir: string = DEFAULT_DESIGNER_STATIC_DIR,
   stepPlugins?: LoadedStepPluginRegistry,
   shippedTemplateDir?: string,
+  shippedWorkflowDir?: string,
 ): Promise<PathServerHandle> {
   // Scan the plugin folder (server-api-v0.md §8) before `openProject`, so a broken folder throws
   // without leaving an opened db handle behind; a thrown error skips the handle that would close
@@ -115,7 +116,13 @@ export async function startPathServer(
   const absStaticDir = resolve(staticDir);
   const absDesignerStaticDir = resolve(designerStaticDir);
   const live = createLiveRuns(project);
-  const ctx: RouteContext = { project, live, stepPlugins: registry, shippedTemplateDir };
+  const ctx: RouteContext = {
+    project,
+    live,
+    stepPlugins: registry,
+    shippedTemplateDir,
+    shippedWorkflowDir,
+  };
   const server = createServer((req, res) => {
     handleRequest(req, res, ctx, absStaticDir, absDesignerStaticDir).catch((err) => {
       console.error(`unhandled request error: ${err instanceof Error ? err.stack : String(err)}`);

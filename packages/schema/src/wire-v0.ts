@@ -174,6 +174,11 @@ export interface WirePutWorkflowResponse {
   etag: string;
 }
 
+/** `POST /v0/workflows/copy` reply (server-api-v0.md §7.3): where the copied workflow now lives. */
+export interface WireCopyWorkflowResponse {
+  relative_path: string;
+}
+
 /** The shared error envelope for every non-2xx response (server-api-v0.md §1). */
 export interface WireError {
   error: {
@@ -188,8 +193,9 @@ export interface WireError {
  */
 export interface WorkflowSummary {
   relative_path: string;
-  /** Which authored root it was scanned from (ADR 0085). */
-  origin: "shared" | "user";
+  /** Which root it was scanned from (ADR 0085, ADR 0086). A `shipped` row's `relative_path` is
+   * relative to the shipped root: a Copy handle, not a launch handle. */
+  origin: "shipped" | "shared" | "user";
   id: string | null;
   name: string | null;
   valid: boolean;
