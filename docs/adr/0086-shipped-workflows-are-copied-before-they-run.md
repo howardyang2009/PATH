@@ -33,8 +33,9 @@ moves or updates. And a sample usually needs edits (provider, input, config) bef
    under the shipped root, and Copy moves that whole folder, so relative refs still resolve (a copy
    never rewires, ADR 0049). A file directly under the shipped root has no refs and is copied alone. A
    test pins both rules and that every shipped workflow loads valid.
-5. **The Viewer offers Copy to mine** on a shipped row, then opens the copy's launch form. The
-   Designer leaves shipped rows out of its pickers.
+5. **The Viewer and the Designer offer Copy to mine** on a shipped row. The Viewer then opens the
+   copy's launch form; the Designer's Open picker opens the copy on the canvas. The Designer's other
+   pickers (ref target, new-file directory) and its problems pass leave shipped rows out.
 6. **`examples/` is removed.** `w1` and `w2` become `release-notes/release-notes.workflow.json` and
    `release-notes/revise.workflow.json`; `jira-workflow.workflow.json` stays a single file.
 
@@ -44,4 +45,3 @@ moves or updates. And a sample usually needs edits (provider, input, config) bef
 - A second copy of the same shipped workflow is refused. The user renames or deletes the first copy.
 - The CLI still runs a shipped file by path, for example
   `pnpm path run packages/server/shipped/workflow/release-notes/release-notes.workflow.json`.
-- Copy to mine in the Designer is not part of this change.

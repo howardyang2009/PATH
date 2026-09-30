@@ -634,7 +634,8 @@ Rule of thumb: **Config flows in from outside. Context is written from inside.**
   `packages/server/shipped/workflow/`, listed with `origin: "shipped"`. It is a starting point, not a
   Workflow-Template: it is never launched or edited in place. **Copy** puts its top-level folder (or the
   file alone, when it sits directly under the shipped root) into `users/<user-id>/workflow/` with fresh
-  ids, and the copy is an ordinary user workflow
+  ids, from the Viewer's workflow list or the Designer's Open picker, and the copy is an ordinary user
+  workflow
   ([ADR 0086](https://github.com/howardyang2009/PATH/blob/main/docs/adr/0086-shipped-workflows-are-copied-before-they-run.md)).
 
 ## Resume
