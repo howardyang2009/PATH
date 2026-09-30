@@ -1,0 +1,23 @@
+{
+  "format": "path/workflow@6",
+  "id": "a0955148-acac-4c70-84ba-8522be373575",
+  "description": "git get last several commits",
+  "body": [
+    {
+      "id": "a728c16b-baef-40f2-9f11-2b88ac95e63e",
+      "name": "gather-changes",
+      "publish": {
+        "raw_changes": "${output}"
+      },
+      "command": "git",
+      "args": [
+        "log",
+        "--stat",
+        "--no-color",
+        "${config.commit_range}"
+      ],
+      "cwd": "${config.repo_path}",
+      "type": "binary"
+    }
+  ]
+}
