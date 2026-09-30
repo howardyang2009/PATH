@@ -296,7 +296,7 @@ export function stubClient(options: StubServerOptions = {}): PathApiClient {
         return json(
           {
             id: created.id,
-            relative_path: `.path/template/step-template/${name}.step-template.json`,
+            relative_path: `users/local/template/${name}.step-template.json`,
             etag: '"created"',
           },
           201,

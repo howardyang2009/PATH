@@ -480,8 +480,8 @@ export class PathApiClient {
   }
 
   /** `POST /v0/templates` — save-as (server-api-v0.md §10.3, ADR 0050): create a **user** template
-   * under `.path/template/`, the client minting the `id` inside `body`. Create-only: an existing
-   * name is a `409`.
+   * under `users/<user-id>/template/`, the client minting the `id` inside `body`. Create-only: an
+   * existing name is a `409`.
    */
   createTemplate(input: CreateTemplateInput): Promise<TemplateWriteResult> {
     return createTemplate(this.http, input);

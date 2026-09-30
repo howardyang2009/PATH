@@ -208,7 +208,7 @@ export interface TemplateSummary {
   name: string;
   description: string;
   kind: "step";
-  origin: "shipped" | "user";
+  origin: "shipped" | "shared" | "user";
   read_only: boolean;
   valid: boolean;
   error: WireError["error"] | null;

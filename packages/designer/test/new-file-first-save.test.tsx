@@ -71,9 +71,10 @@ describe("first-save placement dialog", () => {
     // text.
     expect(within(dialog).getByLabelText("Filename")).toHaveValue("untitled");
     expect(within(dialog).getByText(".workflow.json")).toBeInTheDocument();
-    // The directory picker defaults to the project root and offers the discovered subdirectory.
+    // The directory picker defaults to the user's own workflow folder and offers the project root
+    // and the discovered subdirectory.
     const directory = within(dialog).getByLabelText<HTMLSelectElement>("Directory");
-    expect(directory.value).toBe("");
+    expect(directory.value).toBe("users/local/workflow");
     expect(within(dialog).getByRole("option", { name: "(project root)" })).toBeInTheDocument();
     await waitFor(() =>
       expect(within(dialog).getByRole("option", { name: "flows" })).toBeInTheDocument(),

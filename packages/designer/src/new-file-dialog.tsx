@@ -2,6 +2,10 @@ import { useMemo, useState } from "react";
 import { type DiscoveryLoad, discoveredWorkflows } from "./discovery.js";
 import type { SaveAsResult } from "./use-open-file.js";
 
+/** Where a new workflow lands by default: the one user's own folder, until the Server knows who is
+ * asking (ADR 0084). */
+export const DEFAULT_WORKFLOW_DIRECTORY = "users/local/workflow";
+
 /**
  * The first-save dialog for a from-scratch buffer (designer-spec § New-file placement and naming):
  * placement is decided here, at the first save, as an exclusive create — an existing path is
@@ -13,7 +17,7 @@ export function NewFileDialog({
   discovery,
   workflowName,
   title = "Save new workflow",
-  initialDirectory = "",
+  initialDirectory = DEFAULT_WORKFLOW_DIRECTORY,
   create,
   onCreated,
   onCancel,
@@ -24,7 +28,8 @@ export function NewFileDialog({
   workflowName: string;
   /** The dialog title; workflow-mode Save as… passes "Save workflow as". */
   title?: string;
-  /** The preselected directory; Save as… starts in the source file's directory. */
+  /** The preselected directory; a new file starts in the user folder, Save as… in the source
+   * file's directory. */
   initialDirectory?: string;
   /** Run the exclusive create against the composed path; the dialog reads its outcome. */
   create: (targetPath: string) => Promise<SaveAsResult>;
