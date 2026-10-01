@@ -1,4 +1,4 @@
-import type { WorkflowTreeFolder, WorkflowTreeNode } from "@path/client-core";
+import type { WorkflowTreeNode } from "@path/client-core";
 import {
   buildWorkflowTree,
   countWorkflowLeaves,
@@ -95,7 +95,7 @@ export function OpenWorkflowDialog({
 
 /** The left indent of one tree row at `depth`, in px — a folder step per level, over the row's base
  * pad. */
-function indent(depth: number): React.CSSProperties {
+export function indent(depth: number): React.CSSProperties {
   return { paddingLeft: 8 + depth * 14 };
 }
 
@@ -128,7 +128,8 @@ function WorkflowTree({
         node.kind === "folder" ? (
           <li key={`dir:${node.path}`}>
             <FolderRow
-              folder={node}
+              name={node.name}
+              count={countWorkflowLeaves(node)}
               depth={depth}
               open={isFolderOnOpenChain(openFolder, node.path)}
               onToggle={() => onToggleFolder(node.path)}
@@ -191,13 +192,16 @@ function WorkflowTree({
 
 /** One folder in the tree: a navigation step. Clicking it walks in (expands its level) or back
  * out. */
-function FolderRow({
-  folder,
+export function FolderRow({
+  name,
+  count,
   depth,
   open,
   onToggle,
 }: {
-  folder: WorkflowTreeFolder;
+  name: string;
+  /** The number of files anywhere under the folder. */
+  count: number;
   depth: number;
   open: boolean;
   onToggle: () => void;
@@ -213,8 +217,8 @@ function FolderRow({
       <span className="workflow-folder-chevron" aria-hidden="true">
         {open ? "▾" : "▸"}
       </span>
-      <span className="workflow-folder-name">{folder.name}</span>
-      <span className="workflow-folder-count">{countWorkflowLeaves(folder)}</span>
+      <span className="workflow-folder-name">{name}</span>
+      <span className="workflow-folder-count">{count}</span>
     </button>
   );
 }

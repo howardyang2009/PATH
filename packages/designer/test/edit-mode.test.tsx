@@ -275,6 +275,22 @@ describe("Workflow | Template edit-mode switch", () => {
     expect(calls.templateWrites[0]!.body).toMatchObject({ name: "gate", folder: "team/new" });
   });
 
+  it("Open… in template mode groups templates into the origin and subfolder tree", async () => {
+    renderApp();
+    await switchTo("Template");
+    fireEvent.click(screen.getByRole("button", { name: "Open…" }));
+
+    const dialog = await screen.findByRole("dialog", { name: "Open a template" });
+    // The user's templates start open: the top-level file shows, the nested one waits in its folder.
+    await within(dialog).findByRole("button", { name: /nightly\.step-template\.json/ });
+    expect(within(dialog).queryByRole("button", { name: /deep\.step-template\.json/ })).toBeNull();
+    fireEvent.click(within(dialog).getByRole("button", { name: /team/ }));
+    fireEvent.click(within(dialog).getByRole("button", { name: /gates/ }));
+    expect(
+      await within(dialog).findByRole("button", { name: /deep\.step-template\.json/ }),
+    ).toBeInTheDocument();
+  });
+
   it("Open… in template mode lists templates and opens the chosen one", async () => {
     renderApp();
     await switchTo("Template");
