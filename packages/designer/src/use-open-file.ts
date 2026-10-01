@@ -40,6 +40,7 @@ export {
   frameHasUnsavedWork,
   openedResultOf,
   planDelete,
+  planDownload,
 } from "./session-reducer.js";
 
 /**

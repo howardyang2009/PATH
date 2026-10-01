@@ -315,3 +315,17 @@ export function planDelete(state: PlanState): DeletePlan | null {
   if (!frame.written || frame.path === null || frame.etag === null) return null;
   return { kind: "workflow", path: frame.path, ifMatch: frame.etag };
 }
+
+// ── Download ────────────────────────────────────────────────────────────────────────────────────
+
+/** What the Download button would save, or `null`: the **active** frame's saved file. A workflow
+ * goes by its path (a zip when it refs other workflows), a template by id. A never-saved buffer has
+ * no file to download. */
+export type DownloadPlan = { kind: "workflow"; path: string } | { kind: "template"; id: string };
+
+export function planDownload(state: PlanState): DownloadPlan | null {
+  const frame = state.frames[state.activeIndex];
+  if (frame?.state.phase !== "open") return null;
+  if (frame.template) return { kind: "template", id: frame.template.id };
+  return frame.path === null ? null : { kind: "workflow", path: frame.path };
+}

@@ -194,6 +194,8 @@ export function EditingToolbar({
   onSaveAs,
   canDelete,
   onDelete,
+  canDownload,
+  onDownload,
   lease,
   onTakeover,
   onReacquire,
@@ -224,6 +226,11 @@ export function EditingToolbar({
   canDelete: boolean;
   /** Delete the open workflow or template from disk, after the author confirms. */
   onDelete: () => void;
+  /** Has the active frame a saved file to download? A new, never-saved buffer has none. */
+  canDownload: boolean;
+  /** Download the active frame's saved file: a workflow (zipped with the files it refs) or a
+   * template. */
+  onDownload: () => void;
   /** The active file's lease state, or `undefined` before it is known. */
   lease: LeaseState | undefined;
   onTakeover: () => void;
@@ -286,6 +293,15 @@ export function EditingToolbar({
         disabled={saving || !canDelete}
       >
         {saveState.phase === "deleting" ? "Deleting…" : "Delete"}
+      </button>
+      <button
+        type="button"
+        className="toolbar-btn"
+        onClick={onDownload}
+        disabled={!canDownload}
+        title={canDownload ? "Download the saved file" : "Save first"}
+      >
+        Download
       </button>
       <LeaseBanner lease={lease} onTakeover={onTakeover} onReacquire={onReacquire} />
     </div>

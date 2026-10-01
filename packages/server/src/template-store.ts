@@ -7,7 +7,12 @@ import {
   type TemplateSummary,
   type WireError,
 } from "@path/schema";
-import { conditionalWrite, PRECONDITION_FAILED, removeArtifact } from "./artifact-file.js";
+import {
+  conditionalWrite,
+  PRECONDITION_FAILED,
+  readArtifact,
+  removeArtifact,
+} from "./artifact-file.js";
 import { AUTHORED_SUFFIX, type AuthoredLayout, type AuthoredOrigin } from "./authored-layout.js";
 import { strongEtag } from "./etag.js";
 
@@ -77,6 +82,9 @@ export interface TemplateStore {
    * hand-copy of a shipped id resolves to the shipped entry. Malformed, id-less entries are absent.
    */
   readonly byId: ReadonlyMap<string, TemplateEntry>;
+  /** The on-disk bytes of the template `id` names, shipped included, and the file name they save
+   * as; `undefined` for an unknown id. */
+  download(id: string): { fileName: string; bytes: Buffer } | undefined;
   /** The user entry `id` names, for a door that changes one. */
   writable(id: string): WritableTemplate;
   /** Create a user template under `name`; the name is the file stem, so this door never renames.
@@ -200,6 +208,13 @@ export function discoverTemplates(
   return {
     entries: located,
     byId,
+    download(id) {
+      const entry = byId.get(id);
+      const bytes = entry === undefined ? undefined : readArtifact(entry.absPath);
+      return entry === undefined || bytes === undefined
+        ? undefined
+        : { fileName: `${entry.name}${SUFFIX}`, bytes };
+    },
     writable(id) {
       const found = locate(id);
       return found.ok ? { ok: true, entry: found.entry } : found;

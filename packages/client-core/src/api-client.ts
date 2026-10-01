@@ -198,6 +198,36 @@ export async function copyShippedWorkflow(
   return { relativePath: reply.relative_path, rootPath: reply.root_path };
 }
 
+/** A file the server sent for saving: its name from `Content-Disposition`, and its bytes. */
+export interface DownloadedFile {
+  fileName: string;
+  blob: Blob;
+}
+
+function fileNameOf(headers: Headers, fallback: string): string {
+  const disposition = headers.get("Content-Disposition") ?? "";
+  const encoded = /filename\*=UTF-8''([^;]+)/i.exec(disposition)?.[1];
+  if (encoded !== undefined) return decodeURIComponent(encoded);
+  return /filename="([^"]*)"/i.exec(disposition)?.[1] ?? fallback;
+}
+
+/** `GET /v0/workflows/download` (server-api-v0.md §7.4): the saved workflow file, or a zip of its
+ * `ref` closure. An unresolvable `ref` is a `422` whose `details` lists each one. */
+export async function downloadWorkflow(http: HttpTransport, path: string): Promise<DownloadedFile> {
+  const { blob, headers } = await http.requestBlob(
+    `/v0/workflows/download?path=${encodeURIComponent(path)}`,
+  );
+  return { fileName: fileNameOf(headers, "workflow.json"), blob };
+}
+
+/** `GET /v0/templates/:id/download` (server-api-v0.md §10.6): the template's file. */
+export async function downloadTemplate(http: HttpTransport, id: string): Promise<DownloadedFile> {
+  const { blob, headers } = await http.requestBlob(
+    `/v0/templates/${encodeURIComponent(id)}/download`,
+  );
+  return { fileName: fileNameOf(headers, "template.step-template.json"), blob };
+}
+
 export function getStepPlugins(http: HttpTransport): Promise<StepPluginsResponse> {
   return http.requestJson<StepPluginsResponse>("/v0/step-plugins");
 }
@@ -519,6 +549,17 @@ export class PathApiClient {
    */
   deleteTemplate(id: string): Promise<void> {
     return deleteTemplate(this.http, id);
+  }
+
+  /** `GET /v0/workflows/download?path=<relative_path>` — the saved workflow file, or a zip of the
+   * files its `ref`s reach (server-api-v0.md §7.4). */
+  downloadWorkflow(path: string): Promise<DownloadedFile> {
+    return downloadWorkflow(this.http, path);
+  }
+
+  /** `GET /v0/templates/:id/download` — the template's on-disk file (server-api-v0.md §10.6). */
+  downloadTemplate(id: string): Promise<DownloadedFile> {
+    return downloadTemplate(this.http, id);
   }
 
   /** `GET /v0/step-plugins` — the step-plugin registry as data (server-api-v0.md §8): a bare

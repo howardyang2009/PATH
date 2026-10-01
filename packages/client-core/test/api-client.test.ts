@@ -640,6 +640,56 @@ describe("PathApiClient", () => {
     });
   });
 
+  it("downloadWorkflow returns the bytes under the Content-Disposition file name", async () => {
+    const stub = stubFetch(
+      () =>
+        new Response("zip-bytes", {
+          status: 200,
+          headers: {
+            "Content-Type": "application/zip",
+            "Content-Disposition": "attachment; filename=\"main.zip\"; filename*=UTF-8''main.zip",
+          },
+        }),
+    );
+    const client = new PathApiClient({ baseUrl: "http://localhost:8080", fetch: stub.fetch });
+
+    const file = await client.downloadWorkflow("flows/main.workflow.json");
+    expect(file.fileName).toBe("main.zip");
+    expect(await file.blob.text()).toBe("zip-bytes");
+    expect(stub.urls[0]).toBe(
+      "http://localhost:8080/v0/workflows/download?path=flows%2Fmain.workflow.json",
+    );
+  });
+
+  it("downloadWorkflow surfaces a 422 with its details", async () => {
+    const details = [{ ref: "gone.workflow.json", from: "a", reason: "file not found" }];
+    const stub = stubFetch(() => json({ error: { message: "cannot bundle", details } }, 422));
+    const client = new PathApiClient({ baseUrl: "http://localhost:8080", fetch: stub.fetch });
+
+    await expect(client.downloadWorkflow("a.workflow.json")).rejects.toMatchObject({
+      status: 422,
+      message: "cannot bundle",
+      details,
+    });
+  });
+
+  it("downloadTemplate decodes an encoded file name", async () => {
+    const stub = stubFetch(
+      () =>
+        new Response("{}", {
+          status: 200,
+          headers: {
+            "Content-Disposition": "attachment; filename*=UTF-8''caf%C3%A9.step-template.json",
+          },
+        }),
+    );
+    const client = new PathApiClient({ baseUrl: "http://localhost:8080", fetch: stub.fetch });
+
+    const file = await client.downloadTemplate("t 1");
+    expect(file.fileName).toBe("café.step-template.json");
+    expect(stub.urls[0]).toBe("http://localhost:8080/v0/templates/t%201/download");
+  });
+
   it("PUT /v0/workflows sends the path + object in the body and the ETag as If-Match, returning the reply", async () => {
     const inits: (RequestInit | undefined)[] = [];
     const stub = stubFetch((_url, init) => {

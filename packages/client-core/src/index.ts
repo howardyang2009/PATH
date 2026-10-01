@@ -44,6 +44,7 @@ export {
   type AcquireLockInput,
   type AcquireLockResult,
   type CreateTemplateInput,
+  type DownloadedFile,
   type FetchLike,
   type HeartbeatResult,
   type LeaseOpInput,
