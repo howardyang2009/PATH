@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { basename, join, relative } from "node:path";
+import { basename, dirname, join, relative, sep } from "node:path";
 import {
   makeStepTemplateSchema,
   type StepPluginRegistry,
@@ -37,6 +37,8 @@ export interface TemplateEntry {
   name: string;
   kind: TemplateKind;
   origin: TemplateOrigin;
+  /** The `/`-separated subfolder under its origin's template folder; `""` at the top. */
+  folder: string;
   readOnly: boolean;
   /** sha256 of this file's on-disk bytes: the §10.2 read's `etag`, and the token §10.4 compares. */
   etag: string;
@@ -153,6 +155,7 @@ export function discoverTemplates(
       name: basename(absPath).slice(0, -SUFFIX.length),
       kind: "step",
       origin: root.origin,
+      folder: dirname(relative(root.dir, absPath)).split(sep).join("/").replace(/^\.$/, ""),
       readOnly: !root.writable,
       absPath,
       etag: strongEtag(bytes),
@@ -283,6 +286,7 @@ export function templateSummary(entry: TemplateEntry): TemplateSummary {
     description: entry.description,
     kind: entry.kind,
     origin: entry.origin,
+    folder: entry.folder,
     read_only: entry.readOnly,
     valid: entry.valid,
     error: entry.error,

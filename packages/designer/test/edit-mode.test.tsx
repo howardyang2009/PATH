@@ -47,7 +47,9 @@ function renderApp(initialPath?: string) {
     <App
       client={stubClient({
         files: { [WORKFLOW_PATH]: JSON.stringify(WORKFLOW_FILE) },
-        templates: { templates: [SUMMARY] },
+        templates: {
+          templates: [SUMMARY, { ...SUMMARY, id: uuid(3), name: "deep", folder: "team/gates" }],
+        },
         templateBodies: { [TEMPLATE_ID]: ENVELOPE },
         calls,
       })}
@@ -246,6 +248,31 @@ describe("Workflow | Template edit-mode switch", () => {
       name: "gate",
       folder: "team/gates",
     });
+  });
+
+  it("the Folder picker offers the user's template subfolders and joins with a typed folder", async () => {
+    const calls = renderApp();
+    await switchTo("Template");
+    fireEvent.click(screen.getByRole("button", { name: "New" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Save" }));
+
+    const dialog = await screen.findByRole("dialog", { name: "Save new template" });
+    const folder = within(dialog).getByLabelText<HTMLSelectElement>("Folder");
+    await waitFor(() =>
+      expect(within(dialog).getByRole("option", { name: "team/gates" })).toBeInTheDocument(),
+    );
+    expect(within(dialog).getByRole("option", { name: "team" })).toBeInTheDocument();
+    expect(folder.value).toBe("");
+    fireEvent.change(folder, { target: { value: "team" } });
+    fireEvent.change(within(dialog).getByLabelText("Template description"), {
+      target: { value: "a gate" },
+    });
+    fireEvent.change(within(dialog).getByLabelText("Template name"), {
+      target: { value: "new/gate" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Create" }));
+    await waitFor(() => expect(calls.templateWrites).toHaveLength(1));
+    expect(calls.templateWrites[0]!.body).toMatchObject({ name: "gate", folder: "team/new" });
   });
 
   it("Open… in template mode lists templates and opens the chosen one", async () => {

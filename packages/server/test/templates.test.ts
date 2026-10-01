@@ -127,8 +127,20 @@ describe("GET /v0/templates", () => {
       templates: Record<string, unknown>[];
     };
     expect(templates).toEqual([
-      expect.objectContaining({ name: "team", origin: "shared", read_only: false, valid: true }),
-      expect.objectContaining({ name: "mine", origin: "user", read_only: false, valid: true }),
+      expect.objectContaining({
+        name: "team",
+        origin: "shared",
+        folder: "git",
+        read_only: false,
+        valid: true,
+      }),
+      expect.objectContaining({
+        name: "mine",
+        origin: "user",
+        folder: "git/deep",
+        read_only: false,
+        valid: true,
+      }),
     ]);
   });
 

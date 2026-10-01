@@ -946,6 +946,7 @@ workflow discovery (§6). Registry-relative validity rides each entry.
 | `description` | string | The palette blurb ([ADR 0048](../adr/0048-the-step-template-schema-is-an-envelope-over-a-validated-workflow-body.md)); a step-template's required envelope field. |
 | `kind` | `"step"` | Which suffix the file carried; always `"step"`. |
 | `origin` | `"shipped" \| "shared" \| "user"` | Which root it was scanned from. |
+| `folder` | string | The `/`-separated subfolder under the origin's template folder; `""` at its top. |
 | `read_only` | boolean | `true` for `shipped`, `false` for `user`. |
 | `valid` | boolean | Whether the body validates registry-relative. |
 | `error` | object \| null | The shared error envelope when `valid: false`, else `null`. |

@@ -232,6 +232,8 @@ export interface TemplateSummary {
   description: string;
   kind: "step";
   origin: "shipped" | "shared" | "user";
+  /** The `/`-separated subfolder under the origin's template folder; `""` or absent at its top. */
+  folder?: string;
   read_only: boolean;
   valid: boolean;
   error: WireError["error"] | null;

@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { TEMPLATE_SUFFIX } from "./session-reducer.js";
+import type { TemplateListLoad } from "./template-list.js";
 import type { SaveAsResult, TemplateSource } from "./use-open-file.js";
 
 /** A template name is its file stem, so it must match `NameSchema` (server-api-v0.md §10.3). */
@@ -26,6 +27,7 @@ export function SaveTemplateAsDialog({
   source,
   workflowName,
   droppedFields = [],
+  templateList,
   create,
   onCreated,
   onCancel,
@@ -38,6 +40,8 @@ export function SaveTemplateAsDialog({
   workflowName?: string;
   /** The source workflow's non-empty workflow-level fields a save as template drops. */
   droppedFields?: readonly string[];
+  /** The scanned templates: the user's own subfolders fill the Folder picker. */
+  templateList: TemplateListLoad;
   create: (input: TemplateSaveInput) => Promise<SaveAsResult>;
   onCreated: () => void;
   onCancel: () => void;
@@ -47,6 +51,7 @@ export function SaveTemplateAsDialog({
   // not a template's.
   const [name, setName] = useState(source ? `${source.name}-copy` : (workflowName ?? ""));
   const [description, setDescription] = useState(source?.description ?? "");
+  const [picked, setPicked] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -55,10 +60,13 @@ export function SaveTemplateAsDialog({
   const path = trimmed.toLowerCase().endsWith(suffix) ? trimmed.slice(0, -suffix.length) : trimmed;
   // `folder1/name`: the last segment is the template's name, the rest its subfolder.
   const cut = path.lastIndexOf("/");
-  const folder = cut === -1 ? undefined : path.slice(0, cut);
+  const typedFolder = cut === -1 ? "" : path.slice(0, cut);
   const clean = path.slice(cut + 1);
   const legal = NAME_PATTERN.test(clean);
-  const folderLegal = folder === undefined || FOLDER_PATTERN.test(folder);
+  const folderLegal = typedFolder === "" || FOLDER_PATTERN.test(typedFolder);
+  const joined = [picked, typedFolder].filter((part) => part !== "").join("/");
+  const folder = joined === "" ? undefined : joined;
+  const folders = useMemo(() => userFolders(templateList), [templateList]);
   const described = description.trim() !== "";
   const canSubmit = legal && folderLegal && described && !submitting;
   const title = fromWorkflow
@@ -95,6 +103,22 @@ export function SaveTemplateAsDialog({
               ? "The copy gets a new identity and is saved with this project's templates."
               : "The template is saved with this project's templates."}
         </p>
+
+        <label className="dialog-field">
+          <span className="dialog-label">Folder</span>
+          <select
+            className="new-file-directory"
+            aria-label="Folder"
+            value={picked}
+            onChange={(event) => setPicked(event.target.value)}
+          >
+            {folders.map((dir) => (
+              <option key={dir} value={dir}>
+                {dir === "" ? "(my templates)" : dir}
+              </option>
+            ))}
+          </select>
+        </label>
 
         <label className="dialog-field">
           <span className="dialog-label">Name</span>
@@ -164,6 +188,23 @@ export function SaveTemplateAsDialog({
       </div>
     </div>
   );
+}
+
+/** The folders a template can be saved into: the user's own template folder (`""`) and every
+ * subfolder, with ancestors, found by the last scan. */
+function userFolders(list: TemplateListLoad): string[] {
+  const all = new Set<string>([""]);
+  if (list.phase === "ready") {
+    for (const template of list.templates) {
+      if (template.origin !== "user") continue;
+      let dir = template.folder ?? "";
+      while (dir !== "" && !all.has(dir)) {
+        all.add(dir);
+        dir = dir.includes("/") ? dir.slice(0, dir.lastIndexOf("/")) : "";
+      }
+    }
+  }
+  return [...all].sort();
 }
 
 /** `a`, `a and b`, `a, b and c`. */

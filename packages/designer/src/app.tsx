@@ -419,6 +419,7 @@ export function App({
       {saveAsDialog === "new-template" && openedFile && !activeTemplate ? (
         <SaveTemplateAsDialog
           source={null}
+          templateList={templateList}
           create={({ name, folder, description }) =>
             session.saveAs({ kind: "new-template", name, folder, description })
           }
@@ -430,6 +431,7 @@ export function App({
         <SaveTemplateAsDialog
           source={activeTemplate}
           droppedFields={openedFile ? workflowLevelFields(openedFile) : []}
+          templateList={templateList}
           create={({ name, folder, description }) =>
             session.saveAs({ kind: "template-copy", name, folder, description })
           }
@@ -449,6 +451,7 @@ export function App({
           source={null}
           workflowName={openedFile.name}
           droppedFields={workflowLevelFields(openedFile)}
+          templateList={templateList}
           create={({ name, folder, description }) =>
             session.saveAs({ kind: "workflow-as-template", name, folder, description })
           }
