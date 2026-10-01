@@ -259,6 +259,8 @@ export interface GetTemplateResponse extends Omit<TemplateSummary, "id"> {
 export interface WirePostTemplateRequest {
   kind: "step";
   name: string;
+  /** A `/`-separated subfolder under the user's template folder, created if absent. */
+  folder?: string;
   description: string;
   body: Record<string, unknown>;
 }

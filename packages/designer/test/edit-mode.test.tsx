@@ -222,6 +222,32 @@ describe("Workflow | Template edit-mode switch", () => {
     ]);
   });
 
+  it("a template name with a folder prefix posts the folder and the stem separately", async () => {
+    const calls = renderApp();
+    await switchTo("Template");
+    fireEvent.click(screen.getByRole("button", { name: "New" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Save" }));
+
+    const dialog = await screen.findByRole("dialog", { name: "Save new template" });
+    fireEvent.change(within(dialog).getByLabelText("Template description"), {
+      target: { value: "a gate" },
+    });
+    fireEvent.change(within(dialog).getByLabelText("Template name"), {
+      target: { value: "../gate" },
+    });
+    expect(within(dialog).getByRole("button", { name: "Create" })).toBeDisabled();
+    fireEvent.change(within(dialog).getByLabelText("Template name"), {
+      target: { value: "team/gates/gate" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Create" }));
+    await waitFor(() => expect(calls.templateWrites).toHaveLength(1));
+    expect(calls.templateWrites[0]!.body).toMatchObject({
+      kind: "step",
+      name: "gate",
+      folder: "team/gates",
+    });
+  });
+
   it("Open… in template mode lists templates and opens the chosen one", async () => {
     renderApp();
     await switchTo("Template");

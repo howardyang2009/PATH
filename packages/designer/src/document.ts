@@ -105,6 +105,7 @@ export async function writeDocument(
           : await client.createTemplate({
               kind: "step",
               name: write.name,
+              ...(write.folder === undefined ? {} : { folder: write.folder }),
               description: write.description,
               body: templateBody(write.description, write.file),
             });

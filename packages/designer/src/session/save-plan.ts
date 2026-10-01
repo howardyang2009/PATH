@@ -14,7 +14,13 @@ export type PlanState = Pick<SessionState, "mode" | "frames" | "activeIndex">;
 export type DocumentWrite =
   | { to: "workflow"; path: string; ifMatch: string | undefined; file: WorkflowFile }
   | { to: "template"; id: string; ifMatch: string; description: string; file: WorkflowFile }
-  | { to: "new-template"; name: string; description: string; file: WorkflowFile };
+  | {
+      to: "new-template";
+      name: string;
+      folder?: string;
+      description: string;
+      file: WorkflowFile;
+    };
 
 /** The written document's own echo. */
 export interface WriteSuccess {
@@ -41,9 +47,9 @@ export type WriteOutcome =
 export type SaveAsIntent =
   | { kind: "new-file"; path: string }
   | { kind: "workflow-copy"; path: string }
-  | { kind: "new-template"; name: string; description: string }
-  | { kind: "template-copy"; name: string; description: string }
-  | { kind: "workflow-as-template"; name: string; description: string };
+  | { kind: "new-template"; name: string; folder?: string; description: string }
+  | { kind: "template-copy"; name: string; folder?: string; description: string }
+  | { kind: "workflow-as-template"; name: string; folder?: string; description: string };
 
 export type WriteIntent = { kind: "save" } | SaveAsIntent;
 
@@ -237,7 +243,13 @@ function planSaveAs(state: PlanState, intent: SaveAsIntent): WritePlan | WriteRe
       };
       return {
         ok: true,
-        write: { to: "new-template", name: intent.name, description: intent.description, file },
+        write: {
+          to: "new-template",
+          name: intent.name,
+          ...(intent.folder === undefined ? {} : { folder: intent.folder }),
+          description: intent.description,
+          file,
+        },
         landed: () => ({
           type: "setSaveState",
           saveState: { phase: "saved-as-template", name: intent.name },
@@ -271,7 +283,13 @@ function planSaveAs(state: PlanState, intent: SaveAsIntent): WritePlan | WriteRe
       };
       return {
         ok: true,
-        write: { to: "new-template", name: intent.name, description: intent.description, file },
+        write: {
+          to: "new-template",
+          name: intent.name,
+          ...(intent.folder === undefined ? {} : { folder: intent.folder }),
+          description: intent.description,
+          file,
+        },
         landed: (result) => ({
           type: "templateSavedAs",
           depth: plan.depth,

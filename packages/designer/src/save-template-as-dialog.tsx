@@ -5,9 +5,14 @@ import type { SaveAsResult, TemplateSource } from "./use-open-file.js";
 /** A template name is its file stem, so it must match `NameSchema` (server-api-v0.md §10.3). */
 const NAME_PATTERN = /^[a-z][a-z0-9-]*$/;
 
-/** What the dialog hands back: the template's name and description. */
+/** A subfolder path of plain names, as the Server accepts it: no empty, dot-leading, or backslash
+ * segments. */
+const FOLDER_PATTERN = /^[^\\./\0][^\\/\0]*(\/[^\\./\0][^\\/\0]*)*$/;
+
+/** What the dialog hands back: the template's name, its optional subfolder, and description. */
 export interface TemplateSaveInput {
   name: string;
+  folder?: string;
   description: string;
 }
 
@@ -47,10 +52,15 @@ export function SaveTemplateAsDialog({
 
   const suffix = TEMPLATE_SUFFIX;
   const trimmed = name.trim();
-  const clean = trimmed.toLowerCase().endsWith(suffix) ? trimmed.slice(0, -suffix.length) : trimmed;
+  const path = trimmed.toLowerCase().endsWith(suffix) ? trimmed.slice(0, -suffix.length) : trimmed;
+  // `folder1/name`: the last segment is the template's name, the rest its subfolder.
+  const cut = path.lastIndexOf("/");
+  const folder = cut === -1 ? undefined : path.slice(0, cut);
+  const clean = path.slice(cut + 1);
   const legal = NAME_PATTERN.test(clean);
+  const folderLegal = folder === undefined || FOLDER_PATTERN.test(folder);
   const described = description.trim() !== "";
-  const canSubmit = legal && described && !submitting;
+  const canSubmit = legal && folderLegal && described && !submitting;
   const title = fromWorkflow
     ? "Save workflow as template"
     : source
@@ -61,7 +71,11 @@ export function SaveTemplateAsDialog({
     if (!canSubmit) return;
     setSubmitting(true);
     setError(null);
-    void create({ name: clean, description: description.trim() }).then((result) => {
+    void create({
+      name: clean,
+      ...(folder === undefined ? {} : { folder }),
+      description: description.trim(),
+    }).then((result) => {
       setSubmitting(false);
       if (result.status === "created") onCreated();
       else if (result.status === "exists")
@@ -88,6 +102,7 @@ export function SaveTemplateAsDialog({
             <input
               className="new-file-stem"
               aria-label="Template name"
+              placeholder="name or folder/name"
               value={name}
               onChange={(event) => setName(event.target.value)}
               onKeyDown={(event) => {
@@ -112,11 +127,19 @@ export function SaveTemplateAsDialog({
           />
         </label>
 
+        {!folderLegal ? (
+          <p className="new-file-error">
+            Folder names cannot be empty or start with a dot, and cannot contain a backslash.
+          </p>
+        ) : null}
         {!legal && clean !== "" ? (
           <p className="new-file-error">
             Use lowercase letters, digits, and hyphens, starting with a letter.
           </p>
         ) : null}
+        <p className="dialog-hint">
+          Use <code>/</code> to save in a subfolder. Missing folders are created.
+        </p>
         {!described ? <p className="dialog-hint">A template needs a description.</p> : null}
         {fromWorkflow ? (
           <p className="dialog-hint" role="note">
