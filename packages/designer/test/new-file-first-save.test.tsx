@@ -105,11 +105,30 @@ describe("first-save placement dialog", () => {
     expect(within(dialog).getByTestId("new-file-target")).toHaveTextContent(
       "flows/my-flow.workflow.json",
     );
-    // A stem cannot smuggle path separators past the directory picker.
+    // A stem cannot climb out of the picked directory.
     fireEvent.change(within(dialog).getByLabelText("Filename"), { target: { value: "../escape" } });
+    expect(within(dialog).getByRole("alert")).toHaveTextContent("cannot start with a dot");
+    expect(within(dialog).getByRole("button", { name: "Create" })).toBeDisabled();
+  });
+
+  it("composes a subfolder path from the filename and flags a folder that does not exist yet", async () => {
+    render(<App client={stubClient({ workflows: DISCOVERY })} />);
+    fireEvent.click(await screen.findByRole("button", { name: "New workflow" }));
+    buildAPromptBody();
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    const dialog = await screen.findByRole("dialog", { name: "Save new workflow" });
+    fireEvent.change(within(dialog).getByLabelText("Directory"), { target: { value: "flows" } });
+    fireEvent.change(within(dialog).getByLabelText("Filename"), {
+      target: { value: "folder1/wtest-2" },
+    });
     expect(within(dialog).getByTestId("new-file-target")).toHaveTextContent(
-      "flows/escape.workflow.json",
+      "flows/folder1/wtest-2.workflow.json (new folder)",
     );
+    expect(within(dialog).getByRole("button", { name: "Create" })).toBeEnabled();
+    // A file directly in an existing folder carries no new-folder tag.
+    fireEvent.change(within(dialog).getByLabelText("Filename"), { target: { value: "wtest-2" } });
+    expect(within(dialog).getByTestId("new-file-target")).not.toHaveTextContent("new folder");
   });
 
   it("creates the file with an exclusive PUT (no If-Match), then acquires the lease and enables launch", async () => {

@@ -51,12 +51,15 @@ export function NewFileDialog({
     return [...dirs].sort();
   }, [discovery, initialDirectory]);
 
-  const cleanStem = normalizeStem(stem);
+  const parsed = parseStem(stem);
+  const cleanStem = parsed.relative;
   const targetPath = useMemo(
-    () => (directory === null ? null : composePath(directory, cleanStem)),
-    [directory, cleanStem],
+    () => (directory === null || parsed.error !== null ? null : composePath(directory, cleanStem)),
+    [directory, cleanStem, parsed.error],
   );
   const canSubmit = cleanStem !== "" && !submitting && targetPath !== null;
+  const knownDirectories = useMemo(() => withAncestors(directories), [directories]);
+  const isNewFolder = targetPath !== null && !knownDirectories.has(dirnameOf(targetPath));
 
   const submit = (): void => {
     if (!canSubmit || targetPath === null) return;
@@ -103,6 +106,7 @@ export function NewFileDialog({
             <input
               className="new-file-stem"
               aria-label="Filename"
+              placeholder="name or folder/name"
               value={stem}
               onChange={(event) => setStem(event.target.value)}
               onKeyDown={(event) => {
@@ -116,15 +120,28 @@ export function NewFileDialog({
           </span>
         </label>
 
+        <p className="dialog-hint">
+          Use <code>/</code> to save in a subfolder. Missing folders are created.
+        </p>
+
         <p className="new-file-target" data-testid="new-file-target">
-          {targetPath === null ? (
+          {directory === null ? (
             "Finding your workflow folder…"
+          ) : targetPath === null ? (
+            "Saves to …"
           ) : (
             <>
               Saves to <code>{targetPath}</code>
+              {isNewFolder && " (new folder)"}
             </>
           )}
         </p>
+
+        {parsed.error !== null && (
+          <p className="new-file-error" role="alert">
+            {parsed.error}
+          </p>
+        )}
 
         {error !== null && (
           <p className="new-file-error" role="alert">
@@ -146,20 +163,38 @@ export function NewFileDialog({
 }
 
 /**
- * The filename **stem**, cleaned so the dialog's controls are the sole placement: a trailing
- * `.workflow.json` is stripped and path separators dropped, so a stem cannot escape the picked
+ * The filename field as a path relative to the picked directory: a trailing `.workflow.json` is
+ * stripped and `/` separates subfolders, which the Server creates on save. A backslash, an empty
+ * segment, or a segment starting with `.` (so `..`) is refused, so the path cannot leave the picked
  * directory.
  */
-function normalizeStem(stem: string): string {
-  return stem
-    .trim()
-    .replace(/\.workflow\.json$/i, "")
-    .replace(/[\\/]/g, "")
-    .replace(/^\.+/, "");
+function parseStem(stem: string): { relative: string; error: string | null } {
+  const relative = stem.trim().replace(/\.workflow\.json$/i, "");
+  if (relative === "") return { relative, error: null };
+  if (relative.includes("\\")) return { relative, error: "Use / to separate folders, not \\." };
+  const segments = relative.split("/");
+  if (segments.some((segment) => segment.trim() === ""))
+    return { relative, error: "Folder and file names cannot be empty." };
+  if (segments.some((segment) => segment.startsWith(".")))
+    return { relative, error: "Names cannot start with a dot." };
+  return { relative: segments.map((segment) => segment.trim()).join("/"), error: null };
 }
 
-/** The `.workflow.json` filename for `stem`, appended to `directory` (root when empty) — the save
- * target. */
+/** `dirs` plus every ancestor directory of each (the project root, `""`, included). */
+function withAncestors(dirs: readonly string[]): Set<string> {
+  const all = new Set<string>([""]);
+  for (const dir of dirs) {
+    let current = dir;
+    while (current !== "" && !all.has(current)) {
+      all.add(current);
+      current = dirnameOf(current);
+    }
+  }
+  return all;
+}
+
+/** The `.workflow.json` path for the relative `stem`, under `directory` (root when empty) — the
+ * save target. */
 function composePath(directory: string, stem: string): string {
   const filename = `${stem}.workflow.json`;
   return directory === "" ? filename : `${directory}/${filename}`;
