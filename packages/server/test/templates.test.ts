@@ -127,8 +127,20 @@ describe("GET /v0/templates", () => {
       templates: Record<string, unknown>[];
     };
     expect(templates).toEqual([
-      expect.objectContaining({ name: "team", origin: "shared", read_only: false, valid: true }),
-      expect.objectContaining({ name: "mine", origin: "user", read_only: false, valid: true }),
+      expect.objectContaining({
+        name: "team",
+        origin: "shared",
+        folder: "git",
+        read_only: false,
+        valid: true,
+      }),
+      expect.objectContaining({
+        name: "mine",
+        origin: "user",
+        folder: "git/deep",
+        read_only: false,
+        valid: true,
+      }),
     ]);
   });
 
@@ -265,6 +277,49 @@ describe("POST /v0/templates", () => {
     expect(res.status).toBe(400);
     expect(existsSync(join(projectDir, "users/local/template/workflow-template"))).toBe(false);
   });
+
+  it("creates the folder chain for a folder and lists the template from it", async () => {
+    const body = stepTemplate();
+    const { url } = await start();
+    const res = await fetch(`${url}/v0/templates`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        kind: "step",
+        name: "my-fragment",
+        folder: "team/gates",
+        description: "blurb",
+        body,
+      }),
+    });
+    expect(res.status).toBe(201);
+    const rel = "users/local/template/team/gates/my-fragment.step-template.json";
+    expect(await res.json()).toMatchObject({ id: body.id, relative_path: rel });
+    expect(existsSync(join(projectDir, rel))).toBe(true);
+    const list = (await (await fetch(`${url}/v0/templates`)).json()) as {
+      templates: { id: string }[];
+    };
+    expect(list.templates.map((t) => t.id)).toContain(body.id);
+  });
+
+  it.each(["../escape", "a/../b", "/abs", "a//b", ".hidden", "a\\b", "a/"])(
+    "400s the folder %j",
+    async (folder) => {
+      const { url } = await start();
+      const res = await fetch(`${url}/v0/templates`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          kind: "step",
+          name: "x",
+          folder,
+          description: "b",
+          body: stepTemplate(),
+        }),
+      });
+      expect(res.status).toBe(400);
+    },
+  );
 
   it("409s a name collision", async () => {
     const { url } = await start();

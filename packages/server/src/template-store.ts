@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { basename, join, relative } from "node:path";
+import { basename, dirname, join, relative, sep } from "node:path";
 import {
   makeStepTemplateSchema,
   type StepPluginRegistry,
@@ -37,6 +37,8 @@ export interface TemplateEntry {
   name: string;
   kind: TemplateKind;
   origin: TemplateOrigin;
+  /** The `/`-separated subfolder under its origin's template folder; `""` at the top. */
+  folder: string;
   readOnly: boolean;
   /** sha256 of this file's on-disk bytes: the §10.2 read's `etag`, and the token §10.4 compares. */
   etag: string;
@@ -87,10 +89,11 @@ export interface TemplateStore {
   download(id: string): { fileName: string; bytes: Buffer } | undefined;
   /** The user entry `id` names, for a door that changes one. */
   writable(id: string): WritableTemplate;
-  /** Create a user template under `name`; the name is the file stem, so this door never renames.
+  /** Create a user template under `name`, in the optional `folder` below the user's template
+   * folder; the name is the file stem, so this door never renames.
    * The payload must be a valid envelope whose `id` no entry holds; an existing name or id is the
    * `409` (ADR 0050 decision 6). */
-  create(kind: TemplateKind, name: string, payload: unknown): TemplateWrite;
+  create(kind: TemplateKind, name: string, payload: unknown, folder?: string): TemplateWrite;
   /** Overwrite the user template `id` names with a valid envelope carrying that same `id`, gated
    * on the `If-Match` the caller read from §10.2. */
   update(id: string, payload: unknown, ifMatch: string | undefined): TemplateWrite;
@@ -152,6 +155,7 @@ export function discoverTemplates(
       name: basename(absPath).slice(0, -SUFFIX.length),
       kind: "step",
       origin: root.origin,
+      folder: dirname(relative(root.dir, absPath)).split(sep).join("/").replace(/^\.$/, ""),
       readOnly: !root.writable,
       absPath,
       etag: strongEtag(bytes),
@@ -219,7 +223,7 @@ export function discoverTemplates(
       const found = locate(id);
       return found.ok ? { ok: true, entry: found.entry } : found;
     },
-    create(kind, name, payload) {
+    create(kind, name, payload, folder) {
       const valid = validate(payload);
       if (!valid.ok) return valid;
       // A taken id would make the scan flag one of the two entries invalid.
@@ -232,7 +236,7 @@ export function discoverTemplates(
         };
       }
       // Save-as lands in the current user's own folder.
-      const absPath = join(layout.root("user", "template").dir, `${name}${SUFFIX}`);
+      const absPath = join(layout.root("user", "template").dir, folder ?? "", `${name}${SUFFIX}`);
       const written = writeAt(valid.id, absPath, payload, {
         ifMatch: undefined,
         rule: "create-or-overwrite",
@@ -282,6 +286,7 @@ export function templateSummary(entry: TemplateEntry): TemplateSummary {
     description: entry.description,
     kind: entry.kind,
     origin: entry.origin,
+    folder: entry.folder,
     read_only: entry.readOnly,
     valid: entry.valid,
     error: entry.error,

@@ -47,7 +47,9 @@ function renderApp(initialPath?: string) {
     <App
       client={stubClient({
         files: { [WORKFLOW_PATH]: JSON.stringify(WORKFLOW_FILE) },
-        templates: { templates: [SUMMARY] },
+        templates: {
+          templates: [SUMMARY, { ...SUMMARY, id: uuid(3), name: "deep", folder: "team/gates" }],
+        },
         templateBodies: { [TEMPLATE_ID]: ENVELOPE },
         calls,
       })}
@@ -220,6 +222,73 @@ describe("Workflow | Template edit-mode switch", () => {
       "format",
       "id",
     ]);
+  });
+
+  it("a template name with a folder prefix posts the folder and the stem separately", async () => {
+    const calls = renderApp();
+    await switchTo("Template");
+    fireEvent.click(screen.getByRole("button", { name: "New" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Save" }));
+
+    const dialog = await screen.findByRole("dialog", { name: "Save new template" });
+    fireEvent.change(within(dialog).getByLabelText("Template description"), {
+      target: { value: "a gate" },
+    });
+    fireEvent.change(within(dialog).getByLabelText("Template name"), {
+      target: { value: "../gate" },
+    });
+    expect(within(dialog).getByRole("button", { name: "Create" })).toBeDisabled();
+    fireEvent.change(within(dialog).getByLabelText("Template name"), {
+      target: { value: "team/gates/gate" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Create" }));
+    await waitFor(() => expect(calls.templateWrites).toHaveLength(1));
+    expect(calls.templateWrites[0]!.body).toMatchObject({
+      kind: "step",
+      name: "gate",
+      folder: "team/gates",
+    });
+  });
+
+  it("the Folder picker offers the user's template subfolders and joins with a typed folder", async () => {
+    const calls = renderApp();
+    await switchTo("Template");
+    fireEvent.click(screen.getByRole("button", { name: "New" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Save" }));
+
+    const dialog = await screen.findByRole("dialog", { name: "Save new template" });
+    const folder = within(dialog).getByLabelText<HTMLSelectElement>("Folder");
+    await waitFor(() =>
+      expect(within(dialog).getByRole("option", { name: "team/gates" })).toBeInTheDocument(),
+    );
+    expect(within(dialog).getByRole("option", { name: "team" })).toBeInTheDocument();
+    expect(folder.value).toBe("");
+    fireEvent.change(folder, { target: { value: "team" } });
+    fireEvent.change(within(dialog).getByLabelText("Template description"), {
+      target: { value: "a gate" },
+    });
+    fireEvent.change(within(dialog).getByLabelText("Template name"), {
+      target: { value: "new/gate" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Create" }));
+    await waitFor(() => expect(calls.templateWrites).toHaveLength(1));
+    expect(calls.templateWrites[0]!.body).toMatchObject({ name: "gate", folder: "team/new" });
+  });
+
+  it("Open… in template mode groups templates into the origin and subfolder tree", async () => {
+    renderApp();
+    await switchTo("Template");
+    fireEvent.click(screen.getByRole("button", { name: "Open…" }));
+
+    const dialog = await screen.findByRole("dialog", { name: "Open a template" });
+    // The user's templates start open: the top-level file shows, the nested one waits in its folder.
+    await within(dialog).findByRole("button", { name: /nightly\.step-template\.json/ });
+    expect(within(dialog).queryByRole("button", { name: /deep\.step-template\.json/ })).toBeNull();
+    fireEvent.click(within(dialog).getByRole("button", { name: /team/ }));
+    fireEvent.click(within(dialog).getByRole("button", { name: /gates/ }));
+    expect(
+      await within(dialog).findByRole("button", { name: /deep\.step-template\.json/ }),
+    ).toBeInTheDocument();
   });
 
   it("Open… in template mode lists templates and opens the chosen one", async () => {

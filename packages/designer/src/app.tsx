@@ -419,8 +419,9 @@ export function App({
       {saveAsDialog === "new-template" && openedFile && !activeTemplate ? (
         <SaveTemplateAsDialog
           source={null}
-          create={({ name, description }) =>
-            session.saveAs({ kind: "new-template", name, description })
+          templateList={templateList}
+          create={({ name, folder, description }) =>
+            session.saveAs({ kind: "new-template", name, folder, description })
           }
           onCreated={() => setSaveAsDialog(null)}
           onCancel={() => setSaveAsDialog(null)}
@@ -430,8 +431,9 @@ export function App({
         <SaveTemplateAsDialog
           source={activeTemplate}
           droppedFields={openedFile ? workflowLevelFields(openedFile) : []}
-          create={({ name, description }) =>
-            session.saveAs({ kind: "template-copy", name, description })
+          templateList={templateList}
+          create={({ name, folder, description }) =>
+            session.saveAs({ kind: "template-copy", name, folder, description })
           }
           onCreated={() => setSaveAsDialog(null)}
           onCancel={() => setSaveAsDialog(null)}
@@ -449,8 +451,9 @@ export function App({
           source={null}
           workflowName={openedFile.name}
           droppedFields={workflowLevelFields(openedFile)}
-          create={({ name, description }) =>
-            session.saveAs({ kind: "workflow-as-template", name, description })
+          templateList={templateList}
+          create={({ name, folder, description }) =>
+            session.saveAs({ kind: "workflow-as-template", name, folder, description })
           }
           onCreated={() => setSaveAsDialog(null)}
           onCancel={() => setSaveAsDialog(null)}

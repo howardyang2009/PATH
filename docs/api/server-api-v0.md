@@ -946,6 +946,7 @@ workflow discovery (§6). Registry-relative validity rides each entry.
 | `description` | string | The palette blurb ([ADR 0048](../adr/0048-the-step-template-schema-is-an-envelope-over-a-validated-workflow-body.md)); a step-template's required envelope field. |
 | `kind` | `"step"` | Which suffix the file carried; always `"step"`. |
 | `origin` | `"shipped" \| "shared" \| "user"` | Which root it was scanned from. |
+| `folder` | string | The `/`-separated subfolder under the origin's template folder; `""` at its top. |
 | `read_only` | boolean | `true` for `shipped`, `false` for `user`. |
 | `valid` | boolean | Whether the body validates registry-relative. |
 | `error` | object \| null | The shared error envelope when `valid: false`, else `null`. |
@@ -1023,10 +1024,11 @@ Request body:
 | --- | --- | --- |
 | `kind` | `"step"` | Selects the suffix; any other value is a `400`. |
 | `name` | string | The file stem; must match `NameSchema` (`^[a-z][a-z0-9-]*$`). |
+| `folder` | string, optional | A `/`-separated subfolder under `users/<user-id>/template/`; created if absent. No empty, dot-leading, or backslash segments. |
 | `description` | string | The template's blurb (a step-template's required field). |
 | `body` | object | The step-template envelope, carrying the client-minted `id`. |
 
-The write lands at `users/<user-id>/template/<name>.<suffix>`, creating the directory chain
+The write lands at `users/<user-id>/template/[<folder>/]<name>.<suffix>`, creating the directory chain
 (`mkdirSync` recursive, as §7). It is **create-only** — no blind overwrite; content changes go through
 §10.4.
 
@@ -1034,7 +1036,7 @@ Responses:
 
 - `201 Created` — `{ "id": "<envelope id>", "relative_path": "<path under project root>", "etag": "<sha256>" }`.
 - `400 Bad Request` — body is not valid JSON, fails the envelope schema, `name` violates `NameSchema`,
-  `kind` is not `"step"`, or `body` fails `makeStepTemplateSchema(registry)`.
+  `kind` is not `"step"`, `folder` is malformed, or `body` fails `makeStepTemplateSchema(registry)`.
 - `409 Conflict` — a template of that `name` already exists in `users/<user-id>/template/`.
   Also `409` when the body's `id` is already held by any template of any origin, so a save-as
   never makes the next scan flag a duplicate.
