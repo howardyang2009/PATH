@@ -5,6 +5,7 @@ import { AppShell } from "./app-shell.js";
 import { Canvas } from "./canvas.js";
 import { useWorkflowDiscovery } from "./discovery.js";
 import { documentPolicy } from "./document.js";
+import { downloadFailure, downloadFile } from "./download-file.js";
 import {
   EditingToolbar,
   FileStatus,
@@ -35,6 +36,7 @@ import {
   frameHasUnsavedWork,
   openedResultOf,
   planDelete,
+  planDownload,
   useOpenFile,
 } from "./use-open-file.js";
 import { useRefAuthoring } from "./use-ref-authoring.js";
@@ -208,6 +210,16 @@ export function App({
   // Dirty is content-equality against the active frame's baseline, the same fact launch and Save
   // gate on — not a mutation flag. `active` is the frame the buffer and its baseline live on.
   const dirty = frameDirty(active);
+  // Download saves the active frame's file as it is on disk, so a dirty buffer is confirmed first.
+  const downloadPlan = planDownload(session);
+  const onDownload = (): void => {
+    if (!downloadPlan) return;
+    if (dirty && !window.confirm("Unsaved edits are not included. Download the saved file?"))
+      return;
+    downloadFile(client, downloadPlan).catch((error: unknown) =>
+      window.alert(`Could not download: ${downloadFailure(error)}`),
+    );
+  };
   // The undo/redo affordances read the active frame's own stack (per-file); the keyboard peer below
   // re-subscribes only when the enablement flips.
   const canUndo = frameCanUndo(active);
@@ -303,6 +315,8 @@ export function App({
               onReacquire={() => activePath && reacquire(activePath)}
               canDelete={deletePlan !== null}
               onDelete={onDelete}
+              canDownload={downloadPlan !== null}
+              onDownload={onDownload}
             />
           ) : undefined
         }

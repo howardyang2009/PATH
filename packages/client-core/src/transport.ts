@@ -74,6 +74,14 @@ export class HttpTransport {
     return reply;
   }
 
+  /** A GET whose 2xx reply is a file: the bytes as a `Blob` plus the headers (file name, type). A
+   * non-2xx is raised as the server's error envelope. */
+  async requestBlob(path: string): Promise<{ blob: Blob; headers: Headers }> {
+    const res = await this.fetch(this.url(path));
+    if (!res.ok) throw toApiError(res.status, await res.text());
+    return { blob: await res.blob(), headers: res.headers };
+  }
+
   /** `request`, with the 2xx reply parsed as JSON — a malformed body is a `PathApiError` too. */
   async requestJson<T>(path: string, options?: RequestOptions): Promise<T> {
     const reply = await this.request(path, options);

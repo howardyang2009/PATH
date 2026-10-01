@@ -787,6 +787,34 @@ Responses:
   it.
 - `409 Conflict` — the target file or folder already exists.
 
+### 7.4 `GET /v0/workflows/download?path=<handle>[&origin=shipped]` — download a workflow
+
+Read-only: no edit lease, and no origin gate (§2.1), like §7.1. Saves the workflow file as it is on
+disk, or, when the workflow `ref`s other workflows, a zip of every file its `ref`s reach.
+
+`path` is the file's handle from `GET /v0/workflows`: a project path under `shared/workflow/` or
+`users/<user-id>/workflow/`. With `origin=shipped` it is the shipped-root path of a shipped row.
+
+The server follows `ref`s through a visited set, so a cycle is no error and each file appears once.
+It reads each file only to find its `ref`s; it never schema-validates. The zip holds one folder named
+for the workflow, with a virtual project layout under it: `shipped/workflow/…`, `shared/workflow/…`,
+`users/<user-id>/workflow/…`. Each file is byte-exact, so every relative `ref` resolves after unzip.
+Entries are sorted by path with a fixed mtime, so the same closure zips to the same bytes. Templates
+are never included.
+
+Responses:
+
+- `200 OK`, one file in the closure — `application/json`, the file's bytes, and its strong `ETag`.
+- `200 OK`, more than one — `application/zip`, no `ETag`.
+- Both carry `Content-Disposition: attachment; filename="…"`: `<file>.workflow.json`, or `<name>.zip`.
+- `400 Bad Request` — `origin` is present and not `shipped`.
+- `404 Not Found` — no workflow file at `path`: missing, escapes its root, a symlink component, not a
+  `*.workflow.json`, or in the wrong root for `origin`.
+- `422 Unprocessable Entity` — a `ref` cannot be followed: the file is missing, lies outside the
+  shipped, shared and current user's workflow roots, or holds invalid JSON. `error.details` lists each
+  as `{ "ref": "<as written>", "from": "<entry path of the file that holds it>", "reason": "…" }`.
+  No partial zip is sent.
+
 ## 8. `GET /v0/step-plugins` — the authoring registry
 
 New capability ([#261](https://github.com/howardyang2009/PATH/issues/261), part of
@@ -1054,3 +1082,14 @@ It does not: to keep one addressing scheme per artifact, **`PUT /v0/workflows` r
 a template never surfaces as a launchable workflow. A template is written only through `/v0/templates`, and reaches a runnable
 `*.workflow.json` only by Instantiation
 ([ADR 0049](../adr/0049-instantiation-is-a-detached-copy-that-re-stamps-ids-and-never-rewires.md)).
+
+### 10.7 `GET /v0/templates/:id/download` — download a template
+
+Read-only: no origin gate. Sends the template's on-disk bytes, shipped ones included; an invalid
+template downloads too.
+
+Responses:
+
+- `200 OK` — `application/json`, the file's bytes, `Content-Disposition: attachment;
+  filename="<name>.step-template.json"`.
+- `404 Not Found` — no template resolves to `:id`.

@@ -23,8 +23,10 @@ export {
 } from "./session/reducer.js";
 export {
   type DeletePlan,
+  type DownloadPlan,
   type PlanState,
   planDelete,
+  planDownload,
   planWrite,
   type SaveAsIntent,
   type WriteIntent,

@@ -7,6 +7,7 @@ import {
   initialSessionState,
   openedResultOf,
   planDelete,
+  planDownload,
   planWrite,
   reduceSession,
   type SessionOutcome,
@@ -827,6 +828,42 @@ describe("edit mode (Workflow | Template)", () => {
   it("opening a workflow returns to workflow mode", () => {
     const s = reduce(initialSessionState, { type: "newTemplate" });
     expect(reduce(s, { type: "openLoading", path: "a.workflow.json" }).mode).toBe("workflow");
+  });
+});
+
+describe("planDownload", () => {
+  it("plans the active frame's saved workflow by path, even when it is not the root", () => {
+    const nested: SessionState = {
+      ...sessionOn(openFrame(file("flow"))),
+      frames: [openFrame(file("flow")), openFrame(file("child"), { path: "child.workflow.json" })],
+      activeIndex: 1,
+    };
+    expect(planDownload(sessionOn(openFrame(file("flow"))))).toEqual({
+      kind: "workflow",
+      path: "flow.workflow.json",
+    });
+    expect(planDownload(nested)).toEqual({ kind: "workflow", path: "child.workflow.json" });
+  });
+
+  it("plans an open template by id, shipped included", () => {
+    const template: TemplateSource = {
+      id: uuid(91),
+      kind: "step",
+      name: "starter",
+      description: "",
+      readOnly: true,
+    };
+    expect(planDownload(sessionOn(openFrame(file("flow"), { path: null, template })))).toEqual({
+      kind: "template",
+      id: uuid(91),
+    });
+  });
+
+  it("plans nothing for a never-saved buffer or a frame that is not open", () => {
+    expect(planDownload(sessionOn(openFrame(file("flow"), { path: null })))).toBeNull();
+    expect(
+      planDownload(sessionOn(openFrame(file("flow"), { state: { phase: "loading" } }))),
+    ).toBeNull();
   });
 });
 

@@ -10,7 +10,9 @@ import { handleGetRunBlob } from "./get-run-blob.js";
 import { handleGetRunEvents } from "./get-run-events.js";
 import { handleGetStepPlugins } from "./get-step-plugins.js";
 import { handleGetTemplate } from "./get-template.js";
+import { handleGetTemplateDownload } from "./get-template-download.js";
 import { handleGetTemplates } from "./get-templates.js";
+import { handleGetWorkflowDownload } from "./get-workflow-download.js";
 import { handleGetWorkflowFile } from "./get-workflow-file.js";
 import { handleGetWorkflows } from "./get-workflows.js";
 import { handleListRuns } from "./list-runs.js";
@@ -64,6 +66,7 @@ const API_ROUTES: readonly ApiRoute[] = [
   { method: "GET", path: "/v0/workflows", handle: handleGetWorkflows },
   { method: "PUT", path: "/v0/workflows", handle: handlePutWorkflow },
   { method: "GET", path: "/v0/workflows/file", handle: handleGetWorkflowFile },
+  { method: "GET", path: "/v0/workflows/download", handle: handleGetWorkflowDownload },
   { method: "DELETE", path: "/v0/workflows/file", handle: handleDeleteWorkflow },
   { method: "POST", path: "/v0/workflows/copy", handle: handlePostWorkflowCopy },
   { method: "POST", path: "/v0/workflows/lock", handle: handleWorkflowLock },
@@ -78,6 +81,11 @@ const API_ROUTES: readonly ApiRoute[] = [
   { method: "GET", path: "/v0/templates", handle: handleGetTemplates },
   { method: "POST", path: "/v0/templates", handle: handlePostTemplates },
   { method: "GET", path: TEMPLATE, handle: handleGetTemplate },
+  {
+    method: "GET",
+    path: /^\/v0\/templates\/([^/]+)\/download$/,
+    handle: handleGetTemplateDownload,
+  },
   { method: "PUT", path: TEMPLATE, handle: handlePutTemplate },
   { method: "DELETE", path: TEMPLATE, handle: handleDeleteTemplate },
 ];
