@@ -106,6 +106,7 @@ export async function writeDocument(
               kind: "step",
               name: write.name,
               ...(write.folder === undefined ? {} : { folder: write.folder }),
+              ...(write.origin === undefined ? {} : { origin: write.origin }),
               description: write.description,
               body: templateBody(write.description, write.file),
             });

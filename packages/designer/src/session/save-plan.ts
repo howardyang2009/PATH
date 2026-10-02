@@ -18,6 +18,7 @@ export type DocumentWrite =
       to: "new-template";
       name: string;
       folder?: string;
+      origin?: "shared";
       description: string;
       file: WorkflowFile;
     };
@@ -47,9 +48,15 @@ export type WriteOutcome =
 export type SaveAsIntent =
   | { kind: "new-file"; path: string }
   | { kind: "workflow-copy"; path: string }
-  | { kind: "new-template"; name: string; folder?: string; description: string }
-  | { kind: "template-copy"; name: string; folder?: string; description: string }
-  | { kind: "workflow-as-template"; name: string; folder?: string; description: string };
+  | { kind: "new-template"; name: string; folder?: string; origin?: "shared"; description: string }
+  | { kind: "template-copy"; name: string; folder?: string; origin?: "shared"; description: string }
+  | {
+      kind: "workflow-as-template";
+      name: string;
+      folder?: string;
+      origin?: "shared";
+      description: string;
+    };
 
 export type WriteIntent = { kind: "save" } | SaveAsIntent;
 
@@ -247,6 +254,7 @@ function planSaveAs(state: PlanState, intent: SaveAsIntent): WritePlan | WriteRe
           to: "new-template",
           name: intent.name,
           ...(intent.folder === undefined ? {} : { folder: intent.folder }),
+          ...(intent.origin === undefined ? {} : { origin: intent.origin }),
           description: intent.description,
           file,
         },
@@ -287,6 +295,7 @@ function planSaveAs(state: PlanState, intent: SaveAsIntent): WritePlan | WriteRe
           to: "new-template",
           name: intent.name,
           ...(intent.folder === undefined ? {} : { folder: intent.folder }),
+          ...(intent.origin === undefined ? {} : { origin: intent.origin }),
           description: intent.description,
           file,
         },

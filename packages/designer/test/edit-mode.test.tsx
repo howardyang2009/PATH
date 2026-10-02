@@ -262,8 +262,8 @@ describe("Workflow | Template edit-mode switch", () => {
       expect(within(dialog).getByRole("option", { name: "team/gates" })).toBeInTheDocument(),
     );
     expect(within(dialog).getByRole("option", { name: "team" })).toBeInTheDocument();
-    expect(folder.value).toBe("");
-    fireEvent.change(folder, { target: { value: "team" } });
+    expect(folder.value).toBe("user:");
+    fireEvent.change(folder, { target: { value: "user:team" } });
     fireEvent.change(within(dialog).getByLabelText("Template description"), {
       target: { value: "a gate" },
     });
@@ -273,6 +273,25 @@ describe("Workflow | Template edit-mode switch", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "Create" }));
     await waitFor(() => expect(calls.templateWrites).toHaveLength(1));
     expect(calls.templateWrites[0]!.body).toMatchObject({ name: "gate", folder: "team/new" });
+  });
+
+  it("the Folder picker offers the shared templates folder and saves into it", async () => {
+    const calls = renderApp();
+    await switchTo("Template");
+    fireEvent.click(screen.getByRole("button", { name: "New" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Save" }));
+
+    const dialog = await screen.findByRole("dialog", { name: "Save new template" });
+    fireEvent.change(within(dialog).getByLabelText("Folder"), { target: { value: "shared:" } });
+    fireEvent.change(within(dialog).getByLabelText("Template description"), {
+      target: { value: "a gate" },
+    });
+    fireEvent.change(within(dialog).getByLabelText("Template name"), {
+      target: { value: "gate" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Create" }));
+    await waitFor(() => expect(calls.templateWrites).toHaveLength(1));
+    expect(calls.templateWrites[0]!.body).toMatchObject({ name: "gate", origin: "shared" });
   });
 
   it("Open… in template mode groups templates into the origin and subfolder tree", async () => {
