@@ -14,12 +14,15 @@ const FOLDER_PATTERN = /^[^\\./\0][^\\/\0]*(\/[^\\./\0][^\\/\0]*)*$/;
 export interface TemplateSaveInput {
   name: string;
   folder?: string;
+  /** `"shared"` saves into the team's shared folder; absent saves into the user's own. */
+  origin?: "shared";
   description: string;
 }
 
 /**
- * The save-as-template dialog: a new user template always lands in `users/<user-id>/template/`,
- * so the author picks only the name and description (required — it is the palette blurb). Prefills
+ * The save-as-template dialog: a new template lands in the user's own template folder or the
+ * shared one, as the Folder picker says, and the author adds the name and description (required —
+ * it is the palette blurb). Prefills
  * from an opened template's copy or a workflow's name. Create is create-only: a taken name is
  * refused, never overwritten.
  */
@@ -40,7 +43,7 @@ export function SaveTemplateAsDialog({
   workflowName?: string;
   /** The source workflow's non-empty workflow-level fields a save as template drops. */
   droppedFields?: readonly string[];
-  /** The scanned templates: the user's own subfolders fill the Folder picker. */
+  /** The scanned templates: the user's and the shared subfolders fill the Folder picker. */
   templateList: TemplateListLoad;
   create: (input: TemplateSaveInput) => Promise<SaveAsResult>;
   onCreated: () => void;
@@ -51,7 +54,8 @@ export function SaveTemplateAsDialog({
   // not a template's.
   const [name, setName] = useState(source ? `${source.name}-copy` : (workflowName ?? ""));
   const [description, setDescription] = useState(source?.description ?? "");
-  const [picked, setPicked] = useState("");
+  // A picker value is `<origin>:<subfolder>`, the subfolder `""` at an origin's top.
+  const [picked, setPicked] = useState(`user:`);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -64,9 +68,11 @@ export function SaveTemplateAsDialog({
   const clean = path.slice(cut + 1);
   const legal = NAME_PATTERN.test(clean);
   const folderLegal = typedFolder === "" || FOLDER_PATTERN.test(typedFolder);
-  const joined = [picked, typedFolder].filter((part) => part !== "").join("/");
+  const pickedOrigin = picked.startsWith("shared:") ? "shared" : "user";
+  const pickedDir = picked.slice(picked.indexOf(":") + 1);
+  const joined = [pickedDir, typedFolder].filter((part) => part !== "").join("/");
   const folder = joined === "" ? undefined : joined;
-  const folders = useMemo(() => userFolders(templateList), [templateList]);
+  const folders = useMemo(() => writableFolders(templateList), [templateList]);
   const described = description.trim() !== "";
   const canSubmit = legal && folderLegal && described && !submitting;
   const title = fromWorkflow
@@ -82,6 +88,7 @@ export function SaveTemplateAsDialog({
     void create({
       name: clean,
       ...(folder === undefined ? {} : { folder }),
+      ...(pickedOrigin === "shared" ? { origin: "shared" as const } : {}),
       description: description.trim(),
     }).then((result) => {
       setSubmitting(false);
@@ -98,7 +105,7 @@ export function SaveTemplateAsDialog({
         <h2 className="dialog-title">{title}</h2>
         <p className="dialog-hint">
           {fromWorkflow
-            ? "The template is a copy of the workflow's body with a new identity, saved with this project's templates. The workflow stays open."
+            ? "The template is a copy of the workflow's body with a new identity, saved with this project's templates. The workflow stays open. Pick the shared folder to share it with the team."
             : source
               ? "The copy gets a new identity and is saved with this project's templates."
               : "The template is saved with this project's templates."}
@@ -112,9 +119,9 @@ export function SaveTemplateAsDialog({
             value={picked}
             onChange={(event) => setPicked(event.target.value)}
           >
-            {folders.map((dir) => (
-              <option key={dir} value={dir}>
-                {dir === "" ? "(my templates)" : dir}
+            {folders.map(({ value, label }) => (
+              <option key={value} value={value}>
+                {label}
               </option>
             ))}
           </select>
@@ -190,21 +197,30 @@ export function SaveTemplateAsDialog({
   );
 }
 
-/** The folders a template can be saved into: the user's own template folder (`""`) and every
- * subfolder, with ancestors, found by the last scan. */
-function userFolders(list: TemplateListLoad): string[] {
-  const all = new Set<string>([""]);
-  if (list.phase === "ready") {
-    for (const template of list.templates) {
-      if (template.origin !== "user") continue;
-      let dir = template.folder ?? "";
-      while (dir !== "" && !all.has(dir)) {
-        all.add(dir);
-        dir = dir.includes("/") ? dir.slice(0, dir.lastIndexOf("/")) : "";
+/** The folders a template can be saved into: the user's own and the shared template folder, each
+ * with every subfolder (ancestors included) found by the last scan. */
+function writableFolders(list: TemplateListLoad): { value: string; label: string }[] {
+  const origins = [
+    { origin: "user", top: "(my templates)", prefix: "" },
+    { origin: "shared", top: "(shared templates)", prefix: "shared/" },
+  ] as const;
+  return origins.flatMap(({ origin, top, prefix }) => {
+    const dirs = new Set<string>([""]);
+    if (list.phase === "ready") {
+      for (const template of list.templates) {
+        if (template.origin !== origin) continue;
+        let dir = template.folder ?? "";
+        while (dir !== "" && !dirs.has(dir)) {
+          dirs.add(dir);
+          dir = dir.includes("/") ? dir.slice(0, dir.lastIndexOf("/")) : "";
+        }
       }
     }
-  }
-  return [...all].sort();
+    return [...dirs].sort().map((dir) => ({
+      value: `${origin}:${dir}`,
+      label: dir === "" ? top : `${prefix}${dir}`,
+    }));
+  });
 }
 
 /** `a`, `a and b`, `a, b and c`. */

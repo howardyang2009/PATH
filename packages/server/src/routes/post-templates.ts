@@ -22,6 +22,7 @@ const PostTemplateBodySchema = z
     kind: z.literal("step"),
     name: NameSchema,
     folder: FolderSchema.optional(),
+    origin: z.enum(["user", "shared"]).optional(),
     description: z.string(),
     body: z.record(z.string(), z.unknown()),
   })
@@ -29,18 +30,18 @@ const PostTemplateBodySchema = z
 
 /**
  * `POST /v0/templates` (server-api-v0.md §10.3): **create-only** save-as into
- * `users/<user-id>/template/` alone. The client mints the envelope `id` and the server writes it
+ * `users/<user-id>/template/`, or `shared/template/` when `origin` is `"shared"`. The client mints the envelope `id` and the server writes it
  * verbatim, never to a shipped path. A name that already exists is a `409`; content changes go through `PUT` (§10.4).
  */
 export async function handlePostTemplates({ req, res, ctx }: ApiRequest): Promise<void> {
   const body = await readRequestBody(req, res, PostTemplateBodySchema);
   if (!body) return;
-  const { kind, name, folder } = body.data;
+  const { kind, name, folder, origin } = body.data;
   // The raw `body` sub-object, not zod's parsed copy, so the author's key order is preserved.
   const rawBody = (body.raw as { body: unknown }).body;
 
   // The store validates the envelope, refuses a taken name or id, and writes.
-  const written = templatesOf(ctx).create(kind, name, rawBody, folder);
+  const written = templatesOf(ctx).create(kind, name, rawBody, folder, origin);
   if (!written.ok) {
     sendError(
       res,

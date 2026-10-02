@@ -1012,8 +1012,8 @@ Responses:
 
 ### 10.3 `POST /v0/templates` — save-as (create a user template)
 
-Origin-gated (§2.1). Writes to `users/<user-id>/template/` **only**; a shipped or shared path is never
-a target. The
+Origin-gated (§2.1). Writes to `users/<user-id>/template/` or, when `origin` is `"shared"`, `shared/template/`; a
+shipped path is never a target. The
 Server is identity-agnostic ([ADR 0015](../adr/0015-designer-node-identity-client-mints-preserve-on-save.md)):
 the client **mints the envelope `id`** and sends it inside `body`; the Server writes verbatim and
 serializes the raw request object (author key order preserved, as §7).
@@ -1025,10 +1025,12 @@ Request body:
 | `kind` | `"step"` | Selects the suffix; any other value is a `400`. |
 | `name` | string | The file stem; must match `NameSchema` (`^[a-z][a-z0-9-]*$`). |
 | `folder` | string, optional | A `/`-separated subfolder under `users/<user-id>/template/`; created if absent. No empty, dot-leading, or backslash segments. |
+| `origin` | `"user"` \| `"shared"`, optional | Whose template folder receives the file; `"user"` when absent. |
 | `description` | string | The template's blurb (a step-template's required field). |
 | `body` | object | The step-template envelope, carrying the client-minted `id`. |
 
-The write lands at `users/<user-id>/template/[<folder>/]<name>.<suffix>`, creating the directory chain
+The write lands at `users/<user-id>/template/[<folder>/]<name>.<suffix>` (`shared/template/…` for
+`origin: "shared"`), creating the directory chain
 (`mkdirSync` recursive, as §7). It is **create-only** — no blind overwrite; content changes go through
 §10.4.
 
@@ -1037,7 +1039,7 @@ Responses:
 - `201 Created` — `{ "id": "<envelope id>", "relative_path": "<path under project root>", "etag": "<sha256>" }`.
 - `400 Bad Request` — body is not valid JSON, fails the envelope schema, `name` violates `NameSchema`,
   `kind` is not `"step"`, `folder` is malformed, or `body` fails `makeStepTemplateSchema(registry)`.
-- `409 Conflict` — a template of that `name` already exists in `users/<user-id>/template/`.
+- `409 Conflict` — a template of that `name` already exists in the target folder.
   Also `409` when the body's `id` is already held by any template of any origin, so a save-as
   never makes the next scan flag a duplicate.
 - `403 Forbidden` — the origin gate rejected the request (§2.1).

@@ -263,6 +263,8 @@ export interface WirePostTemplateRequest {
   name: string;
   /** A `/`-separated subfolder under the user's template folder, created if absent. */
   folder?: string;
+  /** Whose template folder the write lands in; the user's own when absent. */
+  origin?: "user" | "shared";
   description: string;
   body: Record<string, unknown>;
 }

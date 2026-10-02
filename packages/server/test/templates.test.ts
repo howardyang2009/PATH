@@ -302,6 +302,42 @@ describe("POST /v0/templates", () => {
     expect(list.templates.map((t) => t.id)).toContain(body.id);
   });
 
+  it("saves into the shared template folder for origin shared", async () => {
+    const body = stepTemplate();
+    const { url } = await start();
+    const res = await fetch(`${url}/v0/templates`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        kind: "step",
+        name: "team-fragment",
+        origin: "shared",
+        description: "blurb",
+        body,
+      }),
+    });
+    expect(res.status).toBe(201);
+    const rel = "shared/template/team-fragment.step-template.json";
+    expect(await res.json()).toMatchObject({ id: body.id, relative_path: rel });
+    expect(existsSync(join(projectDir, rel))).toBe(true);
+  });
+
+  it("400s an origin other than user or shared", async () => {
+    const { url } = await start();
+    const res = await fetch(`${url}/v0/templates`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        kind: "step",
+        name: "x",
+        origin: "shipped",
+        description: "blurb",
+        body: stepTemplate(),
+      }),
+    });
+    expect(res.status).toBe(400);
+  });
+
   it.each(["../escape", "a/../b", "/abs", "a//b", ".hidden", "a\\b", "a/"])(
     "400s the folder %j",
     async (folder) => {
