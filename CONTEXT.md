@@ -428,6 +428,9 @@ and issues use them exactly.
   ([ADR 0088](https://github.com/howardyang2009/PATH/blob/main/docs/adr/0088-each-request-sees-its-own-view-and-only-the-creator-writes-a-shared-item.md)).
 - **Creator** — the user who first saved a **shared** item. Only the creator edits or deletes it;
   everyone else reads, runs or copies it. A shared item with no known creator is read-only for all.
+- **Launcher** — the user who started a root run. A run is private to its launcher: it lives in the
+  launcher's own **store**, and no other user can list, read, resume, complete, cancel or delete it,
+  even when the workflow it ran is shared. The store a run lives in is the only record of who launched it.
 
 ## Invariants
 
