@@ -21,6 +21,12 @@ describe("nodeEventLabel", () => {
     expect(nodeEventLabel("n1", "step-a")).toBe("step-a (n1)");
   });
 
+  it("shortens a GUID node id to its first 8 characters", () => {
+    expect(nodeEventLabel("3f2a9c1e-7b4d-4e8a-9f00-123456789abc", "step-a")).toBe(
+      "step-a (3f2a9c1e)",
+    );
+  });
+
   it("falls back to the id alone for a name-less node", () => {
     expect(nodeEventLabel("n1", null)).toBe("n1");
     expect(nodeEventLabel("n1", undefined)).toBe("n1");

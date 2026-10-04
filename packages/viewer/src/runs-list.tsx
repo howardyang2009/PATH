@@ -1,4 +1,4 @@
-import { isTerminal, type PathApiClient, type RunStatus } from "@path/client-core";
+import { isTerminal, type PathApiClient, type RunStatus, shortGuid } from "@path/client-core";
 import { useEffect, useRef, useState } from "react";
 import { DeleteButton } from "./delete-button.js";
 import { formatTimestamp } from "./format-time.js";
@@ -181,7 +181,7 @@ export function RunsList({
                   >
                     <span className="run-workflow">{run.workflow_name ?? "—"}</span>
                     <StatusPill status={rowStatus} />
-                    <span className="run-id">{run.run_id}</span>
+                    <span className="run-id">{shortGuid(run.run_id)}</span>
                     <span className="run-started">{formatTimestamp(run.started_at)}</span>
                   </button>
                   {open && (

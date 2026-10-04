@@ -5,11 +5,17 @@ export function nodeLabel(nodeId: string | null): string {
   return nodeId ?? "root";
 }
 
-/** A narrative row names its node by both the human `node_name` and the GUID `node_id`; both are
- * nullable together for the implicit root step, which reads as "root", and a name-less row falls
- * back to the id alone.
+/** The first 8 characters of a GUID: enough to tell rows apart at a glance; the full id stays the
+ * wire value. */
+export function shortGuid(guid: string): string {
+  return guid.slice(0, 8);
+}
+
+/** A narrative row names its node by both the human `node_name` and the short GUID `node_id`; both
+ * are nullable together for the implicit root step, which reads as "root", and a name-less row
+ * falls back to the full id alone.
  */
 export function nodeEventLabel(nodeId: string | null, nodeName: string | null | undefined): string {
   if (nodeName === null || nodeName === undefined) return nodeLabel(nodeId);
-  return nodeId === null ? nodeName : `${nodeName} (${nodeId})`;
+  return nodeId === null ? nodeName : `${nodeName} (${shortGuid(nodeId)})`;
 }

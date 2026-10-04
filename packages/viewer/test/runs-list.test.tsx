@@ -117,6 +117,16 @@ describe("RunsList", () => {
     ).toHaveTextContent("—");
   });
 
+  it("shows the short root run id, with the full id as the row title", async () => {
+    const { client } = stubClient([CANCELLED]);
+
+    renderList(client);
+    const row = await screen.findByTestId("run-row-run_gamma");
+
+    expect(row.querySelector(".run-id")).toHaveTextContent(/^run_gamm$/);
+    expect(row).toHaveAttribute("title", "run_gamma");
+  });
+
   it("shows status as color + glyph, never hue alone", async () => {
     const { client } = stubClient([RUNNING, SUCCEEDED]);
 
