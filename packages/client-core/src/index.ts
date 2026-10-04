@@ -106,7 +106,7 @@ export {
   resupplyGate,
   secretSkeletonJson,
 } from "./launch-secret-resupply.js";
-export { nodeEventLabel, nodeLabel } from "./node-label.js";
+export { nodeEventLabel, nodeLabel, shortGuid } from "./node-label.js";
 // The Designer's eager legal-K check (ADR 0033): the client mirror of the engine's one legal-K
 // rule; the engine's `refusal` stays the authority for a race.
 export {

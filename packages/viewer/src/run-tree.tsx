@@ -8,6 +8,7 @@ import {
   type RunNodeState,
   type RunStatus,
   type RunTreeNode,
+  shortGuid,
 } from "@path/client-core";
 import { useState } from "react";
 import { AssigneeChip } from "./assignee-chip.js";
@@ -125,8 +126,12 @@ function RunTreeRow({ node, tree }: { node: RunTreeNode; tree: TreeView }) {
           onClick={() => tree.onSelectRun(run.runId)}
         >
           <span className="node-name">{label}</span>
-          {run.nodeId && <span className="tree-ref node-ref">({run.nodeId})</span>}
-          <span className="tree-ref run-ref">{run.runId}</span>
+          {run.nodeId && (
+            <span className="tree-ref node-ref" title={run.nodeId}>
+              ({shortGuid(run.nodeId)})
+            </span>
+          )}
+          <span className="tree-ref run-ref">{shortGuid(run.runId)}</span>
           <StatusPill status={displayStatus} />
           {assignee !== null && <AssigneeChip assignee={assignee} />}
         </button>

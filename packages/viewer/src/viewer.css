@@ -589,12 +589,19 @@ button.workflow-row:focus-visible {
   text-overflow: ellipsis;
 }
 
-/* In the list row the id is secondary to the workflow name: demoted to its own muted line below it,
-   smaller than the name it sits under. (The detail-pane `.run-id` rules are unaffected.) */
-.run-row .run-id {
+/* In the list row the start time and short id share one muted line below the workflow name. */
+.run-meta {
   grid-column: 1 / -1;
+  display: flex;
+  gap: 8px;
+  min-width: 0;
   font-size: var(--fs-xs);
   color: var(--text-muted);
+}
+
+/* The detail-pane `.run-id` rules are unaffected. */
+.run-row .run-id {
+  font-size: var(--fs-xs);
 }
 
 /* The detail pane has room for the whole id. */
@@ -604,9 +611,7 @@ button.workflow-row:focus-visible {
 }
 
 .run-started {
-  grid-column: 1 / -1;
-  font-size: var(--fs-xs);
-  color: var(--text-muted);
+  white-space: nowrap;
 }
 
 /* ---------- run detail ---------- */

@@ -6,6 +6,7 @@ import {
   type RunRecord,
   type WorkflowFile,
 } from "@path/schema";
+import { shortGuid } from "./node-label.js";
 
 /** The Designer's half of the one legal-K verdict (`@path/schema`'s `legalKBoundary`, whose engine
  * door is `resume-legal-k.ts`): the button computes eligibility eagerly from the run tree + open
@@ -41,7 +42,7 @@ export interface ResumeFromEligibilityArgs {
 /** The short run id shown in the button label; the full id is the wire value and the hover
  * title. */
 export function shortRunId(runId: string): string {
-  return runId.slice(0, 8);
+  return shortGuid(runId);
 }
 
 /** Compute the button's one state: enabled, or disabled with the highest-precedence reason —
