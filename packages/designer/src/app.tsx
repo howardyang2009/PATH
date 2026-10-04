@@ -7,6 +7,7 @@ import { useWorkflowDiscovery } from "./discovery.js";
 import { documentPolicy } from "./document.js";
 import { downloadFailure, downloadFile } from "./download-file.js";
 import {
+  canSave,
   EditingToolbar,
   FileStatus,
   ModeSwitch,
@@ -220,6 +221,27 @@ export function App({
       window.alert(`Could not download: ${downloadFailure(error)}`),
     );
   };
+  // A from-scratch buffer (no path) has no on-disk file yet: Save opens the first-save dialog — the
+  // new-template dialog in template mode — rather than overwriting. A saved frame saves in place
+  // through the write route, and a template source writes back to its template by id.
+  const onSave =
+    policy.saveDoor === "new-template-dialog"
+      ? () => setSaveAsDialog("new-template")
+      : policy.saveDoor === "new-workflow-dialog"
+        ? () => setNewFileOpen(true)
+        : session.save;
+  const saveEnabled = canSave(session.saveState, dirty);
+  useEffect(() => {
+    // ⌘/Ctrl+S runs the Save button, from any focus. It always blocks the browser's own Save Page.
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (!(event.metaKey || event.ctrlKey) || event.shiftKey || event.altKey) return;
+      if (event.key.toLowerCase() !== "s") return;
+      event.preventDefault();
+      if (saveEnabled) onSave();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [saveEnabled, onSave]);
   // The undo/redo affordances read the active frame's own stack (per-file); the keyboard peer below
   // re-subscribes only when the enablement flips.
   const canUndo = frameCanUndo(active);
@@ -295,17 +317,7 @@ export function App({
               canRedo={canRedo}
               onUndo={() => apply({ type: "undo" })}
               onRedo={() => apply({ type: "redo" })}
-              // A from-scratch buffer (no path) has no on-disk file yet: Save opens the first-save
-              // dialog — the new-template dialog in template mode — rather than overwriting. A
-              // saved frame saves in place through the write route, and a template source writes
-              // back to its template by id.
-              onSave={
-                policy.saveDoor === "new-template-dialog"
-                  ? () => setSaveAsDialog("new-template")
-                  : policy.saveDoor === "new-workflow-dialog"
-                    ? () => setNewFileOpen(true)
-                    : session.save
-              }
+              onSave={onSave}
               // Save as…: in template mode a copy to a new template; in workflow mode first a
               // choice between a copy to a new workflow file and a new template made from the
               // workflow's body.

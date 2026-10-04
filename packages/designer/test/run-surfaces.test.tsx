@@ -10,6 +10,7 @@ import { describe, expect, it } from "vitest";
 import { App } from "../src/app.js";
 import { openWorkflowFile } from "../src/open-workflow.js";
 import { canonicalSerialize } from "../src/serialize.js";
+import { fileMenuItem } from "./file-menu.js";
 
 /**
  * The on-disk bytes of a file the Designer has already saved: canonical, so a re-open is a fixed
@@ -451,7 +452,7 @@ describe("Designer run surfaces (#372)", () => {
     expect(screen.queryByText("Select a run.")).not.toBeInTheDocument();
 
     // Open the never-run workflow through the picker (the files sit under a `flows/` folder).
-    fireEvent.click(screen.getByText("Open…"));
+    fireEvent.click(fileMenuItem("Open…"));
     fireEvent.click(await screen.findByText("flows"));
     fireEvent.click(await screen.findByText("other.workflow.json"));
 

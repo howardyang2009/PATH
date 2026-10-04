@@ -4,6 +4,7 @@ import { FORMAT_VERSION } from "@path/schema";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../src/app.js";
+import { fileMenuItem, findFileMenuItem } from "./file-menu.js";
 
 /** The Download button saves the active frame's saved file: a workflow by path, a template by id. */
 
@@ -78,7 +79,7 @@ describe("Download", () => {
     const { downloadWorkflow } = renderApp(WORKFLOW_PATH);
     await screen.findByText("alpha");
 
-    fireEvent.click(screen.getByRole("button", { name: "Download" }));
+    fireEvent.click(fileMenuItem("Download"));
 
     await waitFor(() => expect(saved).toEqual(["saved.json"]));
     expect(downloadWorkflow).toHaveBeenCalledWith(WORKFLOW_PATH);
@@ -88,7 +89,7 @@ describe("Download", () => {
     renderApp();
     await screen.findByRole("radiogroup", { name: "Edit mode" });
 
-    const button = await screen.findByRole("button", { name: "Download" });
+    const button = await findFileMenuItem("Download");
     expect(button).toBeDisabled();
     expect(button).toHaveAttribute("title", "Save first");
   });
@@ -97,7 +98,7 @@ describe("Download", () => {
     const { downloadTemplate, downloadWorkflow } = renderApp();
     await openTemplate();
 
-    fireEvent.click(screen.getByRole("button", { name: "Download" }));
+    fireEvent.click(fileMenuItem("Download"));
 
     await waitFor(() => expect(downloadTemplate).toHaveBeenCalledWith(TEMPLATE_ID));
     expect(downloadWorkflow).not.toHaveBeenCalled();
@@ -109,12 +110,12 @@ describe("Download", () => {
     fireEvent.click(within(canvas).getByRole("button", { name: "Move draft down" }));
     const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
 
-    fireEvent.click(screen.getByRole("button", { name: "Download" }));
+    fireEvent.click(fileMenuItem("Download"));
     expect(confirm).toHaveBeenCalledWith(expect.stringContaining("Unsaved edits are not included"));
     expect(downloadTemplate).not.toHaveBeenCalled();
 
     confirm.mockReturnValue(true);
-    fireEvent.click(screen.getByRole("button", { name: "Download" }));
+    fireEvent.click(fileMenuItem("Download"));
     await waitFor(() => expect(downloadTemplate).toHaveBeenCalledTimes(1));
   });
 
@@ -128,7 +129,7 @@ describe("Download", () => {
     );
     const alert = vi.spyOn(window, "alert").mockImplementation(() => {});
 
-    fireEvent.click(screen.getByRole("button", { name: "Download" }));
+    fireEvent.click(fileMenuItem("Download"));
 
     await waitFor(() => expect(alert).toHaveBeenCalledTimes(1));
     expect(alert.mock.calls[0]?.[0]).toContain(

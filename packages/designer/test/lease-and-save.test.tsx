@@ -161,6 +161,41 @@ describe("Designer save through the write route", () => {
     expect(screen.queryByTestId("workflow-file-name")).not.toBeInTheDocument();
   });
 
+  it("saves on Ctrl+S like the Save button, and blocks the browser's own save", async () => {
+    const calls = makeCalls();
+    const idless = rootFile();
+    delete idless.id;
+    render(
+      <App client={stubClient({ files: filesWith(idless), calls })} initialPath={ROOT_PATH} />,
+    );
+    await screen.findByText("draft");
+
+    const notCancelled = fireEvent.keyDown(window, { key: "s", ctrlKey: true });
+
+    expect(notCancelled).toBe(false);
+    await waitFor(() => expect(calls.put).toHaveLength(1));
+    expect(await screen.findByText("Saved")).toBeInTheDocument();
+  });
+
+  it("ignores Ctrl+S on a clean buffer, as the disabled Save button does", async () => {
+    const calls = makeCalls();
+    const clean = {
+      format: FORMAT_VERSION,
+      id: uuid(1),
+      name: "clean",
+      body: [{ id: uuid(2), name: "draft", prompt: "hi", type: "prompt" }],
+    };
+    const files = { [ROOT_PATH]: canonicalSerialize(clean as never) };
+    render(<App client={stubClient({ files, calls })} initialPath={ROOT_PATH} />);
+    await screen.findByText("draft");
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+
+    const notCancelled = fireEvent.keyDown(window, { key: "s", metaKey: true });
+
+    expect(notCancelled).toBe(false);
+    expect(calls.put).toHaveLength(0);
+  });
+
   it("names the open workflow's file in the top bar while no status shows", async () => {
     // Canonical bytes, so the file opens clean (ADR 0030) and no "Unsaved edits" status replaces
     // the name.

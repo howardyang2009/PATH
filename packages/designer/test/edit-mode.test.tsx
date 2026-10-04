@@ -4,6 +4,7 @@ import { FORMAT_VERSION } from "@path/schema";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "../src/app.js";
+import { fileMenuItem, findFileMenuItem } from "./file-menu.js";
 
 /**
  * The toolbar's Workflow | Template edit-mode switch. Workflow mode edits `*.workflow.json` files;
@@ -72,13 +73,66 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+describe("File menu", () => {
+  it("holds New, Open…, Save as…, Download and Delete, and closes on Escape back to File", async () => {
+    renderApp(WORKFLOW_PATH);
+    await screen.findByText("alpha");
+    const file = screen.getByRole("button", { name: /^File/ });
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+
+    fireEvent.click(file);
+
+    const menu = screen.getByRole("menu", { name: "File" });
+    expect(
+      within(menu)
+        .getAllByRole("menuitem")
+        .map((item) => item.textContent),
+    ).toEqual(["New", "Open…", "Save as…", "Download", "Delete"]);
+    expect(within(menu).getByRole("menuitem", { name: "New" })).toHaveFocus();
+    fireEvent.keyDown(menu, { key: "ArrowDown" });
+    expect(within(menu).getByRole("menuitem", { name: "Open…" })).toHaveFocus();
+    fireEvent.keyDown(menu, { key: "ArrowUp" });
+    fireEvent.keyDown(menu, { key: "ArrowUp" });
+    expect(within(menu).getByRole("menuitem", { name: "Delete" })).toHaveFocus();
+
+    fireEvent.keyDown(menu, { key: "Escape" });
+
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    expect(file).toHaveFocus();
+  });
+
+  it("skips a disabled item on the arrow keys", async () => {
+    renderApp();
+    fireEvent.click(await screen.findByRole("button", { name: "New workflow" }));
+    await screen.findByRole("region", { name: "Workflow canvas" });
+    fireEvent.click(screen.getByRole("button", { name: /^File/ }));
+    const menu = screen.getByRole("menu", { name: "File" });
+
+    fireEvent.keyDown(menu, { key: "ArrowDown" });
+    fireEvent.keyDown(menu, { key: "ArrowDown" });
+
+    // Save as…, Download and Delete are all disabled for a never-saved buffer: focus wraps to New.
+    expect(within(menu).getByRole("menuitem", { name: "New" })).toHaveFocus();
+  });
+
+  it("closes on a click outside", async () => {
+    renderApp(WORKFLOW_PATH);
+    await screen.findByText("alpha");
+    fireEvent.click(screen.getByRole("button", { name: /^File/ }));
+
+    fireEvent.mouseDown(document.body);
+
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  });
+});
+
 describe("Delete", () => {
   it("deletes the open workflow after a confirm, under its If-Match, and empties the canvas", async () => {
     const calls = renderApp(WORKFLOW_PATH);
     await screen.findByText("alpha");
     const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
 
-    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    fireEvent.click(fileMenuItem("Delete"));
 
     expect(confirm).toHaveBeenCalledWith(expect.stringContaining(`Delete "${WORKFLOW_PATH}"?`));
     await waitFor(() => expect(calls.deletes).toHaveLength(1));
@@ -90,12 +144,24 @@ describe("Delete", () => {
     expect(screen.queryByText("alpha")).not.toBeInTheDocument();
   });
 
+  it("shows Deleting… in the top bar while the delete runs", async () => {
+    renderApp(WORKFLOW_PATH);
+    await screen.findByText("alpha");
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+
+    fireEvent.click(fileMenuItem("Delete"));
+
+    // The stub answers on a later tick, so the in-flight status shows first.
+    expect(screen.getByText("Deleting…").closest(".topbar-title")).not.toBeNull();
+    expect(await screen.findByText("Deleted")).toBeInTheDocument();
+  });
+
   it("keeps the file when the confirm is cancelled", async () => {
     const calls = renderApp(WORKFLOW_PATH);
     await screen.findByText("alpha");
     vi.spyOn(window, "confirm").mockReturnValue(false);
 
-    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    fireEvent.click(fileMenuItem("Delete"));
 
     expect(calls.deletes).toHaveLength(0);
     expect(screen.getByText("alpha")).toBeInTheDocument();
@@ -120,7 +186,7 @@ describe("Delete", () => {
     await screen.findByText("alpha");
     vi.spyOn(window, "confirm").mockReturnValue(true);
 
-    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    fireEvent.click(fileMenuItem("Delete"));
 
     const alert = await screen.findByText(
       /Could not delete: workflow is being edited in another session/,
@@ -132,12 +198,12 @@ describe("Delete", () => {
   it("deletes the open user template by id", async () => {
     const calls = renderApp();
     await switchTo("Template");
-    fireEvent.click(screen.getByRole("button", { name: "Open…" }));
+    fireEvent.click(fileMenuItem("Open…"));
     fireEvent.click(await screen.findByRole("button", { name: /nightly/ }));
     await screen.findByText("draft");
     const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
 
-    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    fireEvent.click(fileMenuItem("Delete"));
 
     expect(confirm).toHaveBeenCalledWith(expect.stringContaining('Delete template "nightly"?'));
     await waitFor(() => expect(calls.deletes).toHaveLength(1));
@@ -149,7 +215,7 @@ describe("Delete", () => {
     renderApp();
     fireEvent.click(await screen.findByRole("button", { name: "New workflow" }));
     await screen.findByRole("region", { name: "Workflow canvas" });
-    expect(screen.getByRole("button", { name: "Delete" })).toBeDisabled();
+    expect(fileMenuItem("Delete")).toBeDisabled();
   });
 });
 
@@ -168,7 +234,7 @@ describe("Workflow | Template edit-mode switch", () => {
   it("New in template mode starts an empty template; its first Save picks name and description", async () => {
     const calls = renderApp();
     await switchTo("Template");
-    fireEvent.click(screen.getByRole("button", { name: "New" }));
+    fireEvent.click(fileMenuItem("New"));
     await screen.findByRole("region", { name: "Workflow canvas" });
     expect(screen.getByText("New template (not saved)")).toBeInTheDocument();
 
@@ -197,8 +263,8 @@ describe("Workflow | Template edit-mode switch", () => {
   it("a new template needs a description before it can be created", async () => {
     const calls = renderApp();
     await switchTo("Template");
-    fireEvent.click(screen.getByRole("button", { name: "New" }));
-    expect(await screen.findByRole("button", { name: "Save as…" })).toBeDisabled();
+    fireEvent.click(fileMenuItem("New"));
+    expect(await findFileMenuItem("Save as…")).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     const dialog = await screen.findByRole("dialog", { name: "Save new template" });
@@ -227,7 +293,7 @@ describe("Workflow | Template edit-mode switch", () => {
   it("a template name with a folder prefix posts the folder and the stem separately", async () => {
     const calls = renderApp();
     await switchTo("Template");
-    fireEvent.click(screen.getByRole("button", { name: "New" }));
+    fireEvent.click(fileMenuItem("New"));
     fireEvent.click(await screen.findByRole("button", { name: "Save" }));
 
     const dialog = await screen.findByRole("dialog", { name: "Save new template" });
@@ -253,7 +319,7 @@ describe("Workflow | Template edit-mode switch", () => {
   it("the Folder picker offers the user's template subfolders and joins with a typed folder", async () => {
     const calls = renderApp();
     await switchTo("Template");
-    fireEvent.click(screen.getByRole("button", { name: "New" }));
+    fireEvent.click(fileMenuItem("New"));
     fireEvent.click(await screen.findByRole("button", { name: "Save" }));
 
     const dialog = await screen.findByRole("dialog", { name: "Save new template" });
@@ -278,7 +344,7 @@ describe("Workflow | Template edit-mode switch", () => {
   it("the Folder picker offers the shared templates folder and saves into it", async () => {
     const calls = renderApp();
     await switchTo("Template");
-    fireEvent.click(screen.getByRole("button", { name: "New" }));
+    fireEvent.click(fileMenuItem("New"));
     fireEvent.click(await screen.findByRole("button", { name: "Save" }));
 
     const dialog = await screen.findByRole("dialog", { name: "Save new template" });
@@ -297,7 +363,7 @@ describe("Workflow | Template edit-mode switch", () => {
   it("Open… in template mode groups templates into the origin and subfolder tree", async () => {
     renderApp();
     await switchTo("Template");
-    fireEvent.click(screen.getByRole("button", { name: "Open…" }));
+    fireEvent.click(fileMenuItem("Open…"));
 
     const dialog = await screen.findByRole("dialog", { name: "Open a template" });
     // The user's templates start open: the top-level file shows, the nested one waits in its folder.
@@ -313,7 +379,7 @@ describe("Workflow | Template edit-mode switch", () => {
   it("Open… in template mode lists templates and opens the chosen one", async () => {
     renderApp();
     await switchTo("Template");
-    fireEvent.click(screen.getByRole("button", { name: "Open…" }));
+    fireEvent.click(fileMenuItem("Open…"));
 
     const dialog = await screen.findByRole("dialog", { name: "Open a template" });
     fireEvent.click(
@@ -355,7 +421,7 @@ describe("Workflow | Template edit-mode switch", () => {
     fireEvent.click(within(modeSwitch()).getByRole("radio", { name: "Template" }));
     expect(within(modeSwitch()).getByRole("radio", { name: "Template" })).toBeChecked();
 
-    fireEvent.click(screen.getByRole("button", { name: "New" }));
+    fireEvent.click(fileMenuItem("New"));
     await screen.findByRole("region", { name: "Workflow canvas" });
     fireEvent.click(within(modeSwitch()).getByRole("radio", { name: "Workflow" }));
     expect(within(modeSwitch()).getByRole("radio", { name: "Workflow" })).toBeChecked();
@@ -398,9 +464,9 @@ describe("Workflow | Template edit-mode switch", () => {
 
   it("disables Save as… for a new, never-saved workflow: its first save is Save", async () => {
     renderApp();
-    fireEvent.click(await screen.findByRole("button", { name: "New" }));
+    fireEvent.click(await findFileMenuItem("New"));
     await screen.findByRole("region", { name: "Workflow canvas" });
-    expect(screen.getByRole("button", { name: "Save as…" })).toBeDisabled();
+    expect(fileMenuItem("Save as…")).toBeDisabled();
     expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
   });
 
@@ -408,7 +474,7 @@ describe("Workflow | Template edit-mode switch", () => {
     const calls = renderApp(WORKFLOW_PATH);
     await screen.findByText("alpha");
 
-    fireEvent.click(screen.getByRole("button", { name: "Save as…" }));
+    fireEvent.click(fileMenuItem("Save as…"));
     fireEvent.click(
       within(await screen.findByRole("dialog", { name: "Save as" })).getByRole("button", {
         name: /Workflow…/,
@@ -436,7 +502,7 @@ describe("Workflow | Template edit-mode switch", () => {
     const calls = renderApp(WORKFLOW_PATH);
     await screen.findByText("alpha");
 
-    fireEvent.click(screen.getByRole("button", { name: "Save as…" }));
+    fireEvent.click(fileMenuItem("Save as…"));
     fireEvent.click(
       within(await screen.findByRole("dialog", { name: "Save as" })).getByRole("button", {
         name: /Template…/,

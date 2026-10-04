@@ -4,6 +4,7 @@ import { FORMAT_VERSION } from "@path/schema";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { App } from "../src/app.js";
+import { fileMenuItem } from "./file-menu.js";
 
 /**
  * #580 — author mode. Opening a `*.step-template.json` itself (a double-click on its palette card)
@@ -141,7 +142,7 @@ describe("Author mode on a *.step-template.json", () => {
     await editTemplate("nightly");
 
     expect(screen.getByTestId("author-mode")).toHaveTextContent("nightly.step-template.json");
-    expect(screen.getByRole("button", { name: "Save as…" })).toBeInTheDocument();
+    expect(fileMenuItem("Save as…")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Save as workflow…" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^Edit / })).not.toBeInTheDocument();
   });
@@ -204,7 +205,7 @@ describe("Author mode on a *.step-template.json", () => {
     const calls = renderApp();
     const canvas = await editTemplate("nightly");
 
-    fireEvent.click(screen.getByRole("button", { name: "Save as…" }));
+    fireEvent.click(fileMenuItem("Save as…"));
     const dialog = await screen.findByRole("dialog", { name: "Save as new template" });
     fireEvent.change(within(dialog).getByLabelText("Template name"), {
       target: { value: "nightly-v2" },
@@ -276,7 +277,7 @@ describe("The template envelope", () => {
     const calls = renderApp();
     await editTemplate("draft-judge");
 
-    fireEvent.click(screen.getByRole("button", { name: "Save as…" }));
+    fireEvent.click(fileMenuItem("Save as…"));
     const dialog = await screen.findByRole("dialog", { name: "Save as new template" });
     expect(within(dialog).getByText(".step-template.json")).toBeInTheDocument();
     fireEvent.change(within(dialog).getByLabelText("Template name"), {
