@@ -608,6 +608,14 @@ Rule of thumb: **Config flows in from outside. Context is written from inside.**
   a **Worker** is in-process, so whatever it writes to a process stream bypasses the choke point
   entirely; the sanctioned channel is the `stderr` it returns, which becomes a run event like any
   other.
+- **User secret** — a name and a value that one user stores for their own runs. In hosted mode a
+  run's **Env-sourced value** resolves against the launcher's User secrets, never the host
+  environment, and every User secret value is masked like a **Secret** (ADR 0089). A User secret is
+  never read back.
+  _Avoid_: API key, credential (for the stored item)
+- **Secret store** — the set of one user's User secrets. A run uses the launcher's Secret store,
+  also for a shared workflow made by another user. Local mode has no Secret store; it uses the host
+  environment.
 
 ## Store
 
