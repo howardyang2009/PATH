@@ -3,6 +3,7 @@ import { FORMAT_VERSION } from "@path/schema";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { App } from "../src/app.js";
+import { fileMenuItem } from "./file-menu.js";
 
 /**
  * #254 — open an existing workflow from inside the app. The empty canvas offers "Open workflow"
@@ -176,7 +177,7 @@ describe("open existing — toolbar entry point switches the open file", () => {
 
     // Start on alpha via the deep-link.
     await screen.findByText("alpha-step");
-    fireEvent.click(screen.getByRole("button", { name: "Open…" }));
+    fireEvent.click(fileMenuItem("Open…"));
 
     const dialog = await screen.findByRole("dialog", { name: "Open a workflow" });
     fireEvent.click(within(dialog).getByRole("button", { name: /flows/ }));

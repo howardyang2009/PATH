@@ -1,4 +1,11 @@
-import { type ReactNode, useEffect, useState } from "react";
+import {
+  Fragment,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type ReactNode,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import type { LeaseState } from "./lease-client.js";
 import { canonicalSerialize } from "./serialize.js";
 import {
@@ -64,7 +71,7 @@ export function TemplateFileName({ template }: { template: TemplateSource | null
  * shown only while no status shows), so the toolbar's buttons never shift when it changes. A failed
  * save wins: a `412` stale-write conflict (with its Reload, the recovery) or any other save or
  * delete error. Else "Unsaved edits" for a buffer with unsaved work, "Saved" after a save lands,
- * "Saved as template" after a workflow's Save as template, or "Deleted" once a Delete removed the
+ * "Saved as template" after a workflow's Save as template, "Deleting…" while a Delete runs, or "Deleted" once a Delete removed the
  * file. An id-less file (ids stamped on import, ADR 0015) or a non-canonical one opens dirty with
  * no edit, so that reason is named instead. An untouched New buffer has no unsaved work, so it shows nothing.
  */
@@ -110,6 +117,13 @@ export function FileStatus({
       </span>
     );
   }
+  if (saveState.phase === "deleting") {
+    return (
+      <span className="file-status" role="status">
+        Deleting…
+      </span>
+    );
+  }
   if (saveState.phase === "deleted") {
     return (
       <span className="file-status file-status-saved" role="status">
@@ -143,8 +157,8 @@ export function FileStatus({
 /**
  *
  * The top-bar editing controls. The **Workflow | Template** switch ({@link ModeSwitch}) picks the
- * edit mode, and New and Open… act in that mode (a workflow, or a template). Then Undo, Redo, Save
- * and Save as…. Save writes the active buffer under its `If-Match`; a `412` stale-write
+ * edit mode, and the File menu's New, Open…, Save as…, Download and Delete act in that mode (a
+ * workflow, or a template). Then Undo, Redo and Save (also ⌘S / Ctrl+S). Save writes the active buffer under its `If-Match`; a `412` stale-write
  * conflict is shown ({@link FileStatus}, centred in the top bar), not swallowed. The lease
  * affordances are an acquire `409` (someone else holds the
  * file: a countdown and a **confirmation-gated** takeover) and a heartbeat `409` (the lease was
@@ -152,6 +166,19 @@ export function FileStatus({
  * politeness, the `If-Match` precondition is what actually guards the bytes (ADR 0017).
  *
  */
+const IS_MAC = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
+/** The editing shortcuts as the platform names them. */
+const SAVE_SHORTCUT = IS_MAC ? "⌘S" : "Ctrl+S";
+const UNDO_SHORTCUT = IS_MAC ? "⌘Z" : "Ctrl+Z";
+const REDO_SHORTCUT = IS_MAC ? "⇧⌘Z" : "Ctrl+Y";
+
+/** Is Save enabled? Not mid-save or mid-delete, not in a `412` conflict (the author must reload
+ * first), and only for a buffer with unsaved work. The Save button and ⌘S share this gate. */
+export function canSave(saveState: SaveState, dirty: boolean): boolean {
+  const busy = saveState.phase === "saving" || saveState.phase === "deleting";
+  return !busy && saveState.phase !== "conflict" && dirty;
+}
+
 /** The **Workflow | Template** edit-mode switch: a segmented radio group in the top bar, after the
  * brand. */
 export function ModeSwitch({
@@ -237,16 +264,28 @@ export function EditingToolbar({
   onReacquire: () => void;
 }): JSX.Element {
   const saving = saveState.phase === "saving" || saveState.phase === "deleting";
-  const conflict = saveState.phase === "conflict";
   return (
     <div className="editing-toolbar">
-      {/* New and Open… discard the current stack, so they sit apart from the edit controls. */}
-      <button type="button" className="toolbar-btn" onClick={onNew}>
-        New
-      </button>
-      <button type="button" className="toolbar-btn" onClick={onOpen}>
-        Open…
-      </button>
+      {/* The rare whole-file actions sit behind File: New and Open… discard the current stack, and
+          Delete removes the file from disk. */}
+      <FileMenu
+        groups={[
+          [
+            { label: "New", onSelect: onNew },
+            { label: "Open…", onSelect: onOpen },
+          ],
+          [
+            { label: "Save as…", onSelect: onSaveAs, disabled: saving || !canSaveAs },
+            {
+              label: "Download",
+              onSelect: onDownload,
+              disabled: !canDownload,
+              title: canDownload ? "Download the saved file" : "Save first",
+            },
+          ],
+          [{ label: "Delete", onSelect: onDelete, disabled: saving || !canDelete, danger: true }],
+        ]}
+      />
       {/* Undo/redo drive the active frame's own per-file stack. Both survive a save — the save
           moves the baseline, not the history — so an undo past the save-point re-dirties the
           buffer. */}
@@ -256,6 +295,7 @@ export function EditingToolbar({
         aria-label="Undo"
         onClick={onUndo}
         disabled={!canUndo}
+        title={`Undo (${UNDO_SHORTCUT})`}
       >
         ↶ Undo
       </button>
@@ -265,6 +305,7 @@ export function EditingToolbar({
         aria-label="Redo"
         onClick={onRedo}
         disabled={!canRedo}
+        title={`Redo (${REDO_SHORTCUT})`}
       >
         ↷ Redo
       </button>
@@ -274,36 +315,135 @@ export function EditingToolbar({
         type="button"
         className="save-btn"
         onClick={onSave}
-        disabled={saving || conflict || !dirty}
+        disabled={!canSave(saveState, dirty)}
+        title={`Save (${SAVE_SHORTCUT})`}
       >
         {saveState.phase === "saving" ? "Saving…" : "Save"}
       </button>
-      <button
-        type="button"
-        className="toolbar-btn"
-        onClick={onSaveAs}
-        disabled={saving || !canSaveAs}
-      >
-        Save as…
-      </button>
-      <button
-        type="button"
-        className="toolbar-btn toolbar-btn-danger"
-        onClick={onDelete}
-        disabled={saving || !canDelete}
-      >
-        {saveState.phase === "deleting" ? "Deleting…" : "Delete"}
-      </button>
-      <button
-        type="button"
-        className="toolbar-btn"
-        onClick={onDownload}
-        disabled={!canDownload}
-        title={canDownload ? "Download the saved file" : "Save first"}
-      >
-        Download
-      </button>
       <LeaseBanner lease={lease} onTakeover={onTakeover} onReacquire={onReacquire} />
+    </div>
+  );
+}
+
+type FileMenuItem = {
+  label: string;
+  onSelect: () => void;
+  disabled?: boolean;
+  title?: string;
+  danger?: boolean;
+};
+
+/** The File menu's enabled items, in order: the arrow keys skip a disabled one. */
+function enabledItems(menu: HTMLElement | null): HTMLButtonElement[] {
+  return Array.from(menu?.querySelectorAll<HTMLButtonElement>("[role=menuitem]") ?? []).filter(
+    (item) => !item.disabled,
+  );
+}
+
+/** The File drop-down: a menu button whose items take arrow-key focus. Escape closes it and returns
+ * focus to the button; a click outside or a Tab away closes it. A disabled item stays visible, and a
+ * separator splits the groups. */
+function FileMenu({ groups }: { groups: readonly (readonly FileMenuItem[])[] }): JSX.Element {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    enabledItems(menuRef.current)[0]?.focus();
+    const onPointerDown = (event: MouseEvent): void => {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onPointerDown);
+    return () => document.removeEventListener("mousedown", onPointerDown);
+  }, [open]);
+
+  const close = (): void => {
+    setOpen(false);
+    buttonRef.current?.focus();
+  };
+
+  const onMenuKeyDown = (event: ReactKeyboardEvent): void => {
+    const enabled = enabledItems(menuRef.current);
+    const at = enabled.indexOf(document.activeElement as HTMLButtonElement);
+    const focusAt = (index: number): void =>
+      enabled[(index + enabled.length) % enabled.length]?.focus();
+    if (event.key === "Escape") {
+      event.preventDefault();
+      close();
+    } else if (event.key === "ArrowDown") {
+      event.preventDefault();
+      focusAt(at + 1);
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      focusAt(at - 1);
+    } else if (event.key === "Home") {
+      event.preventDefault();
+      focusAt(0);
+    } else if (event.key === "End") {
+      event.preventDefault();
+      focusAt(-1);
+    } else if (event.key === "Tab") {
+      setOpen(false);
+    }
+  };
+
+  return (
+    <div className="file-menu" ref={rootRef}>
+      <button
+        type="button"
+        ref={buttonRef}
+        className="toolbar-btn"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((was) => !was)}
+        onKeyDown={(event) => {
+          if (event.key === "ArrowDown") {
+            event.preventDefault();
+            setOpen(true);
+          }
+        }}
+      >
+        File
+        <span className="file-menu-caret" aria-hidden="true">
+          {open ? "▾" : "▸"}
+        </span>
+      </button>
+      {open ? (
+        <div
+          className="file-menu-list"
+          role="menu"
+          aria-label="File"
+          ref={menuRef}
+          onKeyDown={onMenuKeyDown}
+        >
+          {groups.map((group, index) => (
+            <Fragment key={group[0]?.label}>
+              {index > 0 ? <hr className="file-menu-separator" /> : null}
+              {group.map((item) => (
+                <button
+                  key={item.label}
+                  type="button"
+                  role="menuitem"
+                  tabIndex={-1}
+                  className={
+                    item.danger ? "file-menu-item file-menu-item-danger" : "file-menu-item"
+                  }
+                  disabled={item.disabled}
+                  title={item.title}
+                  onClick={() => {
+                    close();
+                    item.onSelect();
+                  }}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </Fragment>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }

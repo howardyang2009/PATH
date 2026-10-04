@@ -346,8 +346,11 @@ one `sequence` of a `person-activity` ask whose `outputSchema` is a string enum 
 
 The top bar shows a **Workflow | Template** switch right after the `PATH designer` brand, left of the toolbar. **Workflow** mode edits `*.workflow.json`
 files; **Template** mode edits template sources (`*.step-template.json`) and new templates. The toolbar buttons keep the same plain labels in both modes, because the switch names
-the mode: **New** and **Open…** act in the current mode (a new workflow or template; the workflow picker
-or the template picker), then Undo, Redo, **Save** and **Save as…**. A template saves only as a template:
+the mode. The toolbar has four top-level controls: a **File** menu, then Undo, Redo and **Save**
+(also ⌘S / Ctrl+S, which runs only when the Save button is enabled). The File menu holds **New**,
+**Open…**, **Save as…**, **Download** and **Delete**, in three separated groups. A disabled item stays
+visible. New and Open… act in the current mode (a new workflow or template; the workflow picker or the
+template picker). While a Delete runs, the top bar's centre slot says `Deleting…`. A template saves only as a template:
 template mode has no Save as workflow door. In workflow mode, Save as… writes a copy of the open workflow to
 a new `*.workflow.json` through the first-save dialog (titled "Save workflow as", prefilled
 `<name>-copy` in the source file's directory) as an exclusive create. The copy is a new workflow:

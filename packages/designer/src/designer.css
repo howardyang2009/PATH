@@ -1365,7 +1365,7 @@ body {
   cursor: default;
 }
 
-/* The toolbar's secondary buttons: New, Open…, Undo, Redo and Save as…. Save is the only primary action. */
+/* The toolbar's secondary buttons: File, Undo and Redo. Save is the only primary action. */
 .toolbar-btn {
   padding: 5px 12px;
   font: inherit;
@@ -1376,13 +1376,76 @@ body {
   cursor: pointer;
 }
 
-.toolbar-btn-danger {
-  color: var(--status-failed-fg);
-}
-
 .toolbar-btn:disabled {
   opacity: 0.5;
   cursor: default;
+}
+
+/* The File drop-down: its menu hangs below the File button, over the canvas. */
+.file-menu {
+  position: relative;
+}
+
+/* The caret matches the Runs dock's: ▸ while closed, ▾ while open, at the same size. */
+.file-menu > .toolbar-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* The negative margin keeps the larger caret from making File taller than Undo and Redo. */
+.file-menu-caret {
+  margin-block: -4px;
+  font-size: var(--fs-lg);
+  line-height: 1;
+}
+
+.file-menu-list {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  min-width: 160px;
+  padding: 4px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgb(0 0 0 / 0.15);
+}
+
+.file-menu-item {
+  padding: 5px 10px;
+  font: inherit;
+  text-align: left;
+  color: var(--text);
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.file-menu-item:hover:not(:disabled),
+.file-menu-item:focus-visible {
+  background: var(--border);
+  outline: none;
+}
+
+.file-menu-item:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.file-menu-item-danger {
+  color: var(--status-failed-fg);
+}
+
+.file-menu-separator {
+  height: 1px;
+  margin: 4px 0;
+  background: var(--border);
+  border: 0;
 }
 
 /* The active file's name, or its status in place of it, centred between the mode switch and the toolbar. */
