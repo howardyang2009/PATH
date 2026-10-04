@@ -422,6 +422,12 @@ and issues use them exactly.
   only through this API and becomes runnable only by **Instantiation**. Fixed by
   [ADR 0050](https://github.com/howardyang2009/PATH/blob/main/docs/adr/0050-the-template-api-is-id-addressed-and-owns-the-template-write-door.md);
   the endpoint surface is `docs/api/server-api-v0.md` §10.
+- **Requester's view** — the authored files one user can see: shipped, shared and that user's own.
+  Listing, id uniqueness and ref resolution all work inside it; another user's private files are not in
+  it and do not exist for the requester
+  ([ADR 0088](https://github.com/howardyang2009/PATH/blob/main/docs/adr/0088-each-request-sees-its-own-view-and-only-the-creator-writes-a-shared-item.md)).
+- **Creator** — the user who first saved a **shared** item. Only the creator edits or deletes it;
+  everyone else reads, runs or copies it. A shared item with no known creator is read-only for all.
 
 ## Invariants
 
