@@ -117,13 +117,16 @@ describe("RunsList", () => {
     ).toHaveTextContent("—");
   });
 
-  it("shows the short root run id, with the full id as the row title", async () => {
+  it("shows the start time then the short root run id, with the full id as the row title", async () => {
     const { client } = stubClient([CANCELLED]);
 
     renderList(client);
     const row = await screen.findByTestId("run-row-run_gamma");
 
     expect(row.querySelector(".run-id")).toHaveTextContent(/^run_gamm$/);
+    const meta = row.querySelector(".run-meta");
+    expect(meta?.firstElementChild).toHaveClass("run-started");
+    expect(meta?.lastElementChild).toHaveClass("run-id");
     expect(row).toHaveAttribute("title", "run_gamma");
   });
 
