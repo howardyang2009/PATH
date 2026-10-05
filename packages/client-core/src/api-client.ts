@@ -36,10 +36,10 @@ import {
 export { defaultFetch, type FetchLike, PathApiError } from "./transport.js";
 
 // The v0 API client, in one module: `PathApiClient` is the interface a surface holds, and the
-// endpoint-group functions below are its implementation. They live here rather than in per-group
-// files because a group function has exactly one caller — an internal seam nobody crosses only
-// restates the interface once more. They are exported anyway, so a caller that wants one route
-// without the class can name it; `./transport.js` is the injectable `fetch` seam beneath both.
+// endpoint functions below are its implementation. They live here rather than in per-group files
+// because a group function has exactly one caller — the class method over it — so a separate module
+// would be a seam nobody crosses (ADR 0093). `./transport.js` is the injectable `fetch` seam
+// beneath both.
 
 // ── Runs ──────────────────────────────────────────────────────────────────────────
 
@@ -74,7 +74,7 @@ export interface StartRunOptions {
   processorConcurrency?: number;
 }
 
-export function listRuns(http: HttpTransport, query: ListRunsQuery): Promise<ListRunsResponse> {
+function listRuns(http: HttpTransport, query: ListRunsQuery): Promise<ListRunsResponse> {
   const params = new URLSearchParams();
   if (query.limit !== undefined) params.set("limit", String(query.limit));
   if (query.status !== undefined) params.set("status", query.status);
@@ -83,11 +83,11 @@ export function listRuns(http: HttpTransport, query: ListRunsQuery): Promise<Lis
   return http.requestJson<ListRunsResponse>(`/v0/runs${qs ? `?${qs}` : ""}`);
 }
 
-export function getRun(http: HttpTransport, rootRunId: string): Promise<RunTreeResponse> {
+function getRun(http: HttpTransport, rootRunId: string): Promise<RunTreeResponse> {
   return http.requestJson<RunTreeResponse>(`/v0/runs/${encodeURIComponent(rootRunId)}`);
 }
 
-export function getBlob(
+function getBlob(
   http: HttpTransport,
   rootRunId: string,
   runId: string,
@@ -98,11 +98,11 @@ export function getBlob(
   );
 }
 
-export async function cancelRun(http: HttpTransport, rootRunId: string): Promise<void> {
+async function cancelRun(http: HttpTransport, rootRunId: string): Promise<void> {
   await http.request(`/v0/runs/${encodeURIComponent(rootRunId)}/cancel`, { method: "POST" });
 }
 
-export async function deleteRun(
+async function deleteRun(
   http: HttpTransport,
   rootRunId: string,
   options: { force?: boolean },
@@ -111,7 +111,7 @@ export async function deleteRun(
   await http.request(`/v0/runs/${encodeURIComponent(rootRunId)}${qs}`, { method: "DELETE" });
 }
 
-export function resumeRun(
+function resumeRun(
   http: HttpTransport,
   rootRunId: string,
   config?: ConfigObject,
@@ -126,7 +126,7 @@ export function resumeRun(
     : http.requestJson<StartRunResponse>(path, { method: "POST", body });
 }
 
-export function completeStep(
+function completeStep(
   http: HttpTransport,
   stepRunId: string,
   output: JsonValue,
@@ -141,7 +141,7 @@ export function completeStep(
   );
 }
 
-export function startRun(http: HttpTransport, options: StartRunOptions): Promise<StartRunResponse> {
+function startRun(http: HttpTransport, options: StartRunOptions): Promise<StartRunResponse> {
   const body: StartRunRequest = { workflow_path: options.workflowPath };
   if (options.input !== undefined) body.input = options.input;
   if (options.config !== undefined) body.config = options.config;
@@ -181,13 +181,13 @@ export interface WorkflowFileRaw {
   etag: string | null;
 }
 
-export function listWorkflows(http: HttpTransport): Promise<ListWorkflowsResponse> {
+function listWorkflows(http: HttpTransport): Promise<ListWorkflowsResponse> {
   return http.requestJson<ListWorkflowsResponse>("/v0/workflows");
 }
 
 /** `POST /v0/workflows/copy` (server-api-v0.md §7.3, ADR 0086): copy a shipped workflow into the
  * user's own folder; the reply names the copy's project-relative path. */
-export async function copyShippedWorkflow(
+async function copyShippedWorkflow(
   http: HttpTransport,
   shippedPath: string,
 ): Promise<{ relativePath: string; rootPath: string }> {
@@ -213,7 +213,7 @@ function fileNameOf(headers: Headers, fallback: string): string {
 
 /** `GET /v0/workflows/download` (server-api-v0.md §7.4): the saved workflow file, or a zip of its
  * `ref` closure. An unresolvable `ref` is a `422` whose `details` lists each one. */
-export async function downloadWorkflow(http: HttpTransport, path: string): Promise<DownloadedFile> {
+async function downloadWorkflow(http: HttpTransport, path: string): Promise<DownloadedFile> {
   const { blob, headers } = await http.requestBlob(
     `/v0/workflows/download?path=${encodeURIComponent(path)}`,
   );
@@ -221,23 +221,23 @@ export async function downloadWorkflow(http: HttpTransport, path: string): Promi
 }
 
 /** `GET /v0/templates/:id/download` (server-api-v0.md §10.6): the template's file. */
-export async function downloadTemplate(http: HttpTransport, id: string): Promise<DownloadedFile> {
+async function downloadTemplate(http: HttpTransport, id: string): Promise<DownloadedFile> {
   const { blob, headers } = await http.requestBlob(
     `/v0/templates/${encodeURIComponent(id)}/download`,
   );
   return { fileName: fileNameOf(headers, "template.step-template.json"), blob };
 }
 
-export function getStepPlugins(http: HttpTransport): Promise<StepPluginsResponse> {
+function getStepPlugins(http: HttpTransport): Promise<StepPluginsResponse> {
   return http.requestJson<StepPluginsResponse>("/v0/step-plugins");
 }
 
-export async function getWorkflowFile(http: HttpTransport, path: string): Promise<WorkflowFileRaw> {
+async function getWorkflowFile(http: HttpTransport, path: string): Promise<WorkflowFileRaw> {
   const reply = await http.request(`/v0/workflows/file?path=${encodeURIComponent(path)}`);
   return { text: reply.text, etag: reply.headers.get("ETag") };
 }
 
-export async function putWorkflow(
+async function putWorkflow(
   http: HttpTransport,
   input: PutWorkflowInput,
 ): Promise<PutWorkflowResult> {
@@ -253,10 +253,15 @@ export async function putWorkflow(
   return { relativePath: reply.relative_path, id: reply.id, etag: reply.etag };
 }
 
-export async function deleteWorkflowFile(
-  http: HttpTransport,
-  input: { path: string; ifMatch: string; sessionId?: string },
-): Promise<void> {
+/** What a workflow-file delete names: the path, its required `If-Match`, and the caller's own edit
+ * lease. */
+export interface DeleteWorkflowInput {
+  path: string;
+  ifMatch: string;
+  sessionId?: string;
+}
+
+async function deleteWorkflowFile(http: HttpTransport, input: DeleteWorkflowInput): Promise<void> {
   const query = new URLSearchParams({ path: input.path });
   if (input.sessionId !== undefined) query.set("session_id", input.sessionId);
   await http.request(`/v0/workflows/file?${query.toString()}`, {
@@ -287,25 +292,22 @@ export interface TemplateWriteResult {
   etag: string;
 }
 
-export function listTemplates(http: HttpTransport): Promise<ListTemplatesResponse> {
+function listTemplates(http: HttpTransport): Promise<ListTemplatesResponse> {
   return http.requestJson<ListTemplatesResponse>("/v0/templates");
 }
 
-export function getTemplate(http: HttpTransport, id: string): Promise<GetTemplateResponse> {
+function getTemplate(http: HttpTransport, id: string): Promise<GetTemplateResponse> {
   return http.requestJson<GetTemplateResponse>(`/v0/templates/${encodeURIComponent(id)}`);
 }
 
-export function createTemplate(
+function createTemplate(
   http: HttpTransport,
   input: CreateTemplateInput,
 ): Promise<TemplateWriteResult> {
   return writeTemplate(http, "/v0/templates", "POST", input, undefined);
 }
 
-export function putTemplate(
-  http: HttpTransport,
-  input: PutTemplateInput,
-): Promise<TemplateWriteResult> {
+function putTemplate(http: HttpTransport, input: PutTemplateInput): Promise<TemplateWriteResult> {
   return writeTemplate(
     http,
     `/v0/templates/${encodeURIComponent(input.id)}`,
@@ -315,7 +317,7 @@ export function putTemplate(
   );
 }
 
-export async function deleteTemplate(http: HttpTransport, id: string): Promise<void> {
+async function deleteTemplate(http: HttpTransport, id: string): Promise<void> {
   await http.request(`/v0/templates/${encodeURIComponent(id)}`, { method: "DELETE" });
 }
 
@@ -371,7 +373,7 @@ export type AcquireLockResult =
  */
 export type HeartbeatResult = { status: "renewed"; lease: WorkflowLease } | { status: "lost" };
 
-export async function acquireLock(
+async function acquireLock(
   http: HttpTransport,
   input: AcquireLockInput,
 ): Promise<AcquireLockResult> {
@@ -390,10 +392,7 @@ export async function acquireLock(
   throw toApiError(status, text);
 }
 
-export async function heartbeatLock(
-  http: HttpTransport,
-  input: LeaseOpInput,
-): Promise<HeartbeatResult> {
+async function heartbeatLock(http: HttpTransport, input: LeaseOpInput): Promise<HeartbeatResult> {
   const { status, text } = await http.send("/v0/workflows/lock/heartbeat", {
     method: "POST",
     body: leaseOpBody(input),
@@ -403,7 +402,7 @@ export async function heartbeatLock(
   throw toApiError(status, text);
 }
 
-export async function releaseLock(http: HttpTransport, input: LeaseOpInput): Promise<void> {
+async function releaseLock(http: HttpTransport, input: LeaseOpInput): Promise<void> {
   await http.request("/v0/workflows/lock/release", { method: "POST", body: leaseOpBody(input) });
 }
 
@@ -589,7 +588,7 @@ export class PathApiClient {
    * `ifMatch` is the ETag of the bytes last read or wrote, so a delete never removes unseen bytes;
    * `sessionId` names the caller's own edit lease.
    */
-  deleteWorkflowFile(input: { path: string; ifMatch: string; sessionId?: string }): Promise<void> {
+  deleteWorkflowFile(input: DeleteWorkflowInput): Promise<void> {
     return deleteWorkflowFile(this.http, input);
   }
 

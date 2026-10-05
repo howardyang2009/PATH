@@ -72,7 +72,7 @@ An Architecture Decision Record (ADR) records one decision PATH has made: the sh
 | [0066](0066-the-log-event-is-the-only-event-vocabulary.md) | The log event is the only event vocabulary | accepted |
 | [0067](0067-a-container-body-walk-cannot-take-a-jump.md) | A container body's walk cannot take a jump | partly superseded by [ADR 0078](0078-a-container-bodys-walk-is-one-adapter.md) |
 | [0068](0068-the-run-entry-options-are-two-arms.md) | The run entry options are two arms: a launch and a continuation | accepted |
-| [0069](0069-the-api-clients-endpoint-groups-are-implementation.md) | The API client's endpoint groups are implementation, not a seam | accepted |
+| [0069](0069-the-api-clients-endpoint-groups-are-implementation.md) | The API client's endpoint groups are implementation, not a seam | partly superseded by [ADR 0093](0093-the-api-clients-endpoint-functions-are-implementation.md) |
 | [0070](0070-every-run-door-addresses-its-run-through-one-lookup.md) | Every run door addresses its run through one lookup | accepted |
 | [0071](0071-the-artifact-write-door-decides-and-writes-in-one-call.md) | The artifact write door decides and writes in one call | accepted |
 | [0072](0072-one-expiring-marker-lease-primitive.md) | One expiring-marker lease primitive, two policies over it | accepted |
@@ -96,9 +96,11 @@ An Architecture Decision Record (ADR) records one decision PATH has made: the sh
 | [0090](0090-the-user-id-is-the-clerk-sub-verified-on-every-request.md) | The user id is the Clerk `sub`, verified on every request | accepted |
 | [0091](0091-a-hosted-run-executes-in-one-vm-per-engine-invocation.md) | A hosted run executes in one VM per engine invocation | accepted |
 | [0092](0092-v1-runs-on-a-clerk-development-instance-over-tailscale.md) | V1 runs on a Clerk development instance over Tailscale | accepted |
+| [0093](0093-the-api-clients-endpoint-functions-are-implementation.md) | The API client's endpoint functions are implementation, not a public surface | accepted |
 
 ## Superseded decisions
 
+- [0069](0069-the-api-clients-endpoint-groups-are-implementation.md) — partly superseded by [ADR 0093](0093-the-api-clients-endpoint-functions-are-implementation.md): decision 3 (the endpoint functions are exported from the module) is reversed; they are module-private implementation and `PathApiClient` is the only interface. Decisions 1, 2, 4 and 5 stand.
 - [0028](0028-designer-is-a-separate-package-not-a-viewer-route.md) — partly superseded by [ADR 0031](0031-designer-reuses-the-viewers-run-panels.md): decision 2 (the Designer "does not embed or import the Viewer") is reversed, and the Designer now depends on `@path/viewer` and reuses its run panels. Decision 5 still holds: `@path/designer` stays a separate package with its own bundle and mount.
 - [0047](0047-person-switch-is-a-controller-with-an-authored-activity-and-labelled-slots.md) — superseded by [ADR 0052](0052-person-switch-is-a-shipped-step-template-not-a-controller.md): `person-switch` is a shipped step-template composing `person-activity` + `branch`, not a worker-less controller.
 - [0049](0049-instantiation-is-a-detached-copy-that-re-stamps-ids-and-never-rewires.md) — partly superseded by [ADR 0063](0063-the-workflow-template-is-removed-the-step-template-is-the-only-template.md): decision 7 (Workflow-Template instantiation into an empty canvas) no longer applies because the Workflow-Template is removed. The Step-Template parts stand.
