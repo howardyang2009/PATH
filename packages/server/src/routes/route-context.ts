@@ -2,17 +2,38 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { LoadedStepPluginRegistry, Project } from "@path/engine";
 import type { AuthoredLayout } from "../authored-layout.js";
 import type { LiveRuns } from "../live-runs.js";
+import type { RequesterContext, RequesterContexts } from "../requester.js";
 
-/** What every route handler is handed: the one project this server serves, and what it holds for
- * it. */
+/** What one route handler is handed: the requester's authored layout and store, plus what the
+ * process holds across requests. */
 export interface RouteContext {
+  /** The requester's store: where their runs are read and written. */
   project: Project;
   live: LiveRuns;
   /** The step-plugin registry frozen at server start (ADR 0018): scanned once, never per
    * request. */
   stepPlugins: LoadedStepPluginRegistry;
-  /** Where authored files live, and which a door may write or run. */
+  /** The requester's authored layout: the files their doors read, and the ones they may write or
+   * run. */
   layout: AuthoredLayout;
+}
+
+/** What the process holds across every request: the runs it executes, the registry frozen at
+ * start, and the resolver from a request to its requester context. */
+export interface ServerContext {
+  live: LiveRuns;
+  stepPlugins: LoadedStepPluginRegistry;
+  requesters: RequesterContexts;
+}
+
+/** The context one request is handled under, built from the requester that request resolved to. */
+export function routeContextFor(requester: RequesterContext, server: ServerContext): RouteContext {
+  return {
+    project: requester.store,
+    layout: requester.layout,
+    live: server.live,
+    stepPlugins: server.stepPlugins,
+  };
 }
 
 /** One matched request: the raw HTTP pair, the context, and what the path and query decoded to. */
