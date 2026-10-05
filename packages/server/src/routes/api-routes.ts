@@ -22,7 +22,7 @@ import { handlePostWorkflowCopy } from "./post-workflow-copy.js";
 import { handlePutTemplate } from "./put-template.js";
 import { handlePutWorkflow } from "./put-workflow.js";
 import { handleResumeRun } from "./resume-run.js";
-import type { ApiRequest, RouteContext } from "./route-context.js";
+import { type ApiRequest, routeContextFor, type ServerContext } from "./route-context.js";
 import {
   handleWorkflowLock,
   handleWorkflowLockHeartbeat,
@@ -98,7 +98,7 @@ const API_ROUTES: readonly ApiRoute[] = [
 export async function dispatchApi(
   req: IncomingMessage,
   res: ServerResponse,
-  ctx: RouteContext,
+  server: ServerContext,
   url: URL,
 ): Promise<boolean> {
   for (const route of API_ROUTES) {
@@ -110,7 +110,16 @@ export async function dispatchApi(
       sendError(res, 400, "malformed percent-encoding in the request path");
       return true;
     }
-    await route.handle({ req, res, ctx, params, query: url.searchParams });
+    // Resolved only once a row matches: an unmatched path keeps its plain 404, and the static
+    // mounts stay public (ADR 0090).
+    const requester = await server.requesters.forRequest(req);
+    await route.handle({
+      req,
+      res,
+      ctx: routeContextFor(requester, server),
+      params,
+      query: url.searchParams,
+    });
     return true;
   }
   return false;

@@ -2,13 +2,13 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { type LoadedStepPluginRegistry, loadStepPluginRegistry, openProject } from "@path/engine";
-import { authoredLayout } from "./authored-layout.js";
 import { enforceFunnelGuard, funnelGuardEnabled } from "./funnel-guard.js";
 import { sendError } from "./http-json.js";
 import { createLiveRuns } from "./live-runs.js";
 import { enforceSameOrigin } from "./origin-gate.js";
+import { createRequesterContexts } from "./requester.js";
 import { dispatchApi } from "./routes/api-routes.js";
-import type { RouteContext } from "./routes/route-context.js";
+import type { ServerContext } from "./routes/route-context.js";
 import { serveStatic } from "./serve-static.js";
 
 /** Built `@path/viewer` bundle (`packages/viewer/dist`); `serveStatic` 404s when it is absent or
@@ -41,7 +41,7 @@ function mountSuffix(prefix: string, pathname: string): string | undefined {
 async function handleRequest(
   req: IncomingMessage,
   res: ServerResponse,
-  ctx: RouteContext,
+  server: ServerContext,
   staticDir: string,
   designerStaticDir: string,
   funnelGuard: boolean,
@@ -58,7 +58,7 @@ async function handleRequest(
     // (origin-gate.ts).
     if (req.method !== "GET" && req.method !== "HEAD" && !enforceSameOrigin(req, res)) return;
 
-    if (await dispatchApi(req, res, ctx, url)) return;
+    if (await dispatchApi(req, res, server, url)) return;
 
     // Bare `/` redirects to the default surface; 302 (not 301) keeps the target a changeable,
     // uncached line.
@@ -114,8 +114,8 @@ export async function startPathServer(
   // it.
   const registry = stepPlugins ?? (await loadStepPluginRegistry());
 
-  // One project for the process: `.path/` ensured, settings loaded, db opened once, with the run
-  // backends and observers assembled in one place.
+  // The project's own store, opened at boot: every requester resolves to it, and a bad settings
+  // file or db refuses to start.
   const opened = openProject(projectDir);
   if (!opened.success) throw new Error(opened.error);
   const project = opened.project;
@@ -124,40 +124,41 @@ export async function startPathServer(
   const absDesignerStaticDir = resolve(designerStaticDir);
   const funnelGuard = funnelGuardEnabled();
   const live = createLiveRuns(project);
-  const ctx: RouteContext = {
-    project,
-    live,
-    stepPlugins: registry,
-    layout: authoredLayout({
-      projectDir,
-      shippedDir: { template: shippedTemplateDir, workflow: shippedWorkflowDir },
-    }),
-  };
-  const server = createServer((req, res) => {
-    handleRequest(req, res, ctx, absStaticDir, absDesignerStaticDir, funnelGuard).catch((err) => {
-      console.error(`unhandled request error: ${err instanceof Error ? err.stack : String(err)}`);
-    });
+  // One requester context per user, resolved per request (requester.ts). The boot project is every
+  // requester's store, so local mode behaves as one fixed project did.
+  const requesters = createRequesterContexts({
+    projectDir,
+    shippedDir: { template: shippedTemplateDir, workflow: shippedWorkflowDir },
+    projectStore: project,
+  });
+  const server: ServerContext = { live, stepPlugins: registry, requesters };
+  const httpServer = createServer((req, res) => {
+    handleRequest(req, res, server, absStaticDir, absDesignerStaticDir, funnelGuard).catch(
+      (err) => {
+        console.error(`unhandled request error: ${err instanceof Error ? err.stack : String(err)}`);
+      },
+    );
   });
 
   await new Promise<void>((resolvePromise, reject) => {
-    server.once("error", reject);
-    server.listen(port, "127.0.0.1", () => resolvePromise());
+    httpServer.once("error", reject);
+    httpServer.listen(port, "127.0.0.1", () => resolvePromise());
   });
 
-  const address = server.address();
+  const address = httpServer.address();
   const actualPort = address && typeof address === "object" ? address.port : port;
 
   return {
-    server,
+    server: httpServer,
     url: `http://localhost:${actualPort}`,
     close: () =>
       new Promise((resolvePromise, reject) => {
-        server.close(() => {
+        httpServer.close(() => {
           // `server.close` only drains HTTP connections; runs are fire-and-forget, so drain them
           // before closing the store or a still-running step hits `The database connection is not
           // open`.
           live.idle().then(() => {
-            project.close();
+            requesters.close();
             resolvePromise();
           }, reject);
         });
