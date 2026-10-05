@@ -7,7 +7,7 @@ import type { ApiRequest } from "./route-context.js";
  * returns `200 valid:false` with `error`/`body` so it can be repaired; unknown id → `404`.
  */
 export function handleGetTemplate({ res, ctx, params: [id] }: ApiRequest<[string]>): void {
-  const entry = templatesOf(ctx).byId.get(id);
+  const entry = templatesOf(ctx).find(id);
   if (entry === undefined) {
     sendError(res, 404, "not found");
     return;

@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { authoredLayout } from "../src/authored-layout.js";
 import { type CreatorTable, openCreatorTable } from "../src/creator-table.js";
 import { strongEtag } from "../src/etag.js";
-import { discoverTemplates, type TemplateStore } from "../src/template-store.js";
+import { discoverTemplates, type TemplateStore, templatesOf } from "../src/template-store.js";
 
 /**
  * The template store's own interface: an id lookup plus its own writes. These drive the store
@@ -141,7 +141,7 @@ describe("template store — resolve and update", () => {
     expect(written.etag).not.toBe(created.etag);
 
     const after = await openStore();
-    expect(after.byId.get(USER_TEMPLATE.id)?.description).toBe("edited");
+    expect(after.find(USER_TEMPLATE.id)?.description).toBe("edited");
   });
 
   it("refuses a body whose id differs from the addressed one, and an invalid envelope", async () => {
@@ -179,7 +179,7 @@ describe("template store — remove", () => {
     const reopened = await openStore();
 
     expect(reopened.remove(USER_TEMPLATE.id)).toEqual({ ok: true });
-    expect((await openStore()).byId.has(USER_TEMPLATE.id)).toBe(false);
+    expect((await openStore()).find(USER_TEMPLATE.id) !== undefined).toBe(false);
     expect((await openStore()).remove(USER_TEMPLATE.id)).toEqual({
       ok: false,
       status: 404,
@@ -211,13 +211,13 @@ describe("template store — shared items", () => {
     expect(creators.creatorOf(SHARED, "template")).toBe("user_alice");
 
     const bob = await openStore("user_bob");
-    expect(bob.byId.get(USER_TEMPLATE.id)?.readOnly).toBe(true);
+    expect(bob.find(USER_TEMPLATE.id)?.readOnly).toBe(true);
     const refused = { ok: false, status: 403, message: "only the creator edits a shared item" };
     expect(bob.update(USER_TEMPLATE.id, USER_TEMPLATE, created.etag)).toEqual(refused);
     expect(bob.remove(USER_TEMPLATE.id)).toEqual(refused);
 
     const alice = await openStore("user_alice");
-    expect(alice.byId.get(USER_TEMPLATE.id)?.readOnly).toBe(false);
+    expect(alice.find(USER_TEMPLATE.id)?.readOnly).toBe(false);
     expect(alice.update(USER_TEMPLATE.id, USER_TEMPLATE, created.etag).ok).toBe(true);
     expect(creators.creatorOf(SHARED, "template")).toBe("user_alice");
     expect(alice.remove(USER_TEMPLATE.id)).toEqual({ ok: true });
@@ -229,8 +229,19 @@ describe("template store — shared items", () => {
     writeFileSync(join(projectDir, SHARED), JSON.stringify(USER_TEMPLATE));
 
     const reopened = await openStore();
-    expect(reopened.byId.get(USER_TEMPLATE.id)?.readOnly).toBe(true);
+    expect(reopened.find(USER_TEMPLATE.id)?.readOnly).toBe(true);
     expect(reopened.remove(USER_TEMPLATE.id)).toMatchObject({ ok: false, status: 403 });
     expect(existsSync(join(projectDir, SHARED))).toBe(true);
+  });
+});
+
+describe("templatesOf — one scan per request context", () => {
+  it("hands the same store back for one context, and a fresh one per context", async () => {
+    const layout = authoredLayout({ projectDir, userId: "local" });
+    const stepPlugins = await loadStepPluginRegistry();
+    const ctx = { layout, stepPlugins, creators };
+
+    expect(templatesOf(ctx)).toBe(templatesOf(ctx));
+    expect(templatesOf({ ...ctx })).not.toBe(templatesOf(ctx));
   });
 });
