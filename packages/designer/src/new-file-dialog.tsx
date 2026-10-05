@@ -1,5 +1,10 @@
 import { useMemo, useState } from "react";
-import { type DiscoveryLoad, discoveredRoots, discoveredWorkflows } from "./discovery.js";
+import {
+  type DiscoveryLoad,
+  discoveredRoots,
+  discoveredSharedRoot,
+  discoveredWorkflows,
+} from "./discovery.js";
 import type { SaveAsResult } from "./use-open-file.js";
 
 /**
@@ -14,6 +19,7 @@ export function NewFileDialog({
   workflowName,
   title = "Save new workflow",
   initialDirectory,
+  pickOrigin = false,
   create,
   onCreated,
   onCancel,
@@ -27,6 +33,9 @@ export function NewFileDialog({
   /** The preselected directory: Save as… passes the source file's directory. Without one, a new
    * file starts in the first writable root the Server lists, the user's own (ADR 0084). */
   initialDirectory?: string;
+  /** Show the mine / shared picker (Save as…): it defaults to mine and confines the directory to the
+   * picked side, mine being every directory outside the shared root. */
+  pickOrigin?: boolean;
   /** Run the exclusive create against the composed path; the dialog reads its outcome. */
   create: (targetPath: string) => Promise<SaveAsResult>;
   /** Called once the file is created — the App drops the dialog and the frame is now saved. */
@@ -35,9 +44,17 @@ export function NewFileDialog({
   onCancel: () => void;
 }): JSX.Element {
   const roots = discoveredRoots(discovery);
-  const [picked, setDirectory] = useState<string | undefined>(initialDirectory);
+  const sharedRoot = discoveredSharedRoot(discovery);
+  const [origin, setOrigin] = useState<"user" | "shared">("user");
+  const [picked, setDirectory] = useState<string | undefined>(undefined);
+  const isShared = (dir: string): boolean =>
+    sharedRoot !== undefined && (dir === sharedRoot || dir.startsWith(`${sharedRoot}/`));
+  const onPickedSide = (dir: string): boolean =>
+    !pickOrigin || isShared(dir) === (origin === "shared");
   // `null` until a directory is picked or discovery lands a root to default to.
-  const directory = picked ?? roots[0] ?? null;
+  const directory =
+    [picked, initialDirectory, ...roots].find((dir) => dir !== undefined && onPickedSide(dir)) ??
+    null;
   const [stem, setStem] = useState(workflowName);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -50,6 +67,7 @@ export function NewFileDialog({
     for (const wf of discoveredWorkflows(discovery) ?? []) dirs.add(dirnameOf(wf.relative_path));
     return [...dirs].sort();
   }, [discovery, initialDirectory]);
+  const shownDirectories = directories.filter(onPickedSide);
 
   const parsed = parseStem(stem);
   const cleanStem = parsed.relative;
@@ -83,6 +101,24 @@ export function NewFileDialog({
         <h2 className="dialog-title">{title}</h2>
         <p className="dialog-hint">Choose where in the project this workflow is saved.</p>
 
+        {pickOrigin ? (
+          <label className="dialog-field">
+            <span className="dialog-label">Save to</span>
+            <select
+              className="new-file-directory"
+              aria-label="Save to"
+              value={origin}
+              onChange={(event) => {
+                setOrigin(event.target.value === "shared" ? "shared" : "user");
+                setDirectory(undefined);
+              }}
+            >
+              <option value="user">Mine</option>
+              <option value="shared">Shared</option>
+            </select>
+          </label>
+        ) : null}
+
         <label className="dialog-field">
           <span className="dialog-label">Directory</span>
           <select
@@ -92,7 +128,7 @@ export function NewFileDialog({
             disabled={directory === null}
             onChange={(event) => setDirectory(event.target.value)}
           >
-            {directories.map((dir) => (
+            {shownDirectories.map((dir) => (
               <option key={dir} value={dir}>
                 {dir === "" ? "(project root)" : dir}
               </option>

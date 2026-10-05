@@ -485,6 +485,7 @@ export function App({
           title="Save workflow as"
           workflowName={`${openedFile.name}-copy`}
           initialDirectory={activePath ? dirnameOf(activePath) : undefined}
+          pickOrigin
           create={(path) => session.saveAs({ kind: "workflow-copy", path })}
           onCreated={() => setSaveAsDialog(null)}
           onCancel={() => setSaveAsDialog(null)}

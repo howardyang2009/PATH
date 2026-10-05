@@ -38,6 +38,11 @@ export function discoveredRoots(load: DiscoveryLoad): readonly string[] {
   return (scanOf(load)?.roots ?? []).map((root) => root.relative_path);
 }
 
+/** The shared workflow root's project path, or `undefined` before a scan lands. */
+export function discoveredSharedRoot(load: DiscoveryLoad): string | undefined {
+  return scanOf(load)?.roots.find((root) => root.origin === "shared")?.relative_path;
+}
+
 /** Load discovery once, and re-scan when a save **lands** (`savePhase` becomes `saved`) or
  * `rescanKey` changes (a copy wrote files outside a save). A failed scan is best-effort: it keeps
  * the last successful list rather than reading as "none discovered". */
