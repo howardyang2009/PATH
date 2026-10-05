@@ -235,18 +235,16 @@ describe("Author mode on a *.step-template.json", () => {
     });
   });
 
-  it("a shipped template refuses the write-back with the API's 403", async () => {
+  it("a shipped template disables Save, so it never sends the write-back", async () => {
     const calls = renderApp();
     const canvas = await editTemplate("starter");
-    expect(screen.getByTestId("author-mode")).toHaveTextContent("read-only");
+    expect(screen.getByTestId("author-mode")).toHaveTextContent("(shipped, read-only)");
 
     fireEvent.click(within(canvas).getByRole("button", { name: "Move draft down" }));
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
-
-    expect(await screen.findByText(/template is read-only/)).toBeInTheDocument();
-    expect(calls.templateWrites).toEqual([
-      expect.objectContaining({ method: "PUT", id: SHIPPED_ID }),
-    ]);
+    const save = screen.getByRole("button", { name: "Save" });
+    expect(save).toBeDisabled();
+    expect(save).toHaveAttribute("title", "Read-only: shipped");
+    expect(calls.templateWrites).toEqual([]);
   });
 });
 

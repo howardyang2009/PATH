@@ -43,6 +43,8 @@ export const DEFAULT_SHIPPED_DIR: Record<AuthoredKind, string> = {
 export interface AuthoredLayout {
   /** The project directory, `resolve`d. */
   readonly projectDir: string;
+  /** The user whose root this layout reads and writes. */
+  readonly userId: string;
   /** The roots of `kind` in precedence order: shipped, shared, user. */
   roots(kind: AuthoredKind): readonly AuthoredRoot[];
   root(origin: AuthoredOrigin, kind: AuthoredKind): AuthoredRoot;
@@ -97,6 +99,7 @@ export function authoredLayout({
 
   return {
     projectDir: project,
+    userId,
     roots: (kind) => byKind[kind],
     root: (origin, kind) => byKind[kind].find((root) => root.origin === origin) as AuthoredRoot,
     classify,

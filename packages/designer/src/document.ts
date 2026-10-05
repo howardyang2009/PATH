@@ -120,6 +120,15 @@ export async function writeDocument(
         return { ok: false, conflict: creates ? "exists" : "stale", message };
       if (error.status === 409 && write.to === "new-template")
         return { ok: false, conflict: "exists", message };
+      // An in-place save the Server refuses late: another user's shared file, or one gone since.
+      if (!creates && error.status === 403)
+        return {
+          ok: false,
+          conflict: null,
+          message: "Read-only: only the creator can save. Use Save as.",
+        };
+      if (!creates && error.status === 404)
+        return { ok: false, conflict: null, message: "No longer available" };
     }
     return { ok: false, conflict: null, message };
   }

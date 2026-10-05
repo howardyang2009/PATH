@@ -1,10 +1,13 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { type LoadedStepPluginRegistry, loadStepPluginRegistry, openProject } from "@path/engine";
+import { authoredLayout } from "./authored-layout.js";
+import { adoptSharedItems, openCreatorTable } from "./creator-table.js";
 import { enforceFunnelGuard, funnelGuardEnabled } from "./funnel-guard.js";
 import { sendError } from "./http-json.js";
 import { createLiveRuns } from "./live-runs.js";
+import { isHostedMode } from "./mode.js";
 import { enforceSameOrigin } from "./origin-gate.js";
 import { createRequesterContexts } from "./requester.js";
 import { dispatchApi } from "./routes/api-routes.js";
@@ -126,12 +129,19 @@ export async function startPathServer(
   const live = createLiveRuns(project);
   // One requester context per user, resolved per request (requester.ts). The boot project is every
   // requester's store, so local mode behaves as one fixed project did.
+  const shipped = { template: shippedTemplateDir, workflow: shippedWorkflowDir };
   const requesters = createRequesterContexts({
     projectDir,
-    shippedDir: { template: shippedTemplateDir, workflow: shippedWorkflowDir },
+    shippedDir: shipped,
     projectStore: project,
   });
-  const server: ServerContext = { live, stepPlugins: registry, requesters };
+  // The host-level creator table (ADR 0088 §3). Local mode adopts today's untracked `shared/` files
+  // as created by `local`, so they stay editable.
+  const creators = openCreatorTable(join(project.dir, ".path", "host.db"));
+  if (!isHostedMode()) {
+    adoptSharedItems(authoredLayout({ projectDir, shippedDir: shipped }), creators);
+  }
+  const server: ServerContext = { live, stepPlugins: registry, requesters, creators };
   const httpServer = createServer((req, res) => {
     handleRequest(req, res, server, absStaticDir, absDesignerStaticDir, funnelGuard).catch(
       (err) => {
@@ -159,6 +169,7 @@ export async function startPathServer(
           // open`.
           live.idle().then(() => {
             requesters.close();
+            creators.close();
             resolvePromise();
           }, reject);
         });

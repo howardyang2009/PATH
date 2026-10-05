@@ -8,6 +8,7 @@ const ROOT: WorkflowSummary = {
   origin: "user",
   root_path: "release-notes.workflow.json",
   action: "open",
+  read_only: false,
   id: "8f1c",
   name: "release-notes",
   valid: true,
@@ -19,6 +20,7 @@ const NESTED: WorkflowSummary = {
   origin: "user",
   root_path: "lib/draft.workflow.json",
   action: "open",
+  read_only: false,
   id: "c47e",
   name: "draft",
   valid: true,
@@ -30,6 +32,7 @@ const BROKEN: WorkflowSummary = {
   origin: "user",
   root_path: "broken.workflow.json",
   action: "open",
+  read_only: false,
   id: null,
   name: null,
   valid: false,
@@ -127,6 +130,36 @@ describe("LaunchPanel", () => {
 
     fireEvent.click(folder);
     expect(screen.getByTestId("workflow-row-lib/draft.workflow.json")).toHaveTextContent("nested");
+  });
+
+  it("marks a read-only shared row with a lock, and still offers its launch form", async () => {
+    const theirs: WorkflowSummary = {
+      ...ROOT,
+      relative_path: "shared/workflow/theirs.workflow.json",
+      origin: "shared",
+      root_path: "theirs.workflow.json",
+      read_only: true,
+    };
+    const ours: WorkflowSummary = {
+      ...theirs,
+      relative_path: "shared/workflow/ours.workflow.json",
+      root_path: "ours.workflow.json",
+      read_only: false,
+    };
+    const { client } = stubClient({ workflows: [theirs, ours] });
+    mount(client);
+
+    fireEvent.click(await screen.findByTestId("workflow-folder-shared"));
+    const row = screen.getByTestId("workflow-row-shared/workflow/theirs.workflow.json");
+    expect(row).toHaveTextContent("🔒read-only");
+    expect(
+      screen.getByTestId("workflow-row-shared/workflow/ours.workflow.json"),
+    ).not.toHaveTextContent("read-only");
+
+    fireEvent.click(row);
+    expect(
+      screen.getByTestId("launch-form-shared/workflow/theirs.workflow.json"),
+    ).toBeInTheDocument();
   });
 
   it("navigates folders as an accordion: opening one folder collapses the previously open sibling", async () => {
@@ -438,6 +471,7 @@ describe("LaunchPanel", () => {
       origin: "shipped",
       root_path: "notes/main.workflow.json",
       action: "copy",
+      read_only: true,
       id: "5a1e",
       name: "main",
       valid: true,
@@ -450,6 +484,7 @@ describe("LaunchPanel", () => {
       origin: "user",
       root_path: "notes/main.workflow.json",
       action: "open",
+      read_only: false,
       id: "c0p1",
     };
 

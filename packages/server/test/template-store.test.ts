@@ -1,9 +1,10 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadStepPluginRegistry } from "@path/engine";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { authoredLayout } from "../src/authored-layout.js";
+import { type CreatorTable, openCreatorTable } from "../src/creator-table.js";
 import { strongEtag } from "../src/etag.js";
 import { discoverTemplates, type TemplateStore } from "../src/template-store.js";
 
@@ -24,17 +25,25 @@ const USER_TEMPLATE = {
 
 let projectDir: string;
 let store: TemplateStore;
+let creators: CreatorTable;
 
-async function openStore(): Promise<TemplateStore> {
-  return discoverTemplates(authoredLayout({ projectDir }), await loadStepPluginRegistry());
+/** The template union as `userId` sees it, over the one creator table. */
+async function openStore(userId = "local"): Promise<TemplateStore> {
+  return discoverTemplates(
+    authoredLayout({ projectDir, userId }),
+    await loadStepPluginRegistry(),
+    creators,
+  );
 }
 
 beforeEach(async () => {
   projectDir = mkdtempSync(join(tmpdir(), "path-template-store-"));
+  creators = openCreatorTable(":memory:");
   store = await openStore();
 });
 
 afterEach(() => {
+  creators.close();
   rmSync(projectDir, { recursive: true, force: true });
 });
 
@@ -184,5 +193,44 @@ describe("template store — remove", () => {
       status: 403,
       message: "template is read-only",
     });
+  });
+});
+
+describe("template store — shared items", () => {
+  const SHARED = "shared/template/team.step-template.json";
+
+  it("stamps the creator on a shared create; only the creator updates or removes it", async () => {
+    const created = (await openStore("user_alice")).create(
+      "step",
+      "team",
+      USER_TEMPLATE,
+      undefined,
+      "shared",
+    );
+    if (!created.ok) throw new Error("create failed");
+    expect(creators.creatorOf(SHARED, "template")).toBe("user_alice");
+
+    const bob = await openStore("user_bob");
+    expect(bob.byId.get(USER_TEMPLATE.id)?.readOnly).toBe(true);
+    const refused = { ok: false, status: 403, message: "only the creator edits a shared item" };
+    expect(bob.update(USER_TEMPLATE.id, USER_TEMPLATE, created.etag)).toEqual(refused);
+    expect(bob.remove(USER_TEMPLATE.id)).toEqual(refused);
+
+    const alice = await openStore("user_alice");
+    expect(alice.byId.get(USER_TEMPLATE.id)?.readOnly).toBe(false);
+    expect(alice.update(USER_TEMPLATE.id, USER_TEMPLATE, created.etag).ok).toBe(true);
+    expect(creators.creatorOf(SHARED, "template")).toBe("user_alice");
+    expect(alice.remove(USER_TEMPLATE.id)).toEqual({ ok: true });
+    expect(creators.creatorOf(SHARED, "template")).toBeUndefined();
+  });
+
+  it("lists a shared template with no creator row as read-only for everyone", async () => {
+    mkdirSync(join(projectDir, "shared", "template"), { recursive: true });
+    writeFileSync(join(projectDir, SHARED), JSON.stringify(USER_TEMPLATE));
+
+    const reopened = await openStore();
+    expect(reopened.byId.get(USER_TEMPLATE.id)?.readOnly).toBe(true);
+    expect(reopened.remove(USER_TEMPLATE.id)).toMatchObject({ ok: false, status: 403 });
+    expect(existsSync(join(projectDir, SHARED))).toBe(true);
   });
 });

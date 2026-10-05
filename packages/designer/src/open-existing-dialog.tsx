@@ -182,6 +182,11 @@ function WorkflowTree({
               <span className="workflow-file-name">
                 {workflowBaseName(node.workflow.relative_path)}
               </span>
+              {node.workflow.read_only ? (
+                <span className="workflow-tag" title="Read-only: shared by another user">
+                  <span aria-hidden="true">🔒</span>read-only
+                </span>
+              ) : null}
             </button>
           </li>
         ),

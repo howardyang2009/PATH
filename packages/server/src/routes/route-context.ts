@@ -1,6 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { LoadedStepPluginRegistry, Project } from "@path/engine";
 import type { AuthoredLayout } from "../authored-layout.js";
+import type { CreatorTable } from "../creator-table.js";
 import type { LiveRuns } from "../live-runs.js";
 import type { RequesterContext, RequesterContexts } from "../requester.js";
 
@@ -16,6 +17,8 @@ export interface RouteContext {
   /** The requester's authored layout: the files their doors read, and the ones they may write or
    * run. */
   layout: AuthoredLayout;
+  /** Who created each shared item: the one table every requester's writes are checked against. */
+  creators: CreatorTable;
 }
 
 /** What the process holds across every request: the runs it executes, the registry frozen at
@@ -24,6 +27,7 @@ export interface ServerContext {
   live: LiveRuns;
   stepPlugins: LoadedStepPluginRegistry;
   requesters: RequesterContexts;
+  creators: CreatorTable;
 }
 
 /** The context one request is handled under, built from the requester that request resolved to. */
@@ -33,6 +37,7 @@ export function routeContextFor(requester: RequesterContext, server: ServerConte
     layout: requester.layout,
     live: server.live,
     stepPlugins: server.stepPlugins,
+    creators: server.creators,
   };
 }
 

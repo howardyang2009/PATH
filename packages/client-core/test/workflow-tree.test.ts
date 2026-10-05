@@ -19,6 +19,7 @@ function wf(relativePath: string, origin: WorkflowSummary["origin"] = "user"): W
     origin,
     root_path: relativePath.replace(/^(?:users\/local|shared)\/workflow\//, ""),
     action: origin === "shipped" ? "copy" : "open",
+    read_only: origin === "shipped",
     id: null,
     name: null,
     valid: true,
