@@ -39,3 +39,57 @@ export function parseServerArgs(
 
   return { success: true, args: { projectDir: projectDir ?? cwd, port } };
 }
+
+const REMOVE_SHARED_USAGE =
+  "usage: path-server remove-shared <path> --reason <text> [--purge] [--find-copies] [--project <dir>]";
+
+export interface ParsedRemoveSharedArgs {
+  projectDir: string;
+  path: string;
+  reason: string;
+  purge: boolean;
+  findCopies: boolean;
+}
+
+export type ParseRemoveSharedArgsResult =
+  | { success: true; args: ParsedRemoveSharedArgs }
+  | { success: false; error: string };
+
+/** `--project` defaults to cwd; `--reason` is required, since the removal log records it. */
+export function parseRemoveSharedArgs(
+  argv: string[],
+  cwd: string = process.cwd(),
+): ParseRemoveSharedArgsResult {
+  let path: string | undefined;
+  let reason: string | undefined;
+  let projectDir = cwd;
+  let purge = false;
+  let findCopies = false;
+  const fail = (error: string) => ({
+    success: false as const,
+    error: `${error}\n${REMOVE_SHARED_USAGE}`,
+  });
+
+  for (let i = 0; i < argv.length; i += 1) {
+    const arg = argv[i] as string;
+    if (arg === "--reason" || arg === "--project") {
+      const value = argv[i + 1];
+      if (!value) return fail(`${arg} requires a value`);
+      if (arg === "--reason") reason = value;
+      else projectDir = value;
+      i += 1;
+    } else if (arg === "--purge") {
+      purge = true;
+    } else if (arg === "--find-copies") {
+      findCopies = true;
+    } else if (path === undefined) {
+      path = arg;
+    } else {
+      return fail(`unrecognized argument "${arg}"`);
+    }
+  }
+
+  if (path === undefined) return fail("missing the shared item's path");
+  if (reason === undefined) return fail("--reason is required");
+  return { success: true, args: { projectDir, path, reason, purge, findCopies } };
+}

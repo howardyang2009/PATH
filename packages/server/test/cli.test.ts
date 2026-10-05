@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { parseServerArgs } from "../src/cli.js";
+import { parseRemoveSharedArgs, parseServerArgs } from "../src/cli.js";
+
+const SHARED = "shared/workflow/abuse.workflow.json";
 
 describe("parseServerArgs", () => {
   it("defaults project-dir to cwd and port to 0 (ephemeral) when given no arguments", () => {
@@ -43,6 +45,33 @@ describe("parseServerArgs", () => {
     expect(result).toMatchObject({
       success: false,
       error: expect.stringContaining('unrecognized argument "/b"'),
+    });
+  });
+});
+
+describe("parseRemoveSharedArgs", () => {
+  it("takes the path, a required reason and the flags, with project-dir defaulting to cwd", () => {
+    expect(
+      parseRemoveSharedArgs([SHARED, "--reason", "spam", "--purge", "--find-copies"], "/cwd"),
+    ).toEqual({
+      success: true,
+      args: { projectDir: "/cwd", path: SHARED, reason: "spam", purge: true, findCopies: true },
+    });
+    expect(parseRemoveSharedArgs(["--project", "/p", SHARED, "--reason", "spam"], "/cwd")).toEqual({
+      success: true,
+      args: { projectDir: "/p", path: SHARED, reason: "spam", purge: false, findCopies: false },
+    });
+  });
+
+  it("refuses a missing path or reason and an unknown argument", () => {
+    expect(parseRemoveSharedArgs(["--reason", "x"])).toMatchObject({ success: false });
+    expect(parseRemoveSharedArgs([SHARED])).toMatchObject({
+      success: false,
+      error: expect.stringContaining("--reason"),
+    });
+    expect(parseRemoveSharedArgs([SHARED, "--reason", "x", "extra"])).toMatchObject({
+      success: false,
+      error: expect.stringContaining('unrecognized argument "extra"'),
     });
   });
 });
