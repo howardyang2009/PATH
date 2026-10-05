@@ -12,11 +12,8 @@
 // depend on a package carrying SQLite, child processes and the Agent SDK for two type-only names.
 // The line is what a run *is* (here) versus how a run is *stored* or *executed* (@path/engine).
 //
-// This barrel is the convenience default. The package's `exports` map also names the seams a
-// consumer can import narrowly, so an import says which module owns a name rather than "somewhere
-// in schema": `@path/schema/nodes` (the registry-driven node factory), `@path/schema/node-walk`
-// (the block grammar's one descent) and `@path/schema/wire-v0` (the v0 wire codec). Each is pinned
-// by `test/subpath.test.ts`, since a package `exports` path is not something tsc alone checks.
+// This barrel is the package's one interface: no consumer imports a schema module by path, so a
+// named subpath export would be a seam with no second adapter. A new name reaches consumers here.
 
 export type {
   AllCondition,
