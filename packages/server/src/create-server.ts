@@ -3,11 +3,12 @@ import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { type LoadedStepPluginRegistry, loadStepPluginRegistry, openProject } from "@path/engine";
 import { authoredLayout } from "./authored-layout.js";
+import { clerkUserIdResolver } from "./clerk-identity.js";
 import { adoptSharedItems, openCreatorTable } from "./creator-table.js";
 import { enforceFunnelGuard, funnelGuardEnabled } from "./funnel-guard.js";
 import { sendError } from "./http-json.js";
 import { createLiveRuns } from "./live-runs.js";
-import { isHostedMode } from "./mode.js";
+import { readServerMode } from "./mode.js";
 import { enforceSameOrigin } from "./origin-gate.js";
 import { createRequesterContexts } from "./requester.js";
 import { dispatchApi } from "./routes/api-routes.js";
@@ -112,6 +113,9 @@ export async function startPathServer(
   shippedTemplateDir?: string,
   shippedWorkflowDir?: string,
 ): Promise<PathServerHandle> {
+  // A half-configured hosted setup throws here, before anything is opened.
+  const mode = readServerMode();
+
   // Scan the plugin folder (server-api-v0.md §8) before `openProject`, so a broken folder throws
   // without leaving an opened db handle behind; a thrown error skips the handle that would close
   // it.
@@ -125,7 +129,7 @@ export async function startPathServer(
 
   const absStaticDir = resolve(staticDir);
   const absDesignerStaticDir = resolve(designerStaticDir);
-  const funnelGuard = funnelGuardEnabled();
+  const funnelGuard = funnelGuardEnabled(mode);
   const live = createLiveRuns(project);
   // One requester context per user, resolved per request (requester.ts). The boot project is every
   // requester's store, so local mode behaves as one fixed project did.
@@ -134,14 +138,15 @@ export async function startPathServer(
     projectDir,
     shippedDir: shipped,
     projectStore: project,
+    resolveUserId: mode.mode === "hosted" ? clerkUserIdResolver(mode.clerk) : undefined,
   });
   // The host-level creator table (ADR 0088 §3). Local mode adopts today's untracked `shared/` files
   // as created by `local`, so they stay editable.
   const creators = openCreatorTable(join(project.dir, ".path", "host.db"));
-  if (!isHostedMode()) {
+  if (mode.mode === "local") {
     adoptSharedItems(authoredLayout({ projectDir, shippedDir: shipped }), creators);
   }
-  const server: ServerContext = { live, stepPlugins: registry, requesters, creators };
+  const server: ServerContext = { mode, live, stepPlugins: registry, requesters, creators };
   const httpServer = createServer((req, res) => {
     handleRequest(req, res, server, absStaticDir, absDesignerStaticDir, funnelGuard).catch(
       (err) => {

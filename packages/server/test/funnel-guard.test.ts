@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type PathServerHandle, startPathServer } from "../src/create-server.js";
 import { funnelGuardEnabled, isFunnelRequest } from "../src/funnel-guard.js";
+import type { ServerMode } from "../src/mode.js";
 
 /** A minimal `IncomingMessage` stand-in — the guard only reads `.headers`. */
 function req(headers: Record<string, string | string[] | undefined>): IncomingMessage {
@@ -51,33 +52,31 @@ describe("isFunnelRequest", () => {
 });
 
 describe("funnelGuardEnabled", () => {
+  const LOCAL: ServerMode = { mode: "local", publishableKey: null };
+
   it("is on by default in local mode", () => {
-    expect(funnelGuardEnabled({})).toBe(true);
+    expect(funnelGuardEnabled(LOCAL, {})).toBe(true);
   });
 
   it("turns off when PATH_FUNNEL_GUARD is off", () => {
-    expect(funnelGuardEnabled({ PATH_FUNNEL_GUARD: "off" })).toBe(false);
+    expect(funnelGuardEnabled(LOCAL, { PATH_FUNNEL_GUARD: "off" })).toBe(false);
   });
 
   it("reads the switch case-insensitively and ignores surrounding whitespace", () => {
-    expect(funnelGuardEnabled({ PATH_FUNNEL_GUARD: " OFF " })).toBe(false);
+    expect(funnelGuardEnabled(LOCAL, { PATH_FUNNEL_GUARD: " OFF " })).toBe(false);
   });
 
   it("stays on for any other PATH_FUNNEL_GUARD value", () => {
-    expect(funnelGuardEnabled({ PATH_FUNNEL_GUARD: "on" })).toBe(true);
+    expect(funnelGuardEnabled(LOCAL, { PATH_FUNNEL_GUARD: "on" })).toBe(true);
   });
 
   it("does not apply in hosted mode", () => {
-    expect(
-      funnelGuardEnabled({
-        CLERK_JWT_KEY: "-----BEGIN PUBLIC KEY-----",
-        PATH_ALLOWED_ORIGIN: "https://path.example.ts.net",
-      }),
-    ).toBe(false);
-  });
-
-  it("stays on when the hosted settings are half-configured", () => {
-    expect(funnelGuardEnabled({ CLERK_JWT_KEY: "-----BEGIN PUBLIC KEY-----" })).toBe(true);
+    const hosted: ServerMode = {
+      mode: "hosted",
+      publishableKey: "pk_test_cGF0aC5leGFtcGxlJA",
+      clerk: { jwtKey: "-----BEGIN PUBLIC KEY-----", allowedOrigin: "https://path.example" },
+    };
+    expect(funnelGuardEnabled(hosted, {})).toBe(false);
   });
 });
 
@@ -166,7 +165,9 @@ describe("the Funnel guard on the HTTP door", () => {
     await handle.close();
     vi.stubEnv("CLERK_JWT_KEY", "-----BEGIN PUBLIC KEY-----");
     vi.stubEnv("PATH_ALLOWED_ORIGIN", `https://${TS_NET_HOST}`);
+    vi.stubEnv("CLERK_PUBLISHABLE_KEY", "pk_test_cGF0aC5leGFtcGxlJA");
     handle = await startPathServer(projectDir);
-    expect((await get("/v0/runs", TS_NET_HOST)).status).toBe(200);
+    // Past the guard, the request meets hosted sign-in instead.
+    expect((await get("/v0/runs", TS_NET_HOST)).status).toBe(401);
   });
 });

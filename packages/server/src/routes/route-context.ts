@@ -3,6 +3,7 @@ import type { LoadedStepPluginRegistry, Project } from "@path/engine";
 import type { AuthoredLayout } from "../authored-layout.js";
 import type { CreatorTable } from "../creator-table.js";
 import type { LiveRuns } from "../live-runs.js";
+import type { ServerMode } from "../mode.js";
 import type { RequesterContext, RequesterContexts } from "../requester.js";
 
 /** What one route handler is handed: the requester's authored layout and store, plus what the
@@ -24,6 +25,7 @@ export interface RouteContext {
 /** What the process holds across every request: the runs it executes, the registry frozen at
  * start, and the resolver from a request to its requester context. */
 export interface ServerContext {
+  mode: ServerMode;
   live: LiveRuns;
   stepPlugins: LoadedStepPluginRegistry;
   requesters: RequesterContexts;

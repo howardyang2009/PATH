@@ -5,6 +5,7 @@ import { handleCompleteRun } from "./complete-run.js";
 import { handleDeleteRun } from "./delete-run.js";
 import { handleDeleteTemplate } from "./delete-template.js";
 import { handleDeleteWorkflow } from "./delete-workflow.js";
+import { handleGetAuthConfig } from "./get-auth-config.js";
 import { handleGetRun } from "./get-run.js";
 import { handleGetRunBlob } from "./get-run-blob.js";
 import { handleGetRunEvents } from "./get-run-events.js";
@@ -101,18 +102,27 @@ export async function dispatchApi(
   server: ServerContext,
   url: URL,
 ): Promise<boolean> {
+  // Public: a client reads the mode before it can sign in.
+  if (req.method === "GET" && url.pathname === "/v0/auth-config") {
+    handleGetAuthConfig(res, server.mode);
+    return true;
+  }
   for (const route of API_ROUTES) {
     if (route.method !== req.method) continue;
     const captures = matchPath(route.path, url.pathname);
     if (captures === undefined) continue;
+    // Resolved only once a row matches: an unmatched path keeps its plain 404, and the static
+    // mounts stay public (ADR 0090).
+    const requester = await server.requesters.forRequest(req);
+    if (requester === undefined) {
+      sendError(res, 401, "sign-in required: missing, invalid or expired bearer token");
+      return true;
+    }
     const params = decodeAll(captures);
     if (params === undefined) {
       sendError(res, 400, "malformed percent-encoding in the request path");
       return true;
     }
-    // Resolved only once a row matches: an unmatched path keeps its plain 404, and the static
-    // mounts stay public (ADR 0090).
-    const requester = await server.requesters.forRequest(req);
     await route.handle({
       req,
       res,
