@@ -353,7 +353,10 @@ visible. New and Open… act in the current mode (a new workflow or template; th
 template picker). While a Delete runs, the top bar's centre slot says `Deleting…`. A template saves only as a template:
 template mode has no Save as workflow door. In workflow mode, Save as… writes a copy of the open workflow to
 a new `*.workflow.json` through the first-save dialog (titled "Save workflow as", prefilled
-`<name>-copy` in the source file's directory) as an exclusive create. The copy is a new workflow:
+`<name>-copy`) as an exclusive create. Its **Save to** picker chooses mine or shared, default mine,
+and confines the directory list to that side; a mine save starts in the source file's directory when
+it is mine, else the user's own root. A shared save lands under `shared/workflow/` and the Server
+stamps the requester as its creator (ADR 0088). The copy is a new workflow:
 Instantiation gives it a fresh workflow `id` and fresh node ids (two workflows must not share identity,
 ADR 0006), and its `name` is the new file's stem. The editor then edits the copy; the original file is
 unchanged on disk. In workflow mode, Save as… first asks what to save the workflow as (a "Save as"
