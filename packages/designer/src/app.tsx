@@ -1,5 +1,4 @@
 import type { PathApiClient, TemplateSummary, WireStepPlugin } from "@path/client-core";
-import type { WorkflowFile } from "@path/schema";
 import { useEffect, useRef, useState } from "react";
 import { AppShell } from "./app-shell.js";
 import { Canvas } from "./canvas.js";
@@ -27,6 +26,7 @@ import { useRunWatch } from "./run/use-run-watch.js";
 import { SaveAsChoiceDialog } from "./save-as-choice-dialog.js";
 import { SaveTemplateAsDialog } from "./save-template-as-dialog.js";
 import { SelectionProvider } from "./selection-context.js";
+import { droppedWorkflowFields } from "./session-reducer.js";
 import { useTemplateList } from "./template-list.js";
 import { useArmed } from "./use-armed.js";
 import { useEditLeases } from "./use-edit-leases.js";
@@ -42,15 +42,6 @@ import {
   useOpenFile,
 } from "./use-open-file.js";
 import { useRefAuthoring } from "./use-ref-authoring.js";
-
-/** The workflow-level fields of `file` that hold a value — what a save as template drops. */
-function workflowLevelFields(file: WorkflowFile): string[] {
-  const filled = (value: object | undefined): boolean =>
-    value !== undefined && Object.keys(value).length > 0;
-  return (["input", "output", "config", "worker_defaults"] as const).filter((key) =>
-    filled(file[key]),
-  );
-}
 
 /** The Designer app: palette rail, canvas, and properties pane. `initialPath` is the deep-link
  * `?path=`; the armed palette value and the selected id both live here, above the canvas and the
@@ -450,7 +441,7 @@ export function App({
       {saveAsDialog === "template" && activeTemplate ? (
         <SaveTemplateAsDialog
           source={activeTemplate}
-          droppedFields={openedFile ? workflowLevelFields(openedFile) : []}
+          droppedFields={openedFile ? droppedWorkflowFields(openedFile) : []}
           templateList={templateList}
           create={({ name, folder, origin, description }) =>
             session.saveAs({ kind: "template-copy", name, folder, origin, description })
@@ -470,7 +461,7 @@ export function App({
         <SaveTemplateAsDialog
           source={null}
           workflowName={openedFile.name}
-          droppedFields={workflowLevelFields(openedFile)}
+          droppedFields={droppedWorkflowFields(openedFile)}
           templateList={templateList}
           create={({ name, folder, origin, description }) =>
             session.saveAs({ kind: "workflow-as-template", name, folder, origin, description })
