@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
 } from "react";
+import type { EditorChrome } from "./editor-chrome.js";
 import type { LeaseState } from "./lease-client.js";
 import { canonicalSerialize } from "./serialize.js";
 import {
@@ -172,13 +173,6 @@ const SAVE_SHORTCUT = IS_MAC ? "⌘S" : "Ctrl+S";
 const UNDO_SHORTCUT = IS_MAC ? "⌘Z" : "Ctrl+Z";
 const REDO_SHORTCUT = IS_MAC ? "⇧⌘Z" : "Ctrl+Y";
 
-/** Is Save enabled? Not mid-save or mid-delete, not in a `412` conflict (the author must reload
- * first), and only for a buffer with unsaved work. The Save button and ⌘S share this gate. */
-export function canSave(saveState: SaveState, dirty: boolean): boolean {
-  const busy = saveState.phase === "saving" || saveState.phase === "deleting";
-  return !busy && saveState.phase !== "conflict" && dirty;
-}
-
 /** The **Workflow | Template** edit-mode switch: a segmented radio group in the top bar, after the
  * brand. */
 export function ModeSwitch({
@@ -208,65 +202,38 @@ export function ModeSwitch({
 }
 
 export function EditingToolbar({
+  chrome,
   onNew,
   onOpen,
-  canSaveAs,
-  saveState,
-  dirty,
-  canUndo,
-  canRedo,
   onUndo,
   onRedo,
   onSave,
   onSaveAs,
-  canDelete,
   onDelete,
-  canDownload,
   onDownload,
-  readOnlyTitle,
-  lease,
   onTakeover,
   onReacquire,
 }: {
+  /** Which document actions are live, and what Save shows (`editorChrome`). */
+  chrome: EditorChrome;
   /** Start a new workflow or a new template, by mode. */
   onNew: () => void;
   /** Open the pick-an-existing dialog for the mode: a workflow or a template. */
   onOpen: () => void;
-  /** Is a saved file open on the canvas? Save as… needs one: a new, never-saved buffer has only
-   * Save. */
-  canSaveAs: boolean;
-  saveState: SaveState;
-  /** Does the active buffer have unsaved edits (or id-stamps)? Gates the Save button and its
-   * label. */
-  dirty: boolean;
-  /** Has the active frame an edit to undo? Gates the Undo button. */
-  canUndo: boolean;
-  /** Has the active frame an undo to redo? Gates the Redo button. */
-  canRedo: boolean;
   onUndo: () => void;
   onRedo: () => void;
   onSave: () => void;
   /** Save a copy under a new name: a new workflow file in workflow mode, a new template in template
    * mode. */
   onSaveAs: () => void;
-  /** Is a saved, deletable root file open (`planDelete`)? A new buffer or a shipped template is
-   * not. */
-  canDelete: boolean;
   /** Delete the open workflow or template from disk, after the author confirms. */
   onDelete: () => void;
-  /** Has the active frame a saved file to download? A new, never-saved buffer has none. */
-  canDownload: boolean;
   /** Download the active frame's saved file: a workflow (zipped with the files it refs) or a
    * template. */
   onDownload: () => void;
-  /** Why the open file cannot be written, shown on a disabled Save and Delete; Save as… stays. */
-  readOnlyTitle?: string;
-  /** The active file's lease state, or `undefined` before it is known. */
-  lease: LeaseState | undefined;
   onTakeover: () => void;
   onReacquire: () => void;
 }): JSX.Element {
-  const saving = saveState.phase === "saving" || saveState.phase === "deleting";
   return (
     <div className="editing-toolbar">
       {/* The rare whole-file actions sit behind File: New and Open… discard the current stack, and
@@ -278,20 +245,20 @@ export function EditingToolbar({
             { label: "Open…", onSelect: onOpen },
           ],
           [
-            { label: "Save as…", onSelect: onSaveAs, disabled: saving || !canSaveAs },
+            { label: "Save as…", onSelect: onSaveAs, disabled: chrome.busy || !chrome.saveAs },
             {
               label: "Download",
               onSelect: onDownload,
-              disabled: !canDownload,
-              title: canDownload ? "Download the saved file" : "Save first",
+              disabled: !chrome.download,
+              title: chrome.download ? "Download the saved file" : "Save first",
             },
           ],
           [
             {
               label: "Delete",
               onSelect: onDelete,
-              disabled: saving || !canDelete || readOnlyTitle !== undefined,
-              title: readOnlyTitle,
+              disabled: chrome.busy || !chrome.remove,
+              title: chrome.readOnlyTitle,
               danger: true,
             },
           ],
@@ -305,7 +272,7 @@ export function EditingToolbar({
         className="toolbar-btn"
         aria-label="Undo"
         onClick={onUndo}
-        disabled={!canUndo}
+        disabled={!chrome.undo}
         title={`Undo (${UNDO_SHORTCUT})`}
       >
         ↶ Undo
@@ -315,7 +282,7 @@ export function EditingToolbar({
         className="toolbar-btn"
         aria-label="Redo"
         onClick={onRedo}
-        disabled={!canRedo}
+        disabled={!chrome.redo}
         title={`Redo (${REDO_SHORTCUT})`}
       >
         ↷ Redo
@@ -326,12 +293,12 @@ export function EditingToolbar({
         type="button"
         className="save-btn"
         onClick={onSave}
-        disabled={!canSave(saveState, dirty) || readOnlyTitle !== undefined}
-        title={readOnlyTitle ?? `Save (${SAVE_SHORTCUT})`}
+        disabled={!chrome.save}
+        title={chrome.readOnlyTitle ?? `Save (${SAVE_SHORTCUT})`}
       >
-        {saveState.phase === "saving" ? "Saving…" : "Save"}
+        {chrome.saveLabel}
       </button>
-      <LeaseBanner lease={lease} onTakeover={onTakeover} onReacquire={onReacquire} />
+      <LeaseBanner lease={chrome.lease} onTakeover={onTakeover} onReacquire={onReacquire} />
     </div>
   );
 }

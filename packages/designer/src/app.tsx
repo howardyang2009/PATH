@@ -6,13 +6,13 @@ import { useWorkflowDiscovery } from "./discovery.js";
 import { documentPolicy } from "./document.js";
 import { downloadFailure, downloadFile } from "./download-file.js";
 import {
-  canSave,
   EditingToolbar,
   FileStatus,
   ModeSwitch,
   TemplateFileName,
   WorkflowFileName,
 } from "./editing-toolbar.js";
+import { editorChrome } from "./editor-chrome.js";
 import { dirnameOf, NewFileDialog } from "./new-file-dialog.js";
 import { OpenWorkflowDialog } from "./open-existing-dialog.js";
 import { OpenTemplateDialog } from "./open-template-dialog.js";
@@ -32,8 +32,6 @@ import { useArmed } from "./use-armed.js";
 import { useEditLeases } from "./use-edit-leases.js";
 import { useFileProblems } from "./use-file-problems.js";
 import {
-  frameCanRedo,
-  frameCanUndo,
   frameDirty,
   frameHasUnsavedWork,
   openedResultOf,
@@ -228,22 +226,29 @@ export function App({
     ? (activeTemplate?.readOnly ?? false)
     : workflowReadOnly(discovery, activePath);
   const readOnlyTitle = readOnly ? READ_ONLY_TITLE[readOnly] : undefined;
-  const saveEnabled = canSave(session.saveState, dirty) && !readOnly;
+  // The toolbar's whole capability surface, derived once: the Save button, ⌘S and the two keyboard
+  // peers below all read this one value.
+  const chrome = editorChrome({
+    session,
+    policy,
+    deletePlan,
+    downloadPlan,
+    readOnlyTitle,
+    lease: activePath ? leases.get(activePath) : undefined,
+  });
   useEffect(() => {
     // ⌘/Ctrl+S runs the Save button, from any focus. It always blocks the browser's own Save Page.
     const onKeyDown = (event: KeyboardEvent): void => {
       if (!(event.metaKey || event.ctrlKey) || event.shiftKey || event.altKey) return;
       if (event.key.toLowerCase() !== "s") return;
       event.preventDefault();
-      if (saveEnabled) onSave();
+      if (chrome.save) onSave();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [saveEnabled, onSave]);
+  }, [chrome.save, onSave]);
   // The undo/redo affordances read the active frame's own stack (per-file); the keyboard peer below
   // re-subscribes only when the enablement flips.
-  const canUndo = frameCanUndo(active);
-  const canRedo = frameCanRedo(active);
   const { apply } = session;
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
@@ -259,18 +264,18 @@ export function App({
         return;
       const wantsRedo = key === "y" || (key === "z" && event.shiftKey);
       if (wantsRedo) {
-        if (canRedo) {
+        if (chrome.redo) {
           event.preventDefault();
           apply({ type: "redo" });
         }
-      } else if (canUndo) {
+      } else if (chrome.undo) {
         event.preventDefault();
         apply({ type: "undo" });
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [canUndo, canRedo, apply]);
+  }, [chrome.undo, chrome.redo, apply]);
 
   return (
     <>
@@ -304,15 +309,9 @@ export function App({
         toolbar={
           session.registry.phase === "ready" ? (
             <EditingToolbar
+              chrome={chrome}
               onNew={onNew}
               onOpen={onOpen}
-              // A new workflow or template (no path, no template source) has only Save: its first
-              // save.
-              canSaveAs={policy.canSaveAs}
-              saveState={session.saveState}
-              dirty={dirty}
-              canUndo={canUndo}
-              canRedo={canRedo}
               onUndo={() => apply({ type: "undo" })}
               onRedo={() => apply({ type: "redo" })}
               onSave={onSave}
@@ -320,14 +319,10 @@ export function App({
               // choice between a copy to a new workflow file and a new template made from the
               // workflow's body.
               onSaveAs={() => setSaveAsDialog(inTemplateMode ? "template" : "workflow-choice")}
-              lease={activePath ? leases.get(activePath) : undefined}
               onTakeover={() => activePath && takeover(activePath)}
               onReacquire={() => activePath && reacquire(activePath)}
-              canDelete={deletePlan !== null}
               onDelete={onDelete}
-              canDownload={downloadPlan !== null}
               onDownload={onDownload}
-              readOnlyTitle={readOnlyTitle}
             />
           ) : undefined
         }
