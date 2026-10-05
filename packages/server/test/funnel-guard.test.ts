@@ -166,7 +166,9 @@ describe("the Funnel guard on the HTTP door", () => {
     await handle.close();
     vi.stubEnv("CLERK_JWT_KEY", "-----BEGIN PUBLIC KEY-----");
     vi.stubEnv("PATH_ALLOWED_ORIGIN", `https://${TS_NET_HOST}`);
+    vi.stubEnv("CLERK_PUBLISHABLE_KEY", "pk_test_cGF0aC5leGFtcGxlJA");
     handle = await startPathServer(projectDir);
-    expect((await get("/v0/runs", TS_NET_HOST)).status).toBe(200);
+    // Past the guard, the request meets hosted sign-in instead.
+    expect((await get("/v0/runs", TS_NET_HOST)).status).toBe(401);
   });
 });

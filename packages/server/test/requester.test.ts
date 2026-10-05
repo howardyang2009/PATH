@@ -5,7 +5,11 @@ import { join, resolve } from "node:path";
 import { openProject, type Project } from "@path/engine";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { DEFAULT_USER_ID } from "../src/authored-layout.js";
-import { createRequesterContexts } from "../src/requester.js";
+import {
+  createRequesterContexts,
+  type RequesterContext,
+  type RequesterContexts,
+} from "../src/requester.js";
 
 /**
  * The requester context one request is handled under (ADR 0088): the resolved user id, that user's
@@ -18,6 +22,13 @@ let projectStore: Project;
 
 /** The id a request acts for is the only thing the resolver reads off the request. */
 const REQUEST = {} as IncomingMessage;
+
+/** The context `REQUEST` resolves to; every resolver here proves an identity. */
+async function forRequest(contexts: RequesterContexts): Promise<RequesterContext> {
+  const context = await contexts.forRequest(REQUEST);
+  if (context === undefined) throw new Error("expected a requester context");
+  return context;
+}
 
 beforeEach(() => {
   projectDir = mkdtempSync(join(tmpdir(), "path-requester-test-"));
@@ -34,7 +45,7 @@ describe("createRequesterContexts", () => {
   it("resolves every request to local and the project's own store", async () => {
     const contexts = createRequesterContexts({ projectDir, projectStore });
 
-    const context = await contexts.forRequest(REQUEST);
+    const context = await forRequest(contexts);
 
     expect(context.userId).toBe(DEFAULT_USER_ID);
     expect(context.store).toBe(projectStore);
@@ -47,8 +58,8 @@ describe("createRequesterContexts", () => {
   it("reuses one store across a user's requests", async () => {
     const contexts = createRequesterContexts({ projectDir, projectStore });
 
-    const first = await contexts.forRequest(REQUEST);
-    const second = await contexts.forRequest(REQUEST);
+    const first = await forRequest(contexts);
+    const second = await forRequest(contexts);
 
     expect(second).toBe(first);
     expect(second.store).toBe(first.store);
@@ -62,8 +73,8 @@ describe("createRequesterContexts", () => {
       resolveUserId: () => "user_abc",
     });
 
-    const first = await contexts.forRequest(REQUEST);
-    const second = await contexts.forRequest(REQUEST);
+    const first = await forRequest(contexts);
+    const second = await forRequest(contexts);
 
     expect(first.userId).toBe("user_abc");
     expect(first.layout.root("user", "workflow").dir).toBe(
@@ -71,6 +82,17 @@ describe("createRequesterContexts", () => {
     );
     expect(first.store).toBe(projectStore);
     expect(second).toBe(first);
+    contexts.close();
+  });
+
+  it("resolves no context when the request proves no identity", async () => {
+    const contexts = createRequesterContexts({
+      projectDir,
+      projectStore,
+      resolveUserId: () => undefined,
+    });
+
+    expect(await contexts.forRequest(REQUEST)).toBeUndefined();
     contexts.close();
   });
 

@@ -16,6 +16,7 @@
     "acceptance": "tsx scripts/acceptance-release-notes.mts"
   },
   "dependencies": {
+    "@clerk/backend": "^3.22.0",
     "@path/engine": "workspace:*",
     "@path/schema": "workspace:*",
     "better-sqlite3": "^13.0.3",

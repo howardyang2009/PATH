@@ -18,15 +18,18 @@ export interface RequesterContext {
 }
 
 /**
- * The user id one request acts for. Local mode answers `local` for every request; hosted mode
- * verifies the bearer token here instead (ADR 0090).
+ * The user id one request acts for, or `undefined` when the request proves no identity. Local mode
+ * answers `local` for every request; hosted mode verifies the bearer token here instead (ADR 0090).
  */
-export type UserIdResolver = (req: IncomingMessage) => string | Promise<string>;
+export type UserIdResolver = (
+  req: IncomingMessage,
+) => string | undefined | Promise<string | undefined>;
 
 /** One requester context per user, kept across that user's requests. */
 export interface RequesterContexts {
-  /** The requester `req` acts for, built on first use and reused after. */
-  forRequest(req: IncomingMessage): Promise<RequesterContext>;
+  /** The requester `req` acts for, built on first use and reused after; `undefined` when `req`
+   * proves no identity. */
+  forRequest(req: IncomingMessage): Promise<RequesterContext | undefined>;
   /** Closes every store held here, the project's own included. */
   close(): void;
 }
@@ -65,6 +68,7 @@ export function createRequesterContexts({
   return {
     async forRequest(req) {
       const userId = await resolveUserId(req);
+      if (userId === undefined) return undefined;
       // No `await` between the read and the write, so concurrent first requests share one context.
       const held = contexts.get(userId);
       if (held !== undefined) return held;

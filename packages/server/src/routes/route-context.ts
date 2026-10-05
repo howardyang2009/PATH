@@ -21,9 +21,16 @@ export interface RouteContext {
   creators: CreatorTable;
 }
 
+/** What `GET /v0/auth-config` tells a client: the mode, and the key it signs in with. */
+export interface AuthConfig {
+  mode: "local" | "hosted";
+  publishableKey: string | null;
+}
+
 /** What the process holds across every request: the runs it executes, the registry frozen at
  * start, and the resolver from a request to its requester context. */
 export interface ServerContext {
+  authConfig: AuthConfig;
   live: LiveRuns;
   stepPlugins: LoadedStepPluginRegistry;
   requesters: RequesterContexts;
