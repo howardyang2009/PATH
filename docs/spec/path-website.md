@@ -158,7 +158,8 @@ rotate-secrets-key` re-encrypts secrets under a new key id.
 **Now** ([#721](https://github.com/howardyang2009/PATH/issues/721)): Funnel is off since 2026-10-05.
 PATH is tailnet-only through `tailscale serve`. Trusted testers only, through Tailscale node sharing.
 In local mode the Server answers `403` to any request whose `Host` is a `*.ts.net` name and that
-carries no `Tailscale-User-Login` header (a Funnel request); config can switch this guard off.
+carries no `Tailscale-User-Login` header (a Funnel request); `PATH_FUNNEL_GUARD=off` switches this
+guard off, and hosted mode does not apply it ([#726](https://github.com/howardyang2009/PATH/issues/726)).
 
 **Egress** ([#724](https://github.com/howardyang2009/PATH/issues/724)): VMs run on one fixed network
 (`container network create path --subnet <fixed>`). A `pf` anchor `path`, loaded at boot by a

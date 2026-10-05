@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { type LoadedStepPluginRegistry, loadStepPluginRegistry, openProject } from "@path/engine";
 import { authoredLayout } from "./authored-layout.js";
+import { enforceFunnelGuard, funnelGuardEnabled } from "./funnel-guard.js";
 import { sendError } from "./http-json.js";
 import { createLiveRuns } from "./live-runs.js";
 import { enforceSameOrigin } from "./origin-gate.js";
@@ -43,11 +44,16 @@ async function handleRequest(
   ctx: RouteContext,
   staticDir: string,
   designerStaticDir: string,
+  funnelGuard: boolean,
 ): Promise<void> {
   const url = new URL(req.url ?? "/", "http://localhost");
   const pathname = url.pathname;
 
   try {
+    // Local mode fails closed when a forgotten Funnel exposes this unauthenticated, in-process run
+    // executor (funnel-guard.ts).
+    if (!enforceFunnelGuard(req, res, funnelGuard)) return;
+
     // Gate every non-GET route here, not per-route, so a future mutating route can't ship ungated
     // (origin-gate.ts).
     if (req.method !== "GET" && req.method !== "HEAD" && !enforceSameOrigin(req, res)) return;
@@ -116,6 +122,7 @@ export async function startPathServer(
 
   const absStaticDir = resolve(staticDir);
   const absDesignerStaticDir = resolve(designerStaticDir);
+  const funnelGuard = funnelGuardEnabled();
   const live = createLiveRuns(project);
   const ctx: RouteContext = {
     project,
@@ -127,7 +134,7 @@ export async function startPathServer(
     }),
   };
   const server = createServer((req, res) => {
-    handleRequest(req, res, ctx, absStaticDir, absDesignerStaticDir).catch((err) => {
+    handleRequest(req, res, ctx, absStaticDir, absDesignerStaticDir, funnelGuard).catch((err) => {
       console.error(`unhandled request error: ${err instanceof Error ? err.stack : String(err)}`);
     });
   });
