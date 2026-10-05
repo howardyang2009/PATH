@@ -80,17 +80,20 @@ export type TemplateRemove = { ok: true } | { ok: false; status: 403 | 404; mess
 
 /**
  * The template union one Server serves, and the only door onto the files it holds: a read lists the
- * entries, a write names an `id`. No caller sees an `absPath`, so the conditional-write seam
- * (ADR 0016) cannot be bypassed.
+ * entries or names one, a write names an `id`. No caller sees an `absPath`, so the conditional-write
+ * seam (ADR 0016) cannot be bypassed.
+ *
+ * Cost is part of the interface: a store is one full scan of the requester's three template roots —
+ * every file read and validated (ADR 0084). `templatesOf` hands one store per request, so a route
+ * pays that scan once however many lookups it makes.
  */
 export interface TemplateStore {
   /** Every discovered entry, in scan order: shipped before user, files sorted. */
   readonly entries: readonly TemplateEntry[];
-  /**
-   * `id → entry` for the by-id routes. First-seen wins — shipped is scanned before user, so a user
-   * hand-copy of a shipped id resolves to the shipped entry. Malformed, id-less entries are absent.
-   */
-  readonly byId: ReadonlyMap<string, TemplateEntry>;
+  /** The entry `id` names, or `undefined`. First-seen wins — shipped is scanned before user, so a
+   * user hand-copy of a shipped id resolves to the shipped entry. Malformed, id-less entries are
+   * absent. */
+  find(id: string): TemplateEntry | undefined;
   /** The on-disk bytes of the template `id` names, shipped included, and the file name they save
    * as; `undefined` for an unknown id. */
   download(id: string): { fileName: string; bytes: Buffer } | undefined;
@@ -228,7 +231,7 @@ export function discoverTemplates(
 
   return {
     entries: located,
-    byId,
+    find: (id) => byId.get(id),
     download(id) {
       const entry = byId.get(id);
       const bytes = entry === undefined ? undefined : readArtifact(entry.absPath);
@@ -291,13 +294,21 @@ export function discoverTemplates(
   };
 }
 
-/** The template union one server serves, scanned fresh for this request. */
+/** The one store a request reads through: the first call scans the requester's union, later calls
+ * in the same request reuse it. Held weakly, so the store is dropped with the request context. */
+const storesByContext = new WeakMap<object, TemplateStore>();
+
+/** The template union one server serves, scanned once per request context. */
 export function templatesOf(ctx: {
   layout: AuthoredLayout;
   stepPlugins: StepPluginRegistry;
   creators: CreatorTable;
 }): TemplateStore {
-  return discoverTemplates(ctx.layout, ctx.stepPlugins, ctx.creators);
+  const held = storesByContext.get(ctx);
+  if (held !== undefined) return held;
+  const store = discoverTemplates(ctx.layout, ctx.stepPlugins, ctx.creators);
+  storesByContext.set(ctx, store);
+  return store;
 }
 
 /** One entry as its thin wire row (§10.1): everything but the body. */

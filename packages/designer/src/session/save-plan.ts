@@ -210,6 +210,21 @@ function planNewFile(
   };
 }
 
+/**
+ * The template envelope a Save-as-template keeps. Every other top-level workflow key is dropped, so
+ * this set is the one statement of the drop the write performs and the dialog reports.
+ */
+const TEMPLATE_ENVELOPE_KEYS = new Set(["format", "id", "name", "body"]);
+
+/** The workflow-level fields holding a value that Save-as-template drops — the dialog's own list. */
+export function droppedWorkflowFields(file: WorkflowFile): string[] {
+  return Object.keys(file).filter(
+    (key) =>
+      !TEMPLATE_ENVELOPE_KEYS.has(key) &&
+      Object.keys(file[key as keyof WorkflowFile] ?? {}).length > 0,
+  );
+}
+
 function planSaveAs(state: PlanState, intent: SaveAsIntent): WritePlan | WriteRefusal {
   switch (intent.kind) {
     case "new-file":

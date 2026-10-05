@@ -3,7 +3,7 @@ import { relative } from "node:path";
 import { loadWorkflowTree } from "@path/engine";
 import type { ListWorkflowsResponse, WorkflowSummary } from "@path/schema";
 import { readOnlyFor } from "../creator-table.js";
-import { sendJson } from "../http-json.js";
+import type { RouteReply } from "../http-json.js";
 import type { ApiRequest } from "./route-context.js";
 
 /** Best-effort top-level `id`/`name` so an invalid entry stays human-legible in the list; `null`
@@ -26,7 +26,7 @@ function shallowIdentity(absPath: string): { id: string | null; name: string | n
  * exactly when some valid root referenced it, `true` otherwise; a file that failed to load carries
  * `is_root: null` (no ref set) and its error.
  */
-export async function handleGetWorkflows({ res, ctx }: ApiRequest): Promise<void> {
+export async function handleGetWorkflows({ ctx }: ApiRequest): Promise<RouteReply> {
   const { layout, creators } = ctx;
   const scanned = layout.files("workflow");
   const loaded = await Promise.all(
@@ -88,5 +88,5 @@ export async function handleGetWorkflows({ res, ctx }: ApiRequest): Promise<void
     )
     .reverse();
   const body: ListWorkflowsResponse = { workflows, roots };
-  sendJson(res, 200, body);
+  return { status: 200, body };
 }

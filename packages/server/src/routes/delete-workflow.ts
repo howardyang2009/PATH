@@ -1,4 +1,4 @@
-import { sendError } from "../http-json.js";
+import { type RouteReply, replyError } from "../http-json.js";
 import { firstHeader } from "../origin-gate.js";
 import { workflowsOf } from "../workflow-store.js";
 import type { ApiRequest } from "./route-context.js";
@@ -10,21 +10,15 @@ import type { ApiRequest } from "./route-context.js";
  *
  * A template path is refused (`400`) and a shipped one (`403`), as `PUT /v0/workflows` refuses them.
  */
-export function handleDeleteWorkflow({ req, res, ctx, query }: ApiRequest): void {
+export function handleDeleteWorkflow({ req, ctx, query }: ApiRequest): RouteReply {
   const path = query.get("path");
-  if (path === null || path === "") {
-    sendError(res, 404, "not found");
-    return;
-  }
+  if (path === null || path === "") return replyError(404, "not found");
   const removed = workflowsOf(ctx).remove(
     path,
     firstHeader(req.headers["if-match"]),
     query.get("session_id"),
   );
-  if (!removed.ok) {
-    sendError(res, removed.status, removed.message);
-    return;
-  }
-  res.writeHead(204);
-  res.end();
+  if (!removed.ok) return replyError(removed.status, removed.message);
+
+  return { status: 204 };
 }

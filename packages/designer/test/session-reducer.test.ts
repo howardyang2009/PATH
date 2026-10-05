@@ -2,6 +2,7 @@ import { FORMAT_VERSION, type WorkflowFile, type WorkflowNode } from "@path/sche
 import { describe, expect, it } from "vitest";
 import { canonicalSerialize } from "../src/serialize.js";
 import {
+  droppedWorkflowFields,
   type Frame,
   frameDirty,
   initialSessionState,
@@ -554,6 +555,32 @@ describe("session-reducer — the save doors (#390, #391, ADR 0016)", () => {
       type: "setSaveState",
       saveState: { phase: "saved-as-template", name: "nightly" },
     });
+  });
+
+  it("reports exactly the workflow-level fields the template write drops", () => {
+    const source: WorkflowFile = {
+      ...file("flow"),
+      input: { seed: 1 },
+      output: { answer: "${context.answer}" },
+      config: { model: "x" },
+      worker_defaults: { prompt: "deepseek" },
+    };
+    const asTemplate = plan(sessionOn(openFrame(source)), {
+      kind: "workflow-as-template",
+      name: "nightly",
+      description: "a nightly gate",
+    });
+    if (asTemplate.write.to !== "new-template") throw new Error("expected a template write");
+
+    // The dialog's list is the complement of the keys the write kept: one rule, read twice.
+    expect(droppedWorkflowFields(source)).toEqual(["input", "output", "config", "worker_defaults"]);
+    expect(droppedWorkflowFields(source).filter((key) => key in asTemplate.write.file)).toEqual([]);
+    // A field holding nothing is not reported, matching what the write would lose.
+    expect(droppedWorkflowFields({ ...source, config: {} })).toEqual([
+      "input",
+      "output",
+      "worker_defaults",
+    ]);
   });
 
   it("plans no Save for a from-scratch root, and names the dialog that owns it instead", () => {

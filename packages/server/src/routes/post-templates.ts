@@ -1,6 +1,7 @@
 import { NameSchema, type WireTemplateWriteResponse } from "@path/schema";
 import { z } from "zod";
-import { readRequestBody, sendError } from "../http-json.js";
+import type { RouteReply } from "../http-json.js";
+import { readRequestBody, replyError } from "../http-json.js";
 import { templatesOf } from "../template-store.js";
 import type { ApiRequest } from "./route-context.js";
 
@@ -33,9 +34,9 @@ const PostTemplateBodySchema = z
  * `users/<user-id>/template/`, or `shared/template/` when `origin` is `"shared"`. The client mints the envelope `id` and the server writes it
  * verbatim, never to a shipped path. A name that already exists is a `409`; content changes go through `PUT` (§10.4).
  */
-export async function handlePostTemplates({ req, res, ctx }: ApiRequest): Promise<void> {
-  const body = await readRequestBody(req, res, PostTemplateBodySchema);
-  if (!body) return;
+export async function handlePostTemplates({ req, ctx }: ApiRequest): Promise<RouteReply> {
+  const body = await readRequestBody(req, PostTemplateBodySchema);
+  if (!body.ok) return body.reply;
   const { kind, name, folder, origin } = body.data;
   // The raw `body` sub-object, not zod's parsed copy, so the author's key order is preserved.
   const rawBody = (body.raw as { body: unknown }).body;
@@ -43,19 +44,16 @@ export async function handlePostTemplates({ req, res, ctx }: ApiRequest): Promis
   // The store validates the envelope, refuses a taken name or id, and writes.
   const written = templatesOf(ctx).create(kind, name, rawBody, folder, origin);
   if (!written.ok) {
-    sendError(
-      res,
+    return replyError(
       written.status,
       written.message,
       "details" in written ? written.details : undefined,
     );
-    return;
   }
   const reply: WireTemplateWriteResponse = {
     id: written.id,
     relative_path: written.relativePath,
     etag: written.etag,
   };
-  res.writeHead(201, { "Content-Type": "application/json", ETag: written.etag });
-  res.end(JSON.stringify(reply));
+  return { status: 201, headers: { ETag: written.etag }, body: reply };
 }

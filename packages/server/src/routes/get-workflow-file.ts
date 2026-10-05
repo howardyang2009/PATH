@@ -3,7 +3,7 @@ import { readArtifact } from "../artifact-file.js";
 import { confineToProjectRoot } from "../confine.js";
 import { strongEtag } from "../etag.js";
 import { sendError } from "../http-json.js";
-import type { ApiRequest } from "./route-context.js";
+import type { StreamRequest } from "./route-context.js";
 
 /**
  * `GET /v0/workflows/file?path=<relative_path>` (server-api-v0.md §7.1): the raw read half of the
@@ -11,7 +11,7 @@ import type { ApiRequest } from "./route-context.js";
  * validates, so an id-less file is served here and rejected by `PUT` (ADR 0015). The three 404
  * causes collapse to one.
  */
-export function handleGetWorkflowFile({ res, ctx, query }: ApiRequest): void {
+export function handleGetWorkflowFile({ res, ctx, query }: StreamRequest): void {
   const path = query.get("path");
 
   if (path === null || path === "") {

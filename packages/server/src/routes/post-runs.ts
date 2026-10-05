@@ -7,7 +7,7 @@ import {
   validateLaunchWorkerDefaults,
 } from "@path/schema";
 import { z } from "zod";
-import { readRequestBody, sendError, sendJson } from "../http-json.js";
+import { type RouteReply, readRequestBody, replyError } from "../http-json.js";
 import { operatorConfigEnvError, prepareWorkflow } from "../launch.js";
 import type { StartedRun } from "../live-runs.js";
 import type { ApiRequest } from "./route-context.js";
@@ -25,9 +25,9 @@ const PostRunsBodySchema = z
   })
   .strict();
 
-export async function handlePostRuns({ req, res, ctx }: ApiRequest): Promise<void> {
-  const body = await readRequestBody(req, res, PostRunsBodySchema);
-  if (!body) return;
+export async function handlePostRuns({ req, ctx }: ApiRequest): Promise<RouteReply> {
+  const body = await readRequestBody(req, PostRunsBodySchema);
+  if (!body.ok) return body.reply;
   const {
     workflow_path: workflowPath,
     input,
@@ -42,10 +42,7 @@ export async function handlePostRuns({ req, res, ctx }: ApiRequest): Promise<voi
   // be.
   if (config !== undefined) {
     const envError = operatorConfigEnvError(config);
-    if (envError) {
-      sendError(res, 400, envError);
-      return;
-    }
+    if (envError) return replyError(400, envError);
   }
 
   // Escape / not-found / invalid, decided once for both launch surfaces (launch.ts).
@@ -54,8 +51,7 @@ export async function handlePostRuns({ req, res, ctx }: ApiRequest): Promise<voi
     escapesRoot: (p) => `workflow_path "${p}" resolves outside the project root`,
   });
   if (!prepared.ok) {
-    sendError(res, prepared.refusal.status, prepared.refusal.message, prepared.refusal.details);
-    return;
+    return replyError(prepared.refusal.status, prepared.refusal.message, prepared.refusal.details);
   }
   const { workflow } = prepared;
 
@@ -67,8 +63,7 @@ export async function handlePostRuns({ req, res, ctx }: ApiRequest): Promise<voi
     workflow.registry,
   ).map((message) => `worker_defaults: ${message}`);
   if (workerDefaultErrors.length > 0) {
-    sendError(res, 400, "invalid worker_defaults", workerDefaultErrors);
-    return;
+    return replyError(400, "invalid worker_defaults", workerDefaultErrors);
   }
 
   let ids: StartedRun;
@@ -94,10 +89,12 @@ export async function handlePostRuns({ req, res, ctx }: ApiRequest): Promise<voi
       sourceWorkflowPath: workflow.storeRelativePath(ctx.project.dir),
     });
   } catch (err) {
-    sendError(res, 500, `run failed to start: ${err instanceof Error ? err.message : String(err)}`);
-    return;
+    return replyError(
+      500,
+      `run failed to start: ${err instanceof Error ? err.message : String(err)}`,
+    );
   }
 
   const started: StartRunResponse = { run_id: ids.runId, root_run_id: ids.rootRunId };
-  sendJson(res, 202, started);
+  return { status: 202, body: started };
 }

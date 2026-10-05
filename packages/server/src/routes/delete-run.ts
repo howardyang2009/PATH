@@ -1,5 +1,5 @@
 import { isTerminal } from "@path/schema";
-import { sendError, sendJson } from "../http-json.js";
+import { type RouteReply, replyError } from "../http-json.js";
 import { resolveRun } from "./resolve-run.js";
 import type { ApiRequest } from "./route-context.js";
 
@@ -9,44 +9,35 @@ import type { ApiRequest } from "./route-context.js";
  * a delete whose data a live successor still reuses (`409`). `404` means neither store held the id.
  */
 export function handleDeleteRun({
-  res,
   ctx,
   params: [rootRunId],
   query,
-}: ApiRequest<[string]>): void {
+}: ApiRequest<[string]>): RouteReply {
   const force = query.get("force") === "true";
 
   // The root row specifically: a child can read terminal while the tree still runs.
   const address = resolveRun(ctx, rootRunId);
-  if (!address.ok) {
-    sendError(res, address.status, address.message);
-    return;
-  }
+  if (!address.ok) return replyError(address.status, address.message);
 
   if (!isTerminal(address.root.status)) {
-    sendError(
-      res,
+    return replyError(
       409,
       `run "${rootRunId}" is still ${address.root.status}; cancel it before deleting`,
     );
-    return;
   }
 
   const blockers = ctx.project.archive.blockingSuccessors(rootRunId);
   if (blockers.length > 0 && !force) {
-    sendError(
-      res,
+    return replyError(
       409,
       `refusing to delete ${rootRunId}: live successor run(s) reuse its data: ${blockers.join(", ")}` +
         ` — retry with ?force=true to delete it anyway`,
     );
-    return;
   }
 
   if (!ctx.project.archive.remove(rootRunId)) {
-    sendError(res, 404, `no run found with id "${rootRunId}"`);
-    return;
+    return replyError(404, `no run found with id "${rootRunId}"`);
   }
 
-  sendJson(res, 200, { root_run_id: rootRunId });
+  return { status: 200, body: { root_run_id: rootRunId } };
 }

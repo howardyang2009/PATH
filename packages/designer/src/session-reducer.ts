@@ -24,6 +24,7 @@ export {
 export {
   type DeletePlan,
   type DownloadPlan,
+  droppedWorkflowFields,
   type PlanState,
   planDelete,
   planDownload,

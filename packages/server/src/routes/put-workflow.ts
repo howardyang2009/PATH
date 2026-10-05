@@ -1,6 +1,6 @@
 import type { WirePutWorkflowResponse } from "@path/schema";
 import { z } from "zod";
-import { readRequestBody, sendError } from "../http-json.js";
+import { type RouteReply, readRequestBody, replyError } from "../http-json.js";
 import { firstHeader } from "../origin-gate.js";
 import { workflowsOf } from "../workflow-store.js";
 import type { ApiRequest } from "./route-context.js";
@@ -21,9 +21,9 @@ const PutWorkflowBodySchema = z
  * `PUT /v0/workflows` (server-api-v0.md §7, ADR 0016): the write door for create and overwrite. The
  * server is identity-agnostic (ADR 0015): it validates `id` shape but never mints or diffs it.
  */
-export async function handlePutWorkflow({ req, res, ctx }: ApiRequest): Promise<void> {
-  const body = await readRequestBody(req, res, PutWorkflowBodySchema);
-  if (!body) return;
+export async function handlePutWorkflow({ req, ctx }: ApiRequest): Promise<RouteReply> {
+  const body = await readRequestBody(req, PutWorkflowBodySchema);
+  if (!body.ok) return body.reply;
 
   // Serialize the *raw* object, not zod's parsed copy, so the author's key order survives (ADR
   // 0016).
@@ -33,10 +33,8 @@ export async function handlePutWorkflow({ req, res, ctx }: ApiRequest): Promise<
     rawWorkflow,
     firstHeader(req.headers["if-match"]),
   );
-  if (!written.ok) {
-    sendError(res, written.status, written.message, written.details);
-    return;
-  }
+  if (!written.ok) return replyError(written.status, written.message, written.details);
+
   // The reply is the shared wire shape the client decodes, so a renamed field is a compile error
   // here.
   const reply: WirePutWorkflowResponse = {
@@ -44,9 +42,5 @@ export async function handlePutWorkflow({ req, res, ctx }: ApiRequest): Promise<
     id: written.id,
     etag: written.etag,
   };
-  res.writeHead(written.created ? 201 : 200, {
-    "Content-Type": "application/json",
-    ETag: written.etag,
-  });
-  res.end(JSON.stringify(reply));
+  return { status: written.created ? 201 : 200, headers: { ETag: written.etag }, body: reply };
 }

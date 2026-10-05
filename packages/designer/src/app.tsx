@@ -1,19 +1,27 @@
 import type { PathApiClient, TemplateSummary, WireStepPlugin } from "@path/client-core";
-import type { WorkflowFile } from "@path/schema";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AppShell } from "./app-shell.js";
 import { Canvas } from "./canvas.js";
+import {
+  type Dialog,
+  type DialogView,
+  dialogOnSave,
+  NO_DIALOG,
+  openSaveAs,
+  resolvedDialog,
+  saveAsDialog,
+} from "./dialog-flow.js";
 import { useWorkflowDiscovery } from "./discovery.js";
 import { documentPolicy } from "./document.js";
 import { downloadFailure, downloadFile } from "./download-file.js";
 import {
-  canSave,
   EditingToolbar,
   FileStatus,
   ModeSwitch,
   TemplateFileName,
   WorkflowFileName,
 } from "./editing-toolbar.js";
+import { editorChrome } from "./editor-chrome.js";
 import { dirnameOf, NewFileDialog } from "./new-file-dialog.js";
 import { OpenWorkflowDialog } from "./open-existing-dialog.js";
 import { OpenTemplateDialog } from "./open-template-dialog.js";
@@ -27,13 +35,12 @@ import { useRunWatch } from "./run/use-run-watch.js";
 import { SaveAsChoiceDialog } from "./save-as-choice-dialog.js";
 import { SaveTemplateAsDialog } from "./save-template-as-dialog.js";
 import { SelectionProvider } from "./selection-context.js";
+import { droppedWorkflowFields } from "./session-reducer.js";
 import { useTemplateList } from "./template-list.js";
 import { useArmed } from "./use-armed.js";
 import { useEditLeases } from "./use-edit-leases.js";
 import { useFileProblems } from "./use-file-problems.js";
 import {
-  frameCanRedo,
-  frameCanUndo,
   frameDirty,
   frameHasUnsavedWork,
   openedResultOf,
@@ -42,15 +49,6 @@ import {
   useOpenFile,
 } from "./use-open-file.js";
 import { useRefAuthoring } from "./use-ref-authoring.js";
-
-/** The workflow-level fields of `file` that hold a value — what a save as template drops. */
-function workflowLevelFields(file: WorkflowFile): string[] {
-  const filled = (value: object | undefined): boolean =>
-    value !== undefined && Object.keys(value).length > 0;
-  return (["input", "output", "config", "worker_defaults"] as const).filter((key) =>
-    filled(file[key]),
-  );
-}
 
 /** The Designer app: palette rail, canvas, and properties pane. `initialPath` is the deep-link
  * `?path=`; the armed palette value and the selected id both live here, above the canvas and the
@@ -65,22 +63,10 @@ export function App({
   const session = useOpenFile(client, initialPath);
   const arming = useArmed(client);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  // The first-save dialog for a from-scratch buffer, opened by the toolbar's Save when the frame
-  // has no path.
-  const [newFileOpen, setNewFileOpen] = useState(false);
-  // The open-existing picker; a choice opens that discovered workflow as a fresh root, then closes.
-  const [openExistingOpen, setOpenExistingOpen] = useState(false);
-  // Template mode's save dialogs: a new template's first save, or a Save as… copy of an opened
-  // template.
-  const [saveAsDialog, setSaveAsDialog] = useState<
-    | "new-template"
-    | "template"
-    | "workflow-choice"
-    | "workflow-copy"
-    | "workflow-step-template"
-    | null
-  >(null);
-  const [openTemplateOpen, setOpenTemplateOpen] = useState(false);
+  // The one open dialog (`dialog-flow.ts`): the whole-file pickers and the Save as… doors. Every
+  // transition names a dialog; the render below reads the resolved one.
+  const [dialog, setDialog] = useState<Dialog>(NO_DIALOG);
+  const closeDialog = (): void => setDialog(NO_DIALOG);
   const plugins: WireStepPlugin[] =
     session.registry.phase === "ready" ? session.registry.plugins : [];
 
@@ -146,7 +132,7 @@ export function App({
     else session.apply({ type: "newFile" });
   };
   const onOpen = (): void =>
-    inTemplateMode ? setOpenTemplateOpen(true) : setOpenExistingOpen(true);
+    setDialog(inTemplateMode ? { kind: "open-template" } : { kind: "open-workflow" });
   // Open a template's own source in template mode, from a palette-card double-click or the picker.
   const openTemplate = (template: TemplateSummary): void => {
     if (template.id === null || !confirmDiscard()) return;
@@ -168,7 +154,7 @@ export function App({
   // Open a discovered workflow as a fresh root; `session.open` discards the stack and its per-file
   // leases, so the selection resets through the active-frame effect above. Close the picker.
   const openExisting = (path: string): void => {
-    setOpenExistingOpen(false);
+    closeDialog();
     if (confirmDiscard()) session.apply({ type: "openLoading", path });
   };
 
@@ -222,37 +208,52 @@ export function App({
       window.alert(`Could not download: ${downloadFailure(error)}`),
     );
   };
-  // A from-scratch buffer (no path) has no on-disk file yet: Save opens the first-save dialog — the
-  // new-template dialog in template mode — rather than overwriting. A saved frame saves in place
-  // through the write route, and a template source writes back to its template by id.
-  const onSave =
-    policy.saveDoor === "new-template-dialog"
-      ? () => setSaveAsDialog("new-template")
-      : policy.saveDoor === "new-workflow-dialog"
-        ? () => setNewFileOpen(true)
-        : session.save;
+  // What the open dialog is allowed to be, and what a Save opens: a from-scratch buffer (no path)
+  // takes its first-save door rather than overwriting; a saved frame saves in place, and a template
+  // source writes back to its template by id.
+  const dialogView: DialogView = {
+    mode: session.mode,
+    hasOpenFile: openedFile !== null,
+    activeTemplate: activeTemplate !== undefined,
+    scratch: activePath === undefined,
+  };
+  const openDialog = resolvedDialog(dialog, dialogView);
+  // A first-save door holds the identity the write needs; a buffer that already has one saves in
+  // place. Memoized so the ⌘S listener re-subscribes only when the gate or the door flips.
+  const onSave = useCallback((): void => {
+    const firstSave = dialogOnSave(policy.saveDoor);
+    if (firstSave.kind === "none") session.save();
+    else setDialog(firstSave);
+  }, [policy.saveDoor, session.save]);
   // A read-only document (a shipped file, or a shared one another user created) keeps Save as…
   // only; Save and Delete would answer `403`.
   const readOnly = inTemplateMode
     ? (activeTemplate?.readOnly ?? false)
     : workflowReadOnly(discovery, activePath);
   const readOnlyTitle = readOnly ? READ_ONLY_TITLE[readOnly] : undefined;
-  const saveEnabled = canSave(session.saveState, dirty) && !readOnly;
+  // The toolbar's whole capability surface, derived once: the Save button, ⌘S and the two keyboard
+  // peers below all read this one value.
+  const chrome = editorChrome({
+    session,
+    policy,
+    deletePlan,
+    downloadPlan,
+    readOnlyTitle,
+    lease: activePath ? leases.get(activePath) : undefined,
+  });
   useEffect(() => {
     // ⌘/Ctrl+S runs the Save button, from any focus. It always blocks the browser's own Save Page.
     const onKeyDown = (event: KeyboardEvent): void => {
       if (!(event.metaKey || event.ctrlKey) || event.shiftKey || event.altKey) return;
       if (event.key.toLowerCase() !== "s") return;
       event.preventDefault();
-      if (saveEnabled) onSave();
+      if (chrome.save) onSave();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [saveEnabled, onSave]);
+  }, [chrome.save, onSave]);
   // The undo/redo affordances read the active frame's own stack (per-file); the keyboard peer below
   // re-subscribes only when the enablement flips.
-  const canUndo = frameCanUndo(active);
-  const canRedo = frameCanRedo(active);
   const { apply } = session;
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
@@ -268,18 +269,18 @@ export function App({
         return;
       const wantsRedo = key === "y" || (key === "z" && event.shiftKey);
       if (wantsRedo) {
-        if (canRedo) {
+        if (chrome.redo) {
           event.preventDefault();
           apply({ type: "redo" });
         }
-      } else if (canUndo) {
+      } else if (chrome.undo) {
         event.preventDefault();
         apply({ type: "undo" });
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [canUndo, canRedo, apply]);
+  }, [chrome.undo, chrome.redo, apply]);
 
   return (
     <>
@@ -313,30 +314,20 @@ export function App({
         toolbar={
           session.registry.phase === "ready" ? (
             <EditingToolbar
+              chrome={chrome}
               onNew={onNew}
               onOpen={onOpen}
-              // A new workflow or template (no path, no template source) has only Save: its first
-              // save.
-              canSaveAs={policy.canSaveAs}
-              saveState={session.saveState}
-              dirty={dirty}
-              canUndo={canUndo}
-              canRedo={canRedo}
               onUndo={() => apply({ type: "undo" })}
               onRedo={() => apply({ type: "redo" })}
               onSave={onSave}
               // Save as…: in template mode a copy to a new template; in workflow mode first a
               // choice between a copy to a new workflow file and a new template made from the
               // workflow's body.
-              onSaveAs={() => setSaveAsDialog(inTemplateMode ? "template" : "workflow-choice")}
-              lease={activePath ? leases.get(activePath) : undefined}
+              onSaveAs={() => setDialog(saveAsDialog(session.mode))}
               onTakeover={() => activePath && takeover(activePath)}
               onReacquire={() => activePath && reacquire(activePath)}
-              canDelete={deletePlan !== null}
               onDelete={onDelete}
-              canDownload={downloadPlan !== null}
               onDownload={onDownload}
-              readOnlyTitle={readOnlyTitle}
             />
           ) : undefined
         }
@@ -425,61 +416,70 @@ export function App({
       {/* The first-save dialog rides above the shell, shown only for a from-scratch buffer (no
         path) whose author asked to save. It decides the path; a successful create closes it and the
         frame is saved. */}
-      {newFileOpen && openedFile && activePath === undefined && !activeTemplate ? (
+      {openDialog.kind === "new-file" && openedFile && !activeTemplate ? (
         <NewFileDialog
           discovery={discovery}
           workflowName={openedFile.name}
           create={(path) => session.saveAs({ kind: "new-file", path })}
-          onCreated={() => setNewFileOpen(false)}
-          onCancel={() => setNewFileOpen(false)}
+          onCreated={closeDialog}
+          onCancel={closeDialog}
         />
       ) : null}
       {/* Template mode's save doors. A new template's first save picks its name and description;
         Save as… names a copy of the opened template. A template saves only as a template. */}
-      {saveAsDialog === "new-template" && openedFile && !activeTemplate ? (
+      {openDialog.kind === "save-as" &&
+      openDialog.dialog.kind === "new-template" &&
+      openedFile &&
+      !activeTemplate ? (
         <SaveTemplateAsDialog
           source={null}
           templateList={templateList}
           create={({ name, folder, origin, description }) =>
             session.saveAs({ kind: "new-template", name, folder, origin, description })
           }
-          onCreated={() => setSaveAsDialog(null)}
-          onCancel={() => setSaveAsDialog(null)}
+          onCreated={closeDialog}
+          onCancel={closeDialog}
         />
       ) : null}
-      {saveAsDialog === "template" && activeTemplate ? (
+      {openDialog.kind === "save-as" &&
+      openDialog.dialog.kind === "template-copy" &&
+      activeTemplate ? (
         <SaveTemplateAsDialog
           source={activeTemplate}
-          droppedFields={openedFile ? workflowLevelFields(openedFile) : []}
+          droppedFields={openedFile ? droppedWorkflowFields(openedFile) : []}
           templateList={templateList}
           create={({ name, folder, origin, description }) =>
             session.saveAs({ kind: "template-copy", name, folder, origin, description })
           }
-          onCreated={() => setSaveAsDialog(null)}
-          onCancel={() => setSaveAsDialog(null)}
+          onCreated={closeDialog}
+          onCancel={closeDialog}
         />
       ) : null}
-      {saveAsDialog === "workflow-choice" && !inTemplateMode && openedFile ? (
+      {openDialog.kind === "save-as" &&
+      openDialog.dialog.kind === "workflow-choice" &&
+      openedFile ? (
         <SaveAsChoiceDialog
-          onWorkflow={() => setSaveAsDialog("workflow-copy")}
-          onTemplate={() => setSaveAsDialog("workflow-step-template")}
-          onCancel={() => setSaveAsDialog(null)}
+          onWorkflow={() => setDialog(openSaveAs({ kind: "workflow-copy" }))}
+          onTemplate={() => setDialog(openSaveAs({ kind: "workflow-template" }))}
+          onCancel={closeDialog}
         />
       ) : null}
-      {saveAsDialog === "workflow-step-template" && !inTemplateMode && openedFile ? (
+      {openDialog.kind === "save-as" &&
+      openDialog.dialog.kind === "workflow-template" &&
+      openedFile ? (
         <SaveTemplateAsDialog
           source={null}
           workflowName={openedFile.name}
-          droppedFields={workflowLevelFields(openedFile)}
+          droppedFields={droppedWorkflowFields(openedFile)}
           templateList={templateList}
           create={({ name, folder, origin, description }) =>
             session.saveAs({ kind: "workflow-as-template", name, folder, origin, description })
           }
-          onCreated={() => setSaveAsDialog(null)}
-          onCancel={() => setSaveAsDialog(null)}
+          onCreated={closeDialog}
+          onCancel={closeDialog}
         />
       ) : null}
-      {saveAsDialog === "workflow-copy" && !inTemplateMode && openedFile ? (
+      {openDialog.kind === "save-as" && openDialog.dialog.kind === "workflow-copy" && openedFile ? (
         <NewFileDialog
           discovery={discovery}
           title="Save workflow as"
@@ -487,28 +487,28 @@ export function App({
           initialDirectory={activePath ? dirnameOf(activePath) : undefined}
           pickOrigin
           create={(path) => session.saveAs({ kind: "workflow-copy", path })}
-          onCreated={() => setSaveAsDialog(null)}
-          onCancel={() => setSaveAsDialog(null)}
+          onCreated={closeDialog}
+          onCancel={closeDialog}
         />
       ) : null}
       {/* The open-existing picker: choose a discovered workflow and open it as a fresh root. Shown
         above the shell from either the empty-canvas affordance or the toolbar's Open button. */}
-      {openExistingOpen ? (
+      {openDialog.kind === "open-workflow" ? (
         <OpenWorkflowDialog
           discovery={discovery}
           onOpen={openExisting}
           onCopy={copyShipped}
-          onCancel={() => setOpenExistingOpen(false)}
+          onCancel={closeDialog}
         />
       ) : null}
-      {openTemplateOpen ? (
+      {openDialog.kind === "open-template" ? (
         <OpenTemplateDialog
           templateList={templateList}
           onOpen={(template) => {
-            setOpenTemplateOpen(false);
+            closeDialog();
             openTemplate(template);
           }}
-          onCancel={() => setOpenTemplateOpen(false)}
+          onCancel={closeDialog}
         />
       ) : null}
       {/* The ref-target chooser: reference an existing workflow, or create a new one and descend
