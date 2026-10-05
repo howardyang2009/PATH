@@ -2,7 +2,7 @@ import { verifyToken } from "@clerk/backend";
 import { firstHeader } from "./origin-gate.js";
 import type { UserIdResolver } from "./requester.js";
 
-/** A Clerk user id, safe to use as a folder name. `local` never matches (ADR 0090 §1). */
+/** A Clerk user id, safe to use as a folder name. `local` never matches. */
 const CLERK_USER_ID = /^user_[A-Za-z0-9]+$/;
 
 export interface ClerkIdentityOptions {
@@ -14,8 +14,8 @@ export interface ClerkIdentityOptions {
 
 /**
  * The hosted-mode resolver: the `sub` of the request's verified `Authorization: Bearer` token, or
- * `undefined` when the token is missing, invalid, expired, or names no Clerk user. Every request is
- * verified again, with no cache (ADR 0090 §2).
+ * `undefined` when the token is missing, invalid, expired, issued for no or another origin, or
+ * names no Clerk user. Every request is verified again, with no cache (ADR 0090 §2).
  */
 export function clerkUserIdResolver({
   jwtKey,

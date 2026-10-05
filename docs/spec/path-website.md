@@ -38,7 +38,8 @@ ingress).
   without a valid token, except `GET /v0/auth-config` and the health route. Static Viewer and
   Designer assets stay public.
 - Hosted mode is on when `CLERK_JWT_KEY` and `PATH_ALLOWED_ORIGIN` are set. A half-configured setup
-  refuses to start.
+  refuses to start. Hosted mode also needs `CLERK_PUBLISHABLE_KEY` (served by `/v0/auth-config`) and
+  refuses to start without it.
 - Sign-up is open (Clerk `public`). PATH uses a separate Clerk application named PATH in the owner's
   existing Clerk account (not the AIBlocks application). Keys stay out of the repository.
 
@@ -178,7 +179,7 @@ production Clerk instance with `external_id` = old `sub`, run `path-server remap
 Funnel (or the tunnel) goes public only when all are true. Hosted mode refuses to boot when a
 Server-side item is missing.
 
-- [ ] Hosted mode on: `CLERK_JWT_KEY` and `PATH_ALLOWED_ORIGIN` set
+- [ ] Hosted mode on: `CLERK_JWT_KEY`, `PATH_ALLOWED_ORIGIN` and `CLERK_PUBLISHABLE_KEY` set
 - [ ] `SandboxedRuns` active; in-process runs refused in hosted mode
 - [ ] `PATH_SECRETS_KEY` set (read from the macOS Keychain)
 - [ ] Abuse limits on

@@ -23,7 +23,9 @@ source of truth about who exists.
    hosted mode every `/v0/*` door answers `401` without a valid token, except `GET /v0/auth-config`
    and the health route.
 5. **Fail closed.** Hosted mode is on when `CLERK_JWT_KEY` and `PATH_ALLOWED_ORIGIN` are set. A
-   half-configured hosted setup refuses to start; it never falls back to `local`.
+   half-configured hosted setup refuses to start; it never falls back to `local`. Hosted mode also
+   needs `CLERK_PUBLISHABLE_KEY`, which `GET /v0/auth-config` hands clients to sign in with, and
+   refuses to start without it.
 6. **The run VM sees no token.** The host stamps the launcher's id and mounts only that user's store.
 
 ## Considered options

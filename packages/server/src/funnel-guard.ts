@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { sendError } from "./http-json.js";
-import { isHostedMode } from "./mode.js";
+import type { ServerMode } from "./mode.js";
 import { firstHeader } from "./origin-gate.js";
 
 /**
@@ -20,8 +20,11 @@ export function isFunnelRequest(req: IncomingMessage): boolean {
 
 /** Whether the Funnel guard runs: local mode only, unless `PATH_FUNNEL_GUARD=off` switches it
  * off. */
-export function funnelGuardEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
-  return !isHostedMode(env) && env.PATH_FUNNEL_GUARD?.trim().toLowerCase() !== "off";
+export function funnelGuardEnabled(
+  mode: ServerMode,
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  return mode.mode === "local" && env.PATH_FUNNEL_GUARD?.trim().toLowerCase() !== "off";
 }
 
 /** On a Funnel request in local mode answers `403` and returns `false` (the caller must stop). */

@@ -1,10 +1,11 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { sendError, sendJson } from "../http-json.js";
+import { sendError } from "../http-json.js";
 import { handleCancelRun } from "./cancel-run.js";
 import { handleCompleteRun } from "./complete-run.js";
 import { handleDeleteRun } from "./delete-run.js";
 import { handleDeleteTemplate } from "./delete-template.js";
 import { handleDeleteWorkflow } from "./delete-workflow.js";
+import { handleGetAuthConfig } from "./get-auth-config.js";
 import { handleGetRun } from "./get-run.js";
 import { handleGetRunBlob } from "./get-run-blob.js";
 import { handleGetRunEvents } from "./get-run-events.js";
@@ -101,9 +102,9 @@ export async function dispatchApi(
   server: ServerContext,
   url: URL,
 ): Promise<boolean> {
-  // Public: a client reads the mode before it can sign in (ADR 0090 §4).
+  // Public: a client reads the mode before it can sign in.
   if (req.method === "GET" && url.pathname === "/v0/auth-config") {
-    sendJson(res, 200, server.authConfig);
+    handleGetAuthConfig(res, server.mode);
     return true;
   }
   for (const route of API_ROUTES) {

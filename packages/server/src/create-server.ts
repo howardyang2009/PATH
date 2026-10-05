@@ -113,7 +113,7 @@ export async function startPathServer(
   shippedTemplateDir?: string,
   shippedWorkflowDir?: string,
 ): Promise<PathServerHandle> {
-  // A half-configured hosted setup throws here, before anything is opened (ADR 0090 §5).
+  // A half-configured hosted setup throws here, before anything is opened.
   const mode = readServerMode();
 
   // Scan the plugin folder (server-api-v0.md §8) before `openProject`, so a broken folder throws
@@ -129,7 +129,7 @@ export async function startPathServer(
 
   const absStaticDir = resolve(staticDir);
   const absDesignerStaticDir = resolve(designerStaticDir);
-  const funnelGuard = funnelGuardEnabled();
+  const funnelGuard = funnelGuardEnabled(mode);
   const live = createLiveRuns(project);
   // One requester context per user, resolved per request (requester.ts). The boot project is every
   // requester's store, so local mode behaves as one fixed project did.
@@ -138,7 +138,7 @@ export async function startPathServer(
     projectDir,
     shippedDir: shipped,
     projectStore: project,
-    resolveUserId: mode.mode === "hosted" ? clerkUserIdResolver(mode) : undefined,
+    resolveUserId: mode.mode === "hosted" ? clerkUserIdResolver(mode.clerk) : undefined,
   });
   // The host-level creator table (ADR 0088 §3). Local mode adopts today's untracked `shared/` files
   // as created by `local`, so they stay editable.
@@ -146,11 +146,7 @@ export async function startPathServer(
   if (mode.mode === "local") {
     adoptSharedItems(authoredLayout({ projectDir, shippedDir: shipped }), creators);
   }
-  const authConfig = {
-    mode: mode.mode,
-    publishableKey: mode.mode === "hosted" ? mode.publishableKey : null,
-  };
-  const server: ServerContext = { authConfig, live, stepPlugins: registry, requesters, creators };
+  const server: ServerContext = { mode, live, stepPlugins: registry, requesters, creators };
   const httpServer = createServer((req, res) => {
     handleRequest(req, res, server, absStaticDir, absDesignerStaticDir, funnelGuard).catch(
       (err) => {
