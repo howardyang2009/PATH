@@ -1,5 +1,5 @@
 import type { RunBlobName } from "@path/engine";
-import { sendError, sendJson } from "../http-json.js";
+import { type RouteReply, replyError } from "../http-json.js";
 import { resolveTree } from "./resolve-run.js";
 import type { ApiRequest } from "./route-context.js";
 
@@ -16,29 +16,23 @@ function toBlobName(name: string): RunBlobName | undefined {
  * read. `404` for an unknown root/run, an unserved name, or an absent blob file.
  */
 export function handleGetRunBlob({
-  res,
   ctx,
   params: [rootRunId, runId, name],
-}: ApiRequest<[string, string, string]>): void {
+}: ApiRequest<[string, string, string]>): RouteReply {
   const blobName = toBlobName(name);
   if (blobName === undefined) {
-    sendError(res, 404, `unknown blob name "${name}" (expected "input", "output" or "context")`);
-    return;
+    return replyError(404, `unknown blob name "${name}" (expected "input", "output" or "context")`);
   }
 
   // An unknown root or a run_id outside it is the other 404 — asked separately from "no such blob".
   const address = resolveTree(ctx, rootRunId);
   if (!address.ok || !address.tree.has(runId)) {
-    sendError(res, 404, `no run "${runId}" under root "${rootRunId}"`);
-    return;
+    return replyError(404, `no run "${runId}" under root "${rootRunId}"`);
   }
   const { tree } = address;
 
   const blob = tree.blob(runId, blobName);
-  if (blob === undefined) {
-    sendError(res, 404, `no ${name} blob for run "${runId}"`);
-    return;
-  }
+  if (blob === undefined) return replyError(404, `no ${name} blob for run "${runId}"`);
 
-  sendJson(res, 200, blob);
+  return { status: 200, body: blob };
 }

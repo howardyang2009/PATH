@@ -43,11 +43,18 @@ export function routeContextFor(requester: RequesterContext, server: ServerConte
   };
 }
 
-/** One matched request: the raw HTTP pair, the context, and what the path and query decoded to. */
+/** One matched request, decoded: the raw HTTP request for its headers and body, the requester's
+ * context, and the decoded path parameters and query. A `reply` handler needs no response object,
+ * so this is the whole interface a direct test has to build. */
 export interface ApiRequest<Params extends string[] = string[]> {
   req: IncomingMessage;
-  res: ServerResponse;
   ctx: RouteContext;
   params: Params;
   query: URLSearchParams;
+}
+
+/** A request a `stream` route answers: the same, plus the response it owns (SSE, a file download).
+ * Only the routes that cannot answer with a value take this. */
+export interface StreamRequest<Params extends string[] = string[]> extends ApiRequest<Params> {
+  res: ServerResponse;
 }

@@ -4,32 +4,29 @@ import {
   type RunStatus,
   toRootRunSummary,
 } from "@path/schema";
-import { sendError, sendJson } from "../http-json.js";
+import { type RouteReply, replyError } from "../http-json.js";
 import type { ApiRequest } from "./route-context.js";
 
 /**
  * `GET /v0/runs` (server-api-v0.md §3): the root-run summary list. `limit` (default 50), `status`,
  * and `workflow_id` are query params; the full tree and output live at `GET /v0/runs/:root_run_id`.
  */
-export function handleListRuns({ res, ctx, query }: ApiRequest): void {
+export function handleListRuns({ ctx, query }: ApiRequest): RouteReply {
   const limitParam = query.get("limit");
   let limit: number | undefined;
   if (limitParam !== null) {
     limit = Number(limitParam);
     if (!Number.isInteger(limit) || limit < 1) {
-      sendError(res, 400, `invalid limit "${limitParam}": must be a positive integer`);
-      return;
+      return replyError(400, `invalid limit "${limitParam}": must be a positive integer`);
     }
   }
 
   const statusParam = query.get("status");
   if (statusParam !== null && !RUN_STATUSES.includes(statusParam as RunStatus)) {
-    sendError(
-      res,
+    return replyError(
       400,
       `invalid status "${statusParam}": must be one of ${RUN_STATUSES.join(", ")}`,
     );
-    return;
   }
   const status = statusParam === null ? undefined : (statusParam as RunStatus);
 
@@ -48,5 +45,5 @@ export function handleListRuns({ res, ctx, query }: ApiRequest): void {
       ),
     ),
   };
-  sendJson(res, 200, body);
+  return { status: 200, body };
 }

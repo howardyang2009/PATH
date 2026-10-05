@@ -97,6 +97,7 @@ An Architecture Decision Record (ADR) records one decision PATH has made: the sh
 | [0091](0091-a-hosted-run-executes-in-one-vm-per-engine-invocation.md) | A hosted run executes in one VM per engine invocation | accepted |
 | [0092](0092-v1-runs-on-a-clerk-development-instance-over-tailscale.md) | V1 runs on a Clerk development instance over Tailscale | accepted |
 | [0093](0093-the-api-clients-endpoint-functions-are-implementation.md) | The API client's endpoint functions are implementation, not a public surface | accepted |
+| [0094](0094-a-route-handler-answers-with-a-reply-value.md) | A route handler answers with a reply value, not a response | accepted |
 
 ## Superseded decisions
 

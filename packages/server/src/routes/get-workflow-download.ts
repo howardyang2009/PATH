@@ -1,7 +1,7 @@
 import { strongEtag } from "../etag.js";
 import { sendError } from "../http-json.js";
 import { bundleWorkflow } from "../workflow-bundle.js";
-import type { ApiRequest } from "./route-context.js";
+import type { StreamRequest } from "./route-context.js";
 import { sendDownload } from "./send-download.js";
 
 /**
@@ -9,7 +9,7 @@ import { sendDownload } from "./send-download.js";
  * workflow file, or a zip of its `ref` closure when it refs other workflows. An unresolvable `ref`
  * or a file with bad JSON is a `422` listing each one.
  */
-export function handleGetWorkflowDownload({ res, ctx, query }: ApiRequest): void {
+export function handleGetWorkflowDownload({ res, ctx, query }: StreamRequest): void {
   const path = query.get("path");
   const origin = query.get("origin");
   if (origin !== null && origin !== "shipped") {

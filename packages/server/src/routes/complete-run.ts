@@ -1,6 +1,6 @@
 import { type ConfigObject, ConfigObjectSchema, type JsonValue } from "@path/schema";
 import { z } from "zod";
-import { readRequestBody, sendError, sendJson } from "../http-json.js";
+import { type RouteReply, readRequestBody, replyError } from "../http-json.js";
 import { operatorConfigEnvError, prepareRunWorkflow } from "../launch.js";
 import { resolveLeaf } from "./resolve-run.js";
 import type { ApiRequest } from "./route-context.js";
@@ -22,45 +22,36 @@ const CompleteBodySchema = z
 
 export async function handleCompleteRun({
   req,
-  res,
   ctx,
   params: [stepRunId],
-}: ApiRequest<[string]>): Promise<void> {
-  const body = await readRequestBody(req, res, CompleteBodySchema);
-  if (!body) return;
+}: ApiRequest<[string]>): Promise<RouteReply> {
+  const body = await readRequestBody(req, CompleteBodySchema);
+  if (!body.ok) return body.reply;
   const output = body.data.output as JsonValue;
-  if (output === undefined) {
-    sendError(res, 400, 'missing required field "output"');
-    return;
-  }
+  if (output === undefined) return replyError(400, 'missing required field "output"');
   const config = body.data.config as ConfigObject | undefined;
   if (config !== undefined) {
     const envError = operatorConfigEnvError(config);
-    if (envError) {
-      sendError(res, 400, envError);
-      return;
-    }
+    if (envError) return replyError(400, envError);
   }
 
   // Resolve the leaf's tree from one read; unknown id is a 404 before any file work.
   const address = resolveLeaf(ctx, stepRunId);
-  if (!address.ok) {
-    sendError(res, address.status, address.message);
-    return;
-  }
+  if (!address.ok) return replyError(address.status, address.message);
   const { rootRunId, leaf } = address;
 
   // The compare half of the leaf CAS, checked before reload/lease so an ordinary double-submit
   // never contends. The engine repeats it under the lease to close the concurrent-submit race.
   if (leaf.status !== "awaiting") {
-    sendError(res, 409, `step run "${stepRunId}" is ${leaf.status}, not awaiting`);
-    return;
+    return replyError(409, `step run "${stepRunId}" is ${leaf.status}, not awaiting`);
   }
 
   const { root } = address;
   if (!root) {
-    sendError(res, 409, `run "${rootRunId}" has no recorded workflow path and cannot be completed`);
-    return;
+    return replyError(
+      409,
+      `run "${rootRunId}" has no recorded workflow path and cannot be completed`,
+    );
   }
 
   // Recover and re-validate the workflow as it stands now: the node lookup below must be a lookup
@@ -72,8 +63,7 @@ export async function handleCompleteRun({
       `the workflow at "${workflowPath}" is no longer the one run "${rootRunId}" ran (its id changed); cannot complete`,
   });
   if (!prepared.ok) {
-    sendError(res, prepared.refusal.status, prepared.refusal.message, prepared.refusal.details);
-    return;
+    return replyError(prepared.refusal.status, prepared.refusal.message, prepared.refusal.details);
   }
   const { workflow } = prepared;
 
@@ -96,12 +86,10 @@ export async function handleCompleteRun({
   if (!result.ok) {
     // `not-found` → 404; `output-invalid` → 400 with issues; the rest are 409 state conflicts.
     if (result.reason === "output-invalid") {
-      sendError(res, 400, result.message, result.details);
-      return;
+      return replyError(400, result.message, result.details);
     }
-    sendError(res, result.reason === "not-found" ? 404 : 409, result.message);
-    return;
+    return replyError(result.reason === "not-found" ? 404 : 409, result.message);
   }
 
-  sendJson(res, 202, { step_run_id: stepRunId, root_run_id: result.rootRunId });
+  return { status: 202, body: { step_run_id: stepRunId, root_run_id: result.rootRunId } };
 }

@@ -1,11 +1,11 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { sendError } from "../http-json.js";
+import { type RouteReply, replyError, sendReply } from "../http-json.js";
 import { handleCancelRun } from "./cancel-run.js";
 import { handleCompleteRun } from "./complete-run.js";
 import { handleDeleteRun } from "./delete-run.js";
 import { handleDeleteTemplate } from "./delete-template.js";
 import { handleDeleteWorkflow } from "./delete-workflow.js";
-import { handleGetAuthConfig } from "./get-auth-config.js";
+import { authConfigReply } from "./get-auth-config.js";
 import { handleGetRun } from "./get-run.js";
 import { handleGetRunBlob } from "./get-run-blob.js";
 import { handleGetRunEvents } from "./get-run-events.js";
@@ -23,7 +23,12 @@ import { handlePostWorkflowCopy } from "./post-workflow-copy.js";
 import { handlePutTemplate } from "./put-template.js";
 import { handlePutWorkflow } from "./put-workflow.js";
 import { handleResumeRun } from "./resume-run.js";
-import { type ApiRequest, routeContextFor, type ServerContext } from "./route-context.js";
+import {
+  type ApiRequest,
+  routeContextFor,
+  type ServerContext,
+  type StreamRequest,
+} from "./route-context.js";
 import {
   handleWorkflowLock,
   handleWorkflowLockHeartbeat,
@@ -34,14 +39,22 @@ import {
  * The `/v0/*` API as one table (server-api-v0.md): each row is a method, a path — literal, or a
  * pattern whose captures are the path parameters — and the handler it reaches. Matching and
  * parameter decoding happen once, here; a handler receives its parameters already decoded.
+ *
+ * Two kinds of row. A **reply** handler returns a {@link RouteReply} and never touches a response,
+ * so a test drives it directly. A **stream** handler owns the socket (SSE, a file download) and
+ * takes the response; only those four rows do.
  */
-
-/** One row of the table: the method and path it matches, and the handler that answers it. */
-interface ApiRoute {
-  method: "GET" | "POST" | "PUT" | "DELETE";
-  path: string | RegExp;
-  handle(request: ApiRequest): void | Promise<void>;
-}
+type ApiRoute =
+  | {
+      method: "GET" | "POST" | "PUT" | "DELETE";
+      path: string | RegExp;
+      handle(request: ApiRequest): RouteReply | Promise<RouteReply>;
+    }
+  | {
+      method: "GET" | "POST" | "PUT" | "DELETE";
+      path: string | RegExp;
+      stream: (request: StreamRequest<[string]>) => void | Promise<void>;
+    };
 
 const RUN = /^\/v0\/runs\/([^/]+)$/;
 const TEMPLATE = /^\/v0\/templates\/([^/]+)$/;
@@ -52,7 +65,7 @@ const API_ROUTES: readonly ApiRoute[] = [
   { method: "GET", path: "/v0/runs", handle: handleListRuns },
   { method: "GET", path: RUN, handle: handleGetRun },
   { method: "DELETE", path: RUN, handle: handleDeleteRun },
-  { method: "GET", path: /^\/v0\/runs\/([^/]+)\/events$/, handle: handleGetRunEvents },
+  { method: "GET", path: /^\/v0\/runs\/([^/]+)\/events$/, stream: handleGetRunEvents },
   {
     method: "GET",
     path: /^\/v0\/runs\/([^/]+)\/blobs\/([^/]+)\/([^/]+)$/,
@@ -66,8 +79,8 @@ const API_ROUTES: readonly ApiRoute[] = [
   // release from `beforeunload` (ADR 0017); each carries its `/`-bearing path in the body.
   { method: "GET", path: "/v0/workflows", handle: handleGetWorkflows },
   { method: "PUT", path: "/v0/workflows", handle: handlePutWorkflow },
-  { method: "GET", path: "/v0/workflows/file", handle: handleGetWorkflowFile },
-  { method: "GET", path: "/v0/workflows/download", handle: handleGetWorkflowDownload },
+  { method: "GET", path: "/v0/workflows/file", stream: handleGetWorkflowFile },
+  { method: "GET", path: "/v0/workflows/download", stream: handleGetWorkflowDownload },
   { method: "DELETE", path: "/v0/workflows/file", handle: handleDeleteWorkflow },
   { method: "POST", path: "/v0/workflows/copy", handle: handlePostWorkflowCopy },
   { method: "POST", path: "/v0/workflows/lock", handle: handleWorkflowLock },
@@ -85,7 +98,7 @@ const API_ROUTES: readonly ApiRoute[] = [
   {
     method: "GET",
     path: /^\/v0\/templates\/([^/]+)\/download$/,
-    handle: handleGetTemplateDownload,
+    stream: handleGetTemplateDownload,
   },
   { method: "PUT", path: TEMPLATE, handle: handlePutTemplate },
   { method: "DELETE", path: TEMPLATE, handle: handleDeleteTemplate },
@@ -104,7 +117,7 @@ export async function dispatchApi(
 ): Promise<boolean> {
   // Public: a client reads the mode before it can sign in.
   if (req.method === "GET" && url.pathname === "/v0/auth-config") {
-    handleGetAuthConfig(res, server.mode);
+    sendReply(res, authConfigReply(server.mode));
     return true;
   }
   for (const route of API_ROUTES) {
@@ -115,21 +128,24 @@ export async function dispatchApi(
     // mounts stay public (ADR 0090).
     const requester = await server.requesters.forRequest(req);
     if (requester === undefined) {
-      sendError(res, 401, "sign-in required: missing, invalid or expired bearer token");
+      sendReply(res, replyError(401, "sign-in required: missing, invalid or expired bearer token"));
       return true;
     }
     const params = decodeAll(captures);
     if (params === undefined) {
-      sendError(res, 400, "malformed percent-encoding in the request path");
+      sendReply(res, replyError(400, "malformed percent-encoding in the request path"));
       return true;
     }
-    await route.handle({
+    const request: ApiRequest = {
       req,
-      res,
       ctx: routeContextFor(requester, server),
       params,
       query: url.searchParams,
-    });
+    };
+    if ("stream" in route) {
+      // The matched row's own pattern decides the capture arity; `decodeAll` returns exactly those.
+      await route.stream({ ...request, res } as StreamRequest<[string]>);
+    } else sendReply(res, await route.handle(request));
     return true;
   }
   return false;

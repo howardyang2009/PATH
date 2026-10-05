@@ -1,5 +1,5 @@
 import type { WireTemplateWriteResponse } from "@path/schema";
-import { readJsonBody, sendError } from "../http-json.js";
+import { type RouteReply, readJsonBody, replyError } from "../http-json.js";
 import { firstHeader } from "../origin-gate.js";
 import { templatesOf } from "../template-store.js";
 import type { ApiRequest } from "./route-context.js";
@@ -15,34 +15,27 @@ import type { ApiRequest } from "./route-context.js";
  */
 export async function handlePutTemplate({
   req,
-  res,
   ctx,
   params: [id],
-}: ApiRequest<[string]>): Promise<void> {
+}: ApiRequest<[string]>): Promise<RouteReply> {
   const raw = await readJsonBody(req);
-  if (!raw.ok) {
-    sendError(res, 400, "request body must be valid JSON");
-    return;
-  }
+  if (!raw.ok) return replyError(400, "request body must be valid JSON");
 
   // Precondition (ADR 0016): `If-Match` carrying the §10.2 etag is required, and absent or stale is
   // a `412`. The store's one call resolves, validates, decides and writes, so the check has no
   // suspension point before it and only an *external* writer can invalidate the token.
   const written = templatesOf(ctx).update(id, raw.value, firstHeader(req.headers["if-match"]));
   if (!written.ok) {
-    sendError(
-      res,
+    return replyError(
       written.status,
       written.message,
       "details" in written ? written.details : undefined,
     );
-    return;
   }
   const reply: WireTemplateWriteResponse = {
     id,
     relative_path: written.relativePath,
     etag: written.etag,
   };
-  res.writeHead(200, { "Content-Type": "application/json", ETag: written.etag });
-  res.end(JSON.stringify(reply));
+  return { status: 200, headers: { ETag: written.etag }, body: reply };
 }

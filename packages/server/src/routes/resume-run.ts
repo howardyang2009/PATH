@@ -1,6 +1,6 @@
 import { ConfigObjectSchema, type StartRunResponse } from "@path/schema";
 import { z } from "zod";
-import { readRequestBody, sendError, sendJson } from "../http-json.js";
+import { type RouteReply, readRequestBody, replyError } from "../http-json.js";
 import { operatorConfigEnvError, prepareRunWorkflow } from "../launch.js";
 import { ResumeNotFound, ResumeRefused, type StartedRun } from "../live-runs.js";
 import { resolveRun } from "./resolve-run.js";
@@ -19,27 +19,20 @@ const ResumeBodySchema = z
  */
 export async function handleResumeRun({
   req,
-  res,
   ctx,
   params: [rootRunId],
-}: ApiRequest<[string]>): Promise<void> {
-  const body = await readRequestBody(req, res, ResumeBodySchema);
-  if (!body) return;
+}: ApiRequest<[string]>): Promise<RouteReply> {
+  const body = await readRequestBody(req, ResumeBodySchema);
+  if (!body.ok) return body.reply;
   const { config, rerun_from_run_id: rerunFromRunId } = body.data;
   if (config !== undefined) {
     const envError = operatorConfigEnvError(config);
-    if (envError) {
-      sendError(res, 400, envError);
-      return;
-    }
+    if (envError) return replyError(400, envError);
   }
 
   // The predecessor's root row — never another row whose status could disagree with the root's.
   const address = resolveRun(ctx, rootRunId);
-  if (!address.ok) {
-    sendError(res, address.status, address.message);
-    return;
-  }
+  if (!address.ok) return replyError(address.status, address.message);
   const { root } = address;
 
   // Recover and re-validate the workflow as it stands now: gone → `404`, now-invalid → `400`, no
@@ -52,8 +45,7 @@ export async function handleResumeRun({
       `the workflow at "${workflowPath}" is no longer the one run "${rootRunId}" ran (its id changed); cannot resume`,
   });
   if (!prepared.ok) {
-    sendError(res, prepared.refusal.status, prepared.refusal.message, prepared.refusal.details);
-    return;
+    return replyError(prepared.refusal.status, prepared.refusal.message, prepared.refusal.details);
   }
   const { workflow } = prepared;
 
@@ -75,23 +67,17 @@ export async function handleResumeRun({
   } catch (err) {
     // The row vanished between the check above and the engine's own lookup (a concurrent `rm`).
     if (err instanceof ResumeNotFound) {
-      sendError(res, 404, `no run found with id "${rootRunId}"`);
-      return;
+      return replyError(404, `no run found with id "${rootRunId}"`);
     }
     // A refusal from the engine's one Resume gate (a live or fully succeeded tree, or an illegal
     // K), before any successor started. The route only translates.
-    if (err instanceof ResumeRefused) {
-      sendError(res, err.status, err.message);
-      return;
-    }
-    sendError(
-      res,
+    if (err instanceof ResumeRefused) return replyError(err.status, err.message);
+    return replyError(
       500,
       `resume failed to start: ${err instanceof Error ? err.message : String(err)}`,
     );
-    return;
   }
 
   const started: StartRunResponse = { run_id: ids.runId, root_run_id: ids.rootRunId };
-  sendJson(res, 202, started);
+  return { status: 202, body: started };
 }
