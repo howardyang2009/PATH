@@ -806,7 +806,7 @@ describe("edit mode (Workflow | Template)", () => {
       kind: "step" as const,
       name: "gate",
       description: "a gate",
-      readOnly: false,
+      readOnly: false as const,
     };
     const next = reduce(s, {
       type: "templateSavedAs",
@@ -851,7 +851,7 @@ describe("planDownload", () => {
       kind: "step",
       name: "starter",
       description: "",
-      readOnly: true,
+      readOnly: "shipped",
     };
     expect(planDownload(sessionOn(openFrame(file("flow"), { path: null, template })))).toEqual({
       kind: "template",
@@ -893,7 +893,7 @@ describe("planDelete and the deleted action", () => {
     expect(
       planDelete(
         sessionOn(
-          openFrame(file("flow"), { path: null, template: { ...template, readOnly: true } }),
+          openFrame(file("flow"), { path: null, template: { ...template, readOnly: "shipped" } }),
         ),
       ),
     ).toBeNull();

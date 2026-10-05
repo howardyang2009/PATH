@@ -1,12 +1,15 @@
+import { existsSync } from "node:fs";
 import { relative } from "node:path";
 import { duplicateIdErrors, type StepPluginRegistry, safeParseWorkflowFile } from "@path/schema";
 import { conditionalDelete, conditionalWrite, PRECONDITION_FAILED } from "./artifact-file.js";
 import type { AuthoredLayout } from "./authored-layout.js";
 import { confineToProjectRoot } from "./confine.js";
+import { type CreatorTable, projectPathOf, sharedWriteRefusal } from "./creator-table.js";
 import { editLease } from "./edit-lease.js";
 
 // The workflow store: the path-addressed door onto workflow files, as the template store is the
-// id-addressed door onto templates. Both ask the authored layout which files a door may write.
+// id-addressed door onto templates. Both ask the authored layout which files a door may write, and
+// the creator table who may change a shared one (ADR 0088).
 
 export type WorkflowWrite =
   | { ok: true; relativePath: string; id: string; etag: string; created: boolean }
@@ -32,9 +35,12 @@ export interface WorkflowStore {
 export function workflowsOf(ctx: {
   layout: AuthoredLayout;
   stepPlugins: StepPluginRegistry;
+  creators: CreatorTable;
 }): WorkflowStore {
-  const { layout, stepPlugins } = ctx;
+  const { layout, stepPlugins, creators } = ctx;
   const { projectDir } = layout;
+  const shared = (workflowPath: string): boolean =>
+    layout.classify(workflowPath)?.origin === "shared";
 
   return {
     write(workflowPath, payload, ifMatch) {
@@ -45,6 +51,11 @@ export function workflowsOf(ctx: {
       // symlink is refused regardless of the payload.
       const absPath = confineToProjectRoot(projectDir, workflowPath, { allowMissingTail: true });
       if (absPath === undefined) return { ok: false, status: 404, message: "not found" };
+      // A new shared file is the requester's to create; an existing one only its creator's.
+      const creatorRefusal = existsSync(absPath)
+        ? sharedWriteRefusal(layout, creators, workflowPath, "workflow")
+        : undefined;
+      if (creatorRefusal !== undefined) return { ok: false, ...creatorRefusal };
 
       // Parsed against the registry frozen at server start (ADR 0018), like every other door that
       // validates a file.
@@ -71,6 +82,9 @@ export function workflowsOf(ctx: {
       if (!written.ok) {
         return { ok: false, status: 412, message: PRECONDITION_FAILED[written.conflict] };
       }
+      if (written.created && shared(workflowPath)) {
+        creators.stamp(projectPathOf(layout, workflowPath), "workflow", layout.userId);
+      }
       return {
         ok: true,
         relativePath: relative(projectDir, absPath),
@@ -89,6 +103,8 @@ export function workflowsOf(ctx: {
       if (absPath === undefined || lease === undefined) {
         return { ok: false, status: 404, message: "not found" };
       }
+      const creatorRefusal = sharedWriteRefusal(layout, creators, workflowPath, "workflow");
+      if (creatorRefusal !== undefined) return { ok: false, ...creatorRefusal };
       // The lease first: another session editing the file outranks a stale token, and either way
       // the file is untouched.
       if (lease.heldByOther(sessionId)) {
@@ -102,6 +118,7 @@ export function workflowsOf(ctx: {
           : { ok: false, status: 412, message: PRECONDITION_FAILED[removed.conflict] };
       }
       lease.remove();
+      if (shared(workflowPath)) creators.forget(projectPathOf(layout, workflowPath), "workflow");
       return { ok: true };
     },
   };

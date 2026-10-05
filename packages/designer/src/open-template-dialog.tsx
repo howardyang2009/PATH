@@ -6,6 +6,7 @@ import {
 } from "@path/client-core";
 import { useMemo, useState } from "react";
 import { FolderRow, indent } from "./open-existing-dialog.js";
+import { READ_ONLY_TITLE } from "./read-only.js";
 import { TEMPLATE_SUFFIX } from "./session-reducer.js";
 import type { TemplateListLoad } from "./template-list.js";
 
@@ -169,6 +170,11 @@ function TemplateTree({
                 {node.template.name}
                 {TEMPLATE_SUFFIX}
               </span>
+              {node.template.read_only && node.template.origin === "shared" ? (
+                <span className="workflow-tag" title={READ_ONLY_TITLE.shared}>
+                  <span aria-hidden="true">🔒</span>read-only
+                </span>
+              ) : null}
             </button>
           </li>
         ),

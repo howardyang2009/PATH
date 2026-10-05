@@ -61,7 +61,7 @@ export function TemplateFileName({ template }: { template: TemplateSource | null
         {template.name}
         {TEMPLATE_SUFFIX}
       </code>
-      {template.readOnly ? " (shipped, read-only)" : null}
+      {template.readOnly ? ` (${template.readOnly}, read-only)` : null}
     </span>
   );
 }
@@ -223,6 +223,7 @@ export function EditingToolbar({
   onDelete,
   canDownload,
   onDownload,
+  readOnlyTitle,
   lease,
   onTakeover,
   onReacquire,
@@ -258,6 +259,8 @@ export function EditingToolbar({
   /** Download the active frame's saved file: a workflow (zipped with the files it refs) or a
    * template. */
   onDownload: () => void;
+  /** Why the open file cannot be written, shown on a disabled Save and Delete; Save as… stays. */
+  readOnlyTitle?: string;
   /** The active file's lease state, or `undefined` before it is known. */
   lease: LeaseState | undefined;
   onTakeover: () => void;
@@ -283,7 +286,15 @@ export function EditingToolbar({
               title: canDownload ? "Download the saved file" : "Save first",
             },
           ],
-          [{ label: "Delete", onSelect: onDelete, disabled: saving || !canDelete, danger: true }],
+          [
+            {
+              label: "Delete",
+              onSelect: onDelete,
+              disabled: saving || !canDelete || readOnlyTitle !== undefined,
+              title: readOnlyTitle,
+              danger: true,
+            },
+          ],
         ]}
       />
       {/* Undo/redo drive the active frame's own per-file stack. Both survive a save — the save
@@ -315,8 +326,8 @@ export function EditingToolbar({
         type="button"
         className="save-btn"
         onClick={onSave}
-        disabled={!canSave(saveState, dirty)}
-        title={`Save (${SAVE_SHORTCUT})`}
+        disabled={!canSave(saveState, dirty) || readOnlyTitle !== undefined}
+        title={readOnlyTitle ?? `Save (${SAVE_SHORTCUT})`}
       >
         {saveState.phase === "saving" ? "Saving…" : "Save"}
       </button>

@@ -11,6 +11,7 @@ import {
 } from "@path/schema";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { authoredLayout } from "../src/authored-layout.js";
+import { openCreatorTable } from "../src/creator-table.js";
 import { discoverTemplates, type TemplateEntry } from "../src/template-store.js";
 
 /**
@@ -32,9 +33,11 @@ afterEach(() => {
 
 async function personSwitch(): Promise<TemplateEntry> {
   const registry = await loadStepPluginRegistry();
-  const entry = discoverTemplates(authoredLayout({ projectDir: dir }), registry).entries.find(
-    (e) => e.kind === "step" && e.name === "person-switch",
-  );
+  const entry = discoverTemplates(
+    authoredLayout({ projectDir: dir }),
+    registry,
+    openCreatorTable(":memory:"),
+  ).entries.find((e) => e.kind === "step" && e.name === "person-switch");
   if (!entry) throw new Error("person-switch step-template is not shipped");
   return entry;
 }

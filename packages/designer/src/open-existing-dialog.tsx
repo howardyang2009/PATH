@@ -9,6 +9,7 @@ import {
 } from "@path/client-core";
 import { useMemo, useState } from "react";
 import { type DiscoveryLoad, discoveredWorkflows } from "./discovery.js";
+import { READ_ONLY_TITLE } from "./read-only.js";
 
 /**
  * The open-existing-workflow picker (designer-spec § Opening a file). A modal over the
@@ -182,6 +183,11 @@ function WorkflowTree({
               <span className="workflow-file-name">
                 {workflowBaseName(node.workflow.relative_path)}
               </span>
+              {node.workflow.read_only ? (
+                <span className="workflow-tag" title={READ_ONLY_TITLE.shared}>
+                  <span aria-hidden="true">🔒</span>read-only
+                </span>
+              ) : null}
             </button>
           </li>
         ),

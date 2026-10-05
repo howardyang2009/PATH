@@ -392,8 +392,20 @@ function WorkflowRow({
       style={indent(depth)}
     >
       <span className="workflow-label">{label}</span>
+      <ReadOnlyTag workflow={workflow} />
       <RootTag workflow={workflow} />
     </button>
+  );
+}
+
+/** The lock on a row the Server marks read-only but still opens: a shared workflow another user
+ * created (ADR 0088). It runs in place; only its creator edits it. */
+function ReadOnlyTag({ workflow }: { workflow: WorkflowSummary }) {
+  if (!workflow.read_only || workflow.action !== "open") return null;
+  return (
+    <span className="workflow-tag" title="Read-only: shared by another user">
+      <span aria-hidden="true">🔒</span>read-only
+    </span>
   );
 }
 

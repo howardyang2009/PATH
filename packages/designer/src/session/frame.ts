@@ -1,6 +1,7 @@
 import { FORMAT_VERSION, type WorkflowFile } from "@path/schema";
 import type { EditKey } from "../edit-key.js";
 import type { OpenResult } from "../open-workflow.js";
+import type { ReadOnlyReason } from "../read-only.js";
 import { basename } from "../resolve-ref.js";
 import { canonicalSerialize } from "../serialize.js";
 
@@ -70,8 +71,9 @@ export interface TemplateSource {
   kind: "step";
   name: string;
   description: string;
-  /** A shipped template: the write-back `PUT` answers `403`, so only the two Save-As doors work. */
-  readOnly: boolean;
+  /** Why the write-back `PUT` answers `403`, or `false` when it is writable; a read-only template
+   * saves only through the Save-As doors. */
+  readOnly: false | ReadOnlyReason;
 }
 
 /** A frame is fetching, failed to fetch, or has an open outcome (which may itself be a legible

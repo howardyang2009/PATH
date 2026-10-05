@@ -562,6 +562,7 @@ Response `200 OK`:
       "origin": "user",
       "root_path": "release-notes.workflow.json",
       "action": "open",
+      "read_only": false,
       "id": "<uuid>",
       "name": "release-notes",
       "valid": true,
@@ -573,6 +574,7 @@ Response `200 OK`:
       "origin": "user",
       "root_path": "lib/draft.workflow.json",
       "action": "open",
+      "read_only": false,
       "id": "<uuid>",
       "name": "draft",
       "valid": true,
@@ -584,6 +586,7 @@ Response `200 OK`:
       "origin": "shared",
       "root_path": "broken.workflow.json",
       "action": "open",
+      "read_only": false,
       "id": null,
       "name": null,
       "valid": false,
@@ -604,6 +607,7 @@ Response `200 OK`:
 | `origin` | `"user"` \| `"shared"` \| `"shipped"` | Which root it was scanned from. |
 | `root_path` | string | The file's path inside its origin's root: where a picker places it under the origin's folder. |
 | `action` | `"open"` \| `"copy"` \| `"none"` | What a picker offers, decided by the Server: `open` a user or shared file (launch or edit it; an invalid one still opens for repair), `copy` a valid shipped file (§7.3), `none` for an invalid shipped file. `relative_path` is the handle this action takes. |
+| `read_only` | boolean | Whether the requester may write the file, decided by the Server ([ADR 0088](../adr/0088-each-request-sees-its-own-view-and-only-the-creator-writes-a-shared-item.md)): `true` for a `shipped` file, and for a `shared` file unless the requester created it (a shared file with no creator record is read-only for everyone). A read-only `open` row still opens and launches; a client offers Save as instead of Save. |
 | `id` | string \| null | The workflow's source-identity GUID (top-level `id`, ADR 0006). Best-effort shallow-parsed for an invalid file so the list stays human-legible; `null` when even the top-level parse fails. |
 | `name` | string \| null | The workflow's human `name` (same best-effort rule as `id`). |
 | `valid` | boolean | `loadWorkflowTree(f).success` — a static load + schema/ref/cycle validate that never executes a step. It is **registry-relative**: a file naming a step type this tree holds no plugin for is `false`. |
@@ -716,7 +720,9 @@ Responses:
   stance than discovery's, which only refuses to *list* one. A symlinked parent directory could
   otherwise redirect the write outside the root even when the lexical path stays inside.
 - `403 Forbidden` — a cross-origin caller, rejected by the origin gate (§2.1) before the body is read;
-  or `workflow_path` lies in the shipped workflow root, which is read-only.
+  or `workflow_path` lies in the shipped workflow root, which is read-only; or it names an existing
+  shared file the requester did not create ("only the creator edits a shared item"). Creating a new
+  shared file records the requester as its creator; an overwrite keeps the record.
 - `412 Precondition Failed` — the conditional header did not hold: an `If-Match` mismatch (the file
   changed or is gone), or a create-only write (no `If-Match`) against a path that already exists.
 
@@ -770,7 +776,8 @@ Responses:
 - `204 No Content` — deleted, no body.
 - `400 Bad Request` — `path` is a template path.
 - `403 Forbidden` — a cross-origin caller, rejected by the origin gate (§2.1); or `path` lies in the
-  shipped workflow root, which is read-only.
+  shipped workflow root, which is read-only; or it is a shared file the requester did not create.
+  Deleting a shared file removes its creator record.
 - `404 Not Found` — the file does not exist, `path` escapes the project root, or a path component is a
   symlink (same confinement as §7).
 - `409 Conflict` — another session holds a live edit lease on the file.
@@ -934,7 +941,7 @@ organize, and dot-directories and symlinks are skipped:
 | Root | `origin` | `read_only` | File suffix |
 | --- | --- | --- | --- |
 | `packages/server/shipped/template/` | `shipped` | `true` | `*.step-template.json` |
-| `shared/template/` | `shared` | `false` | `*.step-template.json` |
+| `shared/template/` | `shared` | `false` for its creator, else `true` | `*.step-template.json` |
 | `users/<user-id>/template/` | `user` | `false` | `*.step-template.json` |
 
 `<user-id>` is `local` until the Server knows who is asking. The `kind` of a file is its suffix, never
@@ -962,7 +969,7 @@ workflow discovery (§6). Registry-relative validity rides each entry.
 | `kind` | `"step"` | Which suffix the file carried; always `"step"`. |
 | `origin` | `"shipped" \| "shared" \| "user"` | Which root it was scanned from. |
 | `folder` | string | The `/`-separated subfolder under the origin's template folder; `""` at its top. |
-| `read_only` | boolean | `true` for `shipped`, `false` for `user`. |
+| `read_only` | boolean | `true` for `shipped`, `false` for `user`; for `shared`, `false` only for the template's creator. |
 | `valid` | boolean | Whether the body validates registry-relative. |
 | `error` | object \| null | The shared error envelope when `valid: false`, else `null`. |
 
@@ -1045,7 +1052,7 @@ Request body:
 | `body` | object | The step-template envelope, carrying the client-minted `id`. |
 
 The write lands at `users/<user-id>/template/[<folder>/]<name>.<suffix>` (`shared/template/…` for
-`origin: "shared"`), creating the directory chain
+`origin: "shared"`, which records the requester as the template's creator), creating the directory chain
 (`mkdirSync` recursive, as §7). It is **create-only** — no blind overwrite; content changes go through
 §10.4.
 
@@ -1078,8 +1085,8 @@ Responses:
 
 - `200 OK` — `{ "id": "<id>", "relative_path": "…", "etag": "<new sha256>" }`, `ETag` header set.
 - `400 Bad Request` — invalid JSON, schema failure, or a body `id` that disagrees with the URL `:id`.
-- `403 Forbidden` — `:id` resolves to a **shipped** template (read-only), or the origin gate rejected
-  the request.
+- `403 Forbidden` — `:id` resolves to a **shipped** template (read-only), or to a shared template the
+  requester did not create, or the origin gate rejected the request.
 - `404 Not Found` — no template resolves to `:id`.
 - `412 Precondition Failed` — `If-Match` absent, or stale (the file changed since it was read).
 
@@ -1090,7 +1097,8 @@ Origin-gated. Removes a user template; never a shipped one.
 Responses:
 
 - `204 No Content` — deleted, no body.
-- `403 Forbidden` — `:id` resolves to a **shipped** template, or the origin gate rejected the request.
+- `403 Forbidden` — `:id` resolves to a **shipped** template, or to a shared template the requester did
+  not create, or the origin gate rejected the request.
 - `404 Not Found` — no template resolves to `:id` (delete-missing is `404`, not an idempotent `204`).
 
 ### 10.6 The two write doors are disjoint

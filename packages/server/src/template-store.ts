@@ -14,11 +14,18 @@ import {
   removeArtifact,
 } from "./artifact-file.js";
 import { AUTHORED_SUFFIX, type AuthoredLayout, type AuthoredOrigin } from "./authored-layout.js";
+import {
+  type CreatorTable,
+  projectPathOf,
+  readOnlyFor,
+  SHARED_ITEM_READ_ONLY,
+} from "./creator-table.js";
 import { strongEtag } from "./etag.js";
 
 // The Template store (ADR 0050, ADR 0084): Server-owned, engine-blind discovery of
 // shipped∪shared∪user authoring templates. A template is typed by its file **suffix**, never its
-// bytes or its folder. The Step-Template is the only kind.
+// bytes or its folder. The Step-Template is the only kind. A shared template is writable only by its
+// creator (ADR 0088).
 
 export type TemplateKind = "step";
 export type TemplateOrigin = AuthoredOrigin;
@@ -151,6 +158,7 @@ function classify(
 export function discoverTemplates(
   layout: AuthoredLayout,
   registry: StepPluginRegistry,
+  creators: CreatorTable,
 ): TemplateStore {
   const { projectDir } = layout;
   const stepSchema = makeStepTemplateSchema(registry);
@@ -162,7 +170,7 @@ export function discoverTemplates(
       kind: "step",
       origin: root.origin,
       folder: dirname(relative(root.dir, absPath)).split(sep).join("/").replace(/^\.$/, ""),
-      readOnly: !root.writable,
+      readOnly: readOnlyFor(layout, creators, { absPath, root }),
       absPath,
       etag: strongEtag(bytes),
       ...classify(bytes, stepSchema),
@@ -189,7 +197,10 @@ export function discoverTemplates(
   ): { ok: true; entry: LocatedTemplate } | { ok: false; status: 403 | 404; message: string } => {
     const entry = byId.get(id);
     if (entry === undefined) return { ok: false, status: 404, message: "not found" };
-    if (entry.readOnly) return { ok: false, status: 403, message: "template is read-only" };
+    if (entry.readOnly) {
+      const message = entry.origin === "shared" ? SHARED_ITEM_READ_ONLY : "template is read-only";
+      return { ok: false, status: 403, message };
+    }
     return { ok: true, entry };
   };
 
@@ -254,6 +265,8 @@ export function discoverTemplates(
           message: `a ${kind} template named "${name}" already exists`,
         };
       }
+      if (origin === "shared")
+        creators.stamp(projectPathOf(layout, absPath), "template", layout.userId);
       return written;
     },
     update(id, payload, ifMatch) {
@@ -270,6 +283,9 @@ export function discoverTemplates(
       const found = locate(id);
       if (!found.ok) return found;
       removeArtifact(found.entry.absPath);
+      if (found.entry.origin === "shared") {
+        creators.forget(projectPathOf(layout, found.entry.absPath), "template");
+      }
       return { ok: true };
     },
   };
@@ -279,8 +295,9 @@ export function discoverTemplates(
 export function templatesOf(ctx: {
   layout: AuthoredLayout;
   stepPlugins: StepPluginRegistry;
+  creators: CreatorTable;
 }): TemplateStore {
-  return discoverTemplates(ctx.layout, ctx.stepPlugins);
+  return discoverTemplates(ctx.layout, ctx.stepPlugins, ctx.creators);
 }
 
 /** One entry as its thin wire row (§10.1): everything but the body. */

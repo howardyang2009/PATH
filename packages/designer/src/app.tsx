@@ -19,6 +19,7 @@ import { OpenWorkflowDialog } from "./open-existing-dialog.js";
 import { OpenTemplateDialog } from "./open-template-dialog.js";
 import { Palette } from "./palette.js";
 import { PropertiesPane } from "./pane/properties-pane.js";
+import { READ_ONLY_TITLE, workflowReadOnly } from "./read-only.js";
 import { RefTargetDialog } from "./ref-target-dialog.js";
 import { RunDock } from "./run/run-dock.js";
 import { RunProjectionProvider } from "./run/run-projection.js";
@@ -159,7 +160,7 @@ export function App({
         kind: template.kind,
         name: template.name,
         description: template.description,
-        readOnly: template.read_only,
+        readOnly: template.read_only && (template.origin === "shipped" ? "shipped" : "shared"),
       },
     });
   };
@@ -230,7 +231,13 @@ export function App({
       : policy.saveDoor === "new-workflow-dialog"
         ? () => setNewFileOpen(true)
         : session.save;
-  const saveEnabled = canSave(session.saveState, dirty);
+  // A read-only document (a shipped file, or a shared one another user created) keeps Save as…
+  // only; Save and Delete would answer `403`.
+  const readOnly = inTemplateMode
+    ? (activeTemplate?.readOnly ?? false)
+    : workflowReadOnly(discovery, activePath);
+  const readOnlyTitle = readOnly ? READ_ONLY_TITLE[readOnly] : undefined;
+  const saveEnabled = canSave(session.saveState, dirty) && !readOnly;
   useEffect(() => {
     // ⌘/Ctrl+S runs the Save button, from any focus. It always blocks the browser's own Save Page.
     const onKeyDown = (event: KeyboardEvent): void => {
@@ -329,6 +336,7 @@ export function App({
               onDelete={onDelete}
               canDownload={downloadPlan !== null}
               onDownload={onDownload}
+              readOnlyTitle={readOnlyTitle}
             />
           ) : undefined
         }

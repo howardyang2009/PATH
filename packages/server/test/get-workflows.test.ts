@@ -1,9 +1,10 @@
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ListWorkflowsResponse, WorkflowSummary } from "@path/schema";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { type PathServerHandle, startPathServer } from "../src/create-server.js";
+import { strongEtag } from "../src/etag.js";
 
 let projectDir: string;
 let shippedDir: string;
@@ -187,6 +188,7 @@ describe("GET /v0/workflows", () => {
       origin: w.origin,
       root_path: w.root_path,
       action: w.action,
+      read_only: w.read_only,
     }));
     expect(rows).toEqual([
       {
@@ -194,26 +196,57 @@ describe("GET /v0/workflows", () => {
         origin: "shipped",
         root_path: "bad.workflow.json",
         action: "none",
+        read_only: true,
       },
       {
         relative_path: "good.workflow.json",
         origin: "shipped",
         root_path: "good.workflow.json",
         action: "copy",
+        read_only: true,
       },
       {
         relative_path: join("shared", "workflow", "broken.workflow.json"),
         origin: "shared",
         root_path: "broken.workflow.json",
         action: "open",
+        read_only: false,
       },
       {
         relative_path: u(join("lib", "mine.workflow.json")),
         origin: "user",
         root_path: join("lib", "mine.workflow.json"),
         action: "open",
+        read_only: false,
       },
     ]);
+  });
+
+  it("adopts shared files present at boot for local; a later untracked one is read-only", async () => {
+    write("shared/workflow/old.workflow.json", workflow("old"));
+    expect(
+      byPath((await listWorkflows()).body).get(join("shared", "workflow", "old.workflow.json")),
+    ).toMatchObject({ action: "open", read_only: false });
+
+    const late = join("shared", "workflow", "late.workflow.json");
+    write(late, workflow("late"));
+    const res = await fetch(`${handle.url}/v0/workflows`);
+    const rows = byPath((await res.json()) as ListWorkflowsResponse);
+    expect(rows.get(late)).toMatchObject({ action: "open", read_only: true });
+
+    const put = await fetch(`${handle.url}/v0/workflows`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Origin: handle.url,
+        "If-Match": strongEtag(readFileSync(join(projectDir, late))),
+      },
+      body: JSON.stringify({ workflow_path: late, workflow: JSON.parse(workflow("late")) }),
+    });
+    expect(put.status).toBe(403);
+    expect(await put.json()).toEqual({
+      error: { message: "only the creator edits a shared item" },
+    });
   });
 
   it("lists the writable workflow roots, the user's own first", async () => {

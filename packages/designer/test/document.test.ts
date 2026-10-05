@@ -200,10 +200,23 @@ describe("writeDocument", () => {
     ).toMatchObject({ ok: false, conflict: "exists" });
   });
 
-  it("reads any other failure as an error with its message", async () => {
+  it("reads an in-place save's late 403 and 404 in the spec's words", async () => {
     expect(
       await writeDocument(fakeClient(new PathApiError(403, "read-only")).client, templatePut),
-    ).toEqual({ ok: false, conflict: null, message: "read-only" });
+    ).toEqual({
+      ok: false,
+      conflict: null,
+      message: "Read-only: only the creator can save. Use Save as.",
+    });
+    expect(
+      await writeDocument(fakeClient(new PathApiError(404, "not found")).client, overwrite),
+    ).toEqual({ ok: false, conflict: null, message: "No longer available" });
+  });
+
+  it("reads any other failure as an error with its message", async () => {
+    expect(
+      await writeDocument(fakeClient(new PathApiError(500, "boom")).client, templatePut),
+    ).toEqual({ ok: false, conflict: null, message: "boom" });
     expect(await writeDocument(fakeClient(new Error("offline")).client, overwrite)).toEqual({
       ok: false,
       conflict: null,

@@ -203,6 +203,9 @@ export interface WorkflowSummary {
   /** What a picker offers, decided by the Server: `open` a writable file (launch or edit it),
    * `copy` a valid shipped one into the user's folder, or `none` for an invalid shipped one. */
   action: "open" | "copy" | "none";
+  /** Whether the requester may write the file, decided by the Server: a shipped file never, a
+   * shared one only for its creator (ADR 0088). A read-only shared row still opens and runs. */
+  read_only: boolean;
   id: string | null;
   name: string | null;
   valid: boolean;

@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { loadStepPluginRegistry } from "@path/engine";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { authoredLayout } from "../src/authored-layout.js";
+import { openCreatorTable } from "../src/creator-table.js";
 import { discoverTemplates } from "../src/template-store.js";
 
 /**
@@ -25,7 +26,11 @@ afterEach(() => {
 describe("shipped templates", () => {
   it("ship at least one step-template, and every shipped template is valid", async () => {
     const registry = await loadStepPluginRegistry();
-    const { entries } = discoverTemplates(authoredLayout({ projectDir: projectDir }), registry);
+    const { entries } = discoverTemplates(
+      authoredLayout({ projectDir: projectDir }),
+      registry,
+      openCreatorTable(":memory:"),
+    );
 
     expect(entries.some((entry) => entry.kind === "step")).toBe(true);
     for (const entry of entries) {
