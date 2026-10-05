@@ -91,6 +91,11 @@ An Architecture Decision Record (ADR) records one decision PATH has made: the sh
 | [0085](0085-discovery-lists-only-the-authored-workflow-roots.md) | Discovery lists only the authored workflow roots | accepted |
 | [0086](0086-shipped-workflows-are-copied-before-they-run.md) | Shipped workflows are copied before they run | accepted |
 | [0087](0087-the-authored-layout-decides-where-a-file-lives-and-who-may-write-it.md) | The authored layout decides where a file lives and who may write it | accepted |
+| [0088](0088-each-request-sees-its-own-view-and-only-the-creator-writes-a-shared-item.md) | Each request sees its own view, and only the creator writes a shared item | accepted |
+| [0089](0089-in-hosted-mode-the-launchers-secret-store-replaces-the-host-environment.md) | In hosted mode, the launcher's Secret store replaces the host environment | accepted |
+| [0090](0090-the-user-id-is-the-clerk-sub-verified-on-every-request.md) | The user id is the Clerk `sub`, verified on every request | accepted |
+| [0091](0091-a-hosted-run-executes-in-one-vm-per-engine-invocation.md) | A hosted run executes in one VM per engine invocation | accepted |
+| [0092](0092-v1-runs-on-a-clerk-development-instance-over-tailscale.md) | V1 runs on a Clerk development instance over Tailscale | accepted |
 
 ## Superseded decisions
 
