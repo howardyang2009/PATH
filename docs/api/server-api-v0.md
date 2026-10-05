@@ -18,7 +18,7 @@ change to the contract ships as `/v1` alongside it, never a silent reshape of `/
 - `@path/server` is a new package. It imports `@path/engine` **in-process** (`runWorkflow`,
   `loadWorkflowTree`, log backends). It is not a CLI subprocess wrapper.
 - No auth. Localhost-bind only. State-changing routes carry an origin gate against browser CSRF (§2.1,
-  #237).
+  #237), and every request passes the local-mode Funnel guard (§2.2, #726).
 - One fixed project root per server instance, set at startup. It is one `.path/` tree, like `path run`.
 - Multiple root runs may execute concurrently. There is no server-side queueing.
 - Cancellation is **best-effort and root-only** (mvp spec §5.6), because that is exactly what the
@@ -114,6 +114,21 @@ It rejects with `403` when the request looks like a cross-origin browser call:
 
 Read routes (`GET`) are ungated. They have no side effect, and the same-origin policy already blocks a
 cross-origin page from a read of their responses.
+
+### 2.2 Funnel guard (local mode, #726)
+
+The Server is no-auth, and a `binary` step runs a command as the host user, so a local-mode Server
+left exposed by a public Tailscale Funnel is remote code execution. The guard runs first on **every**
+request, before the origin gate, and fails closed: a request whose `Host` is a `*.ts.net` name and
+that carries no `Tailscale-User-Login` header came through Funnel, and it is refused:
+
+- `403 Forbidden` — `error.message` names the funnel guard and lists the two ways out (reach PATH over
+  the tailnet with `tailscale serve`, or switch the guard off).
+
+A `*.ts.net` request that carries `Tailscale-User-Login` came through `tailscale serve` and passes.
+Plain `localhost` use is unaffected. `PATH_FUNNEL_GUARD=off` switches the guard off for an operator who
+means to serve that name publicly. Hosted mode does not apply the guard: there, Clerk token auth is
+the door ([#732](https://github.com/howardyang2009/PATH/issues/732)).
 
 ## 3. `GET /v0/runs` — list root runs
 
