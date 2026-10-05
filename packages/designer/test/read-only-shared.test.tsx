@@ -69,6 +69,35 @@ describe("read-only shared workflows", () => {
     ).not.toHaveTextContent("read-only");
   });
 
+  it("shows the lock on a read-only shared template in the template Open dialog", async () => {
+    const template = (id: number, name: string, readOnly: boolean) => ({
+      id: uuid(id),
+      name,
+      description: "",
+      kind: "step",
+      origin: "shared",
+      folder: "",
+      read_only: readOnly,
+      valid: true,
+      error: null,
+    });
+    const templates = { templates: [template(5, "theirs", true), template(6, "ours", false)] };
+    render(<App client={stubClient({ files: FILES, workflows: WORKFLOWS, templates })} />);
+
+    await screen.findByRole("radiogroup", { name: "Edit mode" });
+    fireEvent.click(screen.getByRole("radio", { name: "Template" }));
+    fireEvent.click(fileMenuItem("Open…"));
+    const dialog = await screen.findByRole("dialog", { name: "Open a template" });
+    fireEvent.click(await within(dialog).findByRole("button", { name: /shared/ }));
+
+    expect(
+      within(dialog).getByRole("button", { name: /theirs\.step-template\.json/ }),
+    ).toHaveTextContent("🔒read-only");
+    expect(
+      within(dialog).getByRole("button", { name: /ours\.step-template\.json/ }),
+    ).not.toHaveTextContent("read-only");
+  });
+
   it("disables Save and Delete on a read-only file and offers Save as", async () => {
     render(
       <App client={stubClient({ files: FILES, workflows: WORKFLOWS })} initialPath={THEIRS} />,
