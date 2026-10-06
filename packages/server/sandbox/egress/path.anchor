@@ -1,0 +1,13 @@
+# pf anchor `path`: what run VMs on the `path` container network may reach
+# (docs/spec/path-website.md §10). install.sh fills in the IPv6 prefix of the network.
+path_net = "192.168.100.0/24"
+path_gw = "192.168.100.1"
+path_net6 = "@PATH_NET6@"
+
+table <path_blocked> const { 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 169.254.0.0/16 100.64.0.0/10 }
+
+# The host gateway answers DNS only; its other ports fall to the block below.
+pass quick inet proto { udp tcp } from $path_net to $path_gw port 53
+block drop quick inet from $path_net to <path_blocked>
+block drop quick inet proto tcp from $path_net to any port { 25 465 587 }
+block drop quick inet6 from $path_net6 to any

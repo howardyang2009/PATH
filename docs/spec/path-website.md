@@ -162,11 +162,16 @@ In local mode the Server answers `403` to any request whose `Host` is a `*.ts.ne
 carries no `Tailscale-User-Login` header (a Funnel request); `PATH_FUNNEL_GUARD=off` switches this
 guard off, and hosted mode does not apply it ([#726](https://github.com/howardyang2009/PATH/issues/726)).
 
-**Egress** ([#724](https://github.com/howardyang2009/PATH/issues/724)): VMs run on one fixed network
-(`container network create path --subnet <fixed>`). A `pf` anchor `path`, loaded at boot by a
-`launchd` daemon, blocks `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16` (except the host gateway),
-`169.254.0.0/16`, `100.64.0.0/10` and ports 25, 465 and 587. Everything else is allowed. No bandwidth
-cap. An allowlist proxy waits for its trigger (an abuse complaint, signs of scanning, or the move to
+**Egress** ([#724](https://github.com/howardyang2009/PATH/issues/724),
+[#740](https://github.com/howardyang2009/PATH/issues/740)): VMs run on one fixed network
+(`container network create path --subnet 192.168.100.0/24`). A `pf` anchor `path`, loaded at boot by
+the `launchd` daemon `com.path.egress`, blocks `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`,
+`169.254.0.0/16`, `100.64.0.0/10`, ports 25, 465 and 587, and all IPv6 from the network. The host
+gateway answers DNS (port 53) only. Everything else is allowed. No bandwidth cap. The daemon adds
+`anchor "path"` to the main ruleset itself, since macOS updates can replace `/etc/pf.conf`. Only root
+can query `pf`, so the daemon writes `/var/run/path-egress.status` (boot time, `pf` status, anchor
+rules); hosted mode refuses to boot unless that file is from this boot, `pf` is enabled and the
+anchor has its block rules. Files and steps: `packages/server/sandbox/egress/`. An allowlist proxy waits for its trigger (an abuse complaint, signs of scanning, or the move to
 production).
 
 **Move to production** ([#712](https://github.com/howardyang2009/PATH/issues/712), ADR 0092):
@@ -193,9 +198,13 @@ Server-side item is missing.
 - Run the Server as a `launchd` LaunchAgent with `KeepAlive`.
 - Store `PATH_SECRETS_KEY` in the Keychain, with an escrow copy in a password manager, never in the
   data backup.
-- Install the `pf` anchor and its `launchd` daemon once with `sudo`.
+- Install the `path` network, the `pf` anchor and its `launchd` daemon once: run
+  `packages/server/sandbox/egress/install.sh` as the login user (it asks for `sudo` once). Rerun it
+  when the `path` network is recreated, since the anchor names its IPv6 prefix.
 - Per PATH release, build the run image with `packages/server/sandbox/build-run-image.sh` and set
-  `PATH_SANDBOX_IMAGE` to its tag (`PATH_SANDBOX_NETWORK=path` for the `pf`-filtered network).
+  `PATH_SANDBOX_IMAGE` to its tag. Every VM joins the `path` network.
+- After install and after each reboot, run `packages/server/sandbox/egress/check.sh <run image>`:
+  every blocked target must time out and an internet HTTPS request must work.
 - Create the Clerk application PATH (development instance, open sign-up).
 - Sign in once, then run `path-server remap-user` from `local` to the owner's `sub`.
 

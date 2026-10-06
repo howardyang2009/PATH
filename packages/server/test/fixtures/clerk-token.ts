@@ -1,5 +1,6 @@
 import { generateKeyPairSync, type KeyObject, sign } from "node:crypto";
 import { vi } from "vitest";
+import { stubEgressAnchor } from "./egress-status.js";
 
 /**
  * A Clerk stand-in for hosted-mode tests: a key pair generated per run, and RS256 session tokens in
@@ -51,4 +52,5 @@ export function stubHostedEnv(): void {
   vi.stubEnv("PATH_ALLOWED_ORIGIN", ORIGIN);
   vi.stubEnv("CLERK_PUBLISHABLE_KEY", PUBLISHABLE_KEY);
   vi.stubEnv("PATH_SECRETS_KEY", SECRETS_KEY);
+  stubEgressAnchor();
 }
