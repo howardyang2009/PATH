@@ -1034,3 +1034,58 @@ describe("PathApiClient with getToken", () => {
     expect(stub.calls[0]?.authorization).toBeNull();
   });
 });
+
+describe("PathApiClient.releaseLockOnUnload", () => {
+  const lease = { workflowPath: "f.workflow.json", sessionId: "s1" };
+
+  it("posts the release with keepalive, signed with the last token sent", async () => {
+    const inits: (RequestInit | undefined)[] = [];
+    const urls: string[] = [];
+    let token = "tok-1";
+    const fetch: FetchLike = async (url, init) => {
+      urls.push(url);
+      inits.push(init);
+      return json({ runs: [] });
+    };
+    const client = new PathApiClient({ baseUrl: "http://h", fetch, getToken: async () => token });
+
+    await client.listRuns();
+    token = "tok-2";
+    client.releaseLockOnUnload(lease);
+
+    const init = inits[1];
+    expect(urls[1]).toBe("http://h/v0/workflows/lock/release");
+    expect(init?.method).toBe("POST");
+    expect(init?.keepalive).toBe(true);
+    expect(new Headers(init?.headers).get("Authorization")).toBe("Bearer tok-1");
+    expect(JSON.parse(init?.body as string)).toEqual({
+      workflow_path: "f.workflow.json",
+      session_id: "s1",
+    });
+  });
+
+  it("sends no Authorization header in local mode", () => {
+    const inits: (RequestInit | undefined)[] = [];
+    const fetch: FetchLike = async (_url, init) => {
+      inits.push(init);
+      return json({ released: true });
+    };
+    const client = new PathApiClient({ baseUrl: "http://h", fetch });
+
+    client.releaseLockOnUnload(lease);
+    expect(new Headers(inits[0]?.headers).get("Authorization")).toBeNull();
+    expect(inits[0]?.keepalive).toBe(true);
+  });
+
+  it("swallows a failed release: the server's TTL reaps the lease", async () => {
+    const client = new PathApiClient({
+      baseUrl: "http://h",
+      fetch: async () => {
+        throw new TypeError("network down");
+      },
+    });
+
+    expect(() => client.releaseLockOnUnload(lease)).not.toThrow();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+});

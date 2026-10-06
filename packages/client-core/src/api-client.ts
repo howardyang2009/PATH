@@ -432,12 +432,17 @@ export class PathApiClient {
   /** The resolved transport — exposed so the SSE client/connector reuse the same `fetch`. */
   readonly fetch: FetchLike;
   private readonly http: HttpTransport;
+  private readonly unsignedFetch: FetchLike;
+  private readonly lastToken: () => string | null;
 
   constructor(options: PathApiClientOptions) {
     this.baseUrl = options.baseUrl.replace(/\/+$/, "");
     const fetch = options.fetch ?? defaultFetch;
     const { getToken, onUnauthorized } = options;
-    this.fetch = getToken ? authorizedFetch(fetch, { getToken, onUnauthorized }) : fetch;
+    const signed = getToken ? authorizedFetch(fetch, { getToken, onUnauthorized }) : undefined;
+    this.fetch = signed?.fetch ?? fetch;
+    this.unsignedFetch = fetch;
+    this.lastToken = signed?.lastToken ?? (() => null);
     this.http = new HttpTransport(this.baseUrl, this.fetch);
   }
 
@@ -619,5 +624,21 @@ export class PathApiClient {
    */
   releaseLock(input: LeaseOpInput): Promise<void> {
     return releaseLock(this.http, input);
+  }
+
+  /** `releaseLock` for a closing page: a `keepalive` POST that outlives the page, signed with the
+   * last token sent because an unload cannot wait for a fresh one. Best-effort: a failure is
+   * dropped, and the server's TTL reaps the lease (ADR 0017). */
+  releaseLockOnUnload(input: LeaseOpInput): void {
+    const token = this.lastToken();
+    this.unsignedFetch(this.url("/v0/workflows/lock/release"), {
+      method: "POST",
+      keepalive: true,
+      headers: {
+        "Content-Type": "application/json",
+        ...(token !== null ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify(leaseOpBody(input)),
+    }).catch(() => {});
   }
 }

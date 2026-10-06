@@ -75,8 +75,8 @@ const API_ROUTES: readonly ApiRoute[] = [
   { method: "POST", path: /^\/v0\/runs\/([^/]+)\/resume$/, handle: handleResumeRun },
   { method: "POST", path: /^\/v0\/runs\/([^/]+)\/complete$/, handle: handleCompleteRun },
 
-  // Workflow files (§7). The Designer edit lease is three POSTs so `navigator.sendBeacon` can drive
-  // release from `beforeunload` (ADR 0017); each carries its `/`-bearing path in the body.
+  // Workflow files (§7). The Designer edit lease is three POSTs (ADR 0017); each carries its
+  // `/`-bearing path in the body.
   { method: "GET", path: "/v0/workflows", handle: handleGetWorkflows },
   { method: "PUT", path: "/v0/workflows", handle: handlePutWorkflow },
   { method: "GET", path: "/v0/workflows/file", stream: handleGetWorkflowFile },

@@ -14,20 +14,27 @@ export interface RequestAuth {
 }
 
 /** `fetch` with the Bearer token on every call. A `401` waits for `onUnauthorized`, then retries
- * once with the new token, so a call made before the session was lost still lands. */
-export function authorizedFetch(fetch: FetchLike, auth: RequestAuth): FetchLike {
+ * once with the new token, so a call made before the session was lost still lands. `lastToken` is
+ * the token most recently sent, for a caller that cannot wait for a fresh one. */
+export function authorizedFetch(
+  fetch: FetchLike,
+  auth: RequestAuth,
+): { fetch: FetchLike; lastToken: () => string | null } {
+  let lastToken: string | null = null;
   const send = async (input: string, init?: RequestInit): Promise<Response> => {
     const headers = new Headers(init?.headers);
     const token = await auth.getToken();
+    lastToken = token;
     if (token !== null) headers.set("Authorization", `Bearer ${token}`);
     return fetch(input, { ...init, headers });
   };
-  return async (input, init) => {
+  const signed: FetchLike = async (input, init) => {
     const res = await send(input, init);
     if (res.status !== 401 || !auth.onUnauthorized) return res;
     await auth.onUnauthorized();
     return send(input, init);
   };
+  return { fetch: signed, lastToken: () => lastToken };
 }
 
 /** A non-2xx response from the server, carrying its parsed `{ error: { message, details? } }`

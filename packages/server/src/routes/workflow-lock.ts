@@ -59,8 +59,7 @@ export async function handleWorkflowLockHeartbeat({ req, ctx }: ApiRequest): Pro
 
 /**
  * `POST /v0/workflows/lock/release`: free; always `200`, idempotent, and only the holder's own
- * lease. POST, not DELETE, because `navigator.sendBeacon` drives release from `beforeunload` and is
- * POST-only.
+ * lease. The Designer also sends it from `beforeunload` as a `keepalive` POST (ADR 0017).
  */
 export async function handleWorkflowLockRelease({ req, ctx }: ApiRequest): Promise<RouteReply> {
   const request = await leaseRequest(req, ctx, LeaseOpBodySchema);
