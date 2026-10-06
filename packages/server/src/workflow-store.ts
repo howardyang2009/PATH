@@ -44,6 +44,7 @@ export function workflowsOf(ctx: {
 
   return {
     write(workflowPath, payload, ifMatch) {
+      if (!layout.inView(workflowPath)) return { ok: false, status: 404, message: "not found" };
       const refusal = layout.workflowRefusal(workflowPath, "write");
       if (refusal !== undefined) return { ok: false, ...refusal };
 
@@ -95,6 +96,7 @@ export function workflowsOf(ctx: {
     },
 
     remove(workflowPath, ifMatch, sessionId) {
+      if (!layout.inView(workflowPath)) return { ok: false, status: 404, message: "not found" };
       const refusal = layout.workflowRefusal(workflowPath, "write");
       if (refusal !== undefined) return { ok: false, ...refusal };
 

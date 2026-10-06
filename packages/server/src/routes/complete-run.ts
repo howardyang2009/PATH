@@ -58,6 +58,7 @@ export async function handleCompleteRun({
   // in *this run's* file (matching id, ADR 0006), not merely one sharing the node's id.
   const prepared = await prepareRunWorkflow(ctx.layout, root, {
     notFound: () => `workflow file for run "${rootRunId}" not found at "${root.workflowPath}"`,
+    noRun: () => `no step run found with id "${stepRunId}"`,
     noPath: () => `run "${rootRunId}" has no recorded workflow path and cannot be completed`,
     swapped: (workflowPath) =>
       `the workflow at "${workflowPath}" is no longer the one run "${rootRunId}" ran (its id changed); cannot complete`,

@@ -1,4 +1,9 @@
-export { type LoadedWorkflow, type LoadResult, loadWorkflowTree } from "./load-workflow-tree.js";
+export {
+  type LoadedWorkflow,
+  type LoadResult,
+  type LoadWorkflowTreeOptions,
+  loadWorkflowTree,
+} from "./load-workflow-tree.js";
 export { LOG_BACKEND_IDS, type LogBackendId } from "./logging/backends.js";
 export { LOG_FORMAT, type LogBackend, type LogFormat } from "./logging/log-backend.js";
 export { readNdjsonLog } from "./logging/ndjson-backend.js";
