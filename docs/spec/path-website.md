@@ -203,6 +203,8 @@ Server-side item is missing.
   when the `path` network is recreated, since the anchor names its IPv6 prefix.
 - Per PATH release, build the run image with `packages/server/sandbox/build-run-image.sh` and set
   `PATH_SANDBOX_IMAGE` to its tag. Every VM joins the `path` network.
+- After each reboot, start the `container` service as the login user (`container system start`)
+  before the Server; it does not start on its own.
 - After install and after each reboot, run `packages/server/sandbox/egress/check.sh <run image>`:
   every blocked target must time out and an internet HTTPS request must work.
 - Create the Clerk application PATH (development instance, open sign-up).

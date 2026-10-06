@@ -16,7 +16,7 @@ pfctl -a path -f "$anchor"
 pfctl -E
 
 {
-  echo "boottime=$(sysctl -n kern.boottime | sed -E 's/.*sec = ([0-9]+).*/\1/')"
+  echo "boottime=$(sysctl -n kern.boottime | sed -E 's/^\{ sec = ([0-9]+),.*/\1/')"
   pfctl -s info | grep '^Status:'
   pfctl -a path -s rules
 } >"$status.tmp"
