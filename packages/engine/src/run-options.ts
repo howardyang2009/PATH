@@ -60,6 +60,9 @@ export interface RunSeams {
  */
 export interface LaunchRunOptions extends RunSeams {
   operatorInput?: JsonValue;
+  /** The fresh root's run id, when the caller must know it before the run starts (a queued
+   * sandboxed launch, ADR 0091); minted here when absent. */
+  rootRunId?: string;
   unresolvedLaunchSecrets?: undefined;
   inheritedLaunchSecretKeys?: undefined;
   continuation?: undefined;
@@ -73,6 +76,7 @@ export interface LaunchRunOptions extends RunSeams {
  */
 export interface ContinuationRunOptions extends RunSeams {
   operatorInput?: undefined;
+  rootRunId?: undefined;
   /**
    * Frozen launch-config secrets the continuation did not supply again (ADR 0046); the run ends
    * before its first step naming them.

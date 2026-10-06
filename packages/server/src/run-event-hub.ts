@@ -1,4 +1,5 @@
 import type { LogEvent } from "@path/schema";
+import type { RunStreamHandlers, Unsubscribe } from "./live-runs.js";
 
 type EventListener = (event: LogEvent) => void;
 type CloseListener = () => void;
@@ -53,4 +54,45 @@ export class RunEventHub {
       channel.closeListeners.delete(onClose);
     };
   }
+}
+
+/**
+ * Subscribes to a root run's stream: the `history` after `afterSeq`, then live events from `hub`.
+ * The subscription precedes the replay read and every delivered `seq` is tracked, so nothing is
+ * missed or sent twice.
+ */
+export function streamRun(
+  hub: RunEventHub,
+  history: (afterSeq: number | undefined) => LogEvent[],
+  rootRunId: string,
+  afterSeq: number | undefined,
+  handlers: RunStreamHandlers,
+): Unsubscribe {
+  let lastSeq = afterSeq ?? 0;
+  let live = false;
+  const buffered: LogEvent[] = [];
+
+  function deliver(event: LogEvent): void {
+    if (event.seq <= lastSeq) return;
+    lastSeq = event.seq;
+    handlers.onEvent(event);
+  }
+
+  // Subscribe *before* reading history: a publish landing mid-read is buffered.
+  const unsubscribe = hub.subscribe(
+    rootRunId,
+    (event) => (live ? deliver(event) : buffered.push(event)),
+    handlers.onEnd,
+  );
+
+  for (const event of history(afterSeq)) deliver(event);
+  for (const event of buffered) deliver(event);
+  live = true;
+
+  // No open channel: the run is terminal, not executing here, or never existed.
+  if (unsubscribe === null) {
+    handlers.onEnd();
+    return () => {};
+  }
+  return unsubscribe;
 }

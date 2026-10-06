@@ -194,6 +194,8 @@ Server-side item is missing.
 - Store `PATH_SECRETS_KEY` in the Keychain, with an escrow copy in a password manager, never in the
   data backup.
 - Install the `pf` anchor and its `launchd` daemon once with `sudo`.
+- Per PATH release, build the run image with `packages/server/sandbox/build-run-image.sh` and set
+  `PATH_SANDBOX_IMAGE` to its tag (`PATH_SANDBOX_NETWORK=path` for the `pf`-filtered network).
 - Create the Clerk application PATH (development instance, open sign-up).
 - Sign in once, then run `path-server remap-user` from `local` to the owner's `sub`.
 

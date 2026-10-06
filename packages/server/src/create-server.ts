@@ -12,6 +12,7 @@ import { enforceSameOrigin } from "./origin-gate.js";
 import { createRequesterContexts } from "./requester.js";
 import { dispatchApi } from "./routes/api-routes.js";
 import type { ServerContext } from "./routes/route-context.js";
+import { readSandboxOptions } from "./sandbox/sandbox-config.js";
 import { serveStatic } from "./serve-static.js";
 
 /** Built `@path/viewer` bundle (`packages/viewer/dist`); `serveStatic` 404s when it is absent or
@@ -139,6 +140,7 @@ export async function startPathServer(
     resolveUserId: mode.mode === "hosted" ? clerkUserIdResolver(mode.clerk) : undefined,
     hosted: mode.mode === "hosted",
     secretsKey: mode.mode === "hosted" ? mode.secretsKey : undefined,
+    sandbox: mode.mode === "hosted" ? readSandboxOptions() : undefined,
   });
   // The host-level creator table (ADR 0088 §3). Local mode adopts today's untracked `shared/` files
   // as created by `local`, so they stay editable.

@@ -10,7 +10,9 @@ import {
   type RequesterContext,
   type RequesterContexts,
 } from "../src/requester.js";
+import { createVmSlots } from "../src/sandbox/vm-slots.js";
 import { parseSecretsKey } from "../src/secret-store.js";
+import { fakeRuntime } from "./fixtures/fake-sandbox.js";
 
 /**
  * The requester context one request is handled under (ADR 0088): the resolved user id, that user's
@@ -102,6 +104,37 @@ describe("createRequesterContexts", () => {
     expect(context.secrets?.list()).toEqual([]);
     contexts.close();
     expect(() => context.store.archive.listRoots()).toThrow();
+  });
+
+  it("runs a hosted requester's Starts in the sandbox when one is configured", async () => {
+    const runtime = fakeRuntime(async () => 0);
+    const contexts = createRequesterContexts({
+      projectDir,
+      projectStore,
+      resolveUserId: () => "user_abc",
+      hosted: true,
+      secretsKey: parseSecretsKey(Buffer.alloc(32).toString("base64")),
+      sandbox: {
+        runtime,
+        slots: createVmSlots(1),
+        image: "path-run:test",
+        cpus: 1,
+        memoryMiB: 512,
+        timeoutMs: 1000,
+        stopGraceMs: 10,
+        maxExportBytes: 1024,
+        maxBlobBytes: 1024,
+        hostEnv: {},
+      },
+    });
+    const { live } = await forRequest(contexts);
+
+    const file = { format: "path/workflow@6", id: "wf", name: "wf", body: [] } as const;
+    await live.start(file as never, projectDir, { files: new Map(), registry: {} });
+    await live.idle();
+
+    expect(runtime.vms).toHaveLength(1);
+    contexts.close();
   });
 
   it("resolves no context when the request proves no identity", async () => {
