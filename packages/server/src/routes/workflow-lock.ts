@@ -34,7 +34,7 @@ async function leaseRequest<T extends { workflow_path: string }>(
   const body = await readRequestBody(req, schema);
   if (!body.ok) return body;
   const lease = ctx.layout.inView(body.data.workflow_path)
-    ? editLease(ctx.project.dir, body.data.workflow_path)
+    ? editLease(ctx.layout.projectDir, body.data.workflow_path)
     : undefined;
   if (lease === undefined) return { ok: false, reply: replyError(404, "not found") };
   return { ok: true, body: body.data, lease };

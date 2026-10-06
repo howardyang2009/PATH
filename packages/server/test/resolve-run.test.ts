@@ -54,7 +54,7 @@ function context(trees: Record<string, RunRecord[]>, roots: Record<string, strin
     tree: (rootRunId: string) => built.get(rootRunId) ?? null,
     rootRunIdOf: (runId: string) => roots[runId] ?? null,
   };
-  return { project: { archive } } as unknown as RouteContext;
+  return { store: { archive } } as unknown as RouteContext;
 }
 
 const ROOT = "run-root";

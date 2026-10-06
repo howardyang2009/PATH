@@ -49,7 +49,7 @@ function fakeReq(body: unknown): IncomingMessage {
 
 function context(live: LiveRuns): RouteContext {
   return {
-    project: { dir: fixturesDir } as unknown as Project,
+    store: {} as unknown as Project,
     live,
     stepPlugins: {} as unknown as LoadedStepPluginRegistry,
     layout: authoredLayout({ projectDir: fixturesDir }),

@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSyn
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { openProject } from "@path/engine";
 import type { ListWorkflowsResponse } from "@path/schema";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type PathServerHandle, startPathServer } from "../src/create-server.js";
@@ -294,5 +295,149 @@ describe("local mode", () => {
       (await fetch(`${url}/v0/runs`, as("local", "POST", { workflow_path: parent }))).status,
     ).toBe(202);
     expect((await fetch(`${url}/v0/workflows/file?path=${other}`)).status).toBe(200);
+  });
+});
+
+/** The root run ids the store opened at `dir` lists. */
+function storedRoots(dir: string): string[] {
+  const opened = openProject(dir);
+  if (!opened.success) throw new Error(opened.error);
+  try {
+    return opened.project.archive.listRoots().map((row) => row.runId);
+  } finally {
+    opened.project.close();
+  }
+}
+
+describe("per-user run stores in hosted mode", () => {
+  async function launched(url: string, userId: string, workflowPath: string): Promise<string> {
+    const res = await launch(url, userId, workflowPath);
+    expect(res.status).toBe(202);
+    return ((await res.json()) as { root_run_id: string }).root_run_id;
+  }
+
+  it("stores a run under its launcher's store, not the project's", async () => {
+    const team = write("shared/workflow/team.workflow.json", workflow("team"));
+    const url = await start({ hosted: true });
+
+    const rootRunId = await launched(url, ALICE, team);
+    await waitFor(url, ALICE, rootRunId, (tree) => tree.status === "succeeded");
+    await handle?.close();
+    handle = undefined;
+
+    expect(storedRoots(join(projectDir, "users", ALICE))).toEqual([rootRunId]);
+    expect(storedRoots(projectDir)).toEqual([]);
+  });
+
+  it("answers 404 on every run door for another user's run", async () => {
+    const failing = write(
+      `users/${ALICE}/workflow/failing.workflow.json`,
+      fixture("failing-step.workflow.json"),
+    );
+    const awaiting = write(
+      `users/${ALICE}/workflow/awaiting.workflow.json`,
+      fixture("awaiting-no-schema.workflow.json"),
+    );
+    const url = await start({ hosted: true });
+    const failed = await launched(url, ALICE, failing);
+    await waitFor(url, ALICE, failed, (tree) => tree.status !== "running");
+    const parked = await launched(url, ALICE, awaiting);
+    const tree = await waitFor(url, ALICE, parked, (t) =>
+      t.runs.some((r) => r.status === "awaiting"),
+    );
+    const leaf = tree.runs.find((r) => r.status === "awaiting")?.run_id;
+
+    const replies = await Promise.all([
+      fetch(`${url}/v0/runs/${failed}`, as(BOB)),
+      fetch(`${url}/v0/runs/${failed}/events`, as(BOB)),
+      fetch(`${url}/v0/runs/${failed}/blobs/${failed}/input`, as(BOB)),
+      fetch(`${url}/v0/runs/${parked}/cancel`, as(BOB, "POST", {})),
+      fetch(`${url}/v0/runs/${failed}/resume`, as(BOB, "POST", {})),
+      fetch(`${url}/v0/runs/${leaf}/complete`, as(BOB, "POST", { output: "done" })),
+      fetch(`${url}/v0/runs/${failed}`, as(BOB, "DELETE")),
+    ]);
+
+    expect(replies.map((r) => r.status)).toEqual([404, 404, 404, 404, 404, 404, 404]);
+    expect((await fetch(`${url}/v0/runs/${failed}`, as(ALICE))).status).toBe(200);
+    // Releases the parked run so the server drains on close.
+    await fetch(`${url}/v0/runs/${parked}/cancel`, as(ALICE, "POST", {}));
+  });
+
+  it("resumes the requester's own run from their store", async () => {
+    const failing = write(
+      `users/${ALICE}/workflow/failing.workflow.json`,
+      fixture("failing-step.workflow.json"),
+    );
+    const url = await start({ hosted: true });
+    const failed = await launched(url, ALICE, failing);
+    await waitFor(url, ALICE, failed, (tree) => tree.status !== "running");
+
+    const resumed = await fetch(`${url}/v0/runs/${failed}/resume`, as(ALICE, "POST", {}));
+
+    expect(resumed.status).toBe(202);
+    const successor = ((await resumed.json()) as { root_run_id: string }).root_run_id;
+    await waitFor(url, ALICE, successor, (tree) => tree.status !== "running");
+  });
+
+  it("keeps workflow doors on the project root, not the requester's store", async () => {
+    const own = write(`users/${ALICE}/workflow/mine.workflow.json`, workflow("mine"));
+    const url = await start({ hosted: true });
+    const lock = { workflow_path: own, session_id: "s1" };
+
+    expect((await fetch(`${url}/v0/workflows/file?path=${own}`, as(ALICE))).status).toBe(200);
+    expect((await fetch(`${url}/v0/workflows/lock`, as(ALICE, "POST", lock))).status).toBe(200);
+  });
+
+  it("lists only the requester's own runs of a shared workflow", async () => {
+    const team = workflow("team");
+    const path = write("shared/workflow/team.workflow.json", team);
+    const url = await start({ hosted: true });
+
+    const alices = await launched(url, ALICE, path);
+    const bobs = await launched(url, BOB, path);
+    await waitFor(url, ALICE, alices, (tree) => tree.status === "succeeded");
+    await waitFor(url, BOB, bobs, (tree) => tree.status === "succeeded");
+
+    for (const [user, own] of [
+      [ALICE, alices],
+      [BOB, bobs],
+    ] as const) {
+      const res = await fetch(`${url}/v0/runs?workflow_id=${team.id}`, as(user));
+      const { runs } = (await res.json()) as { runs: { run_id: string }[] };
+      expect(runs.map((r) => r.run_id)).toEqual([own]);
+    }
+  });
+
+  it("never serves a run from the project's own store", async () => {
+    const path = write("shared/workflow/team.workflow.json", workflow("team"));
+    const localUrl = await start({ hosted: false });
+    const local = (await (
+      await fetch(`${localUrl}/v0/runs`, as("local", "POST", { workflow_path: path }))
+    ).json()) as { root_run_id: string };
+    await waitFor(localUrl, "local", local.root_run_id, (tree) => tree.status === "succeeded");
+    await handle?.close();
+
+    const url = await start({ hosted: true });
+
+    expect((await fetch(`${url}/v0/runs/${local.root_run_id}`, as(ALICE))).status).toBe(404);
+    const listed = (await (await fetch(`${url}/v0/runs`, as(ALICE))).json()) as {
+      runs: unknown[];
+    };
+    expect(listed.runs).toEqual([]);
+  });
+});
+
+describe("local mode runs", () => {
+  it("keeps every run in the project's own store", async () => {
+    const path = write("users/local/workflow/mine.workflow.json", workflow("mine"));
+    const url = await start({ hosted: false });
+
+    const res = await fetch(`${url}/v0/runs`, as("local", "POST", { workflow_path: path }));
+    const { root_run_id: rootRunId } = (await res.json()) as { root_run_id: string };
+    await waitFor(url, "local", rootRunId, (tree) => tree.status === "succeeded");
+    await handle?.close();
+    handle = undefined;
+
+    expect(storedRoots(projectDir)).toEqual([rootRunId]);
   });
 });

@@ -13,7 +13,7 @@ export function handleGetRun({ ctx, params: [rootRunId] }: ApiRequest<[string]>)
   // What the run was launched with (ADR 0046) — a per-tree fact. Absent for a bare launch; its
   // config is stored masked, with `secret_keys` naming the values a continuation must be given
   // again.
-  const launchFacts = ctx.project.archive.launchFacts(rootRunId);
+  const launchFacts = ctx.store.archive.launchFacts(rootRunId);
 
   return {
     status: 200,

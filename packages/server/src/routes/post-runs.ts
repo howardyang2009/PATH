@@ -84,9 +84,9 @@ export async function handlePostRuns({ req, ctx }: ApiRequest): Promise<RouteRep
       registry: workflow.registry,
       logBackends: logBackendIds,
       processorConcurrency,
-      // Recorded on the root row so this run is resumable (§4.3), in the same relative form `path
-      // run` stores.
-      sourceWorkflowPath: workflow.storeRelativePath(ctx.project.dir),
+      // Recorded on the root row so this run is resumable (§4.3), relative to the project root
+      // whichever store holds the run, since resume reads it back through the layout.
+      sourceWorkflowPath: workflow.storeRelativePath(ctx.layout.projectDir),
     });
   } catch (err) {
     return replyError(

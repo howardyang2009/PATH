@@ -1,4 +1,3 @@
-import { resolve } from "node:path";
 import { readArtifact } from "../artifact-file.js";
 import { confineToProjectRoot } from "../confine.js";
 import { strongEtag } from "../etag.js";
@@ -19,7 +18,7 @@ export function handleGetWorkflowFile({ res, ctx, query }: StreamRequest): void 
     return;
   }
 
-  const absPath = confineToProjectRoot(resolve(ctx.project.dir), path);
+  const absPath = confineToProjectRoot(ctx.layout.projectDir, path);
   if (absPath === undefined || !ctx.layout.inView(path)) {
     sendError(res, 404, "not found");
     return;

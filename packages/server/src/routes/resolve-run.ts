@@ -30,7 +30,7 @@ export type LeafAddress =
   | { ok: false; status: 404; message: string };
 
 function treeAddress(ctx: RouteContext, rootRunId: string): TreeAddress {
-  const tree = ctx.project.archive.tree(rootRunId);
+  const tree = ctx.store.archive.tree(rootRunId);
   if (tree === null) return notFound(rootRunId);
   return { ok: true, rootRunId, tree };
 }
@@ -59,8 +59,8 @@ export function resolveRun(ctx: RouteContext, rootRunId: string): RunAddress {
 /** The leaf a step-run id names, resolved through the one row that knows its root. An id that names
  * no row at all — or no row under the root it claims — is the `404`. */
 export function resolveLeaf(ctx: RouteContext, stepRunId: string): LeafAddress {
-  const rootRunId = ctx.project.archive.rootRunIdOf(stepRunId);
-  const tree = rootRunId === null ? null : ctx.project.archive.tree(rootRunId);
+  const rootRunId = ctx.store.archive.rootRunIdOf(stepRunId);
+  const tree = rootRunId === null ? null : ctx.store.archive.tree(rootRunId);
   const leaf = tree?.runs.find((run) => run.runId === stepRunId);
   if (rootRunId === null || tree === null || leaf === undefined) {
     return { ok: false, status: 404, message: `no step run found with id "${stepRunId}"` };

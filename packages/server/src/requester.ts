@@ -1,20 +1,23 @@
 import type { IncomingMessage } from "node:http";
-import type { Project } from "@path/engine";
+import { join } from "node:path";
+import { openProject, type Project } from "@path/engine";
 import {
   type AuthoredKind,
   type AuthoredLayout,
   authoredLayout,
   DEFAULT_USER_ID,
 } from "./authored-layout.js";
+import { createLiveRuns, type LiveRuns } from "./live-runs.js";
 
 /**
  * Who one request acts for (ADR 0088): the user id, the authored layout that user reads through,
- * and the store that user's runs live in.
+ * the store that user's runs live in, and the runs executing in that store.
  */
 export interface RequesterContext {
   readonly userId: string;
   readonly layout: AuthoredLayout;
   readonly store: Project;
+  readonly live: LiveRuns;
 }
 
 /**
@@ -30,6 +33,8 @@ export interface RequesterContexts {
   /** The requester `req` acts for, built on first use and reused after; `undefined` when `req`
    * proves no identity. */
   forRequest(req: IncomingMessage): Promise<RequesterContext | undefined>;
+  /** Resolves once every run started in any store held here has settled. */
+  idle(): Promise<void>;
   /** Closes every store held here, the project's own included. */
   close(): void;
 }
@@ -39,11 +44,12 @@ export interface RequesterContextOptions {
   /** A test may point a kind's shipped root elsewhere. */
   shippedDir?: Partial<Record<AuthoredKind, string>>;
   /** The project's own store, opened at boot so a bad settings file or db refuses to start. Every
-   * requester resolves to it until hosted mode gives each user a store of their own. */
+   * local-mode requester resolves to it; hosted mode never does. */
   projectStore: Project;
   /** Local mode by default: every request acts for `local` (ADR 0090). */
   resolveUserId?: UserIdResolver;
-  /** Hosted mode confines each requester's doors and refs to their view (ADR 0088). */
+  /** Hosted mode confines each requester's doors and refs to their view (ADR 0088), and keeps
+   * each requester's runs in their own store at `users/<user-id>/.path/`. */
   hosted?: boolean;
 }
 
@@ -59,14 +65,23 @@ export function createRequesterContexts({
   hosted = false,
 }: RequesterContextOptions): RequesterContexts {
   const contexts = new Map<string, RequesterContext>();
+  const projectLive = createLiveRuns(projectStore);
+
+  /** The user's own store and its runs; local mode shares the project's. */
+  const storeFor = (userId: string): { store: Project; live: LiveRuns } => {
+    if (!hosted) return { store: projectStore, live: projectLive };
+    const opened = openProject(join(projectDir, "users", userId));
+    if (!opened.success) throw new Error(opened.error);
+    return { store: opened.project, live: createLiveRuns(opened.project) };
+  };
 
   const contextFor = (userId: string): RequesterContext => ({
     userId,
     layout: authoredLayout({ projectDir, shippedDir, userId, hosted }),
-    store: projectStore,
+    ...storeFor(userId),
   });
 
-  contexts.set(DEFAULT_USER_ID, contextFor(DEFAULT_USER_ID));
+  if (!hosted) contexts.set(DEFAULT_USER_ID, contextFor(DEFAULT_USER_ID));
 
   return {
     async forRequest(req) {
@@ -80,13 +95,16 @@ export function createRequesterContexts({
       return context;
     },
 
+    async idle() {
+      const lives = new Set([projectLive, ...[...contexts.values()].map((c) => c.live)]);
+      await Promise.all([...lives].map((live) => live.idle()));
+    },
+
     close() {
-      // A store can serve more than one context, so identity decides what to close.
-      const closed = new Set<Project>();
+      // Local-mode contexts share the project's store; each hosted context owns its own.
+      projectStore.close();
       for (const context of contexts.values()) {
-        if (closed.has(context.store)) continue;
-        closed.add(context.store);
-        context.store.close();
+        if (context.store !== projectStore) context.store.close();
       }
       contexts.clear();
     },
