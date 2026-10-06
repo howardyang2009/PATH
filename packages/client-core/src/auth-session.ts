@@ -15,6 +15,22 @@ export type AuthConfig =
  * library, and only the lazily loaded Clerk touches the DOM. */
 export type MountNode = object;
 
+/** One extra entry in the user menu. */
+export interface UserMenuItem {
+  label: string;
+  /** A text glyph Clerk shows before the label. */
+  icon: string;
+  onClick: () => void;
+}
+
+/** A user-menu entry as Clerk takes it: Clerk mounts each entry's icon itself. */
+export interface ClerkMenuItem {
+  label: string;
+  onClick: () => void;
+  mountIcon(node: { textContent: string | null }): void;
+  unmountIcon(): void;
+}
+
 /** The page's `location`: where sign-out lands, and how the app reloads. */
 export interface PageLocation {
   readonly href: string;
@@ -34,7 +50,7 @@ export interface ClerkLike {
     | null
     | undefined;
   openSignIn(): void;
-  mountUserButton(node: MountNode): void;
+  mountUserButton(node: MountNode, props?: { customMenuItems?: ClerkMenuItem[] }): void;
   unmountUserButton(node: MountNode): void;
   addListener(listener: (resources: { user?: { id: string } | null }) => void): () => void;
 }
@@ -50,8 +66,8 @@ export interface AuthSession {
   clientAuth(): Partial<RequestAuth>;
   /** Opens the sign-in modal and settles once a user is signed in. */
   signIn(): Promise<void>;
-  /** Mounts Clerk's user menu into `node`; returns the unmount. */
-  mountUserButton(node: MountNode): () => void;
+  /** Mounts Clerk's user menu into `node`, with `items` added to it; returns the unmount. */
+  mountUserButton(node: MountNode, items?: UserMenuItem[]): () => void;
 }
 
 export interface StartAuthSessionOptions {
@@ -153,8 +169,16 @@ async function hostedSession(clerk: ClerkLike, location: PageLocation): Promise<
       onUnauthorized: signIn,
     }),
     signIn,
-    mountUserButton: (node) => {
-      clerk.mountUserButton(node);
+    mountUserButton: (node, items = []) => {
+      const customMenuItems = items.map(({ label, icon, onClick }) => ({
+        label,
+        onClick,
+        mountIcon: (node: { textContent: string | null }) => {
+          node.textContent = icon;
+        },
+        unmountIcon: () => {},
+      }));
+      clerk.mountUserButton(node, { customMenuItems });
       return () => clerk.unmountUserButton(node);
     },
   };

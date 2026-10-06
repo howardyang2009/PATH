@@ -36,7 +36,12 @@ class FakeClerk implements ClerkLike {
     this.signInModals += 1;
   }
 
-  mountUserButton(): void {}
+  /** The props of each mounted user button. */
+  userButtons: Parameters<ClerkLike["mountUserButton"]>[1][] = [];
+
+  mountUserButton(_node: object, props?: Parameters<ClerkLike["mountUserButton"]>[1]): void {
+    this.userButtons.push(props);
+  }
   unmountUserButton(): void {}
 
   addListener(listener: Listener): () => void {
@@ -234,6 +239,22 @@ describe("startAuthSession", () => {
     clerk.setUser("user_1");
     await signedIn;
     expect(reloads.count).toBe(0);
+  });
+
+  it("puts the given menu items in Clerk's user menu, each with its icon", async () => {
+    const clerk = new FakeClerk("user_1");
+    const { session } = await startHosted(clerk);
+    let opened = 0;
+
+    session.mountUserButton({}, [{ label: "Secrets", icon: "K", onClick: () => (opened += 1) }]);
+
+    const items = clerk.userButtons[0]?.customMenuItems ?? [];
+    expect(items.map((item) => item.label)).toEqual(["Secrets"]);
+    items[0]?.onClick();
+    expect(opened).toBe(1);
+    const icon = { textContent: "" };
+    items[0]?.mountIcon(icon);
+    expect(icon.textContent).toBe("K");
   });
 
   it("refuses an unreadable auth-config", async () => {

@@ -135,6 +135,48 @@ describe("PathApiClient", () => {
     expect(inits[0]?.method).toBe("DELETE");
   });
 
+  it("listSecrets reads GET /v0/secrets", async () => {
+    const stub = stubFetch(() =>
+      json({ secrets: [{ name: "API_KEY", updated_at: "2026-10-06T10:00:00.000Z" }] }),
+    );
+    const client = new PathApiClient({ baseUrl: "http://localhost:8080", fetch: stub.fetch });
+
+    await expect(client.listSecrets()).resolves.toEqual([
+      { name: "API_KEY", updated_at: "2026-10-06T10:00:00.000Z" },
+    ]);
+    expect(stub.urls[0]).toBe("http://localhost:8080/v0/secrets");
+  });
+
+  it("putSecret sends PUT /v0/secrets/:name with the value and returns the summary", async () => {
+    const inits: (RequestInit | undefined)[] = [];
+    const stub = stubFetch((_url, init) => {
+      inits.push(init);
+      return json({ name: "API_KEY", updated_at: "2026-10-06T10:00:00.000Z" });
+    });
+    const client = new PathApiClient({ baseUrl: "http://localhost:8080", fetch: stub.fetch });
+
+    await expect(client.putSecret("API_KEY", "s3cret")).resolves.toEqual({
+      name: "API_KEY",
+      updated_at: "2026-10-06T10:00:00.000Z",
+    });
+    expect(stub.urls[0]).toBe("http://localhost:8080/v0/secrets/API_KEY");
+    expect(inits[0]?.method).toBe("PUT");
+    expect(JSON.parse(String(inits[0]?.body))).toEqual({ value: "s3cret" });
+  });
+
+  it("deleteSecret sends DELETE /v0/secrets/:name", async () => {
+    const inits: (RequestInit | undefined)[] = [];
+    const stub = stubFetch((_url, init) => {
+      inits.push(init);
+      return new Response(null, { status: 204 });
+    });
+    const client = new PathApiClient({ baseUrl: "http://localhost:8080", fetch: stub.fetch });
+
+    await expect(client.deleteSecret("API_KEY")).resolves.toBeUndefined();
+    expect(stub.urls[0]).toBe("http://localhost:8080/v0/secrets/API_KEY");
+    expect(inits[0]?.method).toBe("DELETE");
+  });
+
   it("deleteRun appends ?force=true only when force is set", async () => {
     const stub = stubFetch(() => json({ root_run_id: "r1" }, 200));
     const client = new PathApiClient({ baseUrl: "http://localhost:8080", fetch: stub.fetch });

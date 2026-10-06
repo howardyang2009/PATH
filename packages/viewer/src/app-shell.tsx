@@ -1,3 +1,4 @@
+import type { UserMenuItem } from "@path/client-core";
 import { type CSSProperties, type ReactNode, useRef } from "react";
 import { UserMenu } from "./auth-gate.js";
 import { useDragSize } from "./drag-size.js";
@@ -10,6 +11,8 @@ export interface AppShellProps {
   runs: ReactNode;
   detail: ReactNode;
   nodeIo: ReactNode;
+  /** Entries for the hosted user menu. */
+  menuItems?: UserMenuItem[];
 }
 
 /** Persisted rail widths, in px. The centre pane stays fluid (`1fr`). */
@@ -30,7 +33,7 @@ const RAIL_VRESIZER_SPAN = 12;
  * The two rails are drag-resizable. Widths clamp to `[MIN_RAIL, MAX_RAIL]` and persist in
  * `localStorage`, so the fluid centre never starves.
  */
-export function AppShell({ workflows, runs, detail, nodeIo }: AppShellProps) {
+export function AppShell({ workflows, runs, detail, nodeIo, menuItems }: AppShellProps) {
   const panesRef = useRef<HTMLDivElement>(null);
   // The left handle grows its rail towards the right (+1); the right handle is mirrored (-1).
   const { widths, handleProps } = usePaneWidths({
@@ -50,11 +53,7 @@ export function AppShell({ workflows, runs, detail, nodeIo }: AppShellProps) {
 
   return (
     <div className="shell">
-      <header className="topbar">
-        <span className="brand">PATH</span>
-        <span className="brand-sub">viewer · read-only</span>
-        <UserMenu />
-      </header>
+      <TopBar sub="viewer · read-only" menuItems={menuItems} />
       <div className="panes" ref={panesRef} style={style}>
         <LeftRail workflows={workflows} runs={runs} />
         <Resizer rail="left" {...handleProps(0)} />
@@ -67,6 +66,17 @@ export function AppShell({ workflows, runs, detail, nodeIo }: AppShellProps) {
         </Pane>
       </div>
     </div>
+  );
+}
+
+/** The Viewer's top bar: the brand and `sub`, then the hosted user menu at the right end. */
+export function TopBar({ sub, menuItems }: { sub: string; menuItems?: UserMenuItem[] }) {
+  return (
+    <header className="topbar">
+      <span className="brand">PATH</span>
+      <span className="brand-sub">{sub}</span>
+      <UserMenu items={menuItems} />
+    </header>
   );
 }
 

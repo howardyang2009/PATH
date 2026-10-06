@@ -1588,3 +1588,121 @@ button.workflow-row:focus-visible {
 .complete-form-error {
   margin: 0;
 }
+
+/* ---------- secrets page (hosted mode only) ---------- */
+
+.secrets-main {
+  flex: 1;
+  overflow: auto;
+  padding: 16px 24px;
+  background: var(--ground);
+}
+
+.secrets-back {
+  font-size: var(--fs-sm);
+  color: var(--accent);
+}
+
+.secrets {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 720px;
+}
+
+.secrets-title {
+  margin: 8px 0 0;
+  font-size: var(--fs-lg);
+}
+
+.secrets-intro {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+}
+
+/* Name, value, Set on one line; the hint and any message wrap below. */
+.secret-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+}
+
+.secret-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+}
+
+.secret-field input {
+  font: inherit;
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  min-width: 200px;
+  padding: 5px 8px;
+  color: var(--text);
+  background: var(--ground);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.secret-field input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.secret-hint,
+.secret-message {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+}
+
+.secret-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+}
+
+.secret-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  padding: 8px 12px;
+}
+
+.secret-row + .secret-row {
+  border-top: 1px solid var(--border);
+}
+
+.secret-name {
+  flex: 1;
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  overflow-wrap: anywhere;
+}
+
+.secret-updated {
+  color: var(--text-muted);
+  font-size: var(--fs-xs);
+}
+
+.secret-confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  flex-basis: 100%;
+}

@@ -164,6 +164,8 @@ export interface StubServerOptions {
    */
   complete?: { status: number; body: unknown };
   completeBodies?: unknown[];
+  /** Body for `GET /v0/secrets` — the Secrets page's list. Default: empty. */
+  secrets?: unknown;
 }
 
 /** A fresh empty call recorder — pass one into `stubClient({ calls })` and assert against it. */
@@ -325,6 +327,7 @@ export function stubClient(options: StubServerOptions = {}): PathApiClient {
         200,
       );
     }
+    if (input === "/v0/secrets") return json(options.secrets ?? { secrets: [] }, 200);
     if (input === "/v0/templates") {
       return json(options.templates ?? { templates: [] }, options.templatesStatus ?? 200);
     }
