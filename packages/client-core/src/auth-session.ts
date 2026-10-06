@@ -1,11 +1,18 @@
-import { defaultFetch, type FetchLike, HttpTransport, type RequestAuth } from "./transport.js";
+import {
+  defaultFetch,
+  type FetchLike,
+  HttpTransport,
+  type RequestAuth,
+  trimBaseUrl,
+} from "./transport.js";
 
 /** `GET /v0/auth-config`: which mode the Server runs in and the key a hosted client signs in with. */
 export type AuthConfig =
   | { mode: "local"; publishableKey: null }
   | { mode: "hosted"; publishableKey: string };
 
-/** The `<div>` a Clerk component mounts into; typed loosely because this package has no DOM. */
+/** The `<div>` a Clerk component mounts into, typed loosely: this package builds without the DOM
+ * library, and only the lazily loaded Clerk touches the DOM. */
 export type MountNode = object;
 
 /** The page's `location`: where sign-out lands, and how the app reloads. */
@@ -22,7 +29,10 @@ export interface ClerkLike {
     afterSignOutUrl?: string;
   }): Promise<void>;
   readonly user: { id: string } | null | undefined;
-  readonly session: { getToken: () => Promise<string | null> } | null | undefined;
+  readonly session:
+    | { getToken: (options?: { skipCache?: boolean }) => Promise<string | null> }
+    | null
+    | undefined;
   openSignIn(): void;
   mountUserButton(node: MountNode): void;
   unmountUserButton(node: MountNode): void;
@@ -64,10 +74,7 @@ const LOCAL_SESSION: AuthSession = {
 
 /** Reads the Server's auth config and, in hosted mode only, loads Clerk and its session. */
 export async function startAuthSession(options: StartAuthSessionOptions): Promise<AuthSession> {
-  const http = new HttpTransport(
-    options.baseUrl.replace(/\/+$/, ""),
-    options.fetch ?? defaultFetch,
-  );
+  const http = new HttpTransport(trimBaseUrl(options.baseUrl), options.fetch ?? defaultFetch);
   const config = await http.requestJson<AuthConfig>("/v0/auth-config");
   if (config.mode !== "hosted") return LOCAL_SESSION;
   const clerk = await (options.loadClerk ?? loadClerkJs)(config.publishableKey);
@@ -94,8 +101,14 @@ async function hostedSession(clerk: ClerkLike, location: PageLocation): Promise<
     afterSignOutUrl: location.href,
   });
 
+  // A `401` while Clerk still holds a session means its cached token was refused: the retry mints a
+  // fresh one, and a second `401` reaches the caller.
+  let refreshToken = false;
   const signIn = (): Promise<void> => {
-    if (clerk.user) return Promise.resolve();
+    if (clerk.user) {
+      refreshToken = true;
+      return Promise.resolve();
+    }
     if (!pending) {
       let resolve = (): void => {};
       const promise = new Promise<void>((r) => {
@@ -132,7 +145,11 @@ async function hostedSession(clerk: ClerkLike, location: PageLocation): Promise<
       return () => listeners.delete(listener);
     },
     clientAuth: () => ({
-      getToken: async () => (clerk.session ? clerk.session.getToken() : null),
+      getToken: async () => {
+        const skipCache = refreshToken;
+        refreshToken = false;
+        return clerk.session ? clerk.session.getToken({ skipCache }) : null;
+      },
       onUnauthorized: signIn,
     }),
     signIn,

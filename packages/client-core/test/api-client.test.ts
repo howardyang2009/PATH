@@ -1025,6 +1025,24 @@ describe("PathApiClient with getToken", () => {
     expect(stub.calls).toHaveLength(2);
   });
 
+  it("an aborted call stops waiting for sign-in and is not retried", async () => {
+    const stub = recordingFetch(() => unauthorized());
+    const client = new PathApiClient({
+      baseUrl: "http://h",
+      fetch: stub.fetch,
+      getToken: async () => "tok",
+      onUnauthorized: () => new Promise<void>(() => {}),
+    });
+    const controller = new AbortController();
+
+    const call = client.fetch("http://h/v0/runs/r1/events", { signal: controller.signal });
+    await vi.waitFor(() => expect(stub.calls).toHaveLength(1));
+    controller.abort();
+
+    await expect(call).rejects.toMatchObject({ name: "AbortError" });
+    expect(stub.calls).toHaveLength(1);
+  });
+
   it("without onUnauthorized a 401 is raised at once", async () => {
     const stub = recordingFetch(() => unauthorized());
     const client = new PathApiClient({ baseUrl: "http://h", fetch: stub.fetch });

@@ -49,11 +49,6 @@
   background: var(--ground);
 }
 
-.boot-error {
-  padding: 16px;
-  color: var(--status-failed-fg);
-}
-
 /* The three panes: fixed rails around a fluid centre; each pane scrolls on its own so the live
    narrative never pushes the runs list out of view. */
 .panes {

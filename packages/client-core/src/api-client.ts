@@ -33,6 +33,7 @@ import {
   parseReply,
   type RequestAuth,
   toApiError,
+  trimBaseUrl,
 } from "./transport.js";
 
 export { defaultFetch, type FetchLike, PathApiError } from "./transport.js";
@@ -436,7 +437,7 @@ export class PathApiClient {
   private readonly lastToken: () => string | null;
 
   constructor(options: PathApiClientOptions) {
-    this.baseUrl = options.baseUrl.replace(/\/+$/, "");
+    this.baseUrl = trimBaseUrl(options.baseUrl);
     const fetch = options.fetch ?? defaultFetch;
     const { getToken, onUnauthorized } = options;
     const signed = getToken ? authorizedFetch(fetch, { getToken, onUnauthorized }) : undefined;

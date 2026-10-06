@@ -3,6 +3,11 @@ import type { JsonValue, WireError } from "@path/schema";
 /** A minimal `fetch` shape — injectable so browser/React Native/tests can supply their own. */
 export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 
+/** A server base URL without its trailing slashes, so a path joins with exactly one. */
+export function trimBaseUrl(baseUrl: string): string {
+  return baseUrl.replace(/\/+$/, "");
+}
+
 /** The default transport: the ambient global `fetch`, wrapped rather than passed by reference. */
 export const defaultFetch: FetchLike = (input, init) => fetch(input, init);
 
@@ -31,10 +36,25 @@ export function authorizedFetch(
   const signed: FetchLike = async (input, init) => {
     const res = await send(input, init);
     if (res.status !== 401 || !auth.onUnauthorized) return res;
-    await auth.onUnauthorized();
+    await untilAborted(auth.onUnauthorized(), init?.signal);
     return send(input, init);
   };
   return { fetch: signed, lastToken: () => lastToken };
+}
+
+/** `promise`, or a rejection with the abort reason once `signal` aborts, so a closed caller stops
+ * waiting. */
+function untilAborted(
+  promise: Promise<void>,
+  signal: AbortSignal | null | undefined,
+): Promise<void> {
+  if (!signal) return promise;
+  signal.throwIfAborted();
+  return new Promise((resolve, reject) => {
+    const onAbort = (): void => reject(signal.reason);
+    signal.addEventListener("abort", onAbort, { once: true });
+    promise.then(resolve, reject).finally(() => signal.removeEventListener("abort", onAbort));
+  });
 }
 
 /** A non-2xx response from the server, carrying its parsed `{ error: { message, details? } }`

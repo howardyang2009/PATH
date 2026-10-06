@@ -7,7 +7,9 @@ type Listener = Parameters<ClerkLike["addListener"]>[0];
 /** A stand-in for Clerk: a user that tests sign in and out, and a count of opened sign-in modals. */
 class FakeClerk implements ClerkLike {
   user: { id: string } | null;
-  session: { getToken: () => Promise<string | null> } | null;
+  session: { getToken: (options?: { skipCache?: boolean }) => Promise<string | null> } | null;
+  /** How many tokens were minted bypassing Clerk's token cache. */
+  freshTokens = 0;
   signInModals = 0;
   loaded = false;
   private readonly listeners = new Set<Listener>();
@@ -46,7 +48,15 @@ class FakeClerk implements ClerkLike {
   /** Sign in as `id`, or sign out with null, and tell every listener. */
   setUser(id: string | null): void {
     this.user = id === null ? null : { id };
-    this.session = id === null ? null : { getToken: async () => `token-of-${id}` };
+    this.session =
+      id === null
+        ? null
+        : {
+            getToken: async (options) => {
+              if (options?.skipCache) this.freshTokens += 1;
+              return `token-of-${id}`;
+            },
+          };
     for (const listener of this.listeners) listener({ user: this.user });
   }
 }
@@ -167,8 +177,17 @@ describe("startAuthSession", () => {
     const clerk = new FakeClerk("user_1");
     const { session } = await startHosted(clerk);
 
-    await session.clientAuth().onUnauthorized?.();
+    const auth = session.clientAuth();
+    await auth.getToken?.();
+    expect(clerk.freshTokens).toBe(0);
+
+    await auth.onUnauthorized?.();
+    await auth.getToken?.();
     expect(clerk.signInModals).toBe(0);
+    expect(clerk.freshTokens).toBe(1);
+
+    await auth.getToken?.();
+    expect(clerk.freshTokens).toBe(1);
   });
 
   it("signing out reloads the page, so only the sign-in screen shows", async () => {
