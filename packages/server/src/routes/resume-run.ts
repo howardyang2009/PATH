@@ -64,6 +64,8 @@ export async function handleResumeRun({
       // The rerun boundary K, forwarded verbatim: the route does no K-logic; `Project.resume`
       // validates.
       rerunFromRunId,
+      // Read again now, so a rotated or deleted User secret takes effect (ADR 0089).
+      userSecrets: ctx.secrets?.values(),
     });
   } catch (err) {
     // The row vanished between the check above and the engine's own lookup (a concurrent `rm`).

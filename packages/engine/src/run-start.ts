@@ -71,7 +71,7 @@ export function analyzeRunStart(
 ): RunStartAnalysis {
   const configs = collectRunConfigs(file, options);
   const { configs: resolvedConfigs, unset } = resolveRunEnv(configs, env);
-  const masker = collectSecrets(resolvedConfigs);
+  const masker = collectSecrets(resolvedConfigs, options.userSecrets);
   const runStartFailure =
     unset.length > 0
       ? describeUnsetEnv(unset)

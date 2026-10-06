@@ -10,6 +10,7 @@ import {
   type RequesterContext,
   type RequesterContexts,
 } from "../src/requester.js";
+import { parseSecretsKey } from "../src/secret-store.js";
 
 /**
  * The requester context one request is handled under (ADR 0088): the resolved user id, that user's
@@ -91,12 +92,14 @@ describe("createRequesterContexts", () => {
       projectStore,
       resolveUserId: () => "user_abc",
       hosted: true,
+      secretsKey: parseSecretsKey(Buffer.alloc(32).toString("base64")),
     });
 
     const context = await forRequest(contexts);
 
     expect(context.store).not.toBe(projectStore);
     expect(context.store.dir).toBe(join(resolve(projectDir), "users", "user_abc"));
+    expect(context.secrets?.list()).toEqual([]);
     contexts.close();
     expect(() => context.store.archive.listRoots()).toThrow();
   });

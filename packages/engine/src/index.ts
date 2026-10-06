@@ -61,6 +61,7 @@ export {
   type RunOptions,
   type RunResult,
   runWorkflow,
+  type UserSecrets,
   type WorkerOverrides,
 } from "./run-workflow.js";
 

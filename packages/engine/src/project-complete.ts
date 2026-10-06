@@ -77,7 +77,7 @@ export async function completeProjectStep(
     workflowDir,
     files: opts.files,
     operatorConfig: runOptions.operatorConfig,
-    env: { ...process.env },
+    env: { ...(opts.userSecrets ?? process.env) },
     stepRunId,
     nodeId: leaf.nodeId,
     output,

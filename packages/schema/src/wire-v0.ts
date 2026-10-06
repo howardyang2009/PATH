@@ -280,6 +280,23 @@ export interface WireTemplateWriteResponse {
   etag: string;
 }
 
+/** One listed User secret (server-api-v0.md §11, ADR 0089): its name and when it was last set. No
+ * door returns a value. Also the `PUT /v0/secrets/:name` (`200`) reply. */
+export interface WireSecretSummary {
+  name: string;
+  updated_at: string;
+}
+
+/** `PUT /v0/secrets/:name` — set or replace one User secret. */
+export interface WirePutSecretRequest {
+  value: string;
+}
+
+/** `GET /v0/secrets` — the requester's User secrets, by name. */
+export interface WireSecretList {
+  secrets: WireSecretSummary[];
+}
+
 /** A blob name addressable via the blob route (server-api-v0.md §4.3): a run's input, output, or
  * context. */
 export type BlobName = "input" | "output" | "context";

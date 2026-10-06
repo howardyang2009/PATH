@@ -29,6 +29,7 @@ export type {
   RunOptions,
   RunResult,
   RunSeams,
+  UserSecrets,
   WorkerOverrides,
 } from "./run-options.js";
 
@@ -49,8 +50,8 @@ export async function runWorkflow(
   const runId = completeInput?.rootRunId ?? randomUUID();
 
   // One snapshot for the whole run, read here and nowhere else, so a mid-run env change cannot
-  // desync the masker.
-  const env: EnvSource = { ...process.env };
+  // desync the masker. User secrets replace the host environment entirely, never merge with it.
+  const env: EnvSource = { ...(options.userSecrets ?? process.env) };
 
   // The load's scanned registry, or a folder scan for a caller with no load; `workerOverrides`
   // merge replace-only.

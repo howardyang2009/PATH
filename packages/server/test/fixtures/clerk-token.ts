@@ -9,6 +9,8 @@ import { vi } from "vitest";
 export const ORIGIN = "https://path.example.ts.net";
 export const PUBLISHABLE_KEY = "pk_test_cGF0aC5leGFtcGxlJA";
 export const USER_ID = "user_2abcDEF123";
+/** A fixed test master key for the Secret store (`PATH_SECRETS_KEY`), 32 bytes in base64. */
+export const SECRETS_KEY = Buffer.alloc(32, 7).toString("base64");
 
 const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
 export const JWT_KEY = publicKey.export({ type: "spki", format: "pem" }).toString();
@@ -48,4 +50,5 @@ export function stubHostedEnv(): void {
   vi.stubEnv("CLERK_JWT_KEY", JWT_KEY);
   vi.stubEnv("PATH_ALLOWED_ORIGIN", ORIGIN);
   vi.stubEnv("CLERK_PUBLISHABLE_KEY", PUBLISHABLE_KEY);
+  vi.stubEnv("PATH_SECRETS_KEY", SECRETS_KEY);
 }

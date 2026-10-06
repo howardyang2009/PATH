@@ -81,6 +81,8 @@ export async function handleCompleteRun({
       registry: workflow.registry,
       // Merged over the config the launch froze (ADR 0046).
       operatorConfig: config,
+      // Read again now, so a rotated or deleted User secret takes effect (ADR 0089).
+      userSecrets: ctx.secrets?.values(),
     },
   );
 

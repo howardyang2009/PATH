@@ -138,6 +138,7 @@ export async function startPathServer(
     projectStore: project,
     resolveUserId: mode.mode === "hosted" ? clerkUserIdResolver(mode.clerk) : undefined,
     hosted: mode.mode === "hosted",
+    secretsKey: mode.mode === "hosted" ? mode.secretsKey : undefined,
   });
   // The host-level creator table (ADR 0088 §3). Local mode adopts today's untracked `shared/` files
   // as created by `local`, so they stay editable.

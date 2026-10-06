@@ -1120,3 +1120,41 @@ Responses:
 - `200 OK` — `application/json`, the file's bytes, `Content-Disposition: attachment;
   filename="<name>.step-template.json"`.
 - `404 Not Found` — no template resolves to `:id`.
+
+## 11. `/v0/secrets` — the requester's Secret store
+
+Hosted mode only ([ADR 0089](../adr/0089-in-hosted-mode-the-launchers-secret-store-replaces-the-host-environment.md)).
+Each user has a Secret store of User secrets, kept as rows in their own
+`users/<user-id>/.path/path.db`. Each value is encrypted with AES-256-GCM under the host master key
+`PATH_SECRETS_KEY` (32 bytes in base64), and each row records the key id. The Server reads the key from
+its environment; the owner's `launchd` LaunchAgent exports it from the macOS Keychain at boot
+(path-website.md §12). Hosted mode refuses to start without that key. **No door returns a value.** In local mode every door answers `404`.
+
+A hosted run resolves `{"$env": "NAME"}` against its launcher's Secret store, never the host
+environment, also for a shared workflow made by another user. An unset name fails the run before its
+first step. Every stored value is masked as `[secret:<name>]` in persisted events and blobs. A Resume
+(§4.3) or a Complete (§4.4) reads the store again, as it is at that moment.
+
+Limits, each a `400`: a name matches `^[A-Z_][A-Z0-9_]*$` and is at most 128 characters; a value is at
+most 64 KiB; at most 100 User secrets per user. Reserved names are `PATH`, `HOME`, `USER`, `SHELL`,
+`TMPDIR`, `NODE_*`, `LD_*`, `DYLD_*`, `PATH_*` and the host allowlist (`DEEPSEEK_BASE_URL`).
+
+### 11.1 `GET /v0/secrets` — list names
+
+- `200 OK` — `{ "secrets": [{ "name": "…", "updated_at": "<ISO 8601>" }] }`, sorted by name.
+
+### 11.2 `PUT /v0/secrets/:name` — set or replace
+
+Origin-gated. Request body: `{ "value": "<string>" }`.
+
+- `200 OK` — `{ "name": "…", "updated_at": "<ISO 8601>" }`. The value is never echoed.
+- `400 Bad Request` — invalid JSON, a body that is not `{ "value": string }`, a malformed or reserved
+  name, a value over 64 KiB, or a new name past 100.
+
+### 11.3 `DELETE /v0/secrets/:name` — remove
+
+Origin-gated.
+
+- `204 No Content` — removed.
+- `400 Bad Request` — a malformed or reserved name.
+- `404 Not Found` — no User secret has that name.

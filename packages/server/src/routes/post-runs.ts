@@ -87,6 +87,8 @@ export async function handlePostRuns({ req, ctx }: ApiRequest): Promise<RouteRep
       // Recorded on the root row so this run is resumable (§4.3), relative to the project root
       // whichever store holds the run, since resume reads it back through the layout.
       sourceWorkflowPath: workflow.storeRelativePath(ctx.layout.projectDir),
+      // Hosted mode: the launcher's Secret store replaces the host environment (ADR 0089).
+      userSecrets: ctx.secrets?.values(),
     });
   } catch (err) {
     return replyError(

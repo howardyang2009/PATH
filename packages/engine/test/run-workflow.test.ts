@@ -1084,6 +1084,47 @@ describe("runWorkflow — $env resolution at run start (ticket #116)", () => {
     expect(result.status).toBe("failed");
     expect(result.error).toContain("PATH_TEST_MISSING_A");
   });
+
+  describe("against the launcher's User secrets", () => {
+    it("resolves $env from the User secrets, not the host environment", async () => {
+      vi.stubEnv("PATH_TEST_TOKEN", "host-value");
+      const result = await runWorkflow(
+        stampNames(envEchoFile({ token: { $env: "PATH_TEST_TOKEN" } })),
+        fixturesDir,
+        { userSecrets: { PATH_TEST_TOKEN: VALUE } },
+      );
+
+      expect(result.output).toEqual({ seen: VALUE });
+    });
+
+    it("fails before the first step on a name only the host environment sets", async () => {
+      vi.stubEnv("PATH_TEST_TOKEN", "host-value");
+      const observer = fakeObserver();
+      const result = await runWorkflow(
+        stampNames(envEchoFile({ token: { $env: "PATH_TEST_TOKEN" } })),
+        fixturesDir,
+        { observer, userSecrets: {} },
+      );
+
+      expect(result.status).toBe("failed");
+      expect(result.error).toContain("PATH_TEST_TOKEN");
+      expect(observer.stepStarts()).toHaveLength(0);
+    });
+
+    it("masks every User secret value as its name, without a $secret wrapper", async () => {
+      const observer = fakeObserver();
+      const result = await runWorkflow(
+        stampNames(envEchoFile({ token: { $env: "API_TOKEN" } })),
+        fixturesDir,
+        { observer, userSecrets: { API_TOKEN: VALUE, UNUSED_KEY: "never-referenced-value" } },
+      );
+
+      expect(result.output).toEqual({ seen: VALUE }); // the worker got the real value
+      const persisted = JSON.stringify(observer.all());
+      expect(persisted).not.toContain(VALUE);
+      expect(persisted).toContain("[secret:API_TOKEN]");
+    });
+  });
 });
 
 describe("runWorkflow — input maps (ticket #17)", () => {

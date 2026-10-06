@@ -5,6 +5,7 @@ import {
   type LogBackendId,
   type Project,
   type RunObserver,
+  type UserSecrets,
   WORKFLOW_STEP_TYPE,
 } from "@path/engine";
 import type { ConfigObject, JsonValue, LogEvent, WorkflowFile } from "@path/schema";
@@ -77,6 +78,9 @@ export interface StartRunOptions {
   /** The root workflow file's project-relative path, recorded so a later `resume` can recover the
    * file. */
   sourceWorkflowPath?: string;
+  /** The launcher's User secrets in hosted mode (ADR 0089), read at this call: `$env` resolves
+   * against them instead of the host environment. */
+  userSecrets?: UserSecrets;
 }
 
 /**
@@ -99,6 +103,8 @@ export interface ResumeRunOptions {
   /** The rerun boundary K's source run id (ADR 0032), forwarded verbatim to `Project.resume`;
    * absent = plain Resume. */
   rerunFromRunId?: string;
+  /** As `StartRunOptions.userSecrets`, read again at this call. */
+  userSecrets?: UserSecrets;
 }
 
 /**
@@ -115,6 +121,8 @@ export interface CompleteRunOptions {
    * value is supplied again.
    */
   operatorConfig?: ConfigObject;
+  /** As `StartRunOptions.userSecrets`, read again at this call. */
+  userSecrets?: UserSecrets;
 }
 
 /** Thrown by `resume` when the engine reports the predecessor root run id unknown. */

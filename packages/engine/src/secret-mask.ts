@@ -7,6 +7,7 @@ import {
 } from "@path/schema";
 import type { Trace } from "./condition.js";
 import type { RunEvent, RunPayload, UnsequencedLogEvent } from "./run-observer.js";
+import type { UserSecrets } from "./run-options.js";
 
 /**
  * Secret masking at the persistence boundary (mvp spec §8.3): artifacts are scrubbed *by value*
@@ -53,10 +54,17 @@ function collectFromValue(path: string, value: ConfigValue, into: Map<string, Se
 
 /**
  * Collects every `$secret` value across the given config objects in order (earlier objects win a
- * duplicated value's token). Pass the effective config sources of the whole run tree.
+ * duplicated value's token). Pass the effective config sources of the whole run tree. Each named
+ * User secret is masked too, as `[secret:<name>]`, and wins its value's token over any config key.
  */
-export function collectSecrets(configs: ConfigObject[]): SecretMasker {
+export function collectSecrets(
+  configs: ConfigObject[],
+  userSecrets: UserSecrets = {},
+): SecretMasker {
   const map = new Map<string, SecretEntry>();
+  for (const [name, value] of Object.entries(userSecrets)) {
+    if (!map.has(value)) map.set(value, { key: name, value, token: `[secret:${name}]` });
+  }
   for (const config of configs) {
     for (const [key, value] of Object.entries(config)) collectFromValue(key, value, map);
   }

@@ -3,12 +3,14 @@ import { type RouteReply, replyError, sendReply } from "../http-json.js";
 import { handleCancelRun } from "./cancel-run.js";
 import { handleCompleteRun } from "./complete-run.js";
 import { handleDeleteRun } from "./delete-run.js";
+import { handleDeleteSecret } from "./delete-secret.js";
 import { handleDeleteTemplate } from "./delete-template.js";
 import { handleDeleteWorkflow } from "./delete-workflow.js";
 import { authConfigReply } from "./get-auth-config.js";
 import { handleGetRun } from "./get-run.js";
 import { handleGetRunBlob } from "./get-run-blob.js";
 import { handleGetRunEvents } from "./get-run-events.js";
+import { handleGetSecrets } from "./get-secrets.js";
 import { handleGetStepPlugins } from "./get-step-plugins.js";
 import { handleGetTemplate } from "./get-template.js";
 import { handleGetTemplateDownload } from "./get-template-download.js";
@@ -20,6 +22,7 @@ import { handleListRuns } from "./list-runs.js";
 import { handlePostRuns } from "./post-runs.js";
 import { handlePostTemplates } from "./post-templates.js";
 import { handlePostWorkflowCopy } from "./post-workflow-copy.js";
+import { handlePutSecret } from "./put-secret.js";
 import { handlePutTemplate } from "./put-template.js";
 import { handlePutWorkflow } from "./put-workflow.js";
 import { handleResumeRun } from "./resume-run.js";
@@ -58,6 +61,7 @@ type ApiRoute =
 
 const RUN = /^\/v0\/runs\/([^/]+)$/;
 const TEMPLATE = /^\/v0\/templates\/([^/]+)$/;
+const SECRET = /^\/v0\/secrets\/([^/]+)$/;
 
 const API_ROUTES: readonly ApiRoute[] = [
   // Runs (§2–§6).
@@ -102,6 +106,11 @@ const API_ROUTES: readonly ApiRoute[] = [
   },
   { method: "PUT", path: TEMPLATE, handle: handlePutTemplate },
   { method: "DELETE", path: TEMPLATE, handle: handleDeleteTemplate },
+
+  // The requester's Secret store (§11, ADR 0089): write-only, and `404` in local mode.
+  { method: "GET", path: "/v0/secrets", handle: handleGetSecrets },
+  { method: "PUT", path: SECRET, handle: handlePutSecret },
+  { method: "DELETE", path: SECRET, handle: handleDeleteSecret },
 ];
 
 /**
