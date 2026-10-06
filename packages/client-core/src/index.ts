@@ -60,6 +60,16 @@ export {
   type WorkflowFileRaw,
   type WorkflowLease,
 } from "./api-client.js";
+// Sign-in (spec path-website §7): the mode from `GET /v0/auth-config`, and Clerk only in hosted mode.
+export {
+  type AuthConfig,
+  type AuthSession,
+  type ClerkLike,
+  type MountNode,
+  type PageLocation,
+  type StartAuthSessionOptions,
+  startAuthSession,
+} from "./auth-session.js";
 // The awaiting surface (ADR 0040): the `person-activity` node read from the workflow file by id,
 // and the framework-free Complete-form model both surfaces draw.
 export {

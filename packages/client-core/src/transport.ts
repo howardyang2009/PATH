@@ -6,6 +6,30 @@ export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>
 /** The default transport: the ambient global `fetch`, wrapped rather than passed by reference. */
 export const defaultFetch: FetchLike = (input, init) => fetch(input, init);
 
+/** How a hosted client signs its requests: `getToken` supplies the Bearer token (null sends none),
+ * and `onUnauthorized` settles once the user has signed in again after a `401`. */
+export interface RequestAuth {
+  getToken: () => Promise<string | null>;
+  onUnauthorized?: () => Promise<void>;
+}
+
+/** `fetch` with the Bearer token on every call. A `401` waits for `onUnauthorized`, then retries
+ * once with the new token, so a call made before the session was lost still lands. */
+export function authorizedFetch(fetch: FetchLike, auth: RequestAuth): FetchLike {
+  const send = async (input: string, init?: RequestInit): Promise<Response> => {
+    const headers = new Headers(init?.headers);
+    const token = await auth.getToken();
+    if (token !== null) headers.set("Authorization", `Bearer ${token}`);
+    return fetch(input, { ...init, headers });
+  };
+  return async (input, init) => {
+    const res = await send(input, init);
+    if (res.status !== 401 || !auth.onUnauthorized) return res;
+    await auth.onUnauthorized();
+    return send(input, init);
+  };
+}
+
 /** A non-2xx response from the server, carrying its parsed `{ error: { message, details? } }`
  * envelope (server-api-v0.md §1).
  */

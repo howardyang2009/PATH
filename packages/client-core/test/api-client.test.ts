@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { type FetchLike, PathApiClient, PathApiError } from "../src/api-client.js";
+import { subscribeRunEvents } from "../src/sse-client.js";
 
 /** A `fetch` stub that records the last requested URL and returns a canned response. */
 function stubFetch(handler: (url: string, init?: RequestInit) => Response): {
@@ -882,5 +883,154 @@ describe("PathApiClient — PathApiError is the only failure", () => {
     const stub = stubFetch(() => new Response("<html>proxy page</html>", { status: 200 }));
     const client = new PathApiClient({ baseUrl: "http://x", fetch: stub.fetch });
     await expect(client.listWorkflows()).rejects.toBeInstanceOf(PathApiError);
+  });
+});
+
+interface Call {
+  url: string;
+  authorization: string | null;
+}
+
+/** A `fetch` stub that records each call's URL and `Authorization` header. */
+function recordingFetch(handler: (call: Call, index: number) => Response): {
+  fetch: FetchLike;
+  calls: Call[];
+} {
+  const calls: Call[] = [];
+  const fetch: FetchLike = async (url, init) => {
+    const call = { url, authorization: new Headers(init?.headers).get("Authorization") };
+    calls.push(call);
+    return handler(call, calls.length - 1);
+  };
+  return { fetch, calls };
+}
+
+const unauthorized = (): Response => json({ error: { message: "sign in" } }, 401);
+
+describe("PathApiClient with getToken", () => {
+  it("sends the Bearer token on a REST call", async () => {
+    const stub = recordingFetch(() => json({ runs: [] }));
+    const client = new PathApiClient({
+      baseUrl: "http://h",
+      fetch: stub.fetch,
+      getToken: async () => "tok-1",
+    });
+
+    await client.listRuns();
+    expect(stub.calls[0]?.authorization).toBe("Bearer tok-1");
+  });
+
+  it("sends the Bearer token on a blob download", async () => {
+    const stub = recordingFetch(() => new Response("{}", { status: 200 }));
+    const client = new PathApiClient({
+      baseUrl: "http://h",
+      fetch: stub.fetch,
+      getToken: async () => "tok-1",
+    });
+
+    await client.downloadTemplate("t1");
+    expect(stub.calls[0]?.authorization).toBe("Bearer tok-1");
+  });
+
+  it("sends the Bearer token on the SSE stream through the client's fetch", async () => {
+    const stub = recordingFetch(() => new Response("", { status: 200 }));
+    const client = new PathApiClient({
+      baseUrl: "http://h",
+      fetch: stub.fetch,
+      getToken: async () => "tok-1",
+    });
+
+    const sub = subscribeRunEvents({
+      baseUrl: client.baseUrl,
+      rootRunId: "r1",
+      onEvent: () => {},
+      reconnect: false,
+      fetch: client.fetch,
+    });
+    await vi.waitFor(() => expect(stub.calls.length).toBeGreaterThan(0));
+    sub.close();
+    expect(stub.calls[0]?.authorization).toBe("Bearer tok-1");
+  });
+
+  it("sends no Authorization header when the token is null", async () => {
+    const stub = recordingFetch(() => json({ runs: [] }));
+    const client = new PathApiClient({
+      baseUrl: "http://h",
+      fetch: stub.fetch,
+      getToken: async () => null,
+    });
+
+    await client.listRuns();
+    expect(stub.calls[0]?.authorization).toBeNull();
+  });
+
+  it("on a 401 waits for sign-in, then retries the call with the new token", async () => {
+    let token = "stale";
+    let signIns = 0;
+    const stub = recordingFetch((call) =>
+      call.authorization === "Bearer fresh" ? json({ runs: [] }) : unauthorized(),
+    );
+    const client = new PathApiClient({
+      baseUrl: "http://h",
+      fetch: stub.fetch,
+      getToken: async () => token,
+      onUnauthorized: async () => {
+        signIns += 1;
+        token = "fresh";
+      },
+    });
+
+    await expect(client.listRuns()).resolves.toEqual({ runs: [] });
+    expect(signIns).toBe(1);
+    expect(stub.calls.map((c) => c.authorization)).toEqual(["Bearer stale", "Bearer fresh"]);
+  });
+
+  it("retries a write with its body after sign-in", async () => {
+    const bodies: (string | undefined)[] = [];
+    let token = "stale";
+    const fetch: FetchLike = async (_url, init) => {
+      bodies.push(init?.body as string | undefined);
+      return new Headers(init?.headers).get("Authorization") === "Bearer fresh"
+        ? json({ id: "t1", relative_path: "t1.json", etag: "e1" }, 201)
+        : unauthorized();
+    };
+    const client = new PathApiClient({
+      baseUrl: "http://h",
+      fetch,
+      getToken: async () => token,
+      onUnauthorized: async () => {
+        token = "fresh";
+      },
+    });
+
+    await client.createTemplate({ body: { id: "t1" } } as never);
+    expect(bodies).toHaveLength(2);
+    expect(bodies[1]).toBe(bodies[0]);
+  });
+
+  it("retries only once: a second 401 is the caller's error", async () => {
+    let signIns = 0;
+    const stub = recordingFetch(() => unauthorized());
+    const client = new PathApiClient({
+      baseUrl: "http://h",
+      fetch: stub.fetch,
+      getToken: async () => "tok",
+      onUnauthorized: async () => {
+        signIns += 1;
+      },
+    });
+
+    await expect(client.listRuns()).rejects.toMatchObject({ status: 401 });
+    expect(signIns).toBe(1);
+    expect(stub.calls).toHaveLength(2);
+  });
+
+  it("without onUnauthorized a 401 is raised at once", async () => {
+    const stub = recordingFetch(() => unauthorized());
+    const client = new PathApiClient({ baseUrl: "http://h", fetch: stub.fetch });
+
+    await expect(client.listRuns()).rejects.toMatchObject({ status: 401 });
+    expect(stub.calls).toHaveLength(1);
+    expect(stub.calls[0]?.authorization).toBeNull();
   });
 });

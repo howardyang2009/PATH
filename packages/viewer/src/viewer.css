@@ -30,6 +30,30 @@
   font-size: var(--fs-xs);
 }
 
+/* Hosted mode only: Clerk's user menu at the right end of either app's top bar. */
+.user-menu {
+  display: flex;
+  align-items: center;
+  margin-left: auto;
+  align-self: center;
+}
+
+/* Hosted mode with no session: nothing of the app shows until a user signs in. */
+.sign-in-screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  height: 100vh;
+  background: var(--ground);
+}
+
+.boot-error {
+  padding: 16px;
+  color: var(--status-failed-fg);
+}
+
 /* The three panes: fixed rails around a fluid centre; each pane scrolls on its own so the live
    narrative never pushes the runs list out of view. */
 .panes {

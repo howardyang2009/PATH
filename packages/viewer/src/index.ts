@@ -1,6 +1,8 @@
 // @path/viewer — its App is the standalone viewer; the Designer's run dock mounts the same panels.
 // Consumers must also import `@path/viewer/viewer.css`.
 
+// Sign-in: the gate both apps render inside, and the user menu each header carries.
+export { AuthGate, type AuthGateProps, UserMenu } from "./auth-gate.js";
 export {
   beginDrag,
   type DragSize,
@@ -12,6 +14,7 @@ export {
 export { JsonField } from "./json-field.js";
 export { LaunchForm, type LaunchFormProps } from "./launch-form.js";
 export { errorMessage, type Load } from "./load-state.js";
+export { mountApp } from "./mount-app.js";
 export { NodeIo, type NodeIoProps } from "./node-io.js";
 export {
   ResumeActions,

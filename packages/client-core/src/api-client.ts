@@ -25,11 +25,13 @@ import type {
   WireWorkflowLease,
 } from "@path/schema";
 import {
+  authorizedFetch,
   defaultFetch,
   type FetchLike,
   HttpTransport,
   ifMatchHeader,
   parseReply,
+  type RequestAuth,
   toApiError,
 } from "./transport.js";
 
@@ -414,6 +416,10 @@ export interface PathApiClientOptions {
   baseUrl: string;
   /** Injected `fetch`; defaults to the global. Lets a host swap in its own transport. */
   fetch?: FetchLike;
+  /** Hosted mode: the Bearer token for every REST, blob and SSE call. */
+  getToken?: RequestAuth["getToken"];
+  /** Hosted mode: settles once the user signs in again after a `401`; the call is then retried. */
+  onUnauthorized?: RequestAuth["onUnauthorized"];
 }
 
 /** A typed client over the `@path/server` v0 HTTP API (server-api-v0.md §§2–7, §10): pure TS, every
@@ -429,7 +435,9 @@ export class PathApiClient {
 
   constructor(options: PathApiClientOptions) {
     this.baseUrl = options.baseUrl.replace(/\/+$/, "");
-    this.fetch = options.fetch ?? defaultFetch;
+    const fetch = options.fetch ?? defaultFetch;
+    const { getToken, onUnauthorized } = options;
+    this.fetch = getToken ? authorizedFetch(fetch, { getToken, onUnauthorized }) : fetch;
     this.http = new HttpTransport(this.baseUrl, this.fetch);
   }
 
