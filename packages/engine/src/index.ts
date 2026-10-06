@@ -22,7 +22,11 @@ export {
   renewMarkerLease,
 } from "./persistence/marker-lease.js";
 export { dbFilePath, pathDir, rootRunTreeDir } from "./persistence/paths.js";
-export type { ImportTreeResult, RunTreeExport } from "./persistence/run-transfer.js";
+export {
+  exportTreeFromFile,
+  type ImportTreeResult,
+  type RunTreeExport,
+} from "./persistence/run-transfer.js";
 export { type LoadedStepPluginRegistry, loadStepPluginRegistry } from "./plugin-seam/scan.js";
 export {
   type CompleteResult,

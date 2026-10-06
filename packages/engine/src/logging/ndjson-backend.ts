@@ -1,4 +1,13 @@
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, writeSync } from "node:fs";
+import {
+  closeSync,
+  existsSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  readSync,
+  statSync,
+  writeSync,
+} from "node:fs";
 import { join } from "node:path";
 import { type LogEvent, LogEventSchema } from "@path/schema";
 import { rootRunTreeDir } from "../persistence/paths.js";
@@ -27,6 +36,8 @@ export function createNdjsonBackend(projectDir: string): LogBackend {
       const continuing = append === true && existsSync(logPath);
       fd = openSync(logPath, continuing ? "a" : "w");
       if (!continuing) writeLine({ type: "log-header", format, run_id: runId });
+      // A torn last line (its writer was killed) must not swallow the next event.
+      else if (!endsWithNewline(logPath)) writeSync(fd, "\n");
     },
     async write(event) {
       writeLine(event);
@@ -40,6 +51,19 @@ export function createNdjsonBackend(projectDir: string): LogBackend {
   };
 }
 
+function endsWithNewline(path: string): boolean {
+  const { size } = statSync(path);
+  if (size === 0) return true;
+  const last = Buffer.alloc(1);
+  const fd = openSync(path, "r");
+  try {
+    readSync(fd, last, 0, 1, size - 1);
+  } finally {
+    closeSync(fd);
+  }
+  return last[0] === 0x0a;
+}
+
 // Reads a root run's persisted `run.log` back into its `LogEvent` narrative, in `seq` order,
 // skipping the header line. `[]` when the file doesn't exist (the backend was never enabled) — not
 // an error.
@@ -49,9 +73,16 @@ export function readNdjsonLog(projectDir: string, rootRunId: string): LogEvent[]
   const events: LogEvent[] = [];
   for (const line of readFileSync(logPath, "utf8").split("\n")) {
     if (line.trim() === "") continue;
-    const parsed: unknown = JSON.parse(line);
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(line);
+    } catch {
+      continue; // a torn line from a killed writer
+    }
     if ((parsed as { type?: string }).type === "log-header") continue;
-    events.push(LogEventSchema.parse(parsed));
+    // A sandboxed run's `run.log` is written by the VM, so a line that is no event is skipped.
+    const event = LogEventSchema.safeParse(parsed);
+    if (event.success) events.push(event.data);
   }
   return events;
 }

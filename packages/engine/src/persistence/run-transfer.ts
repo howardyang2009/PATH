@@ -1,5 +1,5 @@
 import { LogEventSchema, RUN_STATUSES } from "@path/schema";
-import type Database from "better-sqlite3";
+import Database from "better-sqlite3";
 import { z } from "zod";
 
 /**
@@ -78,6 +78,27 @@ export function exportTree(db: Database.Database, rootRunId: string): RunTreeExp
     .prepare(`SELECT * FROM log_events WHERE root_run_id = @rootRunId ORDER BY seq`)
     .all({ rootRunId }) as RunTreeExport["events"];
   return { runs, events };
+}
+
+/**
+ * One root's export read from a `path.db` another process wrote and may have crafted (a lost
+ * sandbox's store): opened read-only, with schema-defined code distrusted, and read only when
+ * `runs` and `log_events` are plain tables. `null` when it holds no rows for the root.
+ */
+export function exportTreeFromFile(dbFile: string, rootRunId: string): RunTreeExport | null {
+  const db = new Database(dbFile, { readonly: true, fileMustExist: true });
+  try {
+    db.pragma("trusted_schema = OFF");
+    const tables = db
+      .prepare(
+        `SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('runs', 'log_events')`,
+      )
+      .all() as { name: string }[];
+    if (tables.length !== 2) return null;
+    return exportTree(db, rootRunId);
+  } finally {
+    db.close();
+  }
 }
 
 /** A blob ref a row may hold: `runs/<root>/<run>/<file>`, no `.` or `..` segment. */

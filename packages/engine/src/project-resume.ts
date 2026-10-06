@@ -118,15 +118,20 @@ function preorderRuns(rows: RunRecord[]): RunRecord[] {
   return out;
 }
 
-/** `Project.resume`: re-run `rootFile` as a successor of the terminal tree rooted at
- * `rootRunId`. */
-export async function resumeProjectRun(
-  { db, absDir, execute }: ProjectCore,
+/** Why a Resume of `rootRunId` would start no successor, or the boundary K it would rerun from. */
+function resumeGate(
+  db: ProjectCore["db"],
   rootFile: WorkflowFile,
   rootRunId: string,
   workflowDir: string,
-  opts: ProjectResumeOptions,
-): Promise<ResumeResult> {
+  opts: Pick<ProjectResumeOptions, "files" | "rerunFromRunId">,
+):
+  | Extract<ResumeResult, { found: false }>
+  | {
+      directRuns: RunRecord[];
+      rerunFromNodePath?: string[];
+      rerunFromPasses?: (number | null)[];
+    } {
   // The raw predecessor tree, read once. `getRunsForRoot` keys on `root_run_id`, so an unknown or
   // child id yields no rows — the `found: false` case.
   const directRuns = getRunsForRoot(db, rootRunId);
@@ -137,25 +142,47 @@ export async function resumeProjectRun(
       ? { found: false, error: problem.message }
       : { found: false, refusal: { status: 409, message: problem.message } };
   }
+  if (opts.rerunFromRunId === undefined) return { directRuns };
 
   // Resume-from-K: resolve the source run id to the boundary node-id path and enforce legal-K here
   // — the one authority. The raw predecessor tree is the input, never the swapped one.
-  const { rerunFromRunId, ...runOpts } = opts;
-  let rerunFromNodePath: string[] | undefined;
-  let rerunFromPasses: (number | null)[] | undefined;
-  if (rerunFromRunId !== undefined) {
-    // `files`/`workflowDir` let legal-K descend a nested K, one level per path element.
-    const verdict = resolveLegalK(
-      rootFile,
-      directRuns,
-      rerunFromRunId,
-      runOpts.files ?? new Map(),
-      workflowDir,
-    );
-    if (!verdict.ok) return { found: false, refusal: verdict.refusal };
-    rerunFromNodePath = verdict.nodePath;
-    rerunFromPasses = verdict.passes;
-  }
+  // `files`/`workflowDir` let legal-K descend a nested K, one level per path element.
+  const verdict = resolveLegalK(
+    rootFile,
+    directRuns,
+    opts.rerunFromRunId,
+    opts.files ?? new Map(),
+    workflowDir,
+  );
+  if (!verdict.ok) return { found: false, refusal: verdict.refusal };
+  return { directRuns, rerunFromNodePath: verdict.nodePath, rerunFromPasses: verdict.passes };
+}
+
+/** `Project.checkResume`: the refusal `resume` would answer, without starting anything. */
+export function checkResumeRequest(
+  { db }: ProjectCore,
+  rootFile: WorkflowFile,
+  rootRunId: string,
+  workflowDir: string,
+  opts: Pick<ProjectResumeOptions, "files" | "rerunFromRunId">,
+): Extract<ResumeResult, { found: false }> | undefined {
+  const gate = resumeGate(db, rootFile, rootRunId, workflowDir, opts);
+  return "found" in gate ? gate : undefined;
+}
+
+/** `Project.resume`: re-run `rootFile` as a successor of the terminal tree rooted at
+ * `rootRunId`. */
+export async function resumeProjectRun(
+  { db, absDir, execute }: ProjectCore,
+  rootFile: WorkflowFile,
+  rootRunId: string,
+  workflowDir: string,
+  opts: ProjectResumeOptions,
+): Promise<ResumeResult> {
+  const gate = resumeGate(db, rootFile, rootRunId, workflowDir, opts);
+  if ("found" in gate) return gate;
+  const { directRuns, rerunFromNodePath, rerunFromPasses } = gate;
+  const { rerunFromRunId: _boundary, ...runOpts } = opts;
 
   // The continuation recipe Resume and Complete share: rows with reuse rows swapped for their
   // source, a read-only blob reader, and the recorded launch facts.

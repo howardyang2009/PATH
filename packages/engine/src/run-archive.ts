@@ -12,7 +12,9 @@ import {
   subtree,
 } from "@path/schema";
 import type Database from "better-sqlite3";
-import { reuseMarkerReferences } from "./logging/db-backend.js";
+import { createDbLogBackend, reuseMarkerReferences } from "./logging/db-backend.js";
+import { LOG_FORMAT } from "./logging/log-backend.js";
+import { createNdjsonBackend } from "./logging/ndjson-backend.js";
 import { openRunLog } from "./logging/run-log.js";
 import { dirExists, readJsonBlob, removeDir } from "./persistence/blob-store.js";
 import { openDb, SchemaVersionError } from "./persistence/db.js";
@@ -27,6 +29,7 @@ import {
 import {
   deleteAllRuns,
   deleteRunsForRoot,
+  endNonTerminalRuns,
   existingRunIds,
   getLaunchFacts,
   getRunsForRoot,
@@ -92,6 +95,16 @@ export interface RunArchive {
   /** Writes an exported tree as root `rootRunId`, replacing this root's rows, after the checks
    * `importTree` in `persistence/run-transfer.ts` lists. */
   importTree(rootRunId: string, exported: unknown): ImportTreeResult;
+  /**
+   * Ends a tree no engine drives any more (its process was lost or stopped): every `pending`,
+   * `running` or `awaiting` run becomes `status`, and the root's narrative closes with a
+   * `step-finished` carrying `error`. Resolves with the number of runs ended.
+   */
+  endNonTerminal(
+    rootRunId: string,
+    status: "failed" | "cancelled",
+    error?: string,
+  ): Promise<number>;
 }
 
 export interface ListRootsOptions {
@@ -236,6 +249,31 @@ export function createRunArchive(db: Database.Database, projectDir: string): Run
     exportTree: (rootRunId) => exportTree(db, rootRunId),
 
     importTree: (rootRunId, exported) => importTree(db, rootRunId, exported),
+
+    async endNonTerminal(rootRunId, status, error) {
+      const ended = endNonTerminalRuns(db, rootRunId, status);
+      if (ended === 0) return 0;
+      const log = openRunLog(dir, db, rootRunId);
+      const event: LogEvent = {
+        type: "step-finished",
+        seq: log.lastSeq() + 1,
+        ts: new Date().toISOString(),
+        run_id: rootRunId,
+        node_id: null,
+        node_name: null,
+        status,
+        ...(error !== undefined ? { error } : {}),
+      };
+      // Each store that holds the narrative, so whichever `events()` reads tells the same end.
+      const hasRunLog = existsSync(join(rootRunTreeDir(dir, rootRunId), "run.log"));
+      const backends = [createDbLogBackend(db), ...(hasRunLog ? [createNdjsonBackend(dir)] : [])];
+      for (const backend of backends) {
+        await backend.open({ runId: rootRunId, format: LOG_FORMAT, append: true });
+        await backend.write(event);
+        await backend.close();
+      }
+      return ended;
+    },
   };
 }
 

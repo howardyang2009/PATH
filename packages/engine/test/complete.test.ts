@@ -537,3 +537,22 @@ describe("Complete — the frozen launch config (ADR 0046)", () => {
     }
   });
 });
+
+describe("Project.checkComplete", () => {
+  it("answers the refusal complete would, and nothing for an awaiting leaf", async () => {
+    const project = open();
+    try {
+      const wf = workflow([person("approve"), marker("after")]);
+      await project.run(wf, dir);
+      const [root] = project.archive.listRoots();
+      const leaf = awaitingLeaf(project, root!.runId);
+
+      expect(project.checkComplete(wf, "nope", {}, dir)).toMatchObject({ reason: "not-found" });
+      expect(project.checkComplete(wf, leaf.runId, {}, dir)).toBeUndefined();
+      expect(awaitingLeaf(project, root!.runId).runId).toBe(leaf.runId);
+      expect(rowByNode(project, root!.runId, "after")).toBeUndefined();
+    } finally {
+      project.close();
+    }
+  });
+});

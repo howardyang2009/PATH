@@ -30,16 +30,17 @@ export type CompleteResult =
       error?: string;
     };
 
-/** `Project.complete`: validate the output, take the per-root lease, then replay the tree to flip
- * the parked leaf. */
-export async function completeProjectStep(
-  { db, absDir, execute }: ProjectCore,
+/** The refusal a Complete of `stepRunId` meets before its lease, or the tree it would drive. */
+function completeGate(
+  db: ProjectCore["db"],
   rootFile: WorkflowFile,
   stepRunId: string,
   output: JsonValue,
   workflowDir: string,
   opts: ProjectContinuationOptions,
-): Promise<CompleteResult> {
+):
+  | Extract<CompleteResult, { ok: false }>
+  | { ok: true; rootRunId: string; runOptions: ReturnType<typeof continuationRunOptions> } {
   // An unknown id is `not-found` (404); a leaf not `awaiting` — already succeeded, or a
   // double-submit — is `not-awaiting` (409).
   const leaf = getRun(db, stepRunId);
@@ -83,6 +84,36 @@ export async function completeProjectStep(
     output,
   });
   if (!check.ok) return check;
+  return { ok: true, rootRunId, runOptions };
+}
+
+/** `Project.checkComplete`: the refusal `complete` would answer before its lease, without driving
+ * anything. */
+export function checkCompleteRequest(
+  { db }: ProjectCore,
+  rootFile: WorkflowFile,
+  stepRunId: string,
+  output: JsonValue,
+  workflowDir: string,
+  opts: ProjectContinuationOptions,
+): Extract<CompleteResult, { ok: false }> | undefined {
+  const gate = completeGate(db, rootFile, stepRunId, output, workflowDir, opts);
+  return gate.ok ? undefined : gate;
+}
+
+/** `Project.complete`: validate the output, take the per-root lease, then replay the tree to flip
+ * the parked leaf. */
+export async function completeProjectStep(
+  { db, absDir, execute }: ProjectCore,
+  rootFile: WorkflowFile,
+  stepRunId: string,
+  output: JsonValue,
+  workflowDir: string,
+  opts: ProjectContinuationOptions,
+): Promise<CompleteResult> {
+  const gate = completeGate(db, rootFile, stepRunId, output, workflowDir, opts);
+  if (!gate.ok) return gate;
+  const { rootRunId, runOptions } = gate;
 
   // Per-root-run expiring lease: a held lease rejects (`lease-held` → 409) rather than queueing.
   const lease = acquireCompleteLease(absDir, rootRunId);

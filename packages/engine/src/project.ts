@@ -9,8 +9,14 @@ import { openDb, SchemaVersionError } from "./persistence/db.js";
 import { ensurePathDirGitignore } from "./persistence/gitignore.js";
 import { dbFilePath, pathDir } from "./persistence/paths.js";
 import { createPersistedObserver } from "./persistence/persisted-observer.js";
-import { type CompleteResult, cancelAwaitingRun, completeProjectStep } from "./project-complete.js";
 import {
+  type CompleteResult,
+  cancelAwaitingRun,
+  checkCompleteRequest,
+  completeProjectStep,
+} from "./project-complete.js";
+import {
+  checkResumeRequest,
   type ListEligibleResult,
   listEligibleRuns,
   type ResumeResult,
@@ -67,6 +73,14 @@ export interface Project {
     workflowDir: string,
     opts?: ProjectResumeOptions,
   ): Promise<ResumeResult>;
+  /** The refusal `resume` would answer (unknown root, live or settled source, illegal K), or
+   * `undefined` when a successor would start. Starts nothing. */
+  checkResume(
+    rootFile: WorkflowFile,
+    rootRunId: string,
+    workflowDir: string,
+    opts?: Pick<ProjectResumeOptions, "files" | "rerunFromRunId">,
+  ): Extract<ResumeResult, { found: false }> | undefined;
   /**
    * Dry-run of resume: compute but launch nothing — DFS pre-order runs, each with the verdict the
    * same `resolveLegalK` authority gives `--from`. An unknown or non-terminal source refuses the
@@ -92,6 +106,15 @@ export interface Project {
     workflowDir: string,
     opts?: ProjectContinuationOptions,
   ): Promise<CompleteResult>;
+  /** The refusal `complete` would answer before taking its lease, or `undefined`. Drives
+   * nothing. */
+  checkComplete(
+    rootFile: WorkflowFile,
+    stepRunId: string,
+    output: JsonValue,
+    workflowDir: string,
+    opts?: ProjectContinuationOptions,
+  ): Extract<CompleteResult, { ok: false }> | undefined;
   /**
    * Cancel a parked `awaiting` tree at the store (`awaiting → cancelled`, ancestors too): a park
    * tears the engine down, so there is no live process to abort. `false` when the tree is unknown,
@@ -242,10 +265,14 @@ export function openProject(dir: string): OpenProjectResult {
         execute(rootFile, workflowDir, { ...opts, continuation: undefined }, []),
       resume: (rootFile, rootRunId, workflowDir, opts = {}) =>
         resumeProjectRun(core, rootFile, rootRunId, workflowDir, opts),
+      checkResume: (rootFile, rootRunId, workflowDir, opts = {}) =>
+        checkResumeRequest(core, rootFile, rootRunId, workflowDir, opts),
       listEligible: (rootFile, rootRunId, workflowDir, files = new Map()) =>
         listEligibleRuns(core, rootFile, rootRunId, workflowDir, files),
       complete: (rootFile, stepRunId, output, workflowDir, opts = {}) =>
         completeProjectStep(core, rootFile, stepRunId, output, workflowDir, opts),
+      checkComplete: (rootFile, stepRunId, output, workflowDir, opts = {}) =>
+        checkCompleteRequest(core, rootFile, stepRunId, output, workflowDir, opts),
       cancel: (rootRunId) => cancelAwaitingRun(core, rootRunId),
       close(): void {
         db.close();

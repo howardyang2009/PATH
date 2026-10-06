@@ -1,5 +1,6 @@
-import { spawn } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { createInterface } from "node:readline";
+import { promisify } from "node:util";
 import type { SandboxProcess, SandboxRuntime, SandboxSpec } from "./sandbox-runtime.js";
 
 /** The `container run` arguments for one spec. Each variable is named bare (`--env NAME`), so the
@@ -16,6 +17,8 @@ export function containerRunArgs(spec: SandboxSpec): string[] {
   args.push(spec.image, ...spec.command);
   return args;
 }
+
+const run = promisify(execFile);
 
 /** Apple `container` as the sandbox runtime. It must run as the login user, never root. */
 export function appleContainerRuntime(binary = "container"): SandboxRuntime {
@@ -46,6 +49,18 @@ export function appleContainerRuntime(binary = "container"): SandboxRuntime {
         );
       };
       return { exited, terminate: () => signal("TERM"), kill: () => signal("KILL") };
+    },
+
+    async list(key, value) {
+      const { stdout } = await run(binary, ["list", "--all", "--format", "json"]);
+      const vms = JSON.parse(stdout) as { id: string; configuration?: { labels?: object } }[];
+      return vms
+        .filter((vm) => (vm.configuration?.labels as Record<string, string>)?.[key] === value)
+        .map((vm) => vm.id);
+    },
+
+    async remove(name) {
+      await run(binary, ["delete", "--force", name]);
     },
   };
 }

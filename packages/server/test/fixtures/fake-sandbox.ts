@@ -22,10 +22,21 @@ export interface FakeVm {
 export type FakeBehaviour = (vm: FakeVm) => Promise<number | null>;
 
 /** A runtime that runs each VM as `behaviour`, recording every VM it started. */
-export function fakeRuntime(behaviour: FakeBehaviour): SandboxRuntime & { vms: FakeVm[] } {
+export function fakeRuntime(
+  behaviour: FakeBehaviour,
+  orphans: string[] = [],
+): SandboxRuntime & { vms: FakeVm[]; removed: string[] } {
   const vms: FakeVm[] = [];
+  const removed: string[] = [];
   return {
     vms,
+    removed,
+    async list() {
+      return orphans.filter((name) => !removed.includes(name));
+    },
+    async remove(name) {
+      removed.push(name);
+    },
     launch(spec, onLine): SandboxProcess {
       const terminate = new AbortController();
       let resolveKilled: (code: null) => void = () => {};

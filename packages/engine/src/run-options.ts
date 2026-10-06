@@ -76,7 +76,9 @@ export interface LaunchRunOptions extends RunSeams {
  */
 export interface ContinuationRunOptions extends RunSeams {
   operatorInput?: undefined;
-  rootRunId?: undefined;
+  /** A Resume successor's fresh root run id, as `LaunchRunOptions.rootRunId`; a Complete keeps its
+   * tree's own id and ignores it. */
+  rootRunId?: string;
   /**
    * Frozen launch-config secrets the continuation did not supply again (ADR 0046); the run ends
    * before its first step naming them.
