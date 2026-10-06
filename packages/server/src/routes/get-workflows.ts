@@ -33,7 +33,7 @@ export async function handleGetWorkflows({ ctx }: ApiRequest): Promise<RouteRepl
     scanned.map(async ({ absPath, root }) => ({
       absPath,
       root,
-      result: await loadWorkflowTree(absPath),
+      result: await loadWorkflowTree(absPath, { refAllowed: layout.inView }),
     })),
   );
 

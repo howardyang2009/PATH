@@ -20,7 +20,7 @@ export function handleGetWorkflowFile({ res, ctx, query }: StreamRequest): void 
   }
 
   const absPath = confineToProjectRoot(resolve(ctx.project.dir), path);
-  if (absPath === undefined) {
+  if (absPath === undefined || !ctx.layout.inView(path)) {
     sendError(res, 404, "not found");
     return;
   }

@@ -1,5 +1,5 @@
-import { type Dirent, readdirSync } from "node:fs";
-import { isAbsolute, join, relative, resolve } from "node:path";
+import { type Dirent, lstatSync, readdirSync } from "node:fs";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 // Where authored files live (ADR 0084): a read-only shipped root in the PATH install, then a
@@ -52,6 +52,9 @@ export interface AuthoredLayout {
   classify(projectPath: string): AuthoredPlace | undefined;
   /** Every file of `kind` in its roots, in precedence order, each root's files sorted. */
   files(kind: AuthoredKind): { absPath: string; root: AuthoredRoot }[];
+  /** Whether a door or a `ref` may reach `path`: in hosted mode only the requester's view of
+   * shipped, shared and own roots (ADR 0088), in local mode anywhere. */
+  inView(path: string): boolean;
   /** Why a workflow door must not act on `projectPath`: a template is not a workflow, and a
    * shipped workflow is never written or run in place (ADR 0086). */
   workflowRefusal(projectPath: string, door: "write" | "run"): AuthoredRefusal | undefined;
@@ -62,12 +65,15 @@ export interface AuthoredLayoutOptions {
   /** A test may point a kind's shipped root elsewhere. */
   shippedDir?: Partial<Record<AuthoredKind, string>>;
   userId?: string;
+  /** Hosted mode confines doors and refs to the view; local mode follows paths anywhere. */
+  hosted?: boolean;
 }
 
 export function authoredLayout({
   projectDir,
   shippedDir = {},
   userId = DEFAULT_USER_ID,
+  hosted = false,
 }: AuthoredLayoutOptions): AuthoredLayout {
   const project = resolve(projectDir);
   const rootsOf = (kind: AuthoredKind): AuthoredRoot[] => [
@@ -90,9 +96,10 @@ export function authoredLayout({
     return parts[0] === "users" && parts.length >= 3 && parts[2] === "template";
   };
 
+  const allRoots = [...byKind.workflow, ...byKind.template];
   const classify = (projectPath: string): AuthoredPlace | undefined => {
     const abs = resolve(project, projectPath);
-    const found = [...byKind.workflow, ...byKind.template].find((root) => within(root.dir, abs));
+    const found = allRoots.find((root) => within(root.dir, abs));
     if (found !== undefined || !anyUserTemplate(abs)) return found;
     return { origin: "user", kind: "template", writable: true };
   };
@@ -103,6 +110,12 @@ export function authoredLayout({
     roots: (kind) => byKind[kind],
     root: (origin, kind) => byKind[kind].find((root) => root.origin === origin) as AuthoredRoot,
     classify,
+    inView: (path) => {
+      if (!hosted) return true;
+      const abs = resolve(project, path);
+      const root = allRoots.find((candidate) => within(candidate.dir, abs));
+      return root !== undefined && !crossesSymlink(root.dir, abs);
+    },
     files: (kind) =>
       byKind[kind].flatMap((root) =>
         scanFiles(root.dir, AUTHORED_SUFFIX[kind]).map((absPath) => ({ absPath, root })),
@@ -130,6 +143,21 @@ export function authoredLayout({
 function within(dir: string, abs: string): boolean {
   const rel = relative(dir, abs);
   return rel === "" || !(rel.startsWith("..") || isAbsolute(rel));
+}
+
+/** Whether a component of `abs` below `dir` is a symlink, which could lead out of the view. A
+ * missing component ends the walk: nothing below it exists to follow. */
+function crossesSymlink(dir: string, abs: string): boolean {
+  let current = dir;
+  for (const segment of relative(dir, abs).split(sep).filter(Boolean)) {
+    current = join(current, segment);
+    try {
+      if (lstatSync(current).isSymbolicLink()) return true;
+    } catch {
+      return false;
+    }
+  }
+  return false;
 }
 
 /** Every file under `root` ending with `suffix`, as sorted absolute paths; `[]` when `root` is

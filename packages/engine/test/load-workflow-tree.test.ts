@@ -54,6 +54,23 @@ describe("loadWorkflowTree", () => {
     }
   });
 
+  it("refuses a ref the caller does not allow, naming the ref", async () => {
+    const parent = join(fixtures, "parent-with-child.workflow.json");
+    const result = await loadWorkflowTree(parent, { refAllowed: (abs) => abs === parent });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors[0]).toMatch(/parent-with-child\.workflow\.json: ref ".*child/);
+    }
+  });
+
+  it("follows a ref the caller allows", async () => {
+    const result = await loadWorkflowTree(join(fixtures, "parent-with-child.workflow.json"), {
+      refAllowed: () => true,
+    });
+    expect(result.success).toBe(true);
+  });
+
   it("reports a not-found entry file", async () => {
     const result = await loadWorkflowTree(join(fixtures, "nope.workflow.json"));
     expect(result.success).toBe(false);

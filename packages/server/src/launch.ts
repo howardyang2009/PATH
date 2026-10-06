@@ -48,6 +48,10 @@ export async function prepareWorkflow(
   workflowPath: string,
   messages: NotFoundMessages,
 ): Promise<PreparedWorkflow> {
+  // Another user's path reads as missing, so a refusal never confirms that it exists.
+  if (!layout.inView(workflowPath)) {
+    return { ok: false, refusal: { status: 404, message: messages.notFound(workflowPath) } };
+  }
   const absPath = confineToProjectRoot(layout.projectDir, workflowPath, {
     allowMissingTail: true,
   });
@@ -61,7 +65,7 @@ export async function prepareWorkflow(
     return { ok: false, refusal: { status: 404, message: messages.notFound(workflowPath) } };
   }
 
-  const loadResult = await loadWorkflowTree(absPath);
+  const loadResult = await loadWorkflowTree(absPath, { refAllowed: layout.inView });
   if (!loadResult.success) {
     return {
       ok: false,
@@ -73,6 +77,8 @@ export async function prepareWorkflow(
 
 /** The two refusals an action on an existing run owns beyond the path gate (ADR 0006 identity). */
 export interface RunWorkflowMessages extends NotFoundMessages {
+  /** The reply for a run whose workflow lies outside the requester's view: an unknown run. */
+  noRun(): string;
   noPath(): string;
   swapped(workflowPath: string): string;
 }
@@ -88,6 +94,9 @@ export async function prepareRunWorkflow(
 ): Promise<PreparedWorkflow> {
   if (!root.workflowPath) {
     return { ok: false, refusal: { status: 409, message: messages.noPath() } };
+  }
+  if (!layout.inView(root.workflowPath)) {
+    return { ok: false, refusal: { status: 404, message: messages.noRun() } };
   }
   const prepared = await prepareWorkflow(layout, root.workflowPath, messages);
   if (!prepared.ok) return prepared;

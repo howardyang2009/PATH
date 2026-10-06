@@ -43,6 +43,8 @@ export interface RequesterContextOptions {
   projectStore: Project;
   /** Local mode by default: every request acts for `local` (ADR 0090). */
   resolveUserId?: UserIdResolver;
+  /** Hosted mode confines each requester's doors and refs to their view (ADR 0088). */
+  hosted?: boolean;
 }
 
 /**
@@ -54,12 +56,13 @@ export function createRequesterContexts({
   shippedDir,
   projectStore,
   resolveUserId = () => DEFAULT_USER_ID,
+  hosted = false,
 }: RequesterContextOptions): RequesterContexts {
   const contexts = new Map<string, RequesterContext>();
 
   const contextFor = (userId: string): RequesterContext => ({
     userId,
-    layout: authoredLayout({ projectDir, shippedDir, userId }),
+    layout: authoredLayout({ projectDir, shippedDir, userId, hosted }),
     store: projectStore,
   });
 

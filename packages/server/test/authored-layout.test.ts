@@ -94,4 +94,26 @@ describe("authoredLayout", () => {
     ]);
     expect(layout.files("template").map(({ root }) => root.origin)).toEqual(["shared"]);
   });
+
+  it("reaches anywhere in local mode", () => {
+    expect(layout.inView("users/someone/workflow/a.workflow.json")).toBe(true);
+    expect(layout.inView("examples/a.workflow.json")).toBe(true);
+  });
+
+  it("reaches only shipped, shared and the user's own roots in hosted mode", () => {
+    const hosted = authoredLayout({
+      projectDir,
+      userId: "user_abc",
+      hosted: true,
+      shippedDir: { workflow: join(projectDir, "install", "shipped", "workflow") },
+    });
+
+    expect(hosted.inView("users/user_abc/workflow/a.workflow.json")).toBe(true);
+    expect(hosted.inView("users/user_abc/template/t.step-template.json")).toBe(true);
+    expect(hosted.inView("shared/workflow/b.workflow.json")).toBe(true);
+    expect(hosted.inView(join(projectDir, "install/shipped/workflow/c.workflow.json"))).toBe(true);
+    expect(hosted.inView("users/user_other/workflow/a.workflow.json")).toBe(false);
+    expect(hosted.inView("users/user_abc/workflow/../../user_other/workflow/a.json")).toBe(false);
+    expect(hosted.inView("examples/a.workflow.json")).toBe(false);
+  });
 });

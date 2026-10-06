@@ -40,6 +40,7 @@ export async function handleResumeRun({
   // our own row.
   const prepared = await prepareRunWorkflow(ctx.layout, root, {
     notFound: () => `workflow file for run "${rootRunId}" not found at "${root.workflowPath}"`,
+    noRun: () => `no run found with id "${rootRunId}"`,
     noPath: () => `run "${rootRunId}" has no recorded workflow path and cannot be resumed`,
     swapped: (workflowPath) =>
       `the workflow at "${workflowPath}" is no longer the one run "${rootRunId}" ran (its id changed); cannot resume`,

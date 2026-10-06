@@ -50,7 +50,16 @@ function collectWorkflowRefs(nodes: WorkflowNode[]): string[] {
   return refs;
 }
 
-export async function loadWorkflowTree(entryPath: string): Promise<LoadResult> {
+export interface LoadWorkflowTreeOptions {
+  /** Whether a `ref` may reach the absolute path it resolves to; a refused ref fails the load,
+   * named. Without it, every ref is followed. */
+  refAllowed?(absPath: string): boolean;
+}
+
+export async function loadWorkflowTree(
+  entryPath: string,
+  { refAllowed = () => true }: LoadWorkflowTreeOptions = {},
+): Promise<LoadResult> {
   const files = new Map<string, WorkflowFile>();
   const errors: string[] = [];
 
@@ -92,7 +101,9 @@ export async function loadWorkflowTree(entryPath: string): Promise<LoadResult> {
     files.set(absPath, parsed.data);
 
     for (const ref of collectWorkflowRefs(parsed.data.body)) {
-      visit(resolve(dirname(absPath), ref), [...chain, absPath]);
+      const target = resolve(dirname(absPath), ref);
+      if (refAllowed(target)) visit(target, [...chain, absPath]);
+      else errors.push(`${absPath}: ref "${ref}" is outside the files this load may read`);
     }
   }
 
