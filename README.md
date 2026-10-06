@@ -413,3 +413,9 @@ Full notes live on the [releases page](https://github.com/howardyang2009/PATH/re
 - Only the current workflow-format codemod lives at the top of [`scripts/`](scripts); the superseded
   ones sit in [`scripts/archive/`](scripts/archive) and stay runnable, because
   `SUPERSEDED_FORMAT_VERSIONS` points a file still carrying an older format string at them.
+
+## License
+
+PATH is licensed under the [MIT License](LICENSE). You may use, modify, and distribute the code in personal or commercial projects. Each copy or substantial portion must keep the copyright notice and the license text.
+
+If you build on PATH, please credit it in your documentation: "Based on [PATH](https://github.com/howardyang2009/PATH) by Han Yang, MIT License."
