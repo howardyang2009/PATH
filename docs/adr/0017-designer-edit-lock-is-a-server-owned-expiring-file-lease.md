@@ -83,9 +83,11 @@ status`. A startup tree-walk would buy nothing the `.gitignore` entry does not a
   `.editing` suffix fails that test, and the scan also skips dot-dirs and symlinks. No discovery change
   is needed, confirmed against the code, not assumed.
 - **Clean-close release is best-effort, and that is fine.** The Designer fires the release route from
-  `beforeunload` through `navigator.sendBeacon`, which is POST-only, the reason all three routes are POST
-  rather than a `DELETE`. If the beacon never lands (kill, crash, network), the TTL reaps the lease in
-  ≤30s. The lease's *correctness* rests on the TTL, never on the beacon.
+  `beforeunload` as a `keepalive` POST. It first used `navigator.sendBeacon`, which is POST-only, the
+  reason all three routes are POST rather than a `DELETE`. A beacon cannot carry the hosted-mode Bearer
+  token (ADR 0090), so the release is a `keepalive` `fetch` signed with the last token sent. If it never
+  lands (kill, crash, network, an expired token), the TTL reaps the lease in ≤30s. The lease's
+  *correctness* rests on the TTL, never on the release.
 - **Takeover never reaches across to kill the other session.** An evicted session keeps running until
   its next heartbeat returns `409`. If it races a save in that window, ADR 0016's `If-Match`
   precondition, not the lease, rejects the stale write with a `412`. So the lease layer needs no

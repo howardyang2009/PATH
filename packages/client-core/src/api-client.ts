@@ -25,12 +25,15 @@ import type {
   WireWorkflowLease,
 } from "@path/schema";
 import {
+  authorizedFetch,
   defaultFetch,
   type FetchLike,
   HttpTransport,
   ifMatchHeader,
   parseReply,
+  type RequestAuth,
   toApiError,
+  trimBaseUrl,
 } from "./transport.js";
 
 export { defaultFetch, type FetchLike, PathApiError } from "./transport.js";
@@ -414,6 +417,10 @@ export interface PathApiClientOptions {
   baseUrl: string;
   /** Injected `fetch`; defaults to the global. Lets a host swap in its own transport. */
   fetch?: FetchLike;
+  /** Hosted mode: the Bearer token for every REST, blob and SSE call. */
+  getToken?: RequestAuth["getToken"];
+  /** Hosted mode: settles once the user signs in again after a `401`; the call is then retried. */
+  onUnauthorized?: RequestAuth["onUnauthorized"];
 }
 
 /** A typed client over the `@path/server` v0 HTTP API (server-api-v0.md §§2–7, §10): pure TS, every
@@ -426,10 +433,17 @@ export class PathApiClient {
   /** The resolved transport — exposed so the SSE client/connector reuse the same `fetch`. */
   readonly fetch: FetchLike;
   private readonly http: HttpTransport;
+  private readonly unsignedFetch: FetchLike;
+  private readonly lastToken: () => string | null;
 
   constructor(options: PathApiClientOptions) {
-    this.baseUrl = options.baseUrl.replace(/\/+$/, "");
-    this.fetch = options.fetch ?? defaultFetch;
+    this.baseUrl = trimBaseUrl(options.baseUrl);
+    const fetch = options.fetch ?? defaultFetch;
+    const { getToken, onUnauthorized } = options;
+    const signed = getToken ? authorizedFetch(fetch, { getToken, onUnauthorized }) : undefined;
+    this.fetch = signed?.fetch ?? fetch;
+    this.unsignedFetch = fetch;
+    this.lastToken = signed?.lastToken ?? (() => null);
     this.http = new HttpTransport(this.baseUrl, this.fetch);
   }
 
@@ -611,5 +625,21 @@ export class PathApiClient {
    */
   releaseLock(input: LeaseOpInput): Promise<void> {
     return releaseLock(this.http, input);
+  }
+
+  /** `releaseLock` for a closing page: a `keepalive` POST that outlives the page, signed with the
+   * last token sent because an unload cannot wait for a fresh one. Best-effort: a failure is
+   * dropped, and the server's TTL reaps the lease (ADR 0017). */
+  releaseLockOnUnload(input: LeaseOpInput): void {
+    const token = this.lastToken();
+    this.unsignedFetch(this.url("/v0/workflows/lock/release"), {
+      method: "POST",
+      keepalive: true,
+      headers: {
+        "Content-Type": "application/json",
+        ...(token !== null ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify(leaseOpBody(input)),
+    }).catch(() => {});
   }
 }

@@ -17,6 +17,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@clerk/clerk-js": "~6.37.0",
     "@path/schema": "workspace:*"
   },
   "devDependencies": {

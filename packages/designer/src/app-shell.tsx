@@ -1,4 +1,4 @@
-import { usePaneWidths } from "@path/viewer";
+import { UserMenu, usePaneWidths } from "@path/viewer";
 import { type ReactNode, useRef } from "react";
 
 /** Persisted `[palette, properties]` rail widths in px; the canvas stage fills the rest. */
@@ -58,6 +58,7 @@ export function AppShell({
           title. */}
         <div className="topbar-title">{title ?? null}</div>
         {toolbar ? <div className="toolbar">{toolbar}</div> : null}
+        <UserMenu />
       </header>
       <div className="panes" ref={panesRef}>
         <section className="rail" aria-label="Palette" style={{ width: `${widths[0]}px` }}>

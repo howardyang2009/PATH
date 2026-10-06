@@ -6,3 +6,5 @@ packages:
 allowBuilds:
   esbuild: true
   better-sqlite3: true
+  browser-tabs-lock: false
+  core-js: false

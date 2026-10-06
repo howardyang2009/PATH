@@ -1,6 +1,7 @@
 import { createEventFrameDecoder, eventStreamHeaders, type LogEvent } from "@path/schema";
 import { defaultFetch, type FetchLike } from "./api-client.js";
 import { isRootRunFinished } from "./event-outcome.js";
+import { trimBaseUrl } from "./transport.js";
 
 /** Pure-TS SSE client for `GET /v0/runs/:root_run_id/events` (server-api-v0.md §5). No DOM, so no
  * `EventSource`: it reads the `fetch` body as a stream and parses `id:`/`data:` frames itself, each
@@ -69,7 +70,7 @@ export interface RunEventSubscription {
 }
 
 export function subscribeRunEvents(options: SubscribeRunEventsOptions): RunEventSubscription {
-  const baseUrl = options.baseUrl.replace(/\/+$/, "");
+  const baseUrl = trimBaseUrl(options.baseUrl);
   const doFetch = options.fetch ?? defaultFetch;
   const reconnect = options.reconnect ?? true;
   const reconnectDelayMs = options.reconnectDelayMs ?? DEFAULT_RECONNECT_MS;

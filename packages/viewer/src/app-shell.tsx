@@ -1,4 +1,5 @@
 import { type CSSProperties, type ReactNode, useRef } from "react";
+import { UserMenu } from "./auth-gate.js";
 import { useDragSize } from "./drag-size.js";
 import { type PaneHandleProps, usePaneWidths } from "./use-pane-resize.js";
 
@@ -52,6 +53,7 @@ export function AppShell({ workflows, runs, detail, nodeIo }: AppShellProps) {
       <header className="topbar">
         <span className="brand">PATH</span>
         <span className="brand-sub">viewer · read-only</span>
+        <UserMenu />
       </header>
       <div className="panes" ref={panesRef} style={style}>
         <LeftRail workflows={workflows} runs={runs} />

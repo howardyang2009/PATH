@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { LeaseController, type LeaseMap } from "./lease-client.js";
 
 /** The React binding over `LeaseController`: one `session_id` per Designer session, leases
- * reconciled against the open paths, plus the `beforeunload` release beacon and React state. */
+ * reconciled against the open paths, plus the `beforeunload` release and React state. */
 export interface EditLeases {
   /** This Designer session's `session_id`, the holder its leases carry — a Delete names it. */
   sessionId: string;
@@ -38,14 +38,12 @@ export function useEditLeases(client: PathApiClient, paths: readonly string[]): 
     controller.reconcile(pathsKey === "" ? [] : pathsKey.split("\n"));
   }, [controller, pathsKey]);
 
-  // Release-on-close via `navigator.sendBeacon` from `beforeunload` (ADR 0017): POST-only,
-  // best-effort. If the beacon never lands (kill, crash), the server's TTL reaps the lease in ≤30s.
+  // Release-on-close from `beforeunload` (ADR 0017): a signed `keepalive` POST, best-effort. If it
+  // never lands (kill, crash), the server's TTL reaps the lease in ≤30s.
   useEffect(() => {
-    const releaseUrl = client.url("/v0/workflows/lock/release");
     const onUnload = (): void => {
       for (const path of controller.heldPaths()) {
-        const body = JSON.stringify({ workflow_path: path, session_id: sessionId.current });
-        navigator.sendBeacon(releaseUrl, new Blob([body], { type: "application/json" }));
+        client.releaseLockOnUnload({ workflowPath: path, sessionId: sessionId.current });
       }
     };
     window.addEventListener("beforeunload", onUnload);
