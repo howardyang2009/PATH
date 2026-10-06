@@ -85,6 +85,22 @@ describe("createRequesterContexts", () => {
     contexts.close();
   });
 
+  it("gives each hosted user a store of their own under their user root", async () => {
+    const contexts = createRequesterContexts({
+      projectDir,
+      projectStore,
+      resolveUserId: () => "user_abc",
+      hosted: true,
+    });
+
+    const context = await forRequest(contexts);
+
+    expect(context.store).not.toBe(projectStore);
+    expect(context.store.dir).toBe(join(resolve(projectDir), "users", "user_abc"));
+    contexts.close();
+    expect(() => context.store.archive.listRoots()).toThrow();
+  });
+
   it("resolves no context when the request proves no identity", async () => {
     const contexts = createRequesterContexts({
       projectDir,

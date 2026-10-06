@@ -10,7 +10,8 @@ import type { RequesterContext, RequesterContexts } from "../requester.js";
  * process holds across requests. */
 export interface RouteContext {
   /** The requester's store: where their runs are read and written. */
-  project: Project;
+  store: Project;
+  /** The runs executing in the requester's store. */
   live: LiveRuns;
   /** The step-plugin registry frozen at server start (ADR 0018): scanned once, never per
    * request. */
@@ -22,11 +23,10 @@ export interface RouteContext {
   creators: CreatorTable;
 }
 
-/** What the process holds across every request: the runs it executes, the registry frozen at
- * start, and the resolver from a request to its requester context. */
+/** What the process holds across every request: the registry frozen at start, and the resolver
+ * from a request to its requester context, which holds that requester's runs. */
 export interface ServerContext {
   mode: ServerMode;
-  live: LiveRuns;
   stepPlugins: LoadedStepPluginRegistry;
   requesters: RequesterContexts;
   creators: CreatorTable;
@@ -35,9 +35,9 @@ export interface ServerContext {
 /** The context one request is handled under, built from the requester that request resolved to. */
 export function routeContextFor(requester: RequesterContext, server: ServerContext): RouteContext {
   return {
-    project: requester.store,
+    store: requester.store,
     layout: requester.layout,
-    live: server.live,
+    live: requester.live,
     stepPlugins: server.stepPlugins,
     creators: server.creators,
   };

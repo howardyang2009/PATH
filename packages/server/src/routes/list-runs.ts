@@ -34,14 +34,14 @@ export function handleListRuns({ ctx, query }: ApiRequest): RouteReply {
   // empty* param means "no filter"; an unknown GUID matches nothing, so no format check is needed.
   const workflowId = query.get("workflow_id") || undefined;
 
-  const rows = ctx.project.archive.listRoots({ limit, status, workflowId });
+  const rows = ctx.store.archive.listRoots({ limit, status, workflowId });
   // Each summary carries the masked-secret *names* its launch recorded (ADR 0046), never values.
   const body: ListRunsResponse = {
     runs: rows.map((row) =>
       toRootRunSummary(
         row,
-        ctx.project.archive.displayStatus(row),
-        ctx.project.archive.launchFacts(row.runId)?.secretKeys,
+        ctx.store.archive.displayStatus(row),
+        ctx.store.archive.launchFacts(row.runId)?.secretKeys,
       ),
     ),
   };

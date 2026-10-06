@@ -21,7 +21,7 @@ export function handleCancelRun({ ctx, params: [rootRunId] }: ApiRequest<[string
   // A `running` row this server is not executing is real (`path run` shares the same
   // `.path/path.db`; a crashed process leaves one), and a parked `awaiting` tree is cancellable at
   // the store (ADR 0041).
-  if (!ctx.live.cancel(rootRunId) && !ctx.project.cancel(rootRunId)) {
+  if (!ctx.live.cancel(rootRunId) && !ctx.store.cancel(rootRunId)) {
     return replyError(
       409,
       `run "${rootRunId}" is not executing in this server process and cannot be cancelled`,

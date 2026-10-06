@@ -7,7 +7,6 @@ import { clerkUserIdResolver } from "./clerk-identity.js";
 import { adoptSharedItems, openCreatorTable } from "./creator-table.js";
 import { enforceFunnelGuard, funnelGuardEnabled } from "./funnel-guard.js";
 import { sendError } from "./http-json.js";
-import { createLiveRuns } from "./live-runs.js";
 import { readServerMode } from "./mode.js";
 import { enforceSameOrigin } from "./origin-gate.js";
 import { createRequesterContexts } from "./requester.js";
@@ -121,8 +120,8 @@ export async function startPathServer(
   // it.
   const registry = stepPlugins ?? (await loadStepPluginRegistry());
 
-  // The project's own store, opened at boot: every requester resolves to it, and a bad settings
-  // file or db refuses to start.
+  // The project's own store, opened at boot: every local-mode requester resolves to it, and a bad
+  // settings file or db refuses to start.
   const opened = openProject(projectDir);
   if (!opened.success) throw new Error(opened.error);
   const project = opened.project;
@@ -130,9 +129,8 @@ export async function startPathServer(
   const absStaticDir = resolve(staticDir);
   const absDesignerStaticDir = resolve(designerStaticDir);
   const funnelGuard = funnelGuardEnabled(mode);
-  const live = createLiveRuns(project);
-  // One requester context per user, resolved per request (requester.ts). The boot project is every
-  // requester's store, so local mode behaves as one fixed project did.
+  // One requester context per user, resolved per request (requester.ts). Local mode keeps every run
+  // in the boot project's store; hosted mode gives each user their own.
   const shipped = { template: shippedTemplateDir, workflow: shippedWorkflowDir };
   const requesters = createRequesterContexts({
     projectDir,
@@ -147,7 +145,7 @@ export async function startPathServer(
   if (mode.mode === "local") {
     adoptSharedItems(authoredLayout({ projectDir, shippedDir: shipped }), creators);
   }
-  const server: ServerContext = { mode, live, stepPlugins: registry, requesters, creators };
+  const server: ServerContext = { mode, stepPlugins: registry, requesters, creators };
   const httpServer = createServer((req, res) => {
     handleRequest(req, res, server, absStaticDir, absDesignerStaticDir, funnelGuard).catch(
       (err) => {
@@ -173,7 +171,7 @@ export async function startPathServer(
           // `server.close` only drains HTTP connections; runs are fire-and-forget, so drain them
           // before closing the store or a still-running step hits `The database connection is not
           // open`.
-          live.idle().then(() => {
+          requesters.idle().then(() => {
             requesters.close();
             creators.close();
             resolvePromise();

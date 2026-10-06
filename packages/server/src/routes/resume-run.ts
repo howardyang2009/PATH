@@ -60,7 +60,7 @@ export async function handleResumeRun({
       // The operator's override — shadows the declared config key by key, for the steps that
       // re-run.
       operatorConfig: config,
-      sourceWorkflowPath: workflow.storeRelativePath(ctx.project.dir),
+      sourceWorkflowPath: workflow.storeRelativePath(ctx.layout.projectDir),
       // The rerun boundary K, forwarded verbatim: the route does no K-logic; `Project.resume`
       // validates.
       rerunFromRunId,

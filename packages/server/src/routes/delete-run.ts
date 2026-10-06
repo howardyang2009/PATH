@@ -26,7 +26,7 @@ export function handleDeleteRun({
     );
   }
 
-  const blockers = ctx.project.archive.blockingSuccessors(rootRunId);
+  const blockers = ctx.store.archive.blockingSuccessors(rootRunId);
   if (blockers.length > 0 && !force) {
     return replyError(
       409,
@@ -35,7 +35,7 @@ export function handleDeleteRun({
     );
   }
 
-  if (!ctx.project.archive.remove(rootRunId)) {
+  if (!ctx.store.archive.remove(rootRunId)) {
     return replyError(404, `no run found with id "${rootRunId}"`);
   }
 
