@@ -2,13 +2,14 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { LogEvent } from "@path/schema";
-import type Database from "better-sqlite3";
+import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createDbLogBackend } from "../src/logging/db-backend.js";
 import { LOG_FORMAT } from "../src/logging/log-backend.js";
 import { openDb } from "../src/persistence/db.js";
 import { blobRef, dbFilePath } from "../src/persistence/paths.js";
 import { insertRun, setRunOutputRef } from "../src/persistence/run-store.js";
+import { exportTreeFromFile } from "../src/persistence/run-transfer.js";
 import { createRunArchive, type RunArchive } from "../src/run-archive.js";
 
 /**
@@ -50,6 +51,8 @@ function event(seq: number, runId: string): LogEvent {
   };
 }
 
+const openDbFile = (file: string): Database.Database => new Database(file);
+
 /** A finished root with one child, its output ref and two log events, written in `db`. */
 async function seed(db: Database.Database, rootRunId: string): Promise<void> {
   insertRun(db, {
@@ -86,6 +89,20 @@ function exported(rootRunId: string): { runs: Record<string, unknown>[]; events:
 describe("exportTree", () => {
   it("is null for an unknown root", () => {
     expect(sourceArchive.exportTree("nope")).toBeNull();
+  });
+});
+
+describe("exportTreeFromFile", () => {
+  it("reads a tree from another store's file", async () => {
+    await seed(source, "root-1");
+    expect(exportTreeFromFile(dbFilePath(join(dir, "vm")), "root-1")?.runs).toHaveLength(2);
+  });
+
+  it("reads nothing from a file whose runs is not a table", () => {
+    const crafted = openDbFile(join(dir, "crafted.db"));
+    crafted.exec("CREATE TABLE log_events (x); CREATE VIEW runs AS SELECT 1 AS root_run_id");
+    crafted.close();
+    expect(exportTreeFromFile(join(dir, "crafted.db"), "1")).toBeNull();
   });
 });
 

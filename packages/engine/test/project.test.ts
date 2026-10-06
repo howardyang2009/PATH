@@ -457,6 +457,48 @@ describe("Project.resume (#173)", () => {
   });
 });
 
+describe("Project.checkResume", () => {
+  const failing: WorkflowFile = stampNames({
+    format: "path/workflow@6",
+    id: "wf-id",
+    name: "check",
+    body: [emit("a", "A"), emit("b")],
+  });
+
+  it("answers the refusal resume would, and nothing for a resumable tree", async () => {
+    const project = open();
+    try {
+      expect(project.checkResume(failing, "nope", dir)).toEqual({
+        found: false,
+        error: 'no run found with root run id "nope"',
+      });
+      await project.run(failing, dir);
+      const rootId = project.archive.listRoots()[0]!.runId;
+      expect(project.checkResume(failing, rootId, dir)).toBeUndefined();
+      expect(project.archive.listRoots()).toHaveLength(1);
+      expect(project.checkResume(failing, rootId, dir, { rerunFromRunId: "nope" })).toMatchObject({
+        found: false,
+        refusal: { status: expect.any(Number) },
+      });
+    } finally {
+      project.close();
+    }
+  });
+
+  it("gives a successor the caller's root run id", async () => {
+    const project = open();
+    try {
+      await project.run(failing, dir);
+      const rootId = project.archive.listRoots()[0]!.runId;
+      const result = await project.resume(failing, rootId, dir, { rootRunId: "successor" });
+      expect(result).toMatchObject({ found: true, rootRunId: "successor" });
+      expect(project.archive.tree("successor")?.root?.resumedFromRootRunId).toBe(rootId);
+    } finally {
+      project.close();
+    }
+  });
+});
+
 describe("Project.resume — Resume-from-K (#444)", () => {
   // A three-step workflow that fully succeeds; Resume-from-K re-runs a succeeded region from K.
   const kabc: WorkflowFile = {

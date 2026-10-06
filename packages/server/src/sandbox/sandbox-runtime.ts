@@ -5,6 +5,10 @@
 export interface SandboxRuntime {
   /** Starts one VM; `onLine` receives each line the VM's process writes to stdout. */
   launch(spec: SandboxSpec, onLine: (line: string) => void): SandboxProcess;
+  /** The names of every VM, running or not, that carries label `key` = `value`. */
+  list(key: string, value: string): Promise<string[]>;
+  /** Stops and deletes one VM. */
+  remove(name: string): Promise<void>;
 }
 
 /** A host directory the VM sees at `guestPath`. */

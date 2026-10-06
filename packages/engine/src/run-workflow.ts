@@ -46,8 +46,7 @@ export async function runWorkflow(
   const resumeInput = continuationInput?.kind === "resume" ? continuationInput : undefined;
   const completeInput = continuationInput?.kind === "complete" ? continuationInput : undefined;
 
-  // A Complete keeps the tree's own root id; a launch takes the caller's or mints one, a Resume
-  // mints one.
+  // A Complete keeps the tree's own root id; a launch or Resume takes the caller's or mints one.
   const runId = completeInput?.rootRunId ?? options.rootRunId ?? randomUUID();
 
   // One snapshot for the whole run, read here and nowhere else, so a mid-run env change cannot

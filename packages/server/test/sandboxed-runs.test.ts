@@ -13,7 +13,7 @@ import { join } from "node:path";
 import { loadWorkflowTree, openProject, type Project, rootRunTreeDir } from "@path/engine";
 import type { LogEvent, WorkflowFile } from "@path/schema";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { LiveRuns, StartRunOptions } from "../src/live-runs.js";
+import { type LiveRuns, ResumeNotFound, type StartRunOptions } from "../src/live-runs.js";
 import {
   createSandboxedRuns,
   SANDBOX_LIMITS,
@@ -66,6 +66,44 @@ function sandboxed(behaviour: FakeBehaviour, overrides: Partial<SandboxOptions> 
   });
   return { runtime, runs };
 }
+
+/** Writes a workflow at a fixed name (so a later write replaces it) and loads it. */
+async function writeWorkflow(
+  name: string,
+  body: object[],
+): Promise<[WorkflowFile, string, StartRunOptions]> {
+  const path = join(dir, "users", "alice", "workflow", `${name}.workflow.json`);
+  mkdirSync(join(path, ".."), { recursive: true });
+  writeFileSync(
+    path,
+    JSON.stringify({ format: "path/workflow@6", id: idFor("workflow"), name, body }),
+  );
+  const loaded = await loadWorkflowTree(path);
+  if (!loaded.success) throw new Error(loaded.errors.join("\n"));
+  const { rootFile, workflowDir, files, registry } = loaded.workflow;
+  return [rootFile, workflowDir, { files, registry, sourceWorkflowPath: `workflow/${name}` }];
+}
+
+/** A stable UUIDv4 per name, so a rewritten workflow keeps its node ids. */
+const ids = new Map<string, string>();
+function idFor(name: string): string {
+  if (!ids.has(name)) ids.set(name, randomUUID());
+  return ids.get(name) as string;
+}
+
+const step = (name: string, script: string) => ({
+  type: "binary",
+  id: idFor(name),
+  name,
+  command: "node",
+  args: ["-e", script],
+});
+const park = {
+  type: "person-activity",
+  id: idFor("approve"),
+  name: "approve",
+  description: "approve",
+};
 
 /** A one-step workflow whose output is what its binary step prints for `script`. */
 async function workflow(
@@ -181,7 +219,7 @@ describe("a sandboxed Start", () => {
     expect(await settled(runs, started.rootRunId)).toBe("cancelled");
   });
 
-  it("mounts only the job, the root's blobs and the workflow directory", async () => {
+  it("mounts only the job, the VM's store, the root's blobs and the workflow directory", async () => {
     const { runtime, runs } = sandboxed(inProcessVm);
     const [file, workflowDir, options] = await workflow("process.stdout.write('hi')");
     const started = await runs.start(file, workflowDir, options);
@@ -190,6 +228,7 @@ describe("a sandboxed Start", () => {
     const mounts = runtime.vms[0]?.spec.mounts ?? [];
     expect(mounts.map((m) => [m.hostPath, m.readOnly])).toEqual([
       [join(store.dir, ".path", "sandbox", started.rootRunId, "io"), false],
+      [join(store.dir, ".path", "sandbox", started.rootRunId, "project"), false],
       [rootRunTreeDir(store.dir, started.rootRunId), false],
       [workflowDir, true],
     ]);
@@ -288,7 +327,7 @@ describe("the VM's export", () => {
   it("loses every symlink the VM left in the blob directory", async () => {
     const { runs } = sandboxed(async (vm) => {
       await inProcessVm(vm);
-      const blobs = vm.spec.mounts[1]?.hostPath ?? "";
+      const blobs = vm.spec.mounts[2]?.hostPath ?? "";
       symlinkSync("/etc/hosts", join(blobs, vm.job().rootRunId, "output.json.link"));
       return 0;
     });
@@ -346,5 +385,143 @@ describe("the time limit", () => {
     const started = await runs.start(...(await workflow("")));
     expect(await settled(runs, started.rootRunId)).toBe("failed");
     expect(runtime.vms[0]?.killed).toBe(true);
+  });
+});
+
+describe("a sandboxed Complete", () => {
+  it("drives the awaiting leaf in a fresh VM, continuing the tree's narrative", async () => {
+    const { runtime, runs } = sandboxed(inProcessVm);
+    const wf = await writeWorkflow("parked", [
+      step("a", "process.stdout.write('A')"),
+      park,
+      step("b", ""),
+    ]);
+    const { rootRunId } = await runs.start(...wf);
+    expect(await settled(runs, rootRunId)).toBe("running");
+    const leaf = store.archive.tree(rootRunId)?.runs.find((r) => r.status === "awaiting");
+    const before = store.archive.tree(rootRunId)?.events().length ?? 0;
+
+    const [file, workflowDir, options] = wf;
+    const result = await runs.complete(
+      file,
+      rootRunId,
+      leaf?.runId ?? "",
+      {},
+      workflowDir,
+      options,
+    );
+
+    expect(result).toMatchObject({ ok: true, rootRunId, status: "succeeded" });
+    expect(runtime.vms.map((vm) => vm.job().operation.kind)).toEqual(["start", "complete"]);
+    const tree = store.archive.tree(rootRunId);
+    expect(tree?.root?.status).toBe("succeeded");
+    const seqs = tree?.events().map((e) => e.seq) ?? [];
+    expect(seqs.length).toBeGreaterThan(before);
+    expect(new Set(seqs).size).toBe(seqs.length);
+  });
+
+  it("answers a refusal without a VM", async () => {
+    const { runtime, runs } = sandboxed(inProcessVm);
+    const [file, workflowDir, options] = await writeWorkflow("parked", [park]);
+    const { rootRunId } = await runs.start(file, workflowDir, options);
+    await settled(runs, rootRunId);
+
+    const result = await runs.complete(file, rootRunId, "nope", {}, workflowDir, options);
+    expect(result).toMatchObject({ ok: false, reason: "not-found" });
+    expect(runtime.vms).toHaveLength(1);
+  });
+});
+
+describe("a sandboxed Resume", () => {
+  it("runs the successor in a fresh VM over the predecessor's rows and read-only blobs", async () => {
+    const { runtime, runs } = sandboxed(inProcessVm);
+    const v1 = await writeWorkflow("flaky", [
+      step("a", "process.stdout.write('A')"),
+      step("b", "process.exit(1)"),
+    ]);
+    const first = await runs.start(...v1);
+    expect(await settled(runs, first.rootRunId)).toBe("failed");
+
+    const [file, workflowDir, options] = await writeWorkflow("flaky", [
+      step("a", "process.stdout.write('A')"),
+      step("b", "process.stdout.write('B')"),
+    ]);
+    const successor = await runs.resume(file, first.rootRunId, workflowDir, options);
+
+    expect(successor.rootRunId).not.toBe(first.rootRunId);
+    expect(await settled(runs, successor.rootRunId)).toBe("succeeded");
+    const vm = runtime.vms[1];
+    expect(vm?.job().operation).toMatchObject({
+      kind: "resume",
+      predecessorRootRunId: first.rootRunId,
+    });
+    expect(vm?.spec.mounts).toContainEqual(
+      expect.objectContaining({
+        hostPath: rootRunTreeDir(store.dir, first.rootRunId),
+        readOnly: true,
+      }),
+    );
+    const tree = store.archive.tree(successor.rootRunId);
+    expect(tree?.root?.resumedFromRootRunId).toBe(first.rootRunId);
+    expect(tree?.runs.some((r) => r.reusedFromRunId !== null)).toBe(true);
+  });
+
+  it("refuses an unknown predecessor without a VM", async () => {
+    const { runtime, runs } = sandboxed(inProcessVm);
+    const [file, workflowDir, options] = await writeWorkflow("flaky", [step("a", "")]);
+    await expect(runs.resume(file, "nope", workflowDir, options)).rejects.toBeInstanceOf(
+      ResumeNotFound,
+    );
+    expect(runtime.vms).toHaveLength(0);
+  });
+});
+
+describe("a sandboxed Cancel", () => {
+  it("stops the engine, which exports the run cancelled", async () => {
+    const { runtime, runs } = sandboxed(inProcessVm);
+    const { rootRunId } = await runs.start(...(await workflow("setTimeout(() => {}, 60000)")));
+    await launchedVms(runtime.vms, 1);
+    await new Promise((r) => setTimeout(r, 200));
+
+    expect(runs.cancel(rootRunId)).toBe(true);
+    expect(await settled(runs, rootRunId)).toBe("cancelled");
+    expect(store.archive.tree(rootRunId)?.runs.every((r) => r.status === "cancelled")).toBe(true);
+  });
+
+  it("kills a VM that ignores the stop and marks its rows cancelled", async () => {
+    const { runtime, runs } = sandboxed(() => new Promise(() => {}));
+    const { rootRunId } = await runs.start(...(await workflow("")));
+    await launchedVms(runtime.vms, 1);
+
+    runs.cancel(rootRunId);
+    expect(await settled(runs, rootRunId)).toBe("cancelled");
+    expect(runtime.vms[0]?.killed).toBe(true);
+  });
+});
+
+describe("a lost VM", () => {
+  /** The real entry parks the run, then the VM dies before its export reaches the host. */
+  const lost: FakeBehaviour = async (vm) => {
+    await inProcessVm(vm);
+    rmSync(vm.job().exportFile);
+    return null;
+  };
+
+  it("keeps the rows its store holds, ends the live ones failed, and stays resumable", async () => {
+    const { runs } = sandboxed(lost);
+    const wf = await writeWorkflow("parked", [step("a", "process.stdout.write('A')"), park]);
+    const { rootRunId } = await runs.start(...wf);
+
+    expect(await settled(runs, rootRunId)).toBe("failed");
+    const tree = store.archive.tree(rootRunId);
+    expect(tree?.runs.find((r) => r.nodeName === "a")?.status).toBe("succeeded");
+    expect(tree?.runs.find((r) => r.nodeName === "approve")?.status).toBe("failed");
+    expect(tree?.events().at(-1)).toMatchObject({ type: "step-finished", error: "sandbox lost" });
+
+    const healthy = sandboxed(inProcessVm);
+    const successor = await healthy.runs.resume(wf[0], rootRunId, wf[1], wf[2]);
+    await healthy.runs.idle();
+    const parked = store.archive.tree(successor.rootRunId)?.runs;
+    expect(parked?.some((r) => r.status === "awaiting")).toBe(true);
   });
 });

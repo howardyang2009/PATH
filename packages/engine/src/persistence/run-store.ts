@@ -129,12 +129,21 @@ export function finishRun(db: Database.Database, runId: string, status: Terminal
  * 0041). Only for a tree not executing live — nothing then races these rows; a live tree uses its
  * `AbortController`. */
 export function cancelNonTerminalRuns(db: Database.Database, rootRunId: string): number {
+  return endNonTerminalRuns(db, rootRunId, "cancelled");
+}
+
+/** Ends every non-terminal run of a tree no engine drives any more with `status`. */
+export function endNonTerminalRuns(
+  db: Database.Database,
+  rootRunId: string,
+  status: "failed" | "cancelled",
+): number {
   const info = db
     .prepare(
-      `UPDATE runs SET status = 'cancelled', finished_at = @finishedAt
+      `UPDATE runs SET status = @status, finished_at = @finishedAt
        WHERE root_run_id = @rootRunId AND status IN ('pending', 'running', 'awaiting')`,
     )
-    .run({ finishedAt: new Date().toISOString(), rootRunId });
+    .run({ status, finishedAt: new Date().toISOString(), rootRunId });
   return info.changes;
 }
 

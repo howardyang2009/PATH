@@ -12,6 +12,7 @@ import { enforceSameOrigin } from "./origin-gate.js";
 import { createRequesterContexts } from "./requester.js";
 import { dispatchApi } from "./routes/api-routes.js";
 import type { ServerContext } from "./routes/route-context.js";
+import { reapSandboxes } from "./sandbox/reaper.js";
 import { readSandboxOptions } from "./sandbox/sandbox-config.js";
 import { serveStatic } from "./serve-static.js";
 
@@ -133,6 +134,9 @@ export async function startPathServer(
   // One requester context per user, resolved per request (requester.ts). Local mode keeps every run
   // in the boot project's store; hosted mode gives each user their own.
   const shipped = { template: shippedTemplateDir, workflow: shippedWorkflowDir };
+  const sandbox = mode.mode === "hosted" ? readSandboxOptions() : undefined;
+  // VMs and staging a previous Server process left behind, cleared before any run starts.
+  if (sandbox !== undefined) await reapSandboxes(projectDir, sandbox);
   const requesters = createRequesterContexts({
     projectDir,
     shippedDir: shipped,
@@ -140,7 +144,7 @@ export async function startPathServer(
     resolveUserId: mode.mode === "hosted" ? clerkUserIdResolver(mode.clerk) : undefined,
     hosted: mode.mode === "hosted",
     secretsKey: mode.mode === "hosted" ? mode.secretsKey : undefined,
-    sandbox: mode.mode === "hosted" ? readSandboxOptions() : undefined,
+    sandbox,
   });
   // The host-level creator table (ADR 0088 §3). Local mode adopts today's untracked `shared/` files
   // as created by `local`, so they stay editable.

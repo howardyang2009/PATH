@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { JsonValue, LogEvent } from "@path/schema";
@@ -741,6 +741,47 @@ describe("run archive — cost (whole-tree SUM crossing tree boundaries, #176)",
     });
 
     expect(archive.cost("other")).toBeCloseTo(0.9);
+  });
+});
+
+describe("run archive — endNonTerminal", () => {
+  it("ends every live run and closes the narrative in each store that holds it", async () => {
+    seedTree();
+    writeNdjsonLog("root-1", [stepStarted(1, "root-1")]);
+    await writeDbLog("root-1", [stepStarted(1, "root-1")]);
+
+    expect(await archive.endNonTerminal("root-1", "failed", "sandbox lost")).toBe(2);
+
+    const tree = archive.tree("root-1")!;
+    expect(tree.runs.map((r) => r.status)).toEqual(["failed", "failed"]);
+    expect(tree.events().at(-1)).toMatchObject({
+      type: "step-finished",
+      seq: 2,
+      run_id: "root-1",
+      status: "failed",
+      error: "sandbox lost",
+    });
+    expect(createRunArchive(db, dir).tree("root-1")!.events()).toHaveLength(2);
+  });
+
+  it("leaves a settled tree alone", async () => {
+    seedTree();
+    await archive.endNonTerminal("root-1", "cancelled");
+    expect(await archive.endNonTerminal("root-1", "failed", "late")).toBe(0);
+    expect(archive.tree("root-1")!.root!.status).toBe("cancelled");
+  });
+
+  it("reads past a torn line a killed writer left", async () => {
+    seedTree();
+    writeNdjsonLog("root-1", [stepStarted(1, "root-1")]);
+    appendFileSync(join(rootRunTreeDir(dir, "root-1"), "run.log"), '{"type":"step-st');
+    await archive.endNonTerminal("root-1", "failed", "sandbox lost");
+    expect(
+      archive
+        .tree("root-1")!
+        .events()
+        .map((e) => e.seq),
+    ).toEqual([1, 2]);
   });
 });
 
