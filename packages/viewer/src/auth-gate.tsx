@@ -1,4 +1,4 @@
-import type { AuthSession } from "@path/client-core";
+import type { AuthSession, UserMenuItem } from "@path/client-core";
 import {
   createContext,
   type ReactNode,
@@ -43,14 +43,32 @@ function SignInScreen({ auth }: { auth: AuthSession }) {
   );
 }
 
+/** Whether the app runs signed in against a hosted Server; `local` outside an `AuthGate`. */
+export function useAuthMode(): AuthSession["mode"] {
+  return useContext(AuthContext)?.mode ?? "local";
+}
+
+export interface UserMenuProps {
+  /** Entries added to the menu. Their labels are fixed when the menu mounts. */
+  items?: UserMenuItem[];
+}
+
 /** Clerk's user menu, for a header. Renders nothing in local mode or outside an `AuthGate`. */
-export function UserMenu() {
+export function UserMenu({ items = [] }: UserMenuProps) {
   const auth = useContext(AuthContext);
   const ref = useRef<HTMLDivElement>(null);
+  // Each entry calls the latest render's handler, so the menu need not remount when one changes.
+  const itemsRef = useRef(items);
+  itemsRef.current = items;
   const hosted = auth?.mode === "hosted";
   useEffect(() => {
     if (!hosted || !auth || !ref.current) return;
-    return auth.mountUserButton(ref.current);
+    const entries = itemsRef.current.map(({ label, icon }, index) => ({
+      label,
+      icon,
+      onClick: () => itemsRef.current[index]?.onClick(),
+    }));
+    return auth.mountUserButton(ref.current, entries);
   }, [auth, hosted]);
   return hosted ? <div className="user-menu" data-testid="user-menu" ref={ref} /> : null;
 }

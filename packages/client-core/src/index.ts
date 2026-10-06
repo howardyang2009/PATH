@@ -34,6 +34,7 @@ export {
   type WireError,
   type WireFieldSpec,
   type WireRunRecord,
+  type WireSecretSummary,
   type WireStepPlugin,
   type WorkflowFile,
   type WorkflowRootSummary,
@@ -69,6 +70,7 @@ export {
   type PageLocation,
   type StartAuthSessionOptions,
   startAuthSession,
+  type UserMenuItem,
 } from "./auth-session.js";
 // The awaiting surface (ADR 0040): the `person-activity` node read from the workflow file by id,
 // and the framework-free Complete-form model both surfaces draw.

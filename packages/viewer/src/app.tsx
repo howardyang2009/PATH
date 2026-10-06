@@ -1,22 +1,61 @@
-import { EMPTY_RUN_FILE_SET, type PathApiClient, runFileSetFromDisk } from "@path/client-core";
+import {
+  EMPTY_RUN_FILE_SET,
+  type PathApiClient,
+  runFileSetFromDisk,
+  type UserMenuItem,
+} from "@path/client-core";
 import { useState } from "react";
-import { AppShell } from "./app-shell.js";
+import { AppShell, TopBar } from "./app-shell.js";
+import { useAuthMode } from "./auth-gate.js";
 import { LaunchPanel } from "./launch-panel.js";
 import { NodeIo } from "./node-io.js";
 import { RunDetail } from "./run-detail.js";
 import { RunsList } from "./runs-list.js";
+import { SecretsPage } from "./secrets-page.js";
 import { useResource } from "./use-resource.js";
 import { useRunView } from "./use-run-view.js";
+import { useViewerPage, viewerPath } from "./viewer-page.js";
 
 /**
- * The viewer app: the pinned three-pane console with the runs list, run detail and node I/O panes.
+ * The viewer app: the runs console, and in hosted mode the Secrets page at `/viewer/secrets`,
+ * reached from the user menu. Local mode has no Secrets page, so that URL shows the console.
+ */
+export function App({ client }: { client: PathApiClient }) {
+  const hosted = useAuthMode() === "hosted";
+  const { page, go } = useViewerPage();
+  const menuItems: UserMenuItem[] = hosted
+    ? [{ label: "Secrets", icon: "\u{1F511}", onClick: () => go("secrets") }]
+    : [];
+  if (!hosted || page !== "secrets") return <RunsConsole client={client} menuItems={menuItems} />;
+  return (
+    <div className="shell">
+      <TopBar sub="viewer · secrets" menuItems={menuItems} />
+      <main className="secrets-main">
+        <a
+          className="secrets-back"
+          href={viewerPath("console")}
+          onClick={(event) => {
+            event.preventDefault();
+            go("console");
+          }}
+        >
+          Back to runs
+        </a>
+        <SecretsPage client={client} />
+      </main>
+    </div>
+  );
+}
+
+/**
+ * The runs console: the pinned three-pane console with the runs list, run detail and node I/O panes.
  * Both selections are owned here, and so is the watched run's connection — the centre and right
  * panes are two views of one live snapshot, and a second connection would mean a second SSE stream.
  *
  * A status-filter change in the runs list does not clear the selection: what is selected is a root
  * run id, not a visible row, so narrowing the list is no reason to stop watching.
  */
-export function App({ client }: { client: PathApiClient }) {
+function RunsConsole({ client, menuItems }: { client: PathApiClient; menuItems: UserMenuItem[] }) {
   const [selectedRootRunId, setSelectedRootRunId] = useState<string | null>(null);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [runsReloadNonce, setRunsReloadNonce] = useState(0);
@@ -71,6 +110,7 @@ export function App({ client }: { client: PathApiClient }) {
 
   return (
     <AppShell
+      menuItems={menuItems}
       workflows={<LaunchPanel client={client} onLaunched={handleLaunched} />}
       runs={
         <RunsList

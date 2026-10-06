@@ -19,8 +19,11 @@ import type {
   WireLockHeldBody,
   WireLockRequest,
   WirePostTemplateRequest,
+  WirePutSecretRequest,
   WirePutWorkflowRequest,
   WirePutWorkflowResponse,
+  WireSecretList,
+  WireSecretSummary,
   WireTemplateWriteResponse,
   WireWorkflowLease,
 } from "@path/schema";
@@ -341,6 +344,24 @@ async function writeTemplate(
   return { id: reply.id, relativePath: reply.relative_path, etag: reply.etag };
 }
 
+// ── Secrets ──────────────────────────────────────────────────────────────────────────
+
+async function listSecrets(http: HttpTransport): Promise<WireSecretSummary[]> {
+  return (await http.requestJson<WireSecretList>("/v0/secrets")).secrets;
+}
+
+function putSecret(http: HttpTransport, name: string, value: string): Promise<WireSecretSummary> {
+  const body: WirePutSecretRequest = { value };
+  return http.requestJson<WireSecretSummary>(`/v0/secrets/${encodeURIComponent(name)}`, {
+    method: "PUT",
+    body,
+  });
+}
+
+async function deleteSecret(http: HttpTransport, name: string): Promise<void> {
+  await http.request(`/v0/secrets/${encodeURIComponent(name)}`, { method: "DELETE" });
+}
+
 // ── Leases ──────────────────────────────────────────────────────────────────────────
 
 /** The Designer edit-lock lease (ADR 0017): `session_id` is client-minted, the timestamps are
@@ -562,6 +583,23 @@ export class PathApiClient {
    */
   deleteTemplate(id: string): Promise<void> {
     return deleteTemplate(this.http, id);
+  }
+
+  /** `GET /v0/secrets` — the requester's User secret names and `updated_at`, never a value
+   * (server-api-v0.md §11.1). Hosted mode only: local mode answers `404`. */
+  listSecrets(): Promise<WireSecretSummary[]> {
+    return listSecrets(this.http);
+  }
+
+  /** `PUT /v0/secrets/:name` — set or replace one User secret (server-api-v0.md §11.2); the reply
+   * never echoes the value, and a limit or a reserved name is a `400`. */
+  putSecret(name: string, value: string): Promise<WireSecretSummary> {
+    return putSecret(this.http, name, value);
+  }
+
+  /** `DELETE /v0/secrets/:name` — remove one User secret (server-api-v0.md §11.3). */
+  deleteSecret(name: string): Promise<void> {
+    return deleteSecret(this.http, name);
   }
 
   /** `GET /v0/workflows/download?path=<relative_path>` — the saved workflow file, or a zip of the
