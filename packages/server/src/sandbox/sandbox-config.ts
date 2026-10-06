@@ -5,7 +5,8 @@ import { createVmSlots } from "./vm-slots.js";
 
 /**
  * The sandbox a hosted Server runs Starts in, read from `env`: on when `PATH_SANDBOX_IMAGE` names
- * the run image, with `PATH_SANDBOX_NETWORK` as the VMs' network. `undefined` when off.
+ * the run image. `undefined` when off. Every VM joins the `path` network, whose egress the `pf`
+ * anchor `path` filters (docs/spec/path-website.md §10).
  */
 export function readSandboxOptions(
   env: NodeJS.ProcessEnv = process.env,
@@ -27,7 +28,7 @@ export function readSandboxOptions(
     stopGraceMs: SANDBOX_LIMITS.stopGraceMs,
     maxExportBytes: SANDBOX_LIMITS.maxExportBytes,
     maxBlobBytes: SANDBOX_LIMITS.maxBlobBytes,
-    network: env.PATH_SANDBOX_NETWORK || undefined,
+    network: "path",
     hostEnv,
   };
 }

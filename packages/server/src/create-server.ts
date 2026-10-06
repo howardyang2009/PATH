@@ -12,6 +12,7 @@ import { enforceSameOrigin } from "./origin-gate.js";
 import { createRequesterContexts } from "./requester.js";
 import { dispatchApi } from "./routes/api-routes.js";
 import type { ServerContext } from "./routes/route-context.js";
+import { assertEgressAnchor } from "./sandbox/egress-anchor.js";
 import { reapSandboxes } from "./sandbox/reaper.js";
 import { readSandboxOptions } from "./sandbox/sandbox-config.js";
 import { serveStatic } from "./serve-static.js";
@@ -116,6 +117,7 @@ export async function startPathServer(
 ): Promise<PathServerHandle> {
   // A half-configured hosted setup throws here, before anything is opened.
   const mode = readServerMode();
+  if (mode.mode === "hosted") assertEgressAnchor();
 
   // Scan the plugin folder (server-api-v0.md §8) before `openProject`, so a broken folder throws
   // without leaving an opened db handle behind; a thrown error skips the handle that would close

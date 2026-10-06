@@ -6,10 +6,13 @@ describe("readSandboxOptions", () => {
     expect(readSandboxOptions({})).toBeUndefined();
   });
 
+  it("starts every VM on the pf-filtered `path` network", () => {
+    expect(readSandboxOptions({ PATH_SANDBOX_IMAGE: "path-run:1" })?.network).toBe("path");
+  });
+
   it("passes only the allowlisted host variables to the VM", () => {
     const options = readSandboxOptions({
       PATH_SANDBOX_IMAGE: "path-run:1",
-      PATH_SANDBOX_NETWORK: "path",
       DEEPSEEK_BASE_URL: "https://gateway.example",
       ANTHROPIC_API_KEY: "the owner's key",
     });
