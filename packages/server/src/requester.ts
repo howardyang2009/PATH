@@ -1,6 +1,6 @@
 import type { IncomingMessage } from "node:http";
 import { join } from "node:path";
-import { openProject, type Project } from "@path/engine";
+import { dbFilePath, openProject, type Project } from "@path/engine";
 import {
   type AuthoredKind,
   type AuthoredLayout,
@@ -8,16 +8,19 @@ import {
   DEFAULT_USER_ID,
 } from "./authored-layout.js";
 import { createLiveRuns, type LiveRuns } from "./live-runs.js";
+import { openSecretStore, type SecretStore, type SecretsKey } from "./secret-store.js";
 
 /**
  * Who one request acts for (ADR 0088): the user id, the authored layout that user reads through,
- * the store that user's runs live in, and the runs executing in that store.
+ * the store that user's runs live in, the runs executing in that store, and, in hosted mode only,
+ * the user's Secret store (ADR 0089).
  */
 export interface RequesterContext {
   readonly userId: string;
   readonly layout: AuthoredLayout;
   readonly store: Project;
   readonly live: LiveRuns;
+  readonly secrets: SecretStore | undefined;
 }
 
 /**
@@ -49,8 +52,10 @@ export interface RequesterContextOptions {
   /** Local mode by default: every request acts for `local` (ADR 0090). */
   resolveUserId?: UserIdResolver;
   /** Hosted mode confines each requester's doors and refs to their view (ADR 0088), and keeps
-   * each requester's runs in their own store at `users/<user-id>/.path/`. */
+   * each requester's runs and User secrets in their own store at `users/<user-id>/.path/`. */
   hosted?: boolean;
+  /** The master key each hosted requester's Secret store is encrypted under. */
+  secretsKey?: SecretsKey;
 }
 
 /**
@@ -63,16 +68,23 @@ export function createRequesterContexts({
   projectStore,
   resolveUserId = () => DEFAULT_USER_ID,
   hosted = false,
+  secretsKey,
 }: RequesterContextOptions): RequesterContexts {
   const contexts = new Map<string, RequesterContext>();
   const projectLive = createLiveRuns(projectStore);
 
-  /** The user's own store and its runs; local mode shares the project's. */
-  const storeFor = (userId: string): { store: Project; live: LiveRuns } => {
-    if (!hosted) return { store: projectStore, live: projectLive };
+  /** The user's own store, its runs and its User secrets; local mode shares the project's store
+   * and has no Secret store. */
+  const storeFor = (
+    userId: string,
+  ): { store: Project; live: LiveRuns; secrets: SecretStore | undefined } => {
+    if (!hosted) return { store: projectStore, live: projectLive, secrets: undefined };
+    if (secretsKey === undefined) throw new Error("hosted mode has no PATH_SECRETS_KEY");
     const opened = openProject(join(projectDir, "users", userId));
     if (!opened.success) throw new Error(opened.error);
-    return { store: opened.project, live: createLiveRuns(opened.project) };
+    const store = opened.project;
+    const secrets = openSecretStore(dbFilePath(store.dir), secretsKey);
+    return { store, live: createLiveRuns(store), secrets };
   };
 
   const contextFor = (userId: string): RequesterContext => ({
@@ -105,6 +117,7 @@ export function createRequesterContexts({
       projectStore.close();
       for (const context of contexts.values()) {
         if (context.store !== projectStore) context.store.close();
+        context.secrets?.close();
       }
       contexts.clear();
     },

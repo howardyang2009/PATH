@@ -54,6 +54,7 @@ function context(live: LiveRuns): RouteContext {
     stepPlugins: {} as unknown as LoadedStepPluginRegistry,
     layout: authoredLayout({ projectDir: fixturesDir }),
     creators: {} as unknown as CreatorTable,
+    secrets: undefined,
   };
 }
 

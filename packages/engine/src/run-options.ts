@@ -5,6 +5,9 @@ import type { RunObserver } from "./run-observer.js";
 
 /** The public inputs and result of `runWorkflow`. */
 
+/** One user's User secrets by name (ADR 0089): what a hosted run reads instead of `process.env`. */
+export type UserSecrets = { readonly [name: string]: string };
+
 /** Test/host worker overrides (ADR 0021 sub-15): `(type, worker-name)` → descriptor, merged
  * **replace-only**. */
 export type WorkerOverrides = { [type: string]: { [name: string]: WorkerDescriptor } };
@@ -43,6 +46,11 @@ export interface RunSeams {
    */
   signal?: AbortSignal;
   sourceWorkflowPath?: string;
+  /**
+   * The launcher's User secrets (ADR 0089): when given, `$env` resolves against these and never
+   * `process.env`, and every value is masked as `[secret:<name>]`.
+   */
+  userSecrets?: UserSecrets;
 }
 
 /**

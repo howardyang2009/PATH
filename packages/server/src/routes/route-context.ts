@@ -5,6 +5,7 @@ import type { CreatorTable } from "../creator-table.js";
 import type { LiveRuns } from "../live-runs.js";
 import type { ServerMode } from "../mode.js";
 import type { RequesterContext, RequesterContexts } from "../requester.js";
+import type { SecretStore } from "../secret-store.js";
 
 /** What one route handler is handed: the requester's authored layout and store, plus what the
  * process holds across requests. */
@@ -21,6 +22,8 @@ export interface RouteContext {
   layout: AuthoredLayout;
   /** Who created each shared item: the one table every requester's writes are checked against. */
   creators: CreatorTable;
+  /** The requester's Secret store; `undefined` in local mode, which has none. */
+  secrets: SecretStore | undefined;
 }
 
 /** What the process holds across every request: the registry frozen at start, and the resolver
@@ -40,6 +43,7 @@ export function routeContextFor(requester: RequesterContext, server: ServerConte
     live: requester.live,
     stepPlugins: server.stepPlugins,
     creators: server.creators,
+    secrets: requester.secrets,
   };
 }
 

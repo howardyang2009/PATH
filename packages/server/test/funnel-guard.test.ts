@@ -75,6 +75,7 @@ describe("funnelGuardEnabled", () => {
       mode: "hosted",
       publishableKey: "pk_test_cGF0aC5leGFtcGxlJA",
       clerk: { jwtKey: "-----BEGIN PUBLIC KEY-----", allowedOrigin: "https://path.example" },
+      secretsKey: { id: "test", key: Buffer.alloc(32) },
     };
     expect(funnelGuardEnabled(hosted, {})).toBe(false);
   });
@@ -166,6 +167,7 @@ describe("the Funnel guard on the HTTP door", () => {
     vi.stubEnv("CLERK_JWT_KEY", "-----BEGIN PUBLIC KEY-----");
     vi.stubEnv("PATH_ALLOWED_ORIGIN", `https://${TS_NET_HOST}`);
     vi.stubEnv("CLERK_PUBLISHABLE_KEY", "pk_test_cGF0aC5leGFtcGxlJA");
+    vi.stubEnv("PATH_SECRETS_KEY", Buffer.alloc(32).toString("base64"));
     handle = await startPathServer(projectDir);
     // Past the guard, the request meets hosted sign-in instead.
     expect((await get("/v0/runs", TS_NET_HOST)).status).toBe(401);
