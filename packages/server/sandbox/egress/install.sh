@@ -16,6 +16,10 @@ fi
 read -r net4 gw net6 < <(container network inspect path | node -e '
   const s = JSON.parse(require("fs").readFileSync(0, "utf8"))[0].status;
   console.log(s.ipv4Subnet, s.ipv4Gateway, s.ipv6Subnet);')
+if [[ $net6 != *:*/* ]]; then
+  echo "Network path has no IPv6 prefix ($net6); path.anchor needs one to block IPv6." >&2
+  exit 1
+fi
 if [[ $net4 != 192.168.100.0/24 || $gw != 192.168.100.1 ]]; then
   echo "Network path is $net4 via $gw; path.anchor expects 192.168.100.0/24 via 192.168.100.1." >&2
   exit 1
@@ -32,7 +36,9 @@ sudo /bin/bash -euo pipefail -c '
   install -o root -g wheel -m 644 "$1" /etc/pf.anchors/path
   install -o root -g wheel -m 755 "$2" /usr/local/libexec/path-egress-load.sh
   install -o root -g wheel -m 644 "$3" /Library/LaunchDaemons/com.path.egress.plist
+  rm -f /var/run/path-egress.status
   launchctl bootout system/com.path.egress 2>/dev/null || true
+  while launchctl print system/com.path.egress >/dev/null 2>&1; do sleep 1; done
   launchctl bootstrap system /Library/LaunchDaemons/com.path.egress.plist
 ' _ "$rendered" "$here/load-anchor.sh" "$here/com.path.egress.plist"
 

@@ -16,9 +16,13 @@ export function egressStatus(bootSec: number): string {
   ].join("\n");
 }
 
+let statusFile: string | undefined;
+
 /** Points the next hosted `startPathServer` at a status file for this boot. */
 export function stubEgressAnchor(): void {
-  const file = join(mkdtempSync(join(tmpdir(), "path-egress-status-")), "status");
-  writeFileSync(file, egressStatus(Math.round(Date.now() / 1000 - uptime())));
-  vi.stubEnv("PATH_EGRESS_STATUS", file);
+  if (statusFile === undefined) {
+    statusFile = join(mkdtempSync(join(tmpdir(), "path-egress-status-")), "status");
+    writeFileSync(statusFile, egressStatus(Math.round(Date.now() / 1000 - uptime())));
+  }
+  vi.stubEnv("PATH_EGRESS_STATUS", statusFile);
 }
