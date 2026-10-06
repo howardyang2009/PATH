@@ -33,6 +33,12 @@ import {
   listRootRuns,
   rootRunIdOf,
 } from "./persistence/run-store.js";
+import {
+  exportTree,
+  type ImportTreeResult,
+  importTree,
+  type RunTreeExport,
+} from "./persistence/run-transfer.js";
 
 /**
  * Read/delete side of a run's `.path/` footprint. An archive knows what is stored and where, and
@@ -80,6 +86,12 @@ export interface RunArchive {
   remove(rootRunId: string): boolean;
   /** Removes every run from both stores. Returns the number of rows removed. */
   prune(): number;
+  /** One root run's stored rows and log events, verbatim, so another store can import them;
+   * `null` when no rows exist for this id. Blobs stay on disk under the root's directory. */
+  exportTree(rootRunId: string): RunTreeExport | null;
+  /** Writes an exported tree as root `rootRunId`, replacing this root's rows, after the checks
+   * `importTree` in `persistence/run-transfer.ts` lists. */
+  importTree(rootRunId: string, exported: unknown): ImportTreeResult;
 }
 
 export interface ListRootsOptions {
@@ -220,6 +232,10 @@ export function createRunArchive(db: Database.Database, projectDir: string): Run
       removeDir(runsDir(dir));
       return deleted;
     },
+
+    exportTree: (rootRunId) => exportTree(db, rootRunId),
+
+    importTree: (rootRunId, exported) => importTree(db, rootRunId, exported),
   };
 }
 

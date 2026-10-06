@@ -176,6 +176,17 @@ describe("Project.run — observer assembly", () => {
     }
   });
 
+  it("roots the tree at a caller-chosen run id", async () => {
+    const project = open();
+    try {
+      await project.run(oneStep, dir, { rootRunId: "chosen-root" });
+      expect(project.archive.tree("chosen-root")?.root?.status).toBe("succeeded");
+      expect(project.archive.tree("chosen-root")?.root?.inputRef).toMatch(/^runs\/chosen-root\//);
+    } finally {
+      project.close();
+    }
+  });
+
   // The guarantee the server depends on: its capture observer resolves the 202, and a client may
   // GET the run the instant that lands — so persistence must already have written the row.
   it("runs extraObservers after the built-in pair, not before", async () => {

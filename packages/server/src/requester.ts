@@ -8,6 +8,7 @@ import {
   DEFAULT_USER_ID,
 } from "./authored-layout.js";
 import { createLiveRuns, type LiveRuns } from "./live-runs.js";
+import { createSandboxedRuns, type SandboxOptions } from "./sandbox/sandboxed-runs.js";
 import { openSecretStore, type SecretStore, type SecretsKey } from "./secret-store.js";
 
 /**
@@ -56,6 +57,8 @@ export interface RequesterContextOptions {
   hosted?: boolean;
   /** The master key each hosted requester's Secret store is encrypted under. */
   secretsKey?: SecretsKey;
+  /** Hosted mode only: each requester's Starts run in a VM (ADR 0091) instead of in process. */
+  sandbox?: SandboxOptions;
 }
 
 /**
@@ -69,6 +72,7 @@ export function createRequesterContexts({
   resolveUserId = () => DEFAULT_USER_ID,
   hosted = false,
   secretsKey,
+  sandbox,
 }: RequesterContextOptions): RequesterContexts {
   const contexts = new Map<string, RequesterContext>();
   const projectLive = createLiveRuns(projectStore);
@@ -84,7 +88,8 @@ export function createRequesterContexts({
     if (!opened.success) throw new Error(opened.error);
     const store = opened.project;
     const secrets = openSecretStore(dbFilePath(store.dir), secretsKey);
-    return { store, live: createLiveRuns(store), secrets };
+    const live = sandbox ? createSandboxedRuns(store, sandbox) : createLiveRuns(store);
+    return { store, live, secrets };
   };
 
   const contextFor = (userId: string): RequesterContext => ({

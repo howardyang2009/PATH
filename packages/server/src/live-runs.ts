@@ -11,7 +11,7 @@ import {
 import type { ConfigObject, JsonValue, LogEvent, WorkflowFile } from "@path/schema";
 import { createDeferred } from "./deferred.js";
 import { createLiveLogBackend } from "./live-log-backend.js";
-import { RunEventHub } from "./run-event-hub.js";
+import { RunEventHub, streamRun } from "./run-event-hub.js";
 
 /**
  * The runs this server process is executing. Routes keep what a route owns (request in, status
@@ -338,43 +338,10 @@ export function createLiveRuns(project: Project): LiveRuns {
       }
     },
 
-    stream(
-      rootRunId: string,
-      afterSeq: number | undefined,
-      handlers: RunStreamHandlers,
-    ): Unsubscribe {
-      // High-water mark across replay and live: anything at or below it is dropped, so nothing is
-      // sent twice.
-      let lastSeq = afterSeq ?? 0;
-      let live = false;
-      const buffered: LogEvent[] = [];
-
-      function deliver(event: LogEvent): void {
-        if (event.seq <= lastSeq) return;
-        lastSeq = event.seq;
-        handlers.onEvent(event);
-      }
-
-      // Subscribe *before* reading history: a publish landing mid-read is buffered, so nothing is
-      // missed.
-      const unsubscribe = hub.subscribe(
-        rootRunId,
-        (event) => (live ? deliver(event) : buffered.push(event)),
-        handlers.onEnd,
-      );
-
-      for (const event of project.archive.tree(rootRunId)?.events(afterSeq) ?? []) deliver(event);
-      for (const event of buffered) deliver(event);
-      live = true;
-
-      // No open channel: the run is terminal, not executing here, or never existed — the replay is
-      // all.
-      if (unsubscribe === null) {
-        handlers.onEnd();
-        return () => {};
-      }
-
-      return unsubscribe;
+    stream(rootRunId, afterSeq, handlers): Unsubscribe {
+      const history = (after: number | undefined) =>
+        project.archive.tree(rootRunId)?.events(after) ?? [];
+      return streamRun(hub, history, rootRunId, afterSeq, handlers);
     },
 
     get cancellable(): number {

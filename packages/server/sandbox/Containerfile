@@ -1,0 +1,17 @@
+# The run image (ADR 0091): Node, the engine and its plugin folders, and the tools steps call.
+# Built per PATH release by build-run-image.sh, from the context that script assembles.
+FROM docker.io/library/node:24-bookworm-slim AS build
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends python3 make g++ ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
+RUN npm install -g pnpm@12.5.1
+WORKDIR /opt/path
+COPY . .
+RUN pnpm install --frozen-lockfile --filter @path/server...
+
+FROM docker.io/library/node:24-bookworm-slim
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends git curl python3 jq ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
+COPY --from=build /opt/path /opt/path
+ENTRYPOINT ["/opt/path/packages/server/node_modules/.bin/tsx", "/opt/path/packages/server/bin/path-vm.ts"]

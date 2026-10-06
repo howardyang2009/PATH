@@ -46,8 +46,9 @@ export async function runWorkflow(
   const resumeInput = continuationInput?.kind === "resume" ? continuationInput : undefined;
   const completeInput = continuationInput?.kind === "complete" ? continuationInput : undefined;
 
-  // A Complete keeps the tree's own root id; a launch or Resume mints a fresh one.
-  const runId = completeInput?.rootRunId ?? randomUUID();
+  // A Complete keeps the tree's own root id; a launch takes the caller's or mints one, a Resume
+  // mints one.
+  const runId = completeInput?.rootRunId ?? options.rootRunId ?? randomUUID();
 
   // One snapshot for the whole run, read here and nowhere else, so a mid-run env change cannot
   // desync the masker. User secrets replace the host environment entirely, never merge with it.
