@@ -124,8 +124,14 @@ ingress).
 - All limits are config defaults plus a per-user override map keyed by user id. The map lives in
   `.path/limits.json`, read at boot, for example
   `{"users": {"user_abc": {"requestsPerMinute": 0, "maxSharedItems": 0}}}`. Request-limit keys:
-  `requestsPerMinute`, `maxBodyBytes`, `maxSharedItems`, `maxFileBytes`. A malformed file refuses
-  boot. Local mode applies no limits.
+  `requestsPerMinute`, `maxBodyBytes`, `maxSharedItems`, `maxFileBytes`. Run-limit keys:
+  `maxRunningVms`, `vmSecondsPerDay`, `maxStorageBytes`; 0 blocks every launch of that user. The
+  free-disk floor is host-wide. A malformed file refuses boot. Local mode applies no limits.
+- Run limits gate every VM launch: Start, Resume and Complete. The free-disk floor and the storage
+  limit answer `507`, the VM-time budget `429` with `Retry-After`. Storage is measured fresh at
+  launch and VM import, and reused for 30 s on writes while under the limit. A queued launch is
+  checked again when it gets its slot. A VM that a previous Server process left running is counted
+  up to the next boot, at most its 1 h limit.
 - The request rate counts over a sliding minute. A body up to 8 MB past the cap is read before the
   `413`; a longer one gets the `413` at once and its connection closed.
 - Users see only the message when a limit hits.

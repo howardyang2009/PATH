@@ -141,6 +141,9 @@ describe("readRequestLimits", () => {
       maxBodyBytes: MIB,
       maxSharedItems: 50,
       maxFileBytes: MIB,
+      maxRunningVms: 1,
+      vmSecondsPerDay: 7200,
+      maxStorageBytes: 1024 * MIB,
     });
   });
 
@@ -152,7 +155,7 @@ describe("readRequestLimits", () => {
   });
 
   it("throws on an unknown key or a negative value", () => {
-    writeLimits({ users: { [ALICE]: { maxVms: 1 } } });
+    writeLimits({ users: { [ALICE]: { maxCpus: 1 } } });
     expect(() => readRequestLimits(projectDir)).toThrow(/limits\.json/);
     writeLimits({ users: { [ALICE]: { maxSharedItems: -1 } } });
     expect(() => readRequestLimits(projectDir)).toThrow(/limits\.json/);

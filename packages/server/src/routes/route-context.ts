@@ -6,6 +6,7 @@ import type { LiveRuns } from "../live-runs.js";
 import type { ServerMode } from "../mode.js";
 import type { RateLimiter, RequestLimits, UserLimits } from "../request-limits.js";
 import type { RequesterContext, RequesterContexts } from "../requester.js";
+import type { RunLimits } from "../run-limits.js";
 import type { SecretStore } from "../secret-store.js";
 
 /** What one route handler is handed: the requester's authored layout and store, plus what the
@@ -36,9 +37,9 @@ export interface ServerContext {
   stepPlugins: LoadedStepPluginRegistry;
   requesters: RequesterContexts;
   creators: CreatorTable;
-  /** Hosted mode only: each user's request limits, and the request counters they are checked
-   * against. */
-  limits?: { config: RequestLimits; rate: RateLimiter };
+  /** Hosted mode only: each user's limits, the request counters, and the VM time and storage the
+   * run limits are checked against. */
+  limits?: { config: RequestLimits; rate: RateLimiter; run: RunLimits };
 }
 
 /** The context one request is handled under, built from the requester that request resolved to

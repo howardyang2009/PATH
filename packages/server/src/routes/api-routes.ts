@@ -48,17 +48,15 @@ import {
  * so a test drives it directly. A **stream** handler owns the socket (SSE, a file download) and
  * takes the response; only those four rows do.
  */
-type ApiRoute =
-  | {
-      method: "GET" | "POST" | "PUT" | "DELETE";
-      path: string | RegExp;
-      handle(request: ApiRequest): RouteReply | Promise<RouteReply>;
-    }
-  | {
-      method: "GET" | "POST" | "PUT" | "DELETE";
-      path: string | RegExp;
-      stream: (request: StreamRequest<[string]>) => void | Promise<void>;
-    };
+type ApiRoute = {
+  method: "GET" | "POST" | "PUT" | "DELETE";
+  path: string | RegExp;
+  /** The run limit a hosted request must pass first: a VM launch, or an authored write. */
+  gate?: "launch" | "write";
+} & (
+  | { handle(request: ApiRequest): RouteReply | Promise<RouteReply> }
+  | { stream: (request: StreamRequest<[string]>) => void | Promise<void> }
+);
 
 const RUN = /^\/v0\/runs\/([^/]+)$/;
 const TEMPLATE = /^\/v0\/templates\/([^/]+)$/;
@@ -66,7 +64,7 @@ const SECRET = /^\/v0\/secrets\/([^/]+)$/;
 
 const API_ROUTES: readonly ApiRoute[] = [
   // Runs (§2–§6).
-  { method: "POST", path: "/v0/runs", handle: handlePostRuns },
+  { method: "POST", path: "/v0/runs", handle: handlePostRuns, gate: "launch" },
   { method: "GET", path: "/v0/runs", handle: handleListRuns },
   { method: "GET", path: RUN, handle: handleGetRun },
   { method: "DELETE", path: RUN, handle: handleDeleteRun },
@@ -77,17 +75,27 @@ const API_ROUTES: readonly ApiRoute[] = [
     handle: handleGetRunBlob,
   },
   { method: "POST", path: /^\/v0\/runs\/([^/]+)\/cancel$/, handle: handleCancelRun },
-  { method: "POST", path: /^\/v0\/runs\/([^/]+)\/resume$/, handle: handleResumeRun },
-  { method: "POST", path: /^\/v0\/runs\/([^/]+)\/complete$/, handle: handleCompleteRun },
+  {
+    method: "POST",
+    path: /^\/v0\/runs\/([^/]+)\/resume$/,
+    handle: handleResumeRun,
+    gate: "launch",
+  },
+  {
+    method: "POST",
+    path: /^\/v0\/runs\/([^/]+)\/complete$/,
+    handle: handleCompleteRun,
+    gate: "launch",
+  },
 
   // Workflow files (§7). The Designer edit lease is three POSTs (ADR 0017); each carries its
   // `/`-bearing path in the body.
   { method: "GET", path: "/v0/workflows", handle: handleGetWorkflows },
-  { method: "PUT", path: "/v0/workflows", handle: handlePutWorkflow },
+  { method: "PUT", path: "/v0/workflows", handle: handlePutWorkflow, gate: "write" },
   { method: "GET", path: "/v0/workflows/file", stream: handleGetWorkflowFile },
   { method: "GET", path: "/v0/workflows/download", stream: handleGetWorkflowDownload },
   { method: "DELETE", path: "/v0/workflows/file", handle: handleDeleteWorkflow },
-  { method: "POST", path: "/v0/workflows/copy", handle: handlePostWorkflowCopy },
+  { method: "POST", path: "/v0/workflows/copy", handle: handlePostWorkflowCopy, gate: "write" },
   { method: "POST", path: "/v0/workflows/lock", handle: handleWorkflowLock },
   { method: "POST", path: "/v0/workflows/lock/heartbeat", handle: handleWorkflowLockHeartbeat },
   { method: "POST", path: "/v0/workflows/lock/release", handle: handleWorkflowLockRelease },
@@ -98,14 +106,14 @@ const API_ROUTES: readonly ApiRoute[] = [
   // Templates (§10, ADR 0050). The by-id lookup spans both kinds and origins, so it takes no
   // `?kind=`.
   { method: "GET", path: "/v0/templates", handle: handleGetTemplates },
-  { method: "POST", path: "/v0/templates", handle: handlePostTemplates },
+  { method: "POST", path: "/v0/templates", handle: handlePostTemplates, gate: "write" },
   { method: "GET", path: TEMPLATE, handle: handleGetTemplate },
   {
     method: "GET",
     path: /^\/v0\/templates\/([^/]+)\/download$/,
     stream: handleGetTemplateDownload,
   },
-  { method: "PUT", path: TEMPLATE, handle: handlePutTemplate },
+  { method: "PUT", path: TEMPLATE, handle: handlePutTemplate, gate: "write" },
   { method: "DELETE", path: TEMPLATE, handle: handleDeleteTemplate },
 
   // The requester's Secret store (§11, ADR 0089): write-only, and `404` in local mode.
@@ -143,6 +151,24 @@ export async function dispatchApi(
     }
     const limits = server.limits?.config.forUser(requester.userId);
     if (!(await withinRequestLimits(req, res, server, requester.userId, limits))) return true;
+    const run = server.limits?.run;
+    const refusal =
+      run === undefined || limits === undefined || route.gate === undefined
+        ? undefined
+        : route.gate === "launch"
+          ? run.launchRefusal(requester.userId, limits)
+          : run.storageRefusal(requester.userId, limits);
+    if (refusal !== undefined) {
+      const { status, message, retryAfterSeconds } = refusal;
+      sendReply(res, {
+        ...replyError(status, message),
+        headers:
+          retryAfterSeconds === undefined
+            ? undefined
+            : { "Retry-After": String(retryAfterSeconds) },
+      });
+      return true;
+    }
     const params = decodeAll(captures);
     if (params === undefined) {
       sendReply(res, replyError(400, "malformed percent-encoding in the request path"));

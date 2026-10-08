@@ -64,6 +64,21 @@ export const SANDBOX_LIMITS = {
 
 export const SANDBOX_LOST = "sandbox lost";
 
+/** Whose runs these are, for the per-user run limits (docs/spec/path-website.md §8). */
+export interface RunOwner {
+  userId: string;
+  /** The VMs this user may run at once; their other launches stay `pending`. */
+  maxRunningVms: number;
+  /** Why a queued launch may not start once it holds a slot, or `undefined`. */
+  startRefusal?(): string | undefined;
+  /** Starts the clock on one VM's time; the returned function stops it. */
+  meter?(): () => void;
+  /** Why this user's storage refuses a VM's import, or `undefined`. */
+  importRefusal?(): string | undefined;
+}
+
+const UNLIMITED: RunOwner = { userId: "", maxRunningVms: Number.POSITIVE_INFINITY };
+
 /** Why the host stopped a VM. */
 type StopReason = "cancel" | "timeout";
 
@@ -91,7 +106,11 @@ type SharedOptions = Pick<
  * VM's events live, replaces the tree's rows with the VM's validated export at exit, and ends what
  * a cancelled, stopped or lost VM left running.
  */
-export function createSandboxedRuns(store: Project, sandbox: SandboxOptions): LiveRuns {
+export function createSandboxedRuns(
+  store: Project,
+  sandbox: SandboxOptions,
+  owner: RunOwner = UNLIMITED,
+): LiveRuns {
   const hub = new RunEventHub();
   /** Each root a VM invocation holds, queued or running, with how to stop it. */
   const stops = new Map<string, (reason: StopReason) => void>();
@@ -116,7 +135,7 @@ export function createSandboxedRuns(store: Project, sandbox: SandboxOptions): Li
       vm.terminate();
       killTimer = setTimeout(() => vm?.kill(), sandbox.stopGraceMs);
     };
-    const ticket = sandbox.slots.take();
+    const ticket = sandbox.slots.take(owner.userId, owner.maxRunningVms);
     stops.set(rootRunId, (why) => {
       ticket.cancel();
       stop(why);
@@ -128,7 +147,15 @@ export function createSandboxedRuns(store: Project, sandbox: SandboxOptions): Li
       await store.archive.endNonTerminal(rootRunId, "cancelled");
       return { ended: "cancelled" };
     }
+    // The limits may have run out while the launch waited.
+    const refused = owner.startRefusal?.();
+    if (refused !== undefined) {
+      release();
+      await store.archive.endNonTerminal(rootRunId, "failed", refused);
+      return { ended: "failed", error: refused };
+    }
     const staging = stagingDir(store, rootRunId);
+    const endMeter = owner.meter?.();
     try {
       const mounts = prepareMounts(store, job, staging);
       const events: LogEvent[] = [];
@@ -160,9 +187,10 @@ export function createSandboxedRuns(store: Project, sandbox: SandboxOptions): Li
       clearTimeout(killTimer);
 
       const refusal =
-        code === 0
+        owner.importRefusal?.() ??
+        (code === 0
           ? importVmExport(store, rootRunId, job.exportFile, sandbox)
-          : recoverFromStaging(store, rootRunId, sandbox);
+          : recoverFromStaging(store, rootRunId, sandbox));
       if (refusal !== undefined) console.error(`run ${rootRunId}: ${refusal}`);
       const end: Invocation =
         reason === "cancel"
@@ -180,6 +208,7 @@ export function createSandboxedRuns(store: Project, sandbox: SandboxOptions): Li
       const result = code === 0 && refusal === undefined ? readResult(store, job) : undefined;
       return { ...end, ...(result ? { result } : {}) };
     } finally {
+      endMeter?.();
       release();
       streamed.delete(rootRunId);
       rmSync(staging, { recursive: true, force: true });
