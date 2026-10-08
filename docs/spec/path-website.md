@@ -150,14 +150,19 @@ safe while the Server runs. Moves the file to `.path/quarantine/<date>/` for 30 
 removes the creator row and logs path, creator, time and reason. `--find-copies` reports files under
 `users/*/` with the same content hash and never touches them. No notice to the creator.
 
-**`path-server remap-user`** ([#720](https://github.com/howardyang2009/PATH/issues/720)): offline
-(refuses while the Server runs). Copies `users/<old>/` and the store (the project `.path` for
+**`path-server remap-user <old>=<new>... | --from-clerk [--dry-run] [--delete-source] [--project
+<dir>]`** ([#720](https://github.com/howardyang2009/PATH/issues/720),
+[#745](https://github.com/howardyang2009/PATH/issues/745)): offline (refuses while the Server runs;
+the Server keeps its pid in `.path/server.pid`). Copies `users/<old>/` and the store (the project `.path` for
 `local`) to `users/<new>/`, rewrites the `users/<old>/` prefix in `runs.workflow_path` and in refs
 inside authored files, and moves creator rows to the new id. Does not move VM-time usage; prints a
 reminder to edit the override map. Refuses a non-empty target. Verifies with file counts, row counts
 and `PRAGMA integrity_check`; deletes the source only with `--delete-source`. `--dry-run` prints
 pairs, sizes, counts, rewrites and conflicts. Used once for `local` to the owner's `sub`, and at the
-move to production with pairs read from Clerk `external_id`.
+move to production with pairs read from Clerk `external_id` (`--from-clerk`, with the production
+`CLERK_SECRET_KEY`). Host files in the project `.path` (`host.db`, `limits.json`, quarantine, logs)
+stay when `local` moves. A ref is rewritten only when it reaches the old folder by name; a relative
+ref inside the folder moves with it.
 
 **Backup** ([#722](https://github.com/howardyang2009/PATH/issues/722),
 [#743](https://github.com/howardyang2009/PATH/issues/743)): `path-server backup --out <dir>

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   parseBackupArgs,
+  parseRemapUserArgs,
   parseRemoveSharedArgs,
   parseRotateSecretsKeyArgs,
   parseServerArgs,
@@ -141,5 +142,43 @@ describe("parseRotateSecretsKeyArgs", () => {
       success: false,
       error: expect.stringContaining('unrecognized argument "--key"'),
     });
+  });
+});
+
+describe("parseRemapUserArgs", () => {
+  it("takes old=new pairs and defaults the flags", () => {
+    expect(parseRemapUserArgs(["local=user_a", "user_b=user_c"], "/cwd")).toEqual({
+      success: true,
+      args: {
+        projectDir: "/cwd",
+        pairs: [
+          { from: "local", to: "user_a" },
+          { from: "user_b", to: "user_c" },
+        ],
+        fromClerk: false,
+        dryRun: false,
+        deleteSource: false,
+      },
+    });
+  });
+
+  it("takes --from-clerk, --dry-run, --delete-source and --project", () => {
+    expect(
+      parseRemapUserArgs(["--from-clerk", "--dry-run", "--delete-source", "--project", "/p"]),
+    ).toEqual({
+      success: true,
+      args: { projectDir: "/p", pairs: [], fromClerk: true, dryRun: true, deleteSource: true },
+    });
+  });
+
+  it("refuses no pairs, a malformed pair, and pairs beside --from-clerk", () => {
+    const error = (argv: string[]) => {
+      const result = parseRemapUserArgs(argv);
+      return result.success ? "" : result.error;
+    };
+    expect(error([])).toContain("give old=new pairs or --from-clerk");
+    expect(error(["user_a"])).toContain('"user_a" is not an old=new pair');
+    expect(error(["=user_a"])).toContain('"=user_a" is not an old=new pair');
+    expect(error(["a=b", "--from-clerk"])).toContain("not both");
   });
 });

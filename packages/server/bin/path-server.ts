@@ -6,11 +6,13 @@ import { join } from "node:path";
 import { findSnapshot, takeBackup, verifyBackup } from "../src/backup.js";
 import {
   parseBackupArgs,
+  parseRemapUserArgs,
   parseRemoveSharedArgs,
   parseRotateSecretsKeyArgs,
   parseServerArgs,
 } from "../src/cli.js";
 import { startPathServer } from "../src/create-server.js";
+import { listClerkUsers, pairsFromClerkUsers, remapUser } from "../src/remap-user.js";
 import { removeShared } from "../src/remove-shared.js";
 import { rotateSecretsKey } from "../src/rotate-secrets-key.js";
 import { parseSecretsKey } from "../src/secret-store.js";
@@ -30,6 +32,11 @@ if (argv[0] === "remove-shared") {
     console.error(err instanceof Error ? err.message : String(err));
     process.exitCode = 1;
   }
+} else if (argv[0] === "remap-user") {
+  runRemapUser(argv.slice(1)).catch((err) => {
+    console.error(err instanceof Error ? err.message : String(err));
+    process.exitCode = 1;
+  });
 } else {
   serve(argv);
 }
@@ -87,6 +94,55 @@ function runRotateSecretsKey(args: string[]): void {
   console.log(
     `Every row is under the new key id: ${result.rows} re-encrypted in ${result.stores} user stores`,
   );
+}
+
+// With --from-clerk the pairs come from the production instance CLERK_SECRET_KEY names: each user
+// imported with external_id = their development id.
+async function runRemapUser(args: string[]): Promise<void> {
+  const parsed = parseRemapUserArgs(args);
+  if (!parsed.success) {
+    console.error(parsed.error);
+    process.exitCode = 2;
+    return;
+  }
+  let pairs = parsed.args.pairs;
+  if (parsed.args.fromClerk) {
+    const secretKey = process.env.CLERK_SECRET_KEY;
+    if (!secretKey) throw new Error("remap-user --from-clerk needs CLERK_SECRET_KEY");
+    pairs = pairsFromClerkUsers(await listClerkUsers(secretKey));
+    if (pairs.length === 0) throw new Error("no Clerk user has an external_id");
+  }
+  const { dryRun, deleteSource, projectDir } = parsed.args;
+  const result = remapUser({ projectDir, pairs, dryRun, deleteSource });
+  for (const report of result.reports) {
+    const rows = Object.entries(report.rows)
+      .map(([table, n]) => `${table} ${n}`)
+      .join(", ");
+    console.log(`${report.from} -> ${report.to}`);
+    console.log(`  ${report.files} files, ${report.bytes} bytes; rows: ${rows || "no store"}`);
+    console.log(
+      `  rewrites: ${report.workflowPaths} workflow_path, ${report.refs.length} refs; ${report.creatorRows} creator rows`,
+    );
+    for (const ref of report.refs) console.log(`    ${ref.file}: ${ref.from} -> ${ref.to}`);
+    for (const conflict of report.conflicts) console.log(`  conflict: ${conflict}`);
+  }
+  if (!result.success) {
+    console.error(result.error);
+    process.exitCode = 1;
+    return;
+  }
+  if (dryRun) {
+    console.log("Dry run: nothing changed");
+    return;
+  }
+  for (const { from, to } of pairs) {
+    console.log(
+      `Remapped ${from} to ${to}${deleteSource ? "; source deleted" : "; source kept (--delete-source removes it)"}`,
+    );
+    console.log(
+      `  VM-time usage stays under ${from}. Move any overrides of ${from} in .path/limits.json to ${to}, then restart the Server.`,
+    );
+  }
 }
 
 async function runBackup(args: string[]): Promise<void> {

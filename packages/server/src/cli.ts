@@ -160,3 +160,59 @@ export function parseRotateSecretsKeyArgs(
   }
   return { success: true, args: { projectDir } };
 }
+
+const REMAP_USER_USAGE =
+  "usage: path-server remap-user (<old>=<new>... | --from-clerk) [--dry-run] [--delete-source] [--project <dir>]";
+
+export interface ParsedRemapUserArgs {
+  projectDir: string;
+  pairs: { from: string; to: string }[];
+  /** Read the pairs from the Clerk instance's `external_id` values instead. */
+  fromClerk: boolean;
+  dryRun: boolean;
+  deleteSource: boolean;
+}
+
+export type ParseRemapUserArgsResult =
+  | { success: true; args: ParsedRemapUserArgs }
+  | { success: false; error: string };
+
+/** `--project` defaults to cwd; the pairs come from the arguments or from Clerk, not both. */
+export function parseRemapUserArgs(
+  argv: string[],
+  cwd: string = process.cwd(),
+): ParseRemapUserArgsResult {
+  const args: ParsedRemapUserArgs = {
+    projectDir: cwd,
+    pairs: [],
+    fromClerk: false,
+    dryRun: false,
+    deleteSource: false,
+  };
+  const fail = (error: string) => ({
+    success: false as const,
+    error: `${error}\n${REMAP_USER_USAGE}`,
+  });
+  for (let i = 0; i < argv.length; i += 1) {
+    const arg = argv[i] as string;
+    if (arg === "--project") {
+      const value = argv[i + 1];
+      if (!value) return fail(`${arg} requires a value`);
+      args.projectDir = value;
+      i += 1;
+    } else if (arg === "--from-clerk") {
+      args.fromClerk = true;
+    } else if (arg === "--dry-run") {
+      args.dryRun = true;
+    } else if (arg === "--delete-source") {
+      args.deleteSource = true;
+    } else {
+      const match = /^([^=]+)=([^=]+)$/.exec(arg);
+      if (match === null) return fail(`"${arg}" is not an old=new pair`);
+      args.pairs.push({ from: match[1] as string, to: match[2] as string });
+    }
+  }
+  if (args.fromClerk && args.pairs.length > 0) return fail("give pairs or --from-clerk, not both");
+  if (!args.fromClerk && args.pairs.length === 0) return fail("give old=new pairs or --from-clerk");
+  return { success: true, args };
+}
