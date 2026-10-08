@@ -7,7 +7,7 @@ import { openProject } from "@path/engine";
 import type { ListWorkflowsResponse } from "@path/schema";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type PathServerHandle, startPathServer } from "../src/create-server.js";
-import { clerkToken, stubHostedEnv } from "./fixtures/clerk-token.js";
+import { clerkToken, hostedMode, stubHostedEnv } from "./fixtures/clerk-token.js";
 
 /**
  * The requester's view in hosted mode (ADR 0088 §1, §2, §6): each request sees shipped, shared and
@@ -46,6 +46,7 @@ async function start({ hosted }: { hosted: boolean }): Promise<string> {
     undefined,
     join(shippedDir, "template"),
     join(shippedDir, "workflow"),
+    hosted ? hostedMode(projectDir) : undefined,
   );
   return handle.url;
 }

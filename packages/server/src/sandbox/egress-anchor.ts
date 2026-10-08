@@ -32,14 +32,14 @@ export function egressAnchorProblem(
   return undefined;
 }
 
-/** Throws unless the anchor is loaded; `PATH_EGRESS_STATUS` names another status file. */
-export function assertEgressAnchor(env: NodeJS.ProcessEnv = process.env): void {
+/** Why the anchor is not loaded, or `undefined` when it is; `PATH_EGRESS_STATUS` names another
+ * status file. */
+export function egressAnchorFailure(env: NodeJS.ProcessEnv = process.env): string | undefined {
   let status: string | undefined;
   try {
     status = readFileSync(env.PATH_EGRESS_STATUS || EGRESS_STATUS_FILE, "utf8");
   } catch {
     status = undefined;
   }
-  const problem = egressAnchorProblem(status, Date.now() / 1000 - uptime());
-  if (problem !== undefined) throw new Error(`${problem}. Refusing to start`);
+  return egressAnchorProblem(status, Date.now() / 1000 - uptime());
 }

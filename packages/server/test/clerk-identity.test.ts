@@ -10,6 +10,7 @@ import { type PathServerHandle, startPathServer } from "../src/create-server.js"
 import {
   bearer,
   clerkToken,
+  hostedMode,
   JWT_KEY,
   ORIGIN,
   stubHostedEnv,
@@ -79,7 +80,16 @@ describe("the hosted Server", () => {
 
   async function startHosted(): Promise<string> {
     stubHostedEnv();
-    handle = await startPathServer(projectDir);
+    handle = await startPathServer(
+      projectDir,
+      0,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      hostedMode(projectDir),
+    );
     return handle.url;
   }
 

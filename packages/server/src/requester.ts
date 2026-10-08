@@ -63,7 +63,7 @@ export interface RequesterContextOptions {
   secretsKey?: SecretsKey;
   /** The key a rotation moves rows off; rows under it still read until they move. */
   previousSecretsKey?: SecretsKey;
-  /** Hosted mode only: each requester's Starts run in a VM (ADR 0091) instead of in process. */
+  /** Hosted mode only, and required there: each requester's Starts run in a VM (ADR 0091). */
   sandbox?: SandboxOptions;
   /** Hosted mode only: the run limits each user's VMs are held to. */
   runOwner?: (userId: string) => RunOwner;
@@ -84,6 +84,9 @@ export function createRequesterContexts({
   sandbox,
   runOwner,
 }: RequesterContextOptions): RequesterContexts {
+  if (hosted && sandbox === undefined) {
+    throw new Error("hosted mode has no sandbox: in-process runs are refused in hosted mode");
+  }
   const contexts = new Map<string, RequesterContext>();
   const projectLive = createLiveRuns(projectStore);
 
@@ -94,13 +97,12 @@ export function createRequesterContexts({
   ): { store: Project; live: LiveRuns; secrets: SecretStore | undefined } => {
     if (!hosted) return { store: projectStore, live: projectLive, secrets: undefined };
     if (secretsKey === undefined) throw new Error("hosted mode has no PATH_SECRETS_KEY");
+    if (sandbox === undefined) throw new Error("hosted mode has no sandbox");
     const opened = openProject(join(projectDir, "users", userId));
     if (!opened.success) throw new Error(opened.error);
     const store = opened.project;
     const secrets = openSecretStore(dbFilePath(store.dir), secretsKey, previousSecretsKey);
-    const live = sandbox
-      ? createSandboxedRuns(store, sandbox, runOwner?.(userId))
-      : createLiveRuns(store);
+    const live = createSandboxedRuns(store, sandbox, runOwner?.(userId));
     return { store, live, secrets };
   };
 

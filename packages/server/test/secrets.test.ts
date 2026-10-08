@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type PathServerHandle, startPathServer } from "../src/create-server.js";
-import { clerkToken, stubHostedEnv } from "./fixtures/clerk-token.js";
+import { clerkToken, hostedMode, stubHostedEnv } from "./fixtures/clerk-token.js";
 
 /**
  * The Secret store doors and the runs that read them (ADR 0089): set, list and delete never return
@@ -43,6 +43,7 @@ async function start({ hosted }: { hosted: boolean }): Promise<string> {
     undefined,
     join(shippedDir, "template"),
     join(shippedDir, "workflow"),
+    hosted ? hostedMode(projectDir) : undefined,
   );
   return handle.url;
 }

@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type PathServerHandle, startPathServer } from "../src/create-server.js";
 import { funnelGuardEnabled, isFunnelRequest } from "../src/funnel-guard.js";
 import type { ServerMode } from "../src/mode.js";
+import { hostedMode } from "./fixtures/clerk-token.js";
 import { stubEgressAnchor } from "./fixtures/egress-status.js";
 
 /** A minimal `IncomingMessage` stand-in — the guard only reads `.headers`. */
@@ -72,12 +73,7 @@ describe("funnelGuardEnabled", () => {
   });
 
   it("does not apply in hosted mode", () => {
-    const hosted: ServerMode = {
-      mode: "hosted",
-      publishableKey: "pk_test_cGF0aC5leGFtcGxlJA",
-      clerk: { jwtKey: "-----BEGIN PUBLIC KEY-----", allowedOrigin: "https://path.example" },
-      secretsKey: { id: "test", key: Buffer.alloc(32) },
-    };
+    const hosted = { mode: "hosted" } as ServerMode;
     expect(funnelGuardEnabled(hosted, {})).toBe(false);
   });
 });
@@ -169,8 +165,18 @@ describe("the Funnel guard on the HTTP door", () => {
     vi.stubEnv("PATH_ALLOWED_ORIGIN", `https://${TS_NET_HOST}`);
     vi.stubEnv("CLERK_PUBLISHABLE_KEY", "pk_test_cGF0aC5leGFtcGxlJA");
     vi.stubEnv("PATH_SECRETS_KEY", Buffer.alloc(32).toString("base64"));
+    vi.stubEnv("PATH_SANDBOX_IMAGE", "path-run:test");
     stubEgressAnchor();
-    handle = await startPathServer(projectDir);
+    handle = await startPathServer(
+      projectDir,
+      0,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      hostedMode(projectDir),
+    );
     // Past the guard, the request meets hosted sign-in instead.
     expect((await get("/v0/runs", TS_NET_HOST)).status).toBe(401);
   });
