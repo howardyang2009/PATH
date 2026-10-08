@@ -11,8 +11,8 @@ export interface RunTreeFields {
 }
 
 /** Group non-root rows by their `parentRunId`. `orphanTo` handles a live, incomplete stream: a row
- * whose parent has not arrived is filed there instead of a key nothing walks, so a root-down walk
- * still reaches it. */
+ * whose parent has not arrived, or that came off an event with no parent yet, is filed there
+ * instead of a key nothing walks, so a root-down walk still reaches it. */
 export function childrenByParent<T extends RunTreeFields>(
   rows: Iterable<T>,
   options: { orphanTo?: string } = {},
@@ -21,10 +21,12 @@ export function childrenByParent<T extends RunTreeFields>(
   const ids = new Set(rowArray.map((row) => row.runId));
   const byParent = new Map<string, T[]>();
   for (const row of rowArray) {
-    // A root has no parent to file under; `=== null` also narrows `parentRunId` to a string below.
-    if (row.parentRunId === null) continue;
+    const { orphanTo } = options;
     let parent = row.parentRunId;
-    if (options.orphanTo !== undefined && !ids.has(parent)) parent = options.orphanTo;
+    if (orphanTo !== undefined && row.runId !== orphanTo && (parent === null || !ids.has(parent)))
+      parent = orphanTo;
+    // A root has no parent to file under.
+    if (parent === null) continue;
     const siblings = byParent.get(parent);
     if (siblings) siblings.push(row);
     else byParent.set(parent, [row]);

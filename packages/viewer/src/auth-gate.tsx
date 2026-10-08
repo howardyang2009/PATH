@@ -70,5 +70,10 @@ export function UserMenu({ items = [] }: UserMenuProps) {
     }));
     return auth.mountUserButton(ref.current, entries);
   }, [auth, hosted]);
-  return hosted ? <div className="user-menu" data-testid="user-menu" ref={ref} /> : null;
+  // Clerk overwrites its mount node's `class`, so it mounts inside the styled wrapper, not on it.
+  return hosted ? (
+    <div className="user-menu" data-testid="user-menu">
+      <div ref={ref} />
+    </div>
+  ) : null;
 }

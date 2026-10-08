@@ -98,8 +98,13 @@ export async function startAuthSession(options: StartAuthSessionOptions): Promis
 }
 
 async function loadClerkJs(publishableKey: string): Promise<ClerkLike> {
-  const { Clerk } = await import("@clerk/clerk-js");
-  return new Clerk(publishableKey) as unknown as ClerkLike;
+  const [{ Clerk }, { ui }] = await Promise.all([import("@clerk/clerk-js"), import("@clerk/ui")]);
+  const clerk = new Clerk(publishableKey);
+  // clerk-js ships its components (the sign-in modal, the user menu) in `@clerk/ui`; a Clerk
+  // loaded without `ui` throws on `openSignIn`.
+  const load = clerk.load.bind(clerk);
+  clerk.load = (options) => load({ ...options, ui });
+  return clerk as unknown as ClerkLike;
 }
 
 async function hostedSession(clerk: ClerkLike, location: PageLocation): Promise<AuthSession> {

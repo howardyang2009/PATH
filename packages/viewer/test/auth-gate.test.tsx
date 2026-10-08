@@ -90,6 +90,15 @@ describe("AuthGate", () => {
     expect(fake.mounted).toHaveLength(1);
   });
 
+  it("mounts Clerk inside the user-menu wrapper, so the wrapper keeps its class", () => {
+    const fake = fakeHosted("user_1");
+    renderApp(fake.session);
+
+    const wrapper = screen.getByTestId("user-menu");
+    expect(fake.mounted[0]).not.toBe(wrapper);
+    expect(wrapper.contains(fake.mounted[0] as Node)).toBe(true);
+  });
+
   it("keeps the app on screen when the session is lost mid-use", () => {
     const fake = fakeHosted("user_1");
     renderApp(fake.session);
