@@ -93,3 +93,43 @@ export function parseRemoveSharedArgs(
   if (reason === undefined) return fail("--reason is required");
   return { success: true, args: { projectDir, path, reason, purge, findCopies } };
 }
+
+const BACKUP_USAGE =
+  "usage: path-server backup --out <dir> [--project <dir>]\n       path-server backup verify [--snapshot <dir>]";
+
+export type ParsedBackupArgs =
+  | { command: "take"; projectDir: string; outDir: string }
+  | { command: "verify"; snapshotDir: string | undefined };
+
+export type ParseBackupArgsResult =
+  | { success: true; args: ParsedBackupArgs }
+  | { success: false; error: string };
+
+/** `--project` defaults to cwd; `verify` without `--snapshot` restores the latest restic snapshot. */
+export function parseBackupArgs(
+  argv: string[],
+  cwd: string = process.cwd(),
+): ParseBackupArgsResult {
+  const verify = argv[0] === "verify";
+  const flags = verify ? ["--snapshot"] : ["--out", "--project"];
+  const values: Record<string, string> = {};
+  const fail = (error: string) => ({ success: false as const, error: `${error}\n${BACKUP_USAGE}` });
+
+  for (let i = verify ? 1 : 0; i < argv.length; i += 1) {
+    const arg = argv[i] as string;
+    if (!flags.includes(arg)) return fail(`unrecognized argument "${arg}"`);
+    const value = argv[i + 1];
+    if (!value) return fail(`${arg} requires a value`);
+    values[arg] = value;
+    i += 1;
+  }
+
+  if (verify)
+    return { success: true, args: { command: "verify", snapshotDir: values["--snapshot"] } };
+  const outDir = values["--out"];
+  if (outDir === undefined) return fail("--out is required");
+  return {
+    success: true,
+    args: { command: "take", projectDir: values["--project"] ?? cwd, outDir },
+  };
+}

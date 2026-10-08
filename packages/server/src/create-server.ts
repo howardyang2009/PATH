@@ -7,7 +7,7 @@ import { clerkUserIdResolver } from "./clerk-identity.js";
 import { adoptSharedItems, openCreatorTable } from "./creator-table.js";
 import { enforceFunnelGuard, funnelGuardEnabled } from "./funnel-guard.js";
 import { sendError } from "./http-json.js";
-import { readServerMode } from "./mode.js";
+import { readServerMode, type ServerMode } from "./mode.js";
 import { enforceSameOrigin } from "./origin-gate.js";
 import { createRateLimiter, readRequestLimits } from "./request-limits.js";
 import { createRequesterContexts } from "./requester.js";
@@ -108,7 +108,8 @@ export interface PathServerHandle {
  * Boots `@path/server` against one fixed project root (server-api-v0.md §0): one in-process
  * `.path/path.db`, localhost-bind, no auth. `staticDir`/`designerStaticDir` mount at `/viewer/` and
  * `/designer/` with their own SPA fallbacks; bare `/` 302s to `/viewer/`. `stepPlugins` is a test
- * seam.
+ * seam; `mode` defaults to the one the environment sets, and a half-configured hosted setup throws
+ * there, before anything is opened.
  */
 export async function startPathServer(
   projectDir: string,
@@ -118,9 +119,8 @@ export async function startPathServer(
   stepPlugins?: LoadedStepPluginRegistry,
   shippedTemplateDir?: string,
   shippedWorkflowDir?: string,
+  mode: ServerMode = readServerMode(),
 ): Promise<PathServerHandle> {
-  // A half-configured hosted setup throws here, before anything is opened.
-  const mode = readServerMode();
   if (mode.mode === "hosted") assertEgressAnchor();
   const limitsConfig = mode.mode === "hosted" ? readRequestLimits(projectDir) : undefined;
 

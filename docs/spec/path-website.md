@@ -159,12 +159,19 @@ and `PRAGMA integrity_check`; deletes the source only with `--delete-source`. `-
 pairs, sizes, counts, rewrites and conflicts. Used once for `local` to the owner's `sub`, and at the
 move to production with pairs read from Clerk `external_id`.
 
-**Backup** ([#722](https://github.com/howardyang2009/PATH/issues/722)): `path-server backup` makes a
-consistent snapshot (SQLite online backup API for every `path.db` and the host DB, plus blobs,
-`users/` and `shared/`); `restic` stores it encrypted in Backblaze B2. Nightly via `launchd`, keep 7
-daily, 4 weekly, 6 monthly. `path-server backup verify` restores into a temporary directory, runs
-`PRAGMA integrity_check` and boots a read-only Server; run it quarterly. `path-server
-rotate-secrets-key` re-encrypts secrets under a new key id.
+**Backup** ([#722](https://github.com/howardyang2009/PATH/issues/722),
+[#743](https://github.com/howardyang2009/PATH/issues/743)): `path-server backup --out <dir>
+[--project <dir>]` makes a consistent snapshot while the Server runs: the SQLite online backup API
+for every `*.db` under `.path/`, `users/` and `shared/` (each `path.db` and `host.db`), then every
+other file there (blobs, authored files, `limits.json`, logs). `<dir>/project/` mirrors the project;
+`<dir>/backup.json`, written last, lists the databases. `PATH_SECRETS_KEY` is never under the
+project, so no snapshot holds it. `restic` stores it encrypted in Backblaze B2. Nightly via the
+`launchd` agent `com.path.backup`, keep 7 daily, 4 weekly, 6 monthly. `path-server backup verify`
+restores the latest restic snapshot (or takes `--snapshot <dir>`) into a temporary directory, runs
+`PRAGMA integrity_check` on every listed database, checks that every blob a run row names is there,
+opens every user store and boots a local-mode
+Server on the copy; a failure names the file and exits 1. Run it quarterly. Files and steps:
+`packages/server/backup/`. `path-server rotate-secrets-key` re-encrypts secrets under a new key id.
 
 ## 10. Network exposure
 
@@ -219,6 +226,16 @@ Server-side item is missing.
   before the Server; it does not start on its own.
 - After install and after each reboot, run `packages/server/sandbox/egress/check.sh <run image>`:
   every blocked target must time out and an internet HTTPS request must work.
+- Set up the nightly backup once: `brew install restic`; create a B2 bucket and an application key
+  for it; store a new restic password in the Keychain (`security add-generic-password -s
+  path-restic -a "$USER" -w`) with an escrow copy in the password manager; copy
+  `packages/server/backup/backup.env.example` to `~/.config/path/backup.env` (`chmod 600`) and fill
+  it; run `restic init` with that file exported; then run `packages/server/backup/install.sh`. Run
+  one backup now with `launchctl kickstart gui/$UID/com.path.backup` and read
+  `~/Library/Logs/path-backup.log`. The agent runs only while the owner is logged in and the login
+  Keychain is unlocked, like the Server's LaunchAgent; a failure only shows in that log.
+- Quarterly, and before the hosted-mode gate: export `backup.env` into a shell and run
+  `path-server backup verify`.
 - Create the Clerk application PATH (development instance, open sign-up).
 - Sign in once, then run `path-server remap-user` from `local` to the owner's `sub`.
 
