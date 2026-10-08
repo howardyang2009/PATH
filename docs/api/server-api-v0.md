@@ -1128,7 +1128,8 @@ Each user has a Secret store of User secrets, kept as rows in their own
 `users/<user-id>/.path/path.db`. Each value is encrypted with AES-256-GCM under the host master key
 `PATH_SECRETS_KEY` (32 bytes in base64), and each row records the key id. The Server reads the key from
 its environment; the owner's `launchd` LaunchAgent exports it from the macOS Keychain at boot
-(path-website.md §12). Hosted mode refuses to start without that key. **No door returns a value.** In local mode every door answers `404`.
+(path-website.md §12). Hosted mode refuses to start without that key. During a key rotation the
+Server also reads rows under the old key from `PATH_SECRETS_KEY_PREVIOUS` (path-website.md §9). **No door returns a value.** In local mode every door answers `404`.
 
 A hosted run resolves `{"$env": "NAME"}` against its launcher's Secret store, never the host
 environment, also for a shared workflow made by another user. An unset name fails the run before its

@@ -4,9 +4,16 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { findSnapshot, takeBackup, verifyBackup } from "../src/backup.js";
-import { parseBackupArgs, parseRemoveSharedArgs, parseServerArgs } from "../src/cli.js";
+import {
+  parseBackupArgs,
+  parseRemoveSharedArgs,
+  parseRotateSecretsKeyArgs,
+  parseServerArgs,
+} from "../src/cli.js";
 import { startPathServer } from "../src/create-server.js";
 import { removeShared } from "../src/remove-shared.js";
+import { rotateSecretsKey } from "../src/rotate-secrets-key.js";
+import { parseSecretsKey } from "../src/secret-store.js";
 
 const argv = process.argv.slice(2);
 if (argv[0] === "remove-shared") {
@@ -16,6 +23,13 @@ if (argv[0] === "remove-shared") {
     console.error(err instanceof Error ? err.message : String(err));
     process.exitCode = 1;
   });
+} else if (argv[0] === "rotate-secrets-key") {
+  try {
+    runRotateSecretsKey(argv.slice(1));
+  } catch (err) {
+    console.error(err instanceof Error ? err.message : String(err));
+    process.exitCode = 1;
+  }
 } else {
   serve(argv);
 }
@@ -44,6 +58,35 @@ function runRemoveShared(args: string[]): void {
     console.log(`${result.copies.length} private copies (not changed)`);
     for (const copy of result.copies) console.log(`  ${copy}`);
   }
+}
+
+// The new key is PATH_SECRETS_KEY and the old one PATH_SECRETS_KEY_PREVIOUS, the same pair the
+// Server reads while rows move.
+function runRotateSecretsKey(args: string[]): void {
+  const parsed = parseRotateSecretsKeyArgs(args);
+  if (!parsed.success) {
+    console.error(parsed.error);
+    process.exitCode = 2;
+    return;
+  }
+  const raw = process.env.PATH_SECRETS_KEY;
+  if (!raw) throw new Error("rotate-secrets-key needs the new key in PATH_SECRETS_KEY");
+  const previous = process.env.PATH_SECRETS_KEY_PREVIOUS;
+  const result = rotateSecretsKey({
+    projectDir: parsed.args.projectDir,
+    key: parseSecretsKey(raw),
+    previous: previous ? parseSecretsKey(previous, "PATH_SECRETS_KEY_PREVIOUS") : undefined,
+  });
+  if (!result.success) {
+    console.error(
+      `Rotation incomplete; check that PATH_SECRETS_KEY_PREVIOUS holds the old key, then rerun:\n${result.error}`,
+    );
+    process.exitCode = 1;
+    return;
+  }
+  console.log(
+    `Every row is under the new key id: ${result.rows} re-encrypted in ${result.stores} user stores`,
+  );
 }
 
 async function runBackup(args: string[]): Promise<void> {

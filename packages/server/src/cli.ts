@@ -133,3 +133,30 @@ export function parseBackupArgs(
     args: { command: "take", projectDir: values["--project"] ?? cwd, outDir },
   };
 }
+
+const ROTATE_SECRETS_KEY_USAGE = "usage: path-server rotate-secrets-key [--project <dir>]";
+
+export type ParseRotateSecretsKeyArgsResult =
+  | { success: true; args: { projectDir: string } }
+  | { success: false; error: string };
+
+/** `--project` defaults to cwd; both keys come from the environment, never from argv. */
+export function parseRotateSecretsKeyArgs(
+  argv: string[],
+  cwd: string = process.cwd(),
+): ParseRotateSecretsKeyArgsResult {
+  let projectDir = cwd;
+  const fail = (error: string) => ({
+    success: false as const,
+    error: `${error}\n${ROTATE_SECRETS_KEY_USAGE}`,
+  });
+  for (let i = 0; i < argv.length; i += 1) {
+    const arg = argv[i] as string;
+    if (arg !== "--project") return fail(`unrecognized argument "${arg}"`);
+    const value = argv[i + 1];
+    if (!value) return fail(`${arg} requires a value`);
+    projectDir = value;
+    i += 1;
+  }
+  return { success: true, args: { projectDir } };
+}

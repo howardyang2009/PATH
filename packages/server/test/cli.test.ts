@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { parseBackupArgs, parseRemoveSharedArgs, parseServerArgs } from "../src/cli.js";
+import {
+  parseBackupArgs,
+  parseRemoveSharedArgs,
+  parseRotateSecretsKeyArgs,
+  parseServerArgs,
+} from "../src/cli.js";
 
 const SHARED = "shared/workflow/abuse.workflow.json";
 
@@ -111,6 +116,30 @@ describe("parseBackupArgs", () => {
     expect(parseBackupArgs(["verify", "--out", "/snap"])).toMatchObject({
       success: false,
       error: expect.stringContaining('unrecognized argument "--out"'),
+    });
+  });
+});
+
+describe("parseRotateSecretsKeyArgs", () => {
+  it("rotates the project in --project, defaulting to cwd", () => {
+    expect(parseRotateSecretsKeyArgs([], "/cwd")).toEqual({
+      success: true,
+      args: { projectDir: "/cwd" },
+    });
+    expect(parseRotateSecretsKeyArgs(["--project", "/p"], "/cwd")).toEqual({
+      success: true,
+      args: { projectDir: "/p" },
+    });
+  });
+
+  it("refuses a flag without a value and an unknown argument", () => {
+    expect(parseRotateSecretsKeyArgs(["--project"])).toMatchObject({
+      success: false,
+      error: expect.stringContaining("--project requires a value"),
+    });
+    expect(parseRotateSecretsKeyArgs(["--key", "x"])).toMatchObject({
+      success: false,
+      error: expect.stringContaining('unrecognized argument "--key"'),
     });
   });
 });

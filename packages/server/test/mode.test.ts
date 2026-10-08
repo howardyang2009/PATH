@@ -30,6 +30,21 @@ describe("readServerMode", () => {
     );
   });
 
+  it("reads the previous secrets key during a rotation", () => {
+    const previous = Buffer.alloc(32, 7).toString("base64");
+    const mode = readServerMode({ ...HOSTED, PATH_SECRETS_KEY_PREVIOUS: previous });
+    expect(mode).toMatchObject({
+      secretsKey: parseSecretsKey(SECRETS_KEY),
+      previousSecretsKey: parseSecretsKey(previous),
+    });
+  });
+
+  it("refuses a malformed previous secrets key", () => {
+    expect(() => readServerMode({ ...HOSTED, PATH_SECRETS_KEY_PREVIOUS: "short" })).toThrow(
+      /PATH_SECRETS_KEY_PREVIOUS/,
+    );
+  });
+
   it("refuses hosted mode with a malformed secrets key", () => {
     expect(() => readServerMode({ ...HOSTED, PATH_SECRETS_KEY: "short" })).toThrow(
       /PATH_SECRETS_KEY/,
