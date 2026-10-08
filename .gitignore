@@ -13,3 +13,4 @@ dist/
 # lives in packages/server/shipped/.
 /users/
 /shared/
+.env

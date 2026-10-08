@@ -52,6 +52,16 @@ describe("childrenByParent", () => {
     expect(byParent.has("not-here-yet")).toBe(false);
   });
 
+  it("files a parentless non-root row under orphanTo, but never the orphanTo row itself", () => {
+    // `early` came off a log event before any tree read gave it a parent.
+    const streamed: Row[] = [
+      { runId: "root", parentRunId: null },
+      { runId: "early", parentRunId: null },
+    ];
+    const byParent = childrenByParent(streamed, { orphanTo: "root" });
+    expect(byParent.get("root")!.map((r) => r.runId)).toEqual(["early"]);
+  });
+
   it("without orphanTo, an unknown parent is left as its own key (complete-tree case)", () => {
     const byParent = childrenByParent([{ runId: "x", parentRunId: "missing" }]);
     expect(byParent.get("missing")!.map((r) => r.runId)).toEqual(["x"]);

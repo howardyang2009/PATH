@@ -79,6 +79,13 @@ describe("buildRunTree", () => {
     expect(shape(tree)).toEqual({ id: "root", children: [{ id: "orphan", children: [] }] });
   });
 
+  // A run first seen on a log event has no parent until a tree read lands.
+  it("hangs a parentless non-root run off the root", () => {
+    const tree = buildRunTree("root", mapOf(run("root", null), run("early", null)), NO_DISPLAY);
+
+    expect(shape(tree)).toEqual({ id: "root", children: [{ id: "early", children: [] }] });
+  });
+
   it("orders siblings by when they started, oldest first", () => {
     const tree = buildRunTree(
       "root",

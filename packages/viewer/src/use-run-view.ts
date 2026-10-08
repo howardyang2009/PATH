@@ -30,7 +30,12 @@ export function useRunView(client: PathApiClient, rootRunId: string | null): Run
     let unsubscribe: (() => void) | null = null;
     setLoad({ phase: "loading" });
 
-    connectRunViewModel({ client, rootRunId })
+    connectRunViewModel({
+      client,
+      rootRunId,
+      // A failed tree re-read is not fatal to the view, but leaves run parentage stale: log it.
+      onError: (error) => console.error(`run ${rootRunId}: live update failed`, error),
+    })
       .then((connected) => {
         // The connect is async: by the time it resolves the effect may already be cleaned up, so
         // close the stream it just opened.

@@ -340,6 +340,7 @@ pnpm install          # install the workspace
 pnpm typecheck        # tsc --noEmit in every package
 pnpm test             # vitest in every package
 pnpm serve            # build both consoles and serve everything on :8080
+pnpm host-serve       # same, in hosted mode with the env in ~/.config/path/hosted.env
 pnpm release-notes    # dogfood: PATH summarizes its own recent commits
 ```
 

@@ -38,7 +38,11 @@ describe("client-core stays browser-safe", () => {
     const pkg = JSON.parse(readFileSync(join(packageRoot, "package.json"), "utf8")) as {
       dependencies?: Record<string, string>;
     };
-    expect(Object.keys(pkg.dependencies ?? {})).toEqual(["@clerk/clerk-js", "@path/schema"]);
+    expect(Object.keys(pkg.dependencies ?? {})).toEqual([
+      "@clerk/clerk-js",
+      "@clerk/ui",
+      "@path/schema",
+    ]);
   });
 
   it("imports nothing from @path/engine or the Node standard library", () => {
