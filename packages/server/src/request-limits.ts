@@ -5,8 +5,8 @@ import { z } from "zod";
 import type { AuthoredRefusal } from "./authored-layout.js";
 import type { CreatorTable } from "./creator-table.js";
 
-// Request limits: what one hosted user may do through the API. The defaults hold for everyone;
-// `.path/limits.json` overrides any of them per user id.
+// Request and run limits: what one hosted user may do through the API and in VMs. The defaults
+// hold for everyone; `.path/limits.json` overrides any of them per user id.
 
 const LimitSchema = z.number().int().nonnegative();
 const UserLimitsSchema = z
@@ -15,13 +15,16 @@ const UserLimitsSchema = z
     maxBodyBytes: LimitSchema,
     maxSharedItems: LimitSchema,
     maxFileBytes: LimitSchema,
+    maxRunningVms: LimitSchema,
+    vmSecondsPerDay: LimitSchema,
+    maxStorageBytes: LimitSchema,
   })
   .strict();
 const LimitsFileSchema = z
   .object({ users: z.record(z.string(), UserLimitsSchema.partial()).optional() })
   .strict();
 
-/** One user's limits. A limit of 0 refuses every request, shared item or file it bounds. */
+/** One user's limits. A limit of 0 refuses every request, shared item, file or launch it bounds. */
 export type UserLimits = z.infer<typeof UserLimitsSchema>;
 
 export const DEFAULT_LIMITS: UserLimits = {
@@ -29,6 +32,9 @@ export const DEFAULT_LIMITS: UserLimits = {
   maxBodyBytes: 1024 * 1024,
   maxSharedItems: 50,
   maxFileBytes: 1024 * 1024,
+  maxRunningVms: 1,
+  vmSecondsPerDay: 2 * 60 * 60,
+  maxStorageBytes: 1024 * 1024 * 1024,
 };
 
 export interface RequestLimits {

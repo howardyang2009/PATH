@@ -16,6 +16,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { type LiveRuns, ResumeNotFound, type StartRunOptions } from "../src/live-runs.js";
 import {
   createSandboxedRuns,
+  type RunOwner,
   SANDBOX_LIMITS,
   type SandboxOptions,
 } from "../src/sandbox/sandboxed-runs.js";
@@ -49,21 +50,29 @@ afterEach(() => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-function sandboxed(behaviour: FakeBehaviour, overrides: Partial<SandboxOptions> = {}) {
+function sandboxed(
+  behaviour: FakeBehaviour,
+  overrides: Partial<SandboxOptions> = {},
+  owner?: RunOwner,
+) {
   const runtime = fakeRuntime(behaviour);
-  const runs = createSandboxedRuns(store, {
-    runtime,
-    slots: createVmSlots(SANDBOX_LIMITS.maxVms),
-    image: "path-run:test",
-    cpus: SANDBOX_LIMITS.cpus,
-    memoryMiB: SANDBOX_LIMITS.memoryMiB,
-    timeoutMs: SANDBOX_LIMITS.timeoutMs,
-    stopGraceMs: 50,
-    maxExportBytes: SANDBOX_LIMITS.maxExportBytes,
-    maxBlobBytes: SANDBOX_LIMITS.maxBlobBytes,
-    hostEnv: { DEEPSEEK_BASE_URL: "https://gateway.example" },
-    ...overrides,
-  });
+  const runs = createSandboxedRuns(
+    store,
+    {
+      runtime,
+      slots: createVmSlots(SANDBOX_LIMITS.maxVms),
+      image: "path-run:test",
+      cpus: SANDBOX_LIMITS.cpus,
+      memoryMiB: SANDBOX_LIMITS.memoryMiB,
+      timeoutMs: SANDBOX_LIMITS.timeoutMs,
+      stopGraceMs: 50,
+      maxExportBytes: SANDBOX_LIMITS.maxExportBytes,
+      maxBlobBytes: SANDBOX_LIMITS.maxBlobBytes,
+      hostEnv: { DEEPSEEK_BASE_URL: "https://gateway.example" },
+      ...overrides,
+    },
+    owner,
+  );
   return { runtime, runs };
 }
 
@@ -370,6 +379,89 @@ describe("the VM cap", () => {
     for (const exit of exits) exit(1);
     expect(await settled(runs, ids[3] ?? "")).toBe("cancelled");
     expect(runtime.vms).toHaveLength(3);
+  });
+});
+
+describe("the run limits", () => {
+  it("keeps a user's second launch pending while their first runs", async () => {
+    const exits: ((code: number) => void)[] = [];
+    const { runtime, runs } = sandboxed(
+      () => new Promise((r) => exits.push(r)),
+      {},
+      {
+        userId: "alice",
+        maxRunningVms: 1,
+      },
+    );
+    const first = await runs.start(...(await workflow("")));
+    const second = await runs.start(...(await workflow("")));
+
+    await launchedVms(runtime.vms, 1);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(runtime.vms).toHaveLength(1);
+    expect(store.archive.tree(second.rootRunId)?.root?.status).toBe("pending");
+    exits[0]?.(1);
+    await launchedVms(runtime.vms, 2);
+    expect(runtime.vms[1]?.spec.labels["path.root-run-id"]).toBe(second.rootRunId);
+    exits[1]?.(1);
+    await settled(runs, first.rootRunId);
+  });
+
+  it("meters each VM's time from launch to exit", async () => {
+    const meter: string[] = [];
+    const { runs } = sandboxed(
+      inProcessVm,
+      {},
+      {
+        userId: "alice",
+        maxRunningVms: 1,
+        meter: () => {
+          meter.push("begin");
+          return () => meter.push("end");
+        },
+      },
+    );
+    const started = await runs.start(...(await workflow("process.stdout.write('b')")));
+
+    expect(await settled(runs, started.rootRunId)).toBe("succeeded");
+    expect(meter).toEqual(["begin", "end"]);
+  });
+
+  it("fails a queued launch whose limits ran out while it waited", async () => {
+    let limitHit: string | undefined;
+    const { runtime, runs } = sandboxed(
+      inProcessVm,
+      {},
+      {
+        userId: "alice",
+        maxRunningVms: 1,
+        startRefusal: () => limitHit,
+      },
+    );
+    limitHit = "budget used";
+    const started = await runs.start(...(await workflow("process.stdout.write('b')")));
+
+    expect(await settled(runs, started.rootRunId)).toBe("failed");
+    expect(runtime.vms).toHaveLength(0);
+    const end = store.archive.tree(started.rootRunId)?.events().at(-1);
+    expect(end).toMatchObject({ error: "budget used" });
+  });
+
+  it("refuses the import when the user's storage is full", async () => {
+    const { runs } = sandboxed(
+      inProcessVm,
+      {},
+      {
+        userId: "alice",
+        maxRunningVms: 1,
+        importRefusal: () => "storage full, delete runs",
+      },
+    );
+    const started = await runs.start(...(await workflow("process.stdout.write('b')")));
+
+    expect(await settled(runs, started.rootRunId)).toBe("failed");
+    const end = store.archive.tree(started.rootRunId)?.events().at(-1);
+    expect(end).toMatchObject({ error: expect.stringMatching(/storage full, delete runs/) });
   });
 });
 

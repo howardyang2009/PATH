@@ -20,6 +20,8 @@ export interface CreatorTable {
   forget(projectPath: string, kind: AuthoredKind): void;
   /** How many shared items `userId` created. */
   countBy(userId: string): number;
+  /** The project paths of the shared items `userId` created. */
+  pathsBy(userId: string): string[];
   close(): void;
 }
 
@@ -50,11 +52,15 @@ export function openCreatorTable(dbPath: string): CreatorTable {
   const count = db.prepare<[string], { n: number }>(
     "SELECT COUNT(*) AS n FROM shared_creators WHERE creator = ?",
   );
+  const paths = db.prepare<[string], { project_path: string }>(
+    "SELECT project_path FROM shared_creators WHERE creator = ?",
+  );
   return {
     creatorOf: (projectPath, kind) => select.get(projectPath, kind)?.creator,
     stamp: (projectPath, kind, userId) => void upsert.run(projectPath, kind, userId),
     forget: (projectPath, kind) => void remove.run(projectPath, kind),
     countBy: (userId) => count.get(userId)?.n ?? 0,
+    pathsBy: (userId) => paths.all(userId).map((row) => row.project_path),
     close: () => db.close(),
   };
 }

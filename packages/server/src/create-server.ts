@@ -13,10 +13,13 @@ import { createRateLimiter, readRequestLimits } from "./request-limits.js";
 import { createRequesterContexts } from "./requester.js";
 import { dispatchApi } from "./routes/api-routes.js";
 import type { ServerContext } from "./routes/route-context.js";
+import { createRunLimits } from "./run-limits.js";
 import { assertEgressAnchor } from "./sandbox/egress-anchor.js";
 import { reapSandboxes } from "./sandbox/reaper.js";
 import { readSandboxOptions } from "./sandbox/sandbox-config.js";
+import { SANDBOX_LIMITS } from "./sandbox/sandboxed-runs.js";
 import { serveStatic } from "./serve-static.js";
+import { openVmUsage } from "./vm-usage.js";
 
 /** Built `@path/viewer` bundle (`packages/viewer/dist`); `serveStatic` 404s when it is absent or
  * unbuilt. */
@@ -119,10 +122,7 @@ export async function startPathServer(
   // A half-configured hosted setup throws here, before anything is opened.
   const mode = readServerMode();
   if (mode.mode === "hosted") assertEgressAnchor();
-  const limits =
-    mode.mode === "hosted"
-      ? { config: readRequestLimits(projectDir), rate: createRateLimiter() }
-      : undefined;
+  const limitsConfig = mode.mode === "hosted" ? readRequestLimits(projectDir) : undefined;
 
   // Scan the plugin folder (server-api-v0.md §8) before `openProject`, so a broken folder throws
   // without leaving an opened db handle behind; a thrown error skips the handle that would close
@@ -144,6 +144,23 @@ export async function startPathServer(
   const sandbox = mode.mode === "hosted" ? readSandboxOptions() : undefined;
   // VMs and staging a previous Server process left behind, cleared before any run starts.
   if (sandbox !== undefined) await reapSandboxes(projectDir, sandbox);
+  // The host-level tables beside the store (ADR 0088 §3, docs/spec/path-website.md §8): who created
+  // each shared item, and each user's VM time.
+  const hostDb = join(project.dir, ".path", "host.db");
+  const creators = openCreatorTable(hostDb);
+  const usage =
+    limitsConfig !== undefined
+      ? openVmUsage(hostDb, Date.now, SANDBOX_LIMITS.timeoutMs + SANDBOX_LIMITS.stopGraceMs)
+      : undefined;
+  const limits =
+    limitsConfig !== undefined && usage !== undefined
+      ? {
+          config: limitsConfig,
+          rate: createRateLimiter(),
+          run: createRunLimits({ projectDir, creators, usage }),
+          usage,
+        }
+      : undefined;
   const requesters = createRequesterContexts({
     projectDir,
     shippedDir: shipped,
@@ -152,10 +169,22 @@ export async function startPathServer(
     hosted: mode.mode === "hosted",
     secretsKey: mode.mode === "hosted" ? mode.secretsKey : undefined,
     sandbox,
+    runOwner:
+      limits === undefined
+        ? undefined
+        : (userId) => {
+            const user = limits.config.forUser(userId);
+            return {
+              userId,
+              maxRunningVms: user.maxRunningVms,
+              startRefusal: () => limits.run.launchRefusal(userId, user)?.message,
+              meter: () => limits.usage.begin(userId),
+              importRefusal: () => limits.run.storageRefusal(userId, user, true)?.message,
+            };
+          },
   });
-  // The host-level creator table (ADR 0088 §3). Local mode adopts today's untracked `shared/` files
-  // as created by `local`, so they stay editable.
-  const creators = openCreatorTable(join(project.dir, ".path", "host.db"));
+  // Local mode adopts today's untracked `shared/` files as created by `local`, so they stay
+  // editable.
   if (mode.mode === "local") {
     adoptSharedItems(authoredLayout({ projectDir, shippedDir: shipped }), creators);
   }
@@ -188,6 +217,7 @@ export async function startPathServer(
           requesters.idle().then(() => {
             requesters.close();
             creators.close();
+            usage?.close();
             resolvePromise();
           }, reject);
         });
