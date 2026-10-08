@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseRemoveSharedArgs, parseServerArgs } from "../src/cli.js";
+import { parseBackupArgs, parseRemoveSharedArgs, parseServerArgs } from "../src/cli.js";
 
 const SHARED = "shared/workflow/abuse.workflow.json";
 
@@ -72,6 +72,45 @@ describe("parseRemoveSharedArgs", () => {
     expect(parseRemoveSharedArgs([SHARED, "--reason", "x", "extra"])).toMatchObject({
       success: false,
       error: expect.stringContaining('unrecognized argument "extra"'),
+    });
+  });
+});
+
+describe("parseBackupArgs", () => {
+  it("takes a snapshot into --out, with the project defaulting to cwd", () => {
+    expect(parseBackupArgs(["--out", "/snap"], "/cwd")).toEqual({
+      success: true,
+      args: { command: "take", projectDir: "/cwd", outDir: "/snap" },
+    });
+    expect(parseBackupArgs(["--project", "/p", "--out", "/snap"], "/cwd")).toEqual({
+      success: true,
+      args: { command: "take", projectDir: "/p", outDir: "/snap" },
+    });
+  });
+
+  it("verifies a given snapshot, or the latest restic one without --snapshot", () => {
+    expect(parseBackupArgs(["verify", "--snapshot", "/snap"])).toEqual({
+      success: true,
+      args: { command: "verify", snapshotDir: "/snap" },
+    });
+    expect(parseBackupArgs(["verify"])).toEqual({
+      success: true,
+      args: { command: "verify", snapshotDir: undefined },
+    });
+  });
+
+  it("refuses a missing --out, a flag without a value and an unknown argument", () => {
+    expect(parseBackupArgs([])).toMatchObject({
+      success: false,
+      error: expect.stringContaining("--out is required"),
+    });
+    expect(parseBackupArgs(["--out"])).toMatchObject({
+      success: false,
+      error: expect.stringContaining("--out requires a value"),
+    });
+    expect(parseBackupArgs(["verify", "--out", "/snap"])).toMatchObject({
+      success: false,
+      error: expect.stringContaining('unrecognized argument "--out"'),
     });
   });
 });
