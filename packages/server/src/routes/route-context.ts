@@ -4,6 +4,7 @@ import type { AuthoredLayout } from "../authored-layout.js";
 import type { CreatorTable } from "../creator-table.js";
 import type { LiveRuns } from "../live-runs.js";
 import type { ServerMode } from "../mode.js";
+import type { RateLimiter, RequestLimits, UserLimits } from "../request-limits.js";
 import type { RequesterContext, RequesterContexts } from "../requester.js";
 import type { SecretStore } from "../secret-store.js";
 
@@ -24,6 +25,8 @@ export interface RouteContext {
   creators: CreatorTable;
   /** The requester's Secret store; `undefined` in local mode, which has none. */
   secrets: SecretStore | undefined;
+  /** The requester's request limits; `undefined` in local mode, which has none. */
+  limits: UserLimits | undefined;
 }
 
 /** What the process holds across every request: the registry frozen at start, and the resolver
@@ -33,6 +36,9 @@ export interface ServerContext {
   stepPlugins: LoadedStepPluginRegistry;
   requesters: RequesterContexts;
   creators: CreatorTable;
+  /** Hosted mode only: each user's request limits, and the request counters they are checked
+   * against. */
+  limits?: { config: RequestLimits; rate: RateLimiter };
 }
 
 /** The context one request is handled under, built from the requester that request resolved to. */
@@ -44,6 +50,7 @@ export function routeContextFor(requester: RequesterContext, server: ServerConte
     stepPlugins: server.stepPlugins,
     creators: server.creators,
     secrets: requester.secrets,
+    limits: server.limits?.config.forUser(requester.userId),
   };
 }
 

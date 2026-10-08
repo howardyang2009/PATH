@@ -1,11 +1,17 @@
 import { existsSync } from "node:fs";
 import { relative } from "node:path";
 import { duplicateIdErrors, type StepPluginRegistry, safeParseWorkflowFile } from "@path/schema";
-import { conditionalDelete, conditionalWrite, PRECONDITION_FAILED } from "./artifact-file.js";
+import {
+  conditionalDelete,
+  conditionalWrite,
+  PRECONDITION_FAILED,
+  serializeArtifact,
+} from "./artifact-file.js";
 import type { AuthoredLayout } from "./authored-layout.js";
 import { confineToProjectRoot } from "./confine.js";
 import { type CreatorTable, projectPathOf, sharedWriteRefusal } from "./creator-table.js";
 import { editLease } from "./edit-lease.js";
+import { fileSizeRefusal, sharedItemLimitRefusal, type UserLimits } from "./request-limits.js";
 
 // The workflow store: the path-addressed door onto workflow files, as the template store is the
 // id-addressed door onto templates. Both ask the authored layout which files a door may write, and
@@ -36,8 +42,10 @@ export function workflowsOf(ctx: {
   layout: AuthoredLayout;
   stepPlugins: StepPluginRegistry;
   creators: CreatorTable;
+  /** The requester's request limits; `undefined` (local mode) checks none. */
+  limits?: UserLimits;
 }): WorkflowStore {
-  const { layout, stepPlugins, creators } = ctx;
+  const { layout, stepPlugins, creators, limits } = ctx;
   const { projectDir } = layout;
   const shared = (workflowPath: string): boolean =>
     layout.classify(workflowPath)?.origin === "shared";
@@ -52,10 +60,13 @@ export function workflowsOf(ctx: {
       // symlink is refused regardless of the payload.
       const absPath = confineToProjectRoot(projectDir, workflowPath, { allowMissingTail: true });
       if (absPath === undefined) return { ok: false, status: 404, message: "not found" };
-      // A new shared file is the requester's to create; an existing one only its creator's.
+      // A new shared file is the requester's to create, within their shared-item limit; an existing
+      // one only its creator's.
       const creatorRefusal = existsSync(absPath)
         ? sharedWriteRefusal(layout, creators, workflowPath, "workflow")
-        : undefined;
+        : shared(workflowPath)
+          ? sharedItemLimitRefusal(limits, creators, layout.userId)
+          : undefined;
       if (creatorRefusal !== undefined) return { ok: false, ...creatorRefusal };
 
       // Parsed against the registry frozen at server start (ADR 0018), like every other door that
@@ -78,6 +89,8 @@ export function workflowsOf(ctx: {
           details: duplicates,
         };
       }
+      const tooLarge = fileSizeRefusal(limits, Buffer.byteLength(serializeArtifact(payload)));
+      if (tooLarge !== undefined) return { ok: false, ...tooLarge };
 
       const written = conditionalWrite(absPath, { ifMatch, rule: "create-or-overwrite", payload });
       if (!written.ok) {

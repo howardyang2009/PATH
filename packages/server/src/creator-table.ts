@@ -18,6 +18,8 @@ export interface CreatorTable {
   /** Record `userId` as the item's creator, replacing any stale row. */
   stamp(projectPath: string, kind: AuthoredKind, userId: string): void;
   forget(projectPath: string, kind: AuthoredKind): void;
+  /** How many shared items `userId` created. */
+  countBy(userId: string): number;
   close(): void;
 }
 
@@ -45,10 +47,14 @@ export function openCreatorTable(dbPath: string): CreatorTable {
   const remove = db.prepare<[string, string]>(
     "DELETE FROM shared_creators WHERE project_path = ? AND kind = ?",
   );
+  const count = db.prepare<[string], { n: number }>(
+    "SELECT COUNT(*) AS n FROM shared_creators WHERE creator = ?",
+  );
   return {
     creatorOf: (projectPath, kind) => select.get(projectPath, kind)?.creator,
     stamp: (projectPath, kind, userId) => void upsert.run(projectPath, kind, userId),
     forget: (projectPath, kind) => void remove.run(projectPath, kind),
+    countBy: (userId) => count.get(userId)?.n ?? 0,
     close: () => db.close(),
   };
 }

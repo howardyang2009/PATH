@@ -55,6 +55,7 @@ function context(live: LiveRuns): RouteContext {
     layout: authoredLayout({ projectDir: fixturesDir }),
     creators: {} as unknown as CreatorTable,
     secrets: undefined,
+    limits: undefined,
   };
 }
 

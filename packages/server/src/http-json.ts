@@ -40,27 +40,62 @@ export function sendError(
   sendReply(res, replyError(status, message, details));
 }
 
-/** Reads and JSON-parses a request body; `null` marks a body that isn't valid JSON. */
-export function readJsonBody(
-  req: IncomingMessage,
-): Promise<{ ok: true; value: unknown } | { ok: false }> {
+/** Bodies the dispatcher already read under a size cap; `readJsonBody` parses these instead of the
+ * consumed stream. */
+const bufferedBodies = new WeakMap<IncomingMessage, Buffer>();
+
+/**
+ * Read `req`'s whole body into memory, for {@link readJsonBody} to parse later. `false` when the
+ * body is over `maxBytes`: a `Content-Length` over it is refused unread, a longer stream once it
+ * passes the cap.
+ */
+export function bufferRequestBody(req: IncomingMessage, maxBytes: number): Promise<boolean> {
+  if (Number(req.headers["content-length"] ?? 0) > maxBytes) return Promise.resolve(false);
+  return new Promise((resolve) => {
+    const chunks: Buffer[] = [];
+    let size = 0;
+    const onData = (chunk: Buffer): void => {
+      size += chunk.length;
+      if (size <= maxBytes) {
+        chunks.push(chunk);
+        return;
+      }
+      req.off("data", onData);
+      resolve(false);
+    };
+    req.on("data", onData);
+    req.on("end", () => {
+      bufferedBodies.set(req, Buffer.concat(chunks));
+      resolve(true);
+    });
+    req.on("error", () => resolve(false));
+  });
+}
+
+function readBodyBytes(req: IncomingMessage): Promise<Buffer | undefined> {
+  const buffered = bufferedBodies.get(req);
+  if (buffered !== undefined) return Promise.resolve(buffered);
   return new Promise((resolve) => {
     const chunks: Buffer[] = [];
     req.on("data", (chunk: Buffer) => chunks.push(chunk));
-    req.on("end", () => {
-      const raw = Buffer.concat(chunks).toString("utf8");
-      if (raw.trim() === "") {
-        resolve({ ok: true, value: {} });
-        return;
-      }
-      try {
-        resolve({ ok: true, value: JSON.parse(raw) });
-      } catch {
-        resolve({ ok: false });
-      }
-    });
-    req.on("error", () => resolve({ ok: false }));
+    req.on("end", () => resolve(Buffer.concat(chunks)));
+    req.on("error", () => resolve(undefined));
   });
+}
+
+/** Reads and JSON-parses a request body; `ok: false` marks a body that isn't valid JSON. */
+export async function readJsonBody(
+  req: IncomingMessage,
+): Promise<{ ok: true; value: unknown } | { ok: false }> {
+  const bytes = await readBodyBytes(req);
+  if (bytes === undefined) return { ok: false };
+  const raw = bytes.toString("utf8");
+  if (raw.trim() === "") return { ok: true, value: {} };
+  try {
+    return { ok: true, value: JSON.parse(raw) };
+  } catch {
+    return { ok: false };
+  }
 }
 
 /**

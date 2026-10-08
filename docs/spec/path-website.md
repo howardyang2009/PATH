@@ -121,7 +121,11 @@ ingress).
 
 - Rate counters live in Server memory. VM-time usage lives in a host-level table next to the creator
   table. Storage is measured on demand and cached per user.
-- All limits are config defaults plus a per-user override map keyed by user id.
+- All limits are config defaults plus a per-user override map keyed by user id. The map lives in
+  `.path/limits.json`, read at boot, for example
+  `{"users": {"user_abc": {"requests_per_minute": 0, "max_shared_items": 0}}}`. Request-limit keys:
+  `requests_per_minute`, `max_body_bytes`, `max_shared_items`, `max_file_bytes`. A malformed file
+  refuses boot. Local mode applies no limits.
 - Users see only the message when a limit hits.
 
 ## 9. Operator tools and runbook
