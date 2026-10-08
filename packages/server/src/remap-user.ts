@@ -45,6 +45,12 @@ export interface RemapReport {
   workflowPaths: number;
   refs: RefRewrite[];
   creatorRows: number;
+  /** The source holds nothing, and `skipEmpty` let the pair pass without a move. */
+  nothingToMove: boolean;
+  /** Symlinks and other entries that are not regular files, which the copy leaves behind. */
+  notCopied: string[];
+  /** Refs in `shared/` workflows that reach the old folder; they are listed, never rewritten. */
+  sharedRefs: { file: string; ref: string }[];
   conflicts: string[];
 }
 
@@ -57,6 +63,9 @@ export interface RemapUserOptions {
   pairs: RemapPair[];
   dryRun?: boolean;
   deleteSource?: boolean;
+  /** Pass a pair whose source holds nothing instead of refusing it: a Clerk import names users
+   * who never used the development instance. */
+  skipEmpty?: boolean;
 }
 
 /** A folder-safe id other than `local`, which only the source of a remap may be. */
@@ -84,6 +93,7 @@ interface CopyItem {
 }
 
 interface PairPlan {
+  project: string;
   pair: RemapPair;
   authoredDir: string;
   storeDir: string;
@@ -97,40 +107,64 @@ export function remapUser({
   pairs,
   dryRun = false,
   deleteSource = false,
+  skipEmpty = false,
 }: RemapUserOptions): RemapUserResult {
   const project = resolve(projectDir);
-  if (!dryRun) {
-    const pid = runningServerPid(project);
-    if (pid !== undefined) {
-      return {
-        success: false,
-        error: `the Server is running (pid ${pid}); stop it before remap-user`,
-        reports: [],
-      };
-    }
+  const pid = runningServerPid(project);
+  if (pid !== undefined && !dryRun) {
+    return {
+      success: false,
+      error: `the Server is running (pid ${pid}); stop it before remap-user`,
+      reports: [],
+    };
   }
 
-  const plans = pairs.map((pair) => planPair(project, pair, pairs));
+  const plans = pairs.map((pair) => planPair(project, pair, pairs, { deleteSource, skipEmpty }));
   const reports = plans.map((plan) => plan.report);
-  if (dryRun) return { success: true, reports };
+  if (dryRun) {
+    if (pid !== undefined) {
+      for (const report of reports) {
+        report.conflicts.unshift(`the Server is running (pid ${pid}); stop it first`);
+      }
+    }
+    return { success: true, reports };
+  }
   const conflicts = plans.flatMap(({ pair, report }) =>
     report.conflicts.map((conflict) => `${pair.from} -> ${pair.to}: ${conflict}`),
   );
   if (conflicts.length > 0) return { success: false, error: conflicts.join("\n"), reports };
 
-  for (const plan of plans) {
-    const problems = applyPlan(project, plan);
+  // Every pair is copied and verified before any creator row moves or source goes, so a failure
+  // removes the copies and leaves the project as it was.
+  const moving = plans.filter((plan) => !plan.report.nothingToMove);
+  for (const [i, plan] of moving.entries()) {
+    let problems: string[];
+    try {
+      problems = applyPlan(plan);
+    } catch (err) {
+      problems = [err instanceof Error ? err.message : String(err)];
+    }
     if (problems.length > 0) {
-      const head = `${plan.pair.from} -> ${plan.pair.to}: the copy in users/${plan.pair.to}/ failed verification; the source and creator rows are unchanged`;
+      for (const copied of moving.slice(0, i + 1)) {
+        rmSync(copied.targetDir, { recursive: true, force: true });
+      }
+      const head = `${plan.pair.from} -> ${plan.pair.to}: the copy failed; nothing was changed`;
       return { success: false, error: [head, ...problems].join("\n"), reports };
     }
+  }
+  for (const plan of moving) {
     moveCreatorRows(project, plan.pair);
     if (deleteSource) removeSource(plan);
   }
   return { success: true, reports };
 }
 
-function planPair(project: string, pair: RemapPair, all: RemapPair[]): PairPlan {
+function planPair(
+  project: string,
+  pair: RemapPair,
+  all: RemapPair[],
+  { deleteSource, skipEmpty }: { deleteSource: boolean; skipEmpty: boolean },
+): PairPlan {
   const { from, to } = pair;
   const authoredDir = join(project, "users", from);
   const storeDir = from === DEFAULT_USER_ID ? pathDir(project) : join(authoredDir, STORE_DIR);
@@ -144,9 +178,12 @@ function planPair(project: string, pair: RemapPair, all: RemapPair[]): PairPlan 
     workflowPaths: 0,
     refs: [],
     creatorRows: 0,
+    nothingToMove: false,
+    notCopied: [],
+    sharedRefs: [],
     conflicts: [],
   };
-  const plan: PairPlan = { pair, authoredDir, storeDir, targetDir, items: [], report };
+  const plan: PairPlan = { project, pair, authoredDir, storeDir, targetDir, items: [], report };
 
   const badIds = [from, to].filter(
     (id, i) => !USER_ID.test(id) || (i === 1 && id === DEFAULT_USER_ID),
@@ -157,20 +194,34 @@ function planPair(project: string, pair: RemapPair, all: RemapPair[]): PairPlan 
   if (all.filter((other) => other.to === to || other.from === to).length > 1) {
     report.conflicts.push(`users/${to}/ is named more than once`);
   }
+  if (all.filter((other) => other.from === from).length > 1) {
+    report.conflicts.push(`users/${from}/ is named more than once`);
+  }
   if (existsSync(targetDir) && readdirSync(targetDir).length > 0) {
     report.conflicts.push(`users/${to}/ is not empty`);
   }
 
+  const authored = listFiles(authoredDir, (parts) => parts[0] === STORE_DIR);
+  const store = listFiles(
+    storeDir,
+    (parts) => parts.length === 1 && HOST_ONLY.has(parts[0] as string),
+  );
   plan.items = [
-    ...listFiles(authoredDir, (parts) => parts[0] === STORE_DIR).map((rel) =>
-      item(authoredDir, rel, rel),
-    ),
-    ...listFiles(storeDir, (parts) => parts.length === 1 && HOST_ONLY.has(parts[0] as string)).map(
-      (rel) => item(storeDir, rel, `${STORE_DIR}/${rel}`),
-    ),
+    ...authored.files.map((rel) => item(authoredDir, rel, rel)),
+    ...store.files.map((rel) => item(storeDir, rel, `${STORE_DIR}/${rel}`)),
   ];
+  report.notCopied = [
+    ...authored.others.map((rel) => projectPathOf(project, join(authoredDir, rel))),
+    ...store.others.map((rel) => projectPathOf(project, join(storeDir, rel))),
+  ];
+  if (deleteSource && report.notCopied.length > 0) {
+    report.conflicts.push(
+      `${report.notCopied.length} entries are not regular files and would be lost with the source: ${report.notCopied.join(", ")}`,
+    );
+  }
   if (plan.items.length === 0) {
-    report.conflicts.push(`users/${from}/ and its store hold nothing to move`);
+    if (skipEmpty) report.nothingToMove = true;
+    else report.conflicts.push(`users/${from}/ and its store hold nothing to move`);
     return plan;
   }
   report.files = plan.items.length;
@@ -198,6 +249,17 @@ function planPair(project: string, pair: RemapPair, all: RemapPair[]): PairPlan 
     const raw = parseJson(readFileSync(entry.src, "utf8"));
     if (raw !== undefined) report.refs.push(...rewriteRefs(raw, plan, entry));
   }
+  const sharedDir = join(project, "shared");
+  for (const rel of listFiles(sharedDir, () => false).files) {
+    if (!rel.endsWith(".workflow.json")) continue;
+    const file = join(sharedDir, rel);
+    const raw = parseJson(readFileSync(file, "utf8"));
+    for (const ref of raw === undefined ? [] : workflowRefs(raw)) {
+      if (within(authoredDir, resolve(dirname(file), ref.ref))) {
+        report.sharedRefs.push({ file: projectPathOf(project, file), ref: ref.ref });
+      }
+    }
+  }
   report.creatorRows = withCreatorTable(
     project,
     (db) =>
@@ -211,8 +273,8 @@ function planPair(project: string, pair: RemapPair, all: RemapPair[]): PairPlan 
 }
 
 /** Copies, rewrites and verifies one pair; returns what verification found wrong. */
-function applyPlan(project: string, plan: PairPlan): string[] {
-  const { pair, targetDir, items } = plan;
+function applyPlan(plan: PairPlan): string[] {
+  const { project, pair, targetDir, items } = plan;
   for (const entry of items) {
     const dst = join(targetDir, entry.dst);
     mkdirSync(dirname(dst), { recursive: true });
@@ -256,7 +318,7 @@ function applyPlan(project: string, plan: PairPlan): string[] {
 
 function verify({ targetDir, items, report }: PairPlan): string[] {
   const problems: string[] = [];
-  const copied = listFiles(targetDir, () => false).length;
+  const copied = listFiles(targetDir, () => false).files.length;
   if (copied !== items.length) problems.push(`expected ${items.length} files, found ${copied}`);
   for (const entry of items) {
     if (!entry.dst.endsWith(".db")) continue;
@@ -296,7 +358,8 @@ function removeSource({ pair, authoredDir, storeDir, items }: PairPlan): void {
   const tops = new Set(
     items
       .filter((entry) => entry.dst.startsWith(`${STORE_DIR}/`))
-      .map((entry) => entry.dst.split("/")[1] as string),
+      .map((entry) => entry.dst.split("/")[1] as string)
+      .filter((top) => top !== ".gitignore"),
   );
   for (const top of tops) rmSync(join(storeDir, top), { recursive: true, force: true });
   for (const side of ["-wal", "-shm", "-journal"]) {
@@ -309,23 +372,34 @@ function removeSource({ pair, authoredDir, storeDir, items }: PairPlan): void {
  * it reaches the same file in the new one. A relative ref inside the folder moves with it unchanged.
  */
 function rewriteRefs(raw: unknown, plan: PairPlan, entry: CopyItem): RefRewrite[] {
-  const body = (raw as { body?: unknown }).body;
-  if (!Array.isArray(body)) return [];
   const srcDir = dirname(entry.src);
   const dstFile = join(plan.targetDir, entry.dst);
-  const project = dirname(dirname(plan.targetDir));
   const rewrites: RefRewrite[] = [];
-  for (const node of walkNodes(body as WorkflowNode[])) {
-    if (node.type !== "workflow" || typeof node.ref !== "string") continue;
+  for (const node of workflowRefs(raw)) {
     const target = resolve(srcDir, node.ref);
+    if (!within(plan.authoredDir, target)) continue;
     const rel = relative(plan.authoredDir, target);
-    if (rel.startsWith("..") || isAbsolute(rel)) continue;
     const ref = toPosix(relative(dirname(dstFile), join(plan.targetDir, rel)));
     if (ref === node.ref) continue;
-    rewrites.push({ file: projectPathOf(project, dstFile), from: node.ref, to: ref });
+    rewrites.push({ file: projectPathOf(plan.project, dstFile), from: node.ref, to: ref });
     node.ref = ref;
   }
   return rewrites;
+}
+
+/** The `workflow` nodes of a parsed workflow file, whose `ref` a caller may set in place. */
+function workflowRefs(raw: unknown): { ref: string }[] {
+  const body = (raw as { body?: unknown } | null)?.body;
+  if (!Array.isArray(body)) return [];
+  return [...walkNodes(body as WorkflowNode[])].filter(
+    (node): node is WorkflowNode & { type: "workflow"; ref: string } =>
+      node.type === "workflow" && typeof node.ref === "string",
+  );
+}
+
+function within(dir: string, abs: string): boolean {
+  const rel = relative(dir, abs);
+  return !(rel.startsWith("..") || isAbsolute(rel));
 }
 
 /**
@@ -395,9 +469,13 @@ function rowCountsAt(file: string): Record<string, number> {
 }
 
 /** Regular files under `root` as `/`-separated relative paths, without SQLite side files, edit
- * leases, symlinks, or what `skip` names; `[]` when `root` is absent. */
-function listFiles(root: string, skip: (parts: string[]) => boolean): string[] {
+ * leases or what `skip` names, plus the symlinks and other entries that are not regular files. */
+function listFiles(
+  root: string,
+  skip: (parts: string[]) => boolean,
+): { files: string[]; others: string[] } {
   const found: string[] = [];
+  const others: string[] = [];
   const walk = (parts: string[]): void => {
     let entries: Dirent[];
     try {
@@ -415,11 +493,13 @@ function listFiles(root: string, skip: (parts: string[]) => boolean): string[] {
         !EDIT_LEASE.test(entry.name)
       ) {
         found.push(child.join("/"));
+      } else if (!entry.isFile()) {
+        others.push(child.join("/"));
       }
     }
   };
   walk([]);
-  return found.sort();
+  return { files: found.sort(), others: others.sort() };
 }
 
 function item(root: string, rel: string, dst: string): CopyItem {

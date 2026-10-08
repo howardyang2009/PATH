@@ -113,8 +113,18 @@ async function runRemapUser(args: string[]): Promise<void> {
     if (pairs.length === 0) throw new Error("no Clerk user has an external_id");
   }
   const { dryRun, deleteSource, projectDir } = parsed.args;
-  const result = remapUser({ projectDir, pairs, dryRun, deleteSource });
+  const result = remapUser({
+    projectDir,
+    pairs,
+    dryRun,
+    deleteSource,
+    skipEmpty: parsed.args.fromClerk,
+  });
   for (const report of result.reports) {
+    if (report.nothingToMove) {
+      console.log(`${report.from} -> ${report.to}: nothing to move, skipped`);
+      continue;
+    }
     const rows = Object.entries(report.rows)
       .map(([table, n]) => `${table} ${n}`)
       .join(", ");
@@ -124,6 +134,13 @@ async function runRemapUser(args: string[]): Promise<void> {
       `  rewrites: ${report.workflowPaths} workflow_path, ${report.refs.length} refs; ${report.creatorRows} creator rows`,
     );
     for (const ref of report.refs) console.log(`    ${ref.file}: ${ref.from} -> ${ref.to}`);
+    for (const entry of report.notCopied)
+      console.log(`  not copied (not a regular file): ${entry}`);
+    for (const ref of report.sharedRefs) {
+      console.log(
+        `  shared ref into users/${report.from}/, not rewritten: ${ref.file}: ${ref.ref}`,
+      );
+    }
     for (const conflict of report.conflicts) console.log(`  conflict: ${conflict}`);
   }
   if (!result.success) {
@@ -135,7 +152,7 @@ async function runRemapUser(args: string[]): Promise<void> {
     console.log("Dry run: nothing changed");
     return;
   }
-  for (const { from, to } of pairs) {
+  for (const { from, to } of result.reports.filter((report) => !report.nothingToMove)) {
     console.log(
       `Remapped ${from} to ${to}${deleteSource ? "; source deleted" : "; source kept (--delete-source removes it)"}`,
     );

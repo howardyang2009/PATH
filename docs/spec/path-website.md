@@ -162,7 +162,11 @@ pairs, sizes, counts, rewrites and conflicts. Used once for `local` to the owner
 move to production with pairs read from Clerk `external_id` (`--from-clerk`, with the production
 `CLERK_SECRET_KEY`). Host files in the project `.path` (`host.db`, `limits.json`, quarantine, logs)
 stay when `local` moves. A ref is rewritten only when it reaches the old folder by name; a relative
-ref inside the folder moves with it.
+ref inside the folder moves with it. Refs in `shared/` workflows that reach the old folder are listed,
+not rewritten. Every pair is copied and verified before any creator row moves or source is deleted;
+a failure removes the copies, so a rerun starts clean. With `--from-clerk`, a user with nothing to
+move is skipped. Entries that are not regular files (symlinks) are listed, and `--delete-source`
+refuses while any exist.
 
 **Backup** ([#722](https://github.com/howardyang2009/PATH/issues/722),
 [#743](https://github.com/howardyang2009/PATH/issues/743)): `path-server backup --out <dir>

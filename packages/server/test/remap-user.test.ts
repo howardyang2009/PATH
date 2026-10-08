@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -7,6 +8,7 @@ import {
   readFileSync,
   rmSync,
   statSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -338,6 +340,111 @@ describe("remapUser", () => {
         { from: "user_b", to: NEW },
       ]),
     ).toContain("more than once");
+    expect(
+      failed([
+        { from: "user_a", to: NEW },
+        { from: "user_a", to: "user_other" },
+      ]),
+    ).toContain("users/user_a/ is named more than once");
+  });
+
+  it("skips a pair with nothing to move when skipEmpty is set and moves the rest", () => {
+    workflow("users/user_a/workflow/a.workflow.json");
+
+    const result = remapUser({
+      projectDir,
+      pairs: [
+        { from: "user_a", to: NEW },
+        { from: "user_empty", to: "user_fresh" },
+      ],
+      skipEmpty: true,
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.success && result.reports.map((r) => r.nothingToMove)).toEqual([false, true]);
+    expect(existsSync(join(projectDir, "users", NEW, "workflow/a.workflow.json"))).toBe(true);
+    expect(existsSync(join(projectDir, "users/user_fresh"))).toBe(false);
+  });
+
+  it("undoes every copy when one pair fails, so a rerun starts clean", () => {
+    workflow("users/user_a/workflow/a.workflow.json");
+    workflow("users/user_b/workflow/b.workflow.json");
+    const locked = "users/user_b/notes.txt";
+    writeFileSync(join(projectDir, locked), "unreadable");
+    const creators = openCreatorTable(join(projectDir, ".path", "host.db"));
+    creators.stamp("shared/workflow/a.workflow.json", "workflow", "user_a");
+    creators.close();
+    chmodSync(join(projectDir, locked), 0o000);
+    const pairs = [
+      { from: "user_a", to: "user_a2" },
+      { from: "user_b", to: "user_b2" },
+    ];
+
+    const result = remapUser({ projectDir, pairs, deleteSource: true });
+
+    expect(result.success).toBe(false);
+    expect(!result.success && result.error).toContain("nothing was changed");
+    expect(existsSync(join(projectDir, "users/user_a2"))).toBe(false);
+    expect(existsSync(join(projectDir, "users/user_b2"))).toBe(false);
+    expect(existsSync(join(projectDir, "users/user_a/workflow/a.workflow.json"))).toBe(true);
+    const after = openCreatorTable(join(projectDir, ".path", "host.db"));
+    expect(after.creatorOf("shared/workflow/a.workflow.json", "workflow")).toBe("user_a");
+    after.close();
+
+    chmodSync(join(projectDir, locked), 0o644);
+    expect(remapUser({ projectDir, pairs }).success).toBe(true);
+  });
+
+  it("lists a running Server as a conflict on a dry run", async () => {
+    workflow("users/local/workflow/a.workflow.json");
+    await start();
+
+    const result = remapUser({ projectDir, pairs: [{ from: "local", to: NEW }], dryRun: true });
+
+    expect(result.success && result.reports[0]?.conflicts[0]).toMatch(/the Server is running/);
+  });
+
+  it("lists entries it cannot copy and refuses to delete them with the source", () => {
+    workflow("users/user_a/workflow/a.workflow.json");
+    symlinkSync("a.workflow.json", join(projectDir, "users/user_a/workflow/link.workflow.json"));
+    const pairs = [{ from: "user_a", to: NEW }];
+
+    const dry = remapUser({ projectDir, pairs, dryRun: true });
+    expect(dry.success && dry.reports[0]?.notCopied).toEqual([
+      "users/user_a/workflow/link.workflow.json",
+    ]);
+    expect(dry.success && dry.reports[0]?.conflicts).toEqual([]);
+
+    const result = remapUser({ projectDir, pairs, deleteSource: true });
+    expect(!result.success && result.error).toContain("would be lost");
+    expect(existsSync(join(projectDir, "users/user_a/workflow/a.workflow.json"))).toBe(true);
+  });
+
+  it("lists refs in shared files that reach the old folder and leaves them", () => {
+    workflow("users/local/workflow/a.workflow.json");
+    workflow("shared/workflow/team.workflow.json", {
+      refs: ["../../users/local/workflow/a.workflow.json"],
+    });
+
+    const result = remapUser({ projectDir, pairs: [{ from: "local", to: NEW }], dryRun: true });
+
+    expect(result.success && result.reports[0]?.sharedRefs).toEqual([
+      {
+        file: "shared/workflow/team.workflow.json",
+        ref: "../../users/local/workflow/a.workflow.json",
+      },
+    ]);
+  });
+
+  it("keeps the project .gitignore when local's store is deleted", async () => {
+    await localRun(workflow("users/local/workflow/a.workflow.json"));
+    const result = remapUser({
+      projectDir,
+      pairs: [{ from: "local", to: NEW }],
+      deleteSource: true,
+    });
+    expect(result.success).toBe(true);
+    expect(existsSync(join(projectDir, ".path/.gitignore"))).toBe(true);
   });
 });
 
