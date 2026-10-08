@@ -9,6 +9,7 @@ import { enforceFunnelGuard, funnelGuardEnabled } from "./funnel-guard.js";
 import { sendError } from "./http-json.js";
 import { readServerMode } from "./mode.js";
 import { enforceSameOrigin } from "./origin-gate.js";
+import { createRateLimiter, readRequestLimits } from "./request-limits.js";
 import { createRequesterContexts } from "./requester.js";
 import { dispatchApi } from "./routes/api-routes.js";
 import type { ServerContext } from "./routes/route-context.js";
@@ -118,6 +119,10 @@ export async function startPathServer(
   // A half-configured hosted setup throws here, before anything is opened.
   const mode = readServerMode();
   if (mode.mode === "hosted") assertEgressAnchor();
+  const limits =
+    mode.mode === "hosted"
+      ? { config: readRequestLimits(projectDir), rate: createRateLimiter() }
+      : undefined;
 
   // Scan the plugin folder (server-api-v0.md §8) before `openProject`, so a broken folder throws
   // without leaving an opened db handle behind; a thrown error skips the handle that would close
@@ -154,7 +159,7 @@ export async function startPathServer(
   if (mode.mode === "local") {
     adoptSharedItems(authoredLayout({ projectDir, shippedDir: shipped }), creators);
   }
-  const server: ServerContext = { mode, stepPlugins: registry, requesters, creators };
+  const server: ServerContext = { mode, stepPlugins: registry, requesters, creators, limits };
   const httpServer = createServer((req, res) => {
     handleRequest(req, res, server, absStaticDir, absDesignerStaticDir, funnelGuard).catch(
       (err) => {

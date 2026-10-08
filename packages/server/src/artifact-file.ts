@@ -60,15 +60,20 @@ function checkPrecondition(
   return { ok: true, create: false };
 }
 
-/** Serialize `raw` deterministically (`JSON.stringify(raw, null, 2)` + newline, the client's key
- * order kept) and write it. A create uses `wx`, so a file that raced into existence fails
+/** The bytes an artifact file holds for `raw`: `JSON.stringify(raw, null, 2)` + newline, the
+ * client's key order kept. */
+export function serializeArtifact(raw: unknown): string {
+  return `${JSON.stringify(raw, null, 2)}\n`;
+}
+
+/** Serialize `raw` with {@link serializeArtifact} and write it. A create uses `wx`, so a file that raced into existence fails
  * `exists`. */
 function writeArtifact(
   absPath: string,
   raw: unknown,
   opts: { create: boolean },
 ): { ok: true; etag: string } | { ok: false; conflict: "exists" } {
-  const serialized = `${JSON.stringify(raw, null, 2)}\n`;
+  const serialized = serializeArtifact(raw);
   try {
     mkdirSync(dirname(absPath), { recursive: true });
     writeFileSync(absPath, serialized, opts.create ? { flag: "wx" } : undefined);

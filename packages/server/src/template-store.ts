@@ -12,6 +12,7 @@ import {
   PRECONDITION_FAILED,
   readArtifact,
   removeArtifact,
+  serializeArtifact,
 } from "./artifact-file.js";
 import { AUTHORED_SUFFIX, type AuthoredLayout, type AuthoredOrigin } from "./authored-layout.js";
 import {
@@ -21,6 +22,7 @@ import {
   SHARED_ITEM_READ_ONLY,
 } from "./creator-table.js";
 import { strongEtag } from "./etag.js";
+import { fileSizeRefusal, sharedItemLimitRefusal, type UserLimits } from "./request-limits.js";
 
 // The Template store (ADR 0050, ADR 0084): Server-owned, engine-blind discovery of
 // shipped∪shared∪user authoring templates. A template is typed by its file **suffix**, never its
@@ -162,6 +164,7 @@ export function discoverTemplates(
   layout: AuthoredLayout,
   registry: StepPluginRegistry,
   creators: CreatorTable,
+  limits?: UserLimits,
 ): TemplateStore {
   const { projectDir } = layout;
   const stepSchema = makeStepTemplateSchema(registry);
@@ -207,13 +210,26 @@ export function discoverTemplates(
     return { ok: true, entry };
   };
 
+  /** A valid envelope within the requester's file size. */
   const validate = (
     payload: unknown,
-  ): { ok: true; id: string } | { ok: false; status: 400; message: string; details: string[] } => {
+  ):
+    | { ok: true; id: string }
+    | { ok: false; status: 400; message: string; details: string[] }
+    | { ok: false; status: 403; message: string } => {
     const parsed = safeParseStepTemplateWith(stepSchema, payload);
-    return parsed.success
+    if (!parsed.success) {
+      return {
+        ok: false,
+        status: 400,
+        message: "template validation failed",
+        details: parsed.errors,
+      };
+    }
+    const tooLarge = fileSizeRefusal(limits, Buffer.byteLength(serializeArtifact(payload)));
+    return tooLarge === undefined
       ? { ok: true, id: parsed.data.id }
-      : { ok: false, status: 400, message: "template validation failed", details: parsed.errors };
+      : { ok: false, status: 403, message: tooLarge.message };
   };
 
   const writeAt = (
@@ -246,6 +262,10 @@ export function discoverTemplates(
     create(kind, name, payload, folder, origin = "user") {
       const valid = validate(payload);
       if (!valid.ok) return valid;
+      if (origin === "shared") {
+        const refusal = sharedItemLimitRefusal(limits, creators, layout.userId);
+        if (refusal !== undefined) return { ok: false, status: 403, message: refusal.message };
+      }
       // A taken id would make the scan flag one of the two entries invalid.
       const holder = byId.get(valid.id);
       if (holder !== undefined) {
@@ -303,10 +323,11 @@ export function templatesOf(ctx: {
   layout: AuthoredLayout;
   stepPlugins: StepPluginRegistry;
   creators: CreatorTable;
+  limits?: UserLimits;
 }): TemplateStore {
   const held = storesByContext.get(ctx);
   if (held !== undefined) return held;
-  const store = discoverTemplates(ctx.layout, ctx.stepPlugins, ctx.creators);
+  const store = discoverTemplates(ctx.layout, ctx.stepPlugins, ctx.creators, ctx.limits);
   storesByContext.set(ctx, store);
   return store;
 }

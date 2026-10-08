@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { type RouteReply, replyError, sendReply } from "../http-json.js";
+import { bufferRequestBody, type RouteReply, replyError, sendReply } from "../http-json.js";
 import { handleCancelRun } from "./cancel-run.js";
 import { handleCompleteRun } from "./complete-run.js";
 import { handleDeleteRun } from "./delete-run.js";
@@ -140,6 +140,7 @@ export async function dispatchApi(
       sendReply(res, replyError(401, "sign-in required: missing, invalid or expired bearer token"));
       return true;
     }
+    if (!(await withinRequestLimits(req, res, server, requester.userId))) return true;
     const params = decodeAll(captures);
     if (params === undefined) {
       sendReply(res, replyError(400, "malformed percent-encoding in the request path"));
@@ -157,6 +158,33 @@ export async function dispatchApi(
     } else sendReply(res, await route.handle(request));
     return true;
   }
+  return false;
+}
+
+/**
+ * Count the request against the requester's rate and read its body under their size cap, answering
+ * `429` or `413` and returning `false` past either. An SSE stream is one request, counted here at
+ * connect. Local mode has no limits.
+ */
+async function withinRequestLimits(
+  req: IncomingMessage,
+  res: ServerResponse,
+  server: ServerContext,
+  userId: string,
+): Promise<boolean> {
+  if (server.limits === undefined) return true;
+  const limits = server.limits.config.forUser(userId);
+  const rate = server.limits.rate.take(userId, limits.requestsPerMinute);
+  if (!rate.ok) {
+    sendReply(res, {
+      ...replyError(429, "too many requests: try again later"),
+      headers: { "Retry-After": String(rate.retryAfterSeconds) },
+    });
+    return false;
+  }
+  if (req.method === "GET" || (await bufferRequestBody(req, limits.maxBodyBytes))) return true;
+  // Node discards the unread rest of the body once the reply ends.
+  sendReply(res, replyError(413, `request body too large: at most ${limits.maxBodyBytes} bytes`));
   return false;
 }
 
