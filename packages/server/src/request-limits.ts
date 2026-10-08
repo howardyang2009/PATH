@@ -5,38 +5,31 @@ import { z } from "zod";
 import type { AuthoredRefusal } from "./authored-layout.js";
 import type { CreatorTable } from "./creator-table.js";
 
-// Request limits (docs/spec/path-website.md §8): what one hosted user may do through the API. The
-// defaults hold for everyone; `.path/limits.json` overrides any of them per user id.
-
-export const MIB = 1024 * 1024;
-
-/** One user's limits. A limit of 0 refuses every request, shared item or file it bounds. */
-export interface UserLimits {
-  requestsPerMinute: number;
-  maxBodyBytes: number;
-  maxSharedItems: number;
-  maxFileBytes: number;
-}
-
-export const DEFAULT_LIMITS: UserLimits = {
-  requestsPerMinute: 120,
-  maxBodyBytes: MIB,
-  maxSharedItems: 50,
-  maxFileBytes: MIB,
-};
+// Request limits: what one hosted user may do through the API. The defaults hold for everyone;
+// `.path/limits.json` overrides any of them per user id.
 
 const LimitSchema = z.number().int().nonnegative();
-const OverridesSchema = z
+const UserLimitsSchema = z
   .object({
-    requests_per_minute: LimitSchema.optional(),
-    max_body_bytes: LimitSchema.optional(),
-    max_shared_items: LimitSchema.optional(),
-    max_file_bytes: LimitSchema.optional(),
+    requestsPerMinute: LimitSchema,
+    maxBodyBytes: LimitSchema,
+    maxSharedItems: LimitSchema,
+    maxFileBytes: LimitSchema,
   })
   .strict();
 const LimitsFileSchema = z
-  .object({ users: z.record(z.string(), OverridesSchema).optional() })
+  .object({ users: z.record(z.string(), UserLimitsSchema.partial()).optional() })
   .strict();
+
+/** One user's limits. A limit of 0 refuses every request, shared item or file it bounds. */
+export type UserLimits = z.infer<typeof UserLimitsSchema>;
+
+export const DEFAULT_LIMITS: UserLimits = {
+  requestsPerMinute: 120,
+  maxBodyBytes: 1024 * 1024,
+  maxSharedItems: 50,
+  maxFileBytes: 1024 * 1024,
+};
 
 export interface RequestLimits {
   forUser(userId: string): UserLimits;
@@ -58,13 +51,8 @@ export function readRequestLimits(projectDir: string): RequestLimits {
     if (!parsed.success) {
       throw new Error(`${path} is invalid: ${formatIssues(parsed.error).join("; ")}`);
     }
-    for (const [userId, o] of Object.entries(parsed.data.users ?? {})) {
-      users.set(userId, {
-        requestsPerMinute: o.requests_per_minute ?? DEFAULT_LIMITS.requestsPerMinute,
-        maxBodyBytes: o.max_body_bytes ?? DEFAULT_LIMITS.maxBodyBytes,
-        maxSharedItems: o.max_shared_items ?? DEFAULT_LIMITS.maxSharedItems,
-        maxFileBytes: o.max_file_bytes ?? DEFAULT_LIMITS.maxFileBytes,
-      });
+    for (const [userId, overrides] of Object.entries(parsed.data.users ?? {})) {
+      users.set(userId, { ...DEFAULT_LIMITS, ...overrides });
     }
   }
   return { forUser: (userId) => users.get(userId) ?? DEFAULT_LIMITS };
@@ -79,29 +67,43 @@ export interface RateLimiter {
 
 const WINDOW_MS = 60_000;
 
-/** Per-user request counters in memory: a window opens at a user's first request and lasts one
- * minute. */
+/** Per-user request counters in memory over a sliding minute: each user keeps the times of their
+ * requests in the last minute, and a user with none is dropped at the next sweep. */
 export function createRateLimiter(now: () => number = Date.now): RateLimiter {
-  const windows = new Map<string, { start: number; count: number }>();
+  const recent = new Map<string, number[]>();
+  let lastSweep = now();
+
+  const expire = (times: number[], t: number): void => {
+    while (times.length > 0 && t - (times[0] as number) >= WINDOW_MS) times.shift();
+  };
+
   return {
     take(userId, perMinute) {
       const t = now();
-      let window = windows.get(userId);
-      if (window === undefined || t - window.start >= WINDOW_MS) {
-        window = { start: t, count: 0 };
-        windows.set(userId, window);
+      if (t - lastSweep >= WINDOW_MS) {
+        for (const [id, times] of recent) {
+          expire(times, t);
+          if (times.length === 0) recent.delete(id);
+        }
+        lastSweep = t;
       }
-      if (window.count >= perMinute) {
-        return { ok: false, retryAfterSeconds: Math.ceil((window.start + WINDOW_MS - t) / 1000) };
+      const times = recent.get(userId) ?? [];
+      expire(times, t);
+      if (times.length >= perMinute) {
+        // The slot frees when the request `perMinute` back leaves the window.
+        const freedAt = (times[times.length - perMinute] ?? t) + WINDOW_MS;
+        return { ok: false, retryAfterSeconds: Math.ceil((freedAt - t) / 1000) };
       }
-      window.count++;
+      times.push(t);
+      recent.set(userId, times);
       return { ok: true };
     },
   };
 }
 
-function megabytes(bytes: number): string {
-  return `${Math.round((bytes / MIB) * 10) / 10} MB`;
+/** A byte count as the MB a refusal message shows. */
+export function megabytes(bytes: number): string {
+  return `${Math.round((bytes / (1024 * 1024)) * 10) / 10} MB`;
 }
 
 /** The `403` for a user who may create no more shared items. */

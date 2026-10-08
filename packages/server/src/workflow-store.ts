@@ -62,12 +62,12 @@ export function workflowsOf(ctx: {
       if (absPath === undefined) return { ok: false, status: 404, message: "not found" };
       // A new shared file is the requester's to create, within their shared-item limit; an existing
       // one only its creator's.
-      const creatorRefusal = existsSync(absPath)
+      const sharedRefusal = existsSync(absPath)
         ? sharedWriteRefusal(layout, creators, workflowPath, "workflow")
         : shared(workflowPath)
           ? sharedItemLimitRefusal(limits, creators, layout.userId)
           : undefined;
-      if (creatorRefusal !== undefined) return { ok: false, ...creatorRefusal };
+      if (sharedRefusal !== undefined) return { ok: false, ...sharedRefusal };
 
       // Parsed against the registry frozen at server start (ADR 0018), like every other door that
       // validates a file.

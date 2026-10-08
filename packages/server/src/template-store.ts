@@ -210,26 +210,13 @@ export function discoverTemplates(
     return { ok: true, entry };
   };
 
-  /** A valid envelope within the requester's file size. */
   const validate = (
     payload: unknown,
-  ):
-    | { ok: true; id: string }
-    | { ok: false; status: 400; message: string; details: string[] }
-    | { ok: false; status: 403; message: string } => {
+  ): { ok: true; id: string } | { ok: false; status: 400; message: string; details: string[] } => {
     const parsed = safeParseStepTemplateWith(stepSchema, payload);
-    if (!parsed.success) {
-      return {
-        ok: false,
-        status: 400,
-        message: "template validation failed",
-        details: parsed.errors,
-      };
-    }
-    const tooLarge = fileSizeRefusal(limits, Buffer.byteLength(serializeArtifact(payload)));
-    return tooLarge === undefined
+    return parsed.success
       ? { ok: true, id: parsed.data.id }
-      : { ok: false, status: 403, message: tooLarge.message };
+      : { ok: false, status: 400, message: "template validation failed", details: parsed.errors };
   };
 
   const writeAt = (
@@ -238,6 +225,8 @@ export function discoverTemplates(
     payload: unknown,
     precondition: { ifMatch: string | undefined; rule: "create-or-overwrite" | "overwrite" },
   ): TemplateWrite => {
+    const tooLarge = fileSizeRefusal(limits, Buffer.byteLength(serializeArtifact(payload)));
+    if (tooLarge !== undefined) return { ok: false, status: 403, message: tooLarge.message };
     const written = conditionalWrite(absPath, { ...precondition, payload });
     if (!written.ok) {
       return { ok: false, status: 412, message: PRECONDITION_FAILED[written.conflict] };
@@ -281,14 +270,14 @@ export function discoverTemplates(
         rule: "create-or-overwrite",
       });
       // A create-only write has one conflict: the name is taken. Its wording is this door's 409.
-      if (!written.ok) {
+      if (!written.ok && written.status === 412) {
         return {
           ok: false,
           status: 409,
           message: `a ${kind} template named "${name}" already exists`,
         };
       }
-      if (origin === "shared")
+      if (written.ok && origin === "shared")
         creators.stamp(projectPathOf(layout, absPath), "template", layout.userId);
       return written;
     },

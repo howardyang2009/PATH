@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type PathServerHandle, startPathServer } from "../src/create-server.js";
-import { createRateLimiter, MIB, readRequestLimits } from "../src/request-limits.js";
+import { createRateLimiter, readRequestLimits } from "../src/request-limits.js";
 import { clerkToken, stubHostedEnv } from "./fixtures/clerk-token.js";
 
 /**
@@ -14,6 +14,7 @@ import { clerkToken, stubHostedEnv } from "./fixtures/clerk-token.js";
  * `.path/limits.json` changes any of them for one user. Local mode has no limits.
  */
 
+const MIB = 1024 * 1024;
 const ALICE = "user_alice";
 const BOB = "user_bob";
 
@@ -115,6 +116,18 @@ describe("createRateLimiter", () => {
     expect(limiter.take(ALICE, 2)).toEqual({ ok: true });
   });
 
+  it("counts over a sliding minute, not a window that resets", () => {
+    let now = 0;
+    const limiter = createRateLimiter(() => now);
+    expect(limiter.take(ALICE, 2)).toEqual({ ok: true });
+    now = 50_000;
+    expect(limiter.take(ALICE, 2)).toEqual({ ok: true });
+    // The first request leaves the minute at 60 s; the second stays until 110 s.
+    now = 60_000;
+    expect(limiter.take(ALICE, 2)).toEqual({ ok: true });
+    expect(limiter.take(ALICE, 2)).toEqual({ ok: false, retryAfterSeconds: 50 });
+  });
+
   it("refuses every request at a limit of 0", () => {
     const limiter = createRateLimiter(() => 0);
     expect(limiter.take(ALICE, 0)).toEqual({ ok: false, retryAfterSeconds: 60 });
@@ -132,16 +145,16 @@ describe("readRequestLimits", () => {
   });
 
   it("applies a user's overrides to that user only", () => {
-    writeLimits({ users: { [ALICE]: { max_shared_items: 0, requests_per_minute: 500 } } });
+    writeLimits({ users: { [ALICE]: { maxSharedItems: 0, requestsPerMinute: 500 } } });
     const limits = readRequestLimits(projectDir);
     expect(limits.forUser(ALICE)).toMatchObject({ maxSharedItems: 0, requestsPerMinute: 500 });
     expect(limits.forUser(BOB)).toMatchObject({ maxSharedItems: 50, requestsPerMinute: 120 });
   });
 
   it("throws on an unknown key or a negative value", () => {
-    writeLimits({ users: { [ALICE]: { max_vms: 1 } } });
+    writeLimits({ users: { [ALICE]: { maxVms: 1 } } });
     expect(() => readRequestLimits(projectDir)).toThrow(/limits\.json/);
-    writeLimits({ users: { [ALICE]: { max_shared_items: -1 } } });
+    writeLimits({ users: { [ALICE]: { maxSharedItems: -1 } } });
     expect(() => readRequestLimits(projectDir)).toThrow(/limits\.json/);
   });
 });
@@ -160,7 +173,7 @@ describe("request rate", () => {
   });
 
   it("refuses every request of a user whose override is 0", async () => {
-    writeLimits({ users: { [ALICE]: { requests_per_minute: 0 } } });
+    writeLimits({ users: { [ALICE]: { requestsPerMinute: 0 } } });
     const url = await start();
     expect((await fetch(`${url}/v0/secrets`, as(ALICE))).status).toBe(429);
     expect((await fetch(`${url}/v0/secrets`, as(BOB))).status).toBe(200);
@@ -211,8 +224,43 @@ describe("request body", () => {
     expect(status).toBe(413);
   });
 
+  it("closes the connection when an oversize body keeps coming", async () => {
+    const url = new URL(await start());
+    const req = request({
+      host: url.hostname,
+      port: url.port,
+      method: "PUT",
+      path: "/v0/secrets/BIG",
+      headers: {
+        Authorization: `Bearer ${clerkToken({ sub: ALICE })}`,
+        "Content-Type": "application/json",
+        "Transfer-Encoding": "chunked",
+      },
+    });
+    let closed = false;
+    req.on("error", () => {});
+    req.on("close", () => {
+      closed = true;
+    });
+    req.on("response", (res) => res.resume());
+    const chunk = "x".repeat(256 * 1024);
+    let sent = 0;
+    while (!closed && sent < 64 * MIB) {
+      if (!req.write(chunk)) {
+        await new Promise((resolve) => {
+          req.once("drain", resolve);
+          req.once("close", resolve);
+        });
+      }
+      sent += chunk.length;
+    }
+    req.destroy();
+    expect(closed).toBe(true);
+    expect(sent).toBeLessThan(64 * MIB);
+  });
+
   it("lets an override raise the body cap for that user", async () => {
-    writeLimits({ users: { [ALICE]: { max_body_bytes: 2 * MIB } } });
+    writeLimits({ users: { [ALICE]: { maxBodyBytes: 2 * MIB } } });
     const url = await start();
     const big = { value: "x".repeat(MIB + 10) };
     // Past the body cap, the Secret store's own value limit answers.
@@ -244,7 +292,7 @@ describe("shared items", () => {
   });
 
   it("refuses every shared item of a user whose override is 0", async () => {
-    writeLimits({ users: { [ALICE]: { max_shared_items: 0 } } });
+    writeLimits({ users: { [ALICE]: { maxSharedItems: 0 } } });
     const url = await start();
     expect((await saveSharedTemplate(url, ALICE, "a")).status).toBe(403);
     expect((await saveSharedTemplate(url, BOB, "b")).status).toBe(201);
@@ -253,7 +301,7 @@ describe("shared items", () => {
 
 describe("authored file size", () => {
   // The body cap is raised, so the file-size check is what refuses.
-  beforeEach(() => writeLimits({ users: { [ALICE]: { max_body_bytes: 4 * MIB } } }));
+  beforeEach(() => writeLimits({ users: { [ALICE]: { maxBodyBytes: 4 * MIB } } }));
 
   it("refuses a workflow file over 1 MB with 403 in every origin", async () => {
     const url = await start();
@@ -288,8 +336,30 @@ describe("authored file size", () => {
     expect(await errorMessage(res)).toMatch(/file too large/);
   });
 
+  it("refuses a template update over 1 MB with 403", async () => {
+    const url = await start();
+    const template = {
+      format: "path/workflow@6",
+      id: randomUUID(),
+      description: "fragment",
+      body: [{ type: "binary", id: randomUUID(), name: "step-one", command: "echo" }],
+    };
+    const created = await fetch(
+      `${url}/v0/templates`,
+      as(ALICE, "POST", { kind: "step", name: "t", description: "fragment", body: template }),
+    );
+    const etag = created.headers.get("ETag") ?? "";
+    const init = as(ALICE, "PUT", { ...template, description: "x".repeat(MIB) });
+    const res = await fetch(`${url}/v0/templates/${template.id}`, {
+      ...init,
+      headers: { ...(init.headers as Record<string, string>), "If-Match": etag },
+    });
+    expect(res.status).toBe(403);
+    expect(await errorMessage(res)).toMatch(/file too large/);
+  });
+
   it("lets an override raise the file size for that user", async () => {
-    writeLimits({ users: { [ALICE]: { max_body_bytes: 4 * MIB, max_file_bytes: 2 * MIB } } });
+    writeLimits({ users: { [ALICE]: { maxBodyBytes: 4 * MIB, maxFileBytes: 2 * MIB } } });
     const url = await start();
     const path = `users/${ALICE}/workflow/big.workflow.json`;
     expect((await putWorkflow(url, ALICE, path, workflow("big", "x".repeat(MIB)))).status).toBe(

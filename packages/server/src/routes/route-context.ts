@@ -41,8 +41,13 @@ export interface ServerContext {
   limits?: { config: RequestLimits; rate: RateLimiter };
 }
 
-/** The context one request is handled under, built from the requester that request resolved to. */
-export function routeContextFor(requester: RequesterContext, server: ServerContext): RouteContext {
+/** The context one request is handled under, built from the requester that request resolved to
+ * and that requester's limits. */
+export function routeContextFor(
+  requester: RequesterContext,
+  server: ServerContext,
+  limits: UserLimits | undefined,
+): RouteContext {
   return {
     store: requester.store,
     layout: requester.layout,
@@ -50,7 +55,7 @@ export function routeContextFor(requester: RequesterContext, server: ServerConte
     stepPlugins: server.stepPlugins,
     creators: server.creators,
     secrets: requester.secrets,
-    limits: server.limits?.config.forUser(requester.userId),
+    limits,
   };
 }
 

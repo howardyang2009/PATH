@@ -1,5 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { bufferRequestBody, type RouteReply, replyError, sendReply } from "../http-json.js";
+import { megabytes, type UserLimits } from "../request-limits.js";
 import { handleCancelRun } from "./cancel-run.js";
 import { handleCompleteRun } from "./complete-run.js";
 import { handleDeleteRun } from "./delete-run.js";
@@ -140,7 +141,8 @@ export async function dispatchApi(
       sendReply(res, replyError(401, "sign-in required: missing, invalid or expired bearer token"));
       return true;
     }
-    if (!(await withinRequestLimits(req, res, server, requester.userId))) return true;
+    const limits = server.limits?.config.forUser(requester.userId);
+    if (!(await withinRequestLimits(req, res, server, requester.userId, limits))) return true;
     const params = decodeAll(captures);
     if (params === undefined) {
       sendReply(res, replyError(400, "malformed percent-encoding in the request path"));
@@ -148,7 +150,7 @@ export async function dispatchApi(
     }
     const request: ApiRequest = {
       req,
-      ctx: routeContextFor(requester, server),
+      ctx: routeContextFor(requester, server, limits),
       params,
       query: url.searchParams,
     };
@@ -171,9 +173,9 @@ async function withinRequestLimits(
   res: ServerResponse,
   server: ServerContext,
   userId: string,
+  limits: UserLimits | undefined,
 ): Promise<boolean> {
-  if (server.limits === undefined) return true;
-  const limits = server.limits.config.forUser(userId);
+  if (server.limits === undefined || limits === undefined) return true;
   const rate = server.limits.rate.take(userId, limits.requestsPerMinute);
   if (!rate.ok) {
     sendReply(res, {
@@ -182,9 +184,13 @@ async function withinRequestLimits(
     });
     return false;
   }
-  if (req.method === "GET" || (await bufferRequestBody(req, limits.maxBodyBytes))) return true;
-  // Node discards the unread rest of the body once the reply ends.
-  sendReply(res, replyError(413, `request body too large: at most ${limits.maxBodyBytes} bytes`));
+  if (req.method === "GET") return true;
+  const body = await bufferRequestBody(req, limits.maxBodyBytes);
+  if (body.ok) return true;
+  sendReply(res, {
+    ...replyError(413, `request body too large: at most ${megabytes(limits.maxBodyBytes)}`),
+    headers: body.close ? { Connection: "close" } : undefined,
+  });
   return false;
 }
 

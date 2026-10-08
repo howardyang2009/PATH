@@ -44,31 +44,42 @@ export function sendError(
  * consumed stream. */
 const bufferedBodies = new WeakMap<IncomingMessage, Buffer>();
 
-/**
- * Read `req`'s whole body into memory, for {@link readJsonBody} to parse later. `false` when the
- * body is over `maxBytes`: a `Content-Length` over it is refused unread, a longer stream once it
- * passes the cap.
- */
-export function bufferRequestBody(req: IncomingMessage, maxBytes: number): Promise<boolean> {
-  if (Number(req.headers["content-length"] ?? 0) > maxBytes) return Promise.resolve(false);
+/** How much past the cap an oversize body is still read and dropped, so the client gets to read
+ * the `413`; a longer body is refused at once and its connection closed. */
+const OVERSIZE_DRAIN_BYTES = 8 * 1024 * 1024;
+
+/** A body read under a size cap: `close` marks one refused before its end, whose connection the
+ * reply must close. */
+export type BufferedBody = { ok: true } | { ok: false; close: boolean };
+
+/** Read `req`'s whole body into memory under `maxBytes`, for {@link readJsonBody} to parse later. */
+export function bufferRequestBody(req: IncomingMessage, maxBytes: number): Promise<BufferedBody> {
+  const drainLimit = maxBytes + OVERSIZE_DRAIN_BYTES;
+  if (Number(req.headers["content-length"] ?? 0) > drainLimit) {
+    return Promise.resolve({ ok: false, close: true });
+  }
   return new Promise((resolve) => {
     const chunks: Buffer[] = [];
     let size = 0;
     const onData = (chunk: Buffer): void => {
       size += chunk.length;
-      if (size <= maxBytes) {
-        chunks.push(chunk);
-        return;
+      if (size <= maxBytes) chunks.push(chunk);
+      else if (size > drainLimit) {
+        req.off("data", onData);
+        req.pause();
+        resolve({ ok: false, close: true });
       }
-      req.off("data", onData);
-      resolve(false);
     };
     req.on("data", onData);
     req.on("end", () => {
+      if (size > maxBytes) {
+        resolve({ ok: false, close: false });
+        return;
+      }
       bufferedBodies.set(req, Buffer.concat(chunks));
-      resolve(true);
+      resolve({ ok: true });
     });
-    req.on("error", () => resolve(false));
+    req.on("error", () => resolve({ ok: false, close: true }));
   });
 }
 
