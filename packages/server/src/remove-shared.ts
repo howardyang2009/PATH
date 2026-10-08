@@ -12,13 +12,15 @@ import {
 import { dirname, join, relative, sep } from "node:path";
 import { pathDir } from "@path/engine";
 import { AUTHORED_SUFFIX, authoredLayout } from "./authored-layout.js";
-import { openCreatorTable, projectPathOf } from "./creator-table.js";
+import { HOST_DB_FILE, openCreatorTable, projectPathOf } from "./creator-table.js";
 import { editLease } from "./edit-lease.js";
 
 // The operator's takedown of an abusive shared item (spec path-website §9). It works on disk and on
 // the creator table only, so it is safe while the Server runs: every door scans afresh, and a run
 // of the removed workflow keeps its rows while Resume and Complete find no file and answer 404.
 
+export const QUARANTINE_DIR = "quarantine";
+export const REMOVAL_LOG_FILE = "remove-shared.log";
 const QUARANTINE_DAYS = 30;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -68,13 +70,13 @@ export function removeShared({
   }
 
   const stateDir = pathDir(layout.projectDir);
-  const quarantineDir = join(stateDir, "quarantine");
+  const quarantineDir = join(stateDir, QUARANTINE_DIR);
   const expired = sweepQuarantine(quarantineDir, now);
   const copies = findCopies ? copiesOf(layout.projectDir, readFileSync(absPath)) : [];
 
   // The row goes first: while it stands, the creator's write door still accepts a save that would
   // put the file back.
-  const creators = openCreatorTable(join(stateDir, "host.db"));
+  const creators = openCreatorTable(join(stateDir, HOST_DB_FILE));
   const creator = creators.creatorOf(projectPath, place.kind);
   creators.forget(projectPath, place.kind);
   creators.close();
@@ -98,7 +100,7 @@ export function removeShared({
     reason,
     action,
   };
-  appendFileSync(join(stateDir, "remove-shared.log"), `${JSON.stringify(entry)}\n`);
+  appendFileSync(join(stateDir, REMOVAL_LOG_FILE), `${JSON.stringify(entry)}\n`);
 
   return { success: true, projectPath, creator, action, quarantinedTo, copies, expired };
 }

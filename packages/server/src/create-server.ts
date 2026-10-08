@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { type LoadedStepPluginRegistry, loadStepPluginRegistry, openProject } from "@path/engine";
 import { authoredLayout } from "./authored-layout.js";
 import { clerkUserIdResolver } from "./clerk-identity.js";
-import { adoptSharedItems, openCreatorTable } from "./creator-table.js";
+import { adoptSharedItems, HOST_DB_FILE, openCreatorTable } from "./creator-table.js";
 import { enforceFunnelGuard, funnelGuardEnabled } from "./funnel-guard.js";
 import { sendError } from "./http-json.js";
 import { readServerMode, type ServerMode } from "./mode.js";
@@ -147,7 +147,7 @@ export async function startPathServer(
   if (sandbox !== undefined) await reapSandboxes(projectDir, sandbox);
   // The host-level tables beside the store (ADR 0088 §3, docs/spec/path-website.md §8): who created
   // each shared item, and each user's VM time.
-  const hostDb = join(project.dir, ".path", "host.db");
+  const hostDb = join(project.dir, ".path", HOST_DB_FILE);
   const creators = openCreatorTable(hostDb);
   const usage =
     limitsConfig !== undefined

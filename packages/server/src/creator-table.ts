@@ -22,8 +22,13 @@ export interface CreatorTable {
   countBy(userId: string): number;
   /** The project paths of the shared items `userId` created. */
   pathsBy(userId: string): string[];
+  /** Move every row of `from` to `to`; returns how many moved. */
+  reassign(from: string, to: string): number;
   close(): void;
 }
+
+/** The host-level database in the project `.path`: the creator table and VM-time usage. */
+export const HOST_DB_FILE = "host.db";
 
 export const SHARED_ITEM_READ_ONLY = "only the creator edits a shared item";
 
@@ -55,12 +60,16 @@ export function openCreatorTable(dbPath: string): CreatorTable {
   const paths = db.prepare<[string], { project_path: string }>(
     "SELECT project_path FROM shared_creators WHERE creator = ?",
   );
+  const reassign = db.prepare<[string, string]>(
+    "UPDATE shared_creators SET creator = ? WHERE creator = ?",
+  );
   return {
     creatorOf: (projectPath, kind) => select.get(projectPath, kind)?.creator,
     stamp: (projectPath, kind, userId) => void upsert.run(projectPath, kind, userId),
     forget: (projectPath, kind) => void remove.run(projectPath, kind),
     countBy: (userId) => count.get(userId)?.n ?? 0,
     pathsBy: (userId) => paths.all(userId).map((row) => row.project_path),
+    reassign: (from, to) => reassign.run(to, from).changes,
     close: () => db.close(),
   };
 }

@@ -33,6 +33,9 @@ import type { SandboxMount, SandboxProcess, SandboxRuntime } from "./sandbox-run
 import type { VmJob, VmLine, VmOperation } from "./vm-entry.js";
 import type { VmSlots } from "./vm-slots.js";
 
+/** Per-run VM staging under a store's `.path`, which the reaper clears at boot. */
+export const SANDBOX_DIR = "sandbox";
+
 /** How hosted runs reach their VMs (ADR 0091). One per Server: `slots` is shared by every user. */
 export interface SandboxOptions {
   runtime: SandboxRuntime;
@@ -330,7 +333,7 @@ export function createSandboxedRuns(
 }
 
 export function stagingDir(store: Project, rootRunId: string): string {
-  return join(pathDir(store.dir), "sandbox", rootRunId);
+  return join(pathDir(store.dir), SANDBOX_DIR, rootRunId);
 }
 
 /** The job a VM runs. Paths are the ones the VM sees: its own project under the staging

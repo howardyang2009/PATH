@@ -75,4 +75,15 @@ describe("creator table", () => {
       creators.creatorOf("users/local/workflow/mine.workflow.json", "workflow"),
     ).toBeUndefined();
   });
+
+  it("reassigns every row of one user to another and counts them", () => {
+    creators.stamp("shared/workflow/a.workflow.json", "workflow", "local");
+    creators.stamp("shared/template/b.step-template.json", "template", "local");
+    creators.stamp("shared/workflow/c.workflow.json", "workflow", "user_other");
+
+    expect(creators.reassign("local", "user_new")).toBe(2);
+    expect(creators.countBy("user_new")).toBe(2);
+    expect(creators.countBy("local")).toBe(0);
+    expect(creators.creatorOf("shared/workflow/c.workflow.json", "workflow")).toBe("user_other");
+  });
 });
