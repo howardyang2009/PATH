@@ -1,5 +1,6 @@
 import { HOST_ENV_ALLOWLIST } from "../secret-store.js";
 import { appleContainerRuntime } from "./apple-container.js";
+import type { SandboxRuntime } from "./sandbox-runtime.js";
 import { SANDBOX_LIMITS, type SandboxOptions } from "./sandboxed-runs.js";
 import { createVmSlots } from "./vm-slots.js";
 
@@ -10,6 +11,7 @@ import { createVmSlots } from "./vm-slots.js";
  */
 export function readSandboxOptions(
   env: NodeJS.ProcessEnv = process.env,
+  runtime: SandboxRuntime = appleContainerRuntime(),
 ): SandboxOptions | undefined {
   const image = env.PATH_SANDBOX_IMAGE;
   if (!image) return undefined;
@@ -19,7 +21,7 @@ export function readSandboxOptions(
     if (value !== undefined) hostEnv[name] = value;
   }
   return {
-    runtime: appleContainerRuntime(),
+    runtime,
     slots: createVmSlots(SANDBOX_LIMITS.maxVms),
     image,
     cpus: SANDBOX_LIMITS.cpus,

@@ -19,7 +19,7 @@ import { type PathServerHandle, startPathServer } from "../src/create-server.js"
 import { openCreatorTable } from "../src/creator-table.js";
 import { pairsFromClerkUsers, remapUser } from "../src/remap-user.js";
 import { openSecretStore, parseSecretsKey } from "../src/secret-store.js";
-import { clerkToken, SECRETS_KEY, stubHostedEnv } from "./fixtures/clerk-token.js";
+import { clerkToken, hostedMode, SECRETS_KEY, stubHostedEnv } from "./fixtures/clerk-token.js";
 
 /**
  * `path-server remap-user` (docs/spec/path-website.md §9): an offline copy of one user's authored
@@ -54,6 +54,7 @@ async function start(): Promise<string> {
     undefined,
     join(shippedDir, "template"),
     join(shippedDir, "workflow"),
+    process.env.CLERK_JWT_KEY ? hostedMode(projectDir) : undefined,
   );
   return handle.url;
 }

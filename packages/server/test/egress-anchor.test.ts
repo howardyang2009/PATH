@@ -3,8 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { startPathServer } from "../src/create-server.js";
-import { assertEgressAnchor, egressAnchorProblem } from "../src/sandbox/egress-anchor.js";
-import { stubHostedEnv } from "./fixtures/clerk-token.js";
+import { egressAnchorFailure, egressAnchorProblem } from "../src/sandbox/egress-anchor.js";
+import { hostedMode, stubHostedEnv } from "./fixtures/clerk-token.js";
 import { egressStatus } from "./fixtures/egress-status.js";
 
 const BOOT = 1_759_650_000;
@@ -52,9 +52,7 @@ describe("hosted boot", () => {
   it("reads the status file `PATH_EGRESS_STATUS` names", () => {
     const file = join(dir, "status");
     writeFileSync(file, "Status: Disabled\n");
-    expect(() => assertEgressAnchor({ PATH_EGRESS_STATUS: file })).toThrow(
-      /pf anchor `path`.*Refusing to start/s,
-    );
+    expect(egressAnchorFailure({ PATH_EGRESS_STATUS: file })).toMatch(/pf anchor `path`/);
   });
 
   it("refuses to start without the anchor and names it", async () => {
@@ -65,7 +63,16 @@ describe("hosted boot", () => {
 
   it("starts with the anchor loaded", async () => {
     stubHostedEnv();
-    const handle = await startPathServer(dir);
+    const handle = await startPathServer(
+      dir,
+      0,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      hostedMode(dir),
+    );
     await handle.close();
   });
 });

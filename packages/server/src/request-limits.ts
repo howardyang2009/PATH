@@ -54,7 +54,7 @@ export function readRequestLimits(projectDir: string): RequestLimits {
     try {
       raw = JSON.parse(readFileSync(path, "utf8"));
     } catch {
-      throw new Error(`${path} is not valid JSON. Refusing to start`);
+      throw new Error(`${path} is not valid JSON`);
     }
     const parsed = LimitsFileSchema.safeParse(raw);
     if (!parsed.success) {

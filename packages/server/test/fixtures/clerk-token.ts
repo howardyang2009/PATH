@@ -1,6 +1,8 @@
 import { generateKeyPairSync, type KeyObject, sign } from "node:crypto";
 import { vi } from "vitest";
+import { readServerMode, type ServerMode } from "../../src/mode.js";
 import { stubEgressAnchor } from "./egress-status.js";
+import { fakeRuntime, inProcessVm } from "./fake-sandbox.js";
 
 /**
  * A Clerk stand-in for hosted-mode tests: a key pair generated per run, and RS256 session tokens in
@@ -52,5 +54,11 @@ export function stubHostedEnv(): void {
   vi.stubEnv("PATH_ALLOWED_ORIGIN", ORIGIN);
   vi.stubEnv("CLERK_PUBLISHABLE_KEY", PUBLISHABLE_KEY);
   vi.stubEnv("PATH_SECRETS_KEY", SECRETS_KEY);
+  vi.stubEnv("PATH_SANDBOX_IMAGE", "path-run:test");
   stubEgressAnchor();
+}
+
+/** The hosted mode `stubHostedEnv` sets, with each VM run in process by the fake runtime. */
+export function hostedMode(projectDir: string): ServerMode {
+  return readServerMode(process.env, projectDir, fakeRuntime(inProcessVm));
 }

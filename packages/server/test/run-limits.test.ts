@@ -8,7 +8,7 @@ import { openCreatorTable } from "../src/creator-table.js";
 import { DEFAULT_LIMITS } from "../src/request-limits.js";
 import { createRunLimits } from "../src/run-limits.js";
 import { openVmUsage } from "../src/vm-usage.js";
-import { clerkToken, stubHostedEnv } from "./fixtures/clerk-token.js";
+import { clerkToken, hostedMode, stubHostedEnv } from "./fixtures/clerk-token.js";
 
 /**
  * Run limits (docs/spec/path-website.md §8): each user gets 2 h of VM time per rolling 24 h and
@@ -53,6 +53,7 @@ async function start(): Promise<string> {
     undefined,
     join(shippedDir, "template"),
     join(shippedDir, "workflow"),
+    hostedMode(projectDir),
   );
   return handle.url;
 }

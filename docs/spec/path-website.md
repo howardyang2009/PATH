@@ -217,15 +217,28 @@ production Clerk instance with `external_id` = old `sub`, run `path-server remap
 
 ## 11. Hosted-mode gate
 
-Funnel (or the tunnel) goes public only when all are true. Hosted mode refuses to boot when a
-Server-side item is missing.
+Funnel (or the tunnel) goes public only when all are true. Hosted mode is asked for when
+`CLERK_JWT_KEY` or `PATH_ALLOWED_ORIGIN` is set. Then the Server checks every Server-side item at
+boot (`readServerMode`, `packages/server/src/mode.ts`) and refuses to boot with one message that
+names each item that does not hold.
+
+Server-side (the Server refuses to boot):
 
 - [ ] Hosted mode on: `CLERK_JWT_KEY`, `PATH_ALLOWED_ORIGIN` and `CLERK_PUBLISHABLE_KEY` set
-- [ ] `SandboxedRuns` active; in-process runs refused in hosted mode
-- [ ] `PATH_SECRETS_KEY` set (read from the macOS Keychain)
-- [ ] Abuse limits on
-- [ ] `pf` anchor `path` loaded
-- [ ] A backup has run and `backup verify` passed (owner check)
+- [ ] `SandboxedRuns` active: `PATH_SANDBOX_IMAGE` names the run image. In-process runs are refused
+      in hosted mode
+- [ ] `PATH_SECRETS_KEY` set (read from the macOS Keychain) and 32 bytes in base64
+- [ ] Abuse limits on: always on in hosted mode; a `.path/limits.json` that does not parse or
+      validate refuses the boot
+- [ ] `pf` anchor `path` loaded: `/var/run/path-egress.status` is from this boot, `pf` is enabled and
+      the anchor has its block rules (§10)
+
+Owner checks (the Server cannot see them; do them before Funnel goes public):
+
+- [ ] A backup has run: `launchctl kickstart gui/$UID/com.path.backup`, then
+      `~/Library/Logs/path-backup.log` shows a finished snapshot
+- [ ] `backup verify` passed: export `~/.config/path/backup.env` into a shell and run
+      `path-server backup verify`; it must print `Backup verify passed`
 
 ## 12. Owner checklist (host setup, not code)
 

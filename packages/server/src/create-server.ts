@@ -9,14 +9,12 @@ import { enforceFunnelGuard, funnelGuardEnabled } from "./funnel-guard.js";
 import { sendError } from "./http-json.js";
 import { readServerMode, type ServerMode } from "./mode.js";
 import { enforceSameOrigin } from "./origin-gate.js";
-import { createRateLimiter, readRequestLimits } from "./request-limits.js";
+import { createRateLimiter } from "./request-limits.js";
 import { createRequesterContexts } from "./requester.js";
 import { dispatchApi } from "./routes/api-routes.js";
 import type { ServerContext } from "./routes/route-context.js";
 import { createRunLimits } from "./run-limits.js";
-import { assertEgressAnchor } from "./sandbox/egress-anchor.js";
 import { reapSandboxes } from "./sandbox/reaper.js";
-import { readSandboxOptions } from "./sandbox/sandbox-config.js";
 import { SANDBOX_LIMITS } from "./sandbox/sandboxed-runs.js";
 import { serveStatic } from "./serve-static.js";
 import { markServerRunning } from "./server-pid.js";
@@ -109,8 +107,8 @@ export interface PathServerHandle {
  * Boots `@path/server` against one fixed project root (server-api-v0.md §0): one in-process
  * `.path/path.db`, localhost-bind, no auth. `staticDir`/`designerStaticDir` mount at `/viewer/` and
  * `/designer/` with their own SPA fallbacks; bare `/` 302s to `/viewer/`. `stepPlugins` is a test
- * seam; `mode` defaults to the one the environment sets, and a half-configured hosted setup throws
- * there, before anything is opened.
+ * seam; `mode` defaults to the one the environment sets, and a hosted setup that fails the gate
+ * (docs/spec/path-website.md §11) throws there, before anything is opened.
  */
 export async function startPathServer(
   projectDir: string,
@@ -120,10 +118,9 @@ export async function startPathServer(
   stepPlugins?: LoadedStepPluginRegistry,
   shippedTemplateDir?: string,
   shippedWorkflowDir?: string,
-  mode: ServerMode = readServerMode(),
+  mode: ServerMode = readServerMode(process.env, projectDir),
 ): Promise<PathServerHandle> {
-  if (mode.mode === "hosted") assertEgressAnchor();
-  const limitsConfig = mode.mode === "hosted" ? readRequestLimits(projectDir) : undefined;
+  const limitsConfig = mode.mode === "hosted" ? mode.limits : undefined;
 
   // Scan the plugin folder (server-api-v0.md §8) before `openProject`, so a broken folder throws
   // without leaving an opened db handle behind; a thrown error skips the handle that would close
@@ -142,7 +139,7 @@ export async function startPathServer(
   // One requester context per user, resolved per request (requester.ts). Local mode keeps every run
   // in the boot project's store; hosted mode gives each user their own.
   const shipped = { template: shippedTemplateDir, workflow: shippedWorkflowDir };
-  const sandbox = mode.mode === "hosted" ? readSandboxOptions() : undefined;
+  const sandbox = mode.mode === "hosted" ? mode.sandbox : undefined;
   // VMs and staging a previous Server process left behind, cleared before any run starts.
   if (sandbox !== undefined) await reapSandboxes(projectDir, sandbox);
   // The host-level tables beside the store (ADR 0088 §3, docs/spec/path-website.md §8): who created

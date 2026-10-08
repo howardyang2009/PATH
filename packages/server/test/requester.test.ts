@@ -10,6 +10,8 @@ import {
   type RequesterContext,
   type RequesterContexts,
 } from "../src/requester.js";
+import type { SandboxRuntime } from "../src/sandbox/sandbox-runtime.js";
+import type { SandboxOptions } from "../src/sandbox/sandboxed-runs.js";
 import { createVmSlots } from "../src/sandbox/vm-slots.js";
 import { parseSecretsKey } from "../src/secret-store.js";
 import { fakeRuntime } from "./fixtures/fake-sandbox.js";
@@ -43,6 +45,21 @@ beforeEach(() => {
 afterEach(() => {
   rmSync(projectDir, { recursive: true, force: true });
 });
+
+function sandbox(runtime: SandboxRuntime = fakeRuntime(async () => 0)): SandboxOptions {
+  return {
+    runtime,
+    slots: createVmSlots(1),
+    image: "path-run:test",
+    cpus: 1,
+    memoryMiB: 512,
+    timeoutMs: 1000,
+    stopGraceMs: 10,
+    maxExportBytes: 1024,
+    maxBlobBytes: 1024,
+    hostEnv: {},
+  };
+}
 
 describe("createRequesterContexts", () => {
   it("resolves every request to local and the project's own store", async () => {
@@ -95,6 +112,7 @@ describe("createRequesterContexts", () => {
       resolveUserId: () => "user_abc",
       hosted: true,
       secretsKey: parseSecretsKey(Buffer.alloc(32).toString("base64")),
+      sandbox: sandbox(),
     });
 
     const context = await forRequest(contexts);
@@ -106,7 +124,7 @@ describe("createRequesterContexts", () => {
     expect(() => context.store.archive.listRoots()).toThrow();
   });
 
-  it("runs a hosted requester's Starts in the sandbox when one is configured", async () => {
+  it("runs a hosted requester's Starts in the sandbox", async () => {
     const runtime = fakeRuntime(async () => 0);
     const contexts = createRequesterContexts({
       projectDir,
@@ -114,18 +132,7 @@ describe("createRequesterContexts", () => {
       resolveUserId: () => "user_abc",
       hosted: true,
       secretsKey: parseSecretsKey(Buffer.alloc(32).toString("base64")),
-      sandbox: {
-        runtime,
-        slots: createVmSlots(1),
-        image: "path-run:test",
-        cpus: 1,
-        memoryMiB: 512,
-        timeoutMs: 1000,
-        stopGraceMs: 10,
-        maxExportBytes: 1024,
-        maxBlobBytes: 1024,
-        hostEnv: {},
-      },
+      sandbox: sandbox(runtime),
     });
     const { live } = await forRequest(contexts);
 
@@ -135,6 +142,18 @@ describe("createRequesterContexts", () => {
 
     expect(runtime.vms).toHaveLength(1);
     contexts.close();
+  });
+
+  it("refuses in-process runs in hosted mode", () => {
+    expect(() =>
+      createRequesterContexts({
+        projectDir,
+        projectStore,
+        resolveUserId: () => "user_abc",
+        hosted: true,
+        secretsKey: parseSecretsKey(Buffer.alloc(32).toString("base64")),
+      }),
+    ).toThrow(/in-process runs are refused in hosted mode/);
   });
 
   it("resolves no context when the request proves no identity", async () => {

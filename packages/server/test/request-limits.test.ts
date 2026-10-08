@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type PathServerHandle, startPathServer } from "../src/create-server.js";
 import { createRateLimiter, readRequestLimits } from "../src/request-limits.js";
-import { clerkToken, stubHostedEnv } from "./fixtures/clerk-token.js";
+import { clerkToken, hostedMode, stubHostedEnv } from "./fixtures/clerk-token.js";
 
 /**
  * Request limits (docs/spec/path-website.md §8): in hosted mode each user gets 120 requests per
@@ -50,6 +50,7 @@ async function start({ hosted = true }: { hosted?: boolean } = {}): Promise<stri
     undefined,
     join(shippedDir, "template"),
     join(shippedDir, "workflow"),
+    hosted ? hostedMode(projectDir) : undefined,
   );
   return handle.url;
 }
