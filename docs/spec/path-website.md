@@ -171,7 +171,15 @@ restores the latest restic snapshot (or takes `--snapshot <dir>`) into a tempora
 `PRAGMA integrity_check` on every listed database, checks that every blob a run row names is there,
 opens every user store and boots a local-mode
 Server on the copy; a failure names the file and exits 1. Run it quarterly. Files and steps:
-`packages/server/backup/`. `path-server rotate-secrets-key` re-encrypts secrets under a new key id.
+`packages/server/backup/`.
+
+**Key rotation** ([#744](https://github.com/howardyang2009/PATH/issues/744)): put the new key in
+`PATH_SECRETS_KEY` and the old one in `PATH_SECRETS_KEY_PREVIOUS`, then restart the Server before the command: a Server that holds only
+the old key cannot read moved rows. It writes under the new key and reads rows under either. `path-server rotate-secrets-key [--project
+<dir>]` re-encrypts every row of every user's store under the new key id, one row at a time, so an
+interrupted rotation finishes on rerun. A store with a row under neither key is named and the run
+exits 1. When it prints that every row is under the new key id, remove `PATH_SECRETS_KEY_PREVIOUS`
+and restart.
 
 ## 10. Network exposure
 

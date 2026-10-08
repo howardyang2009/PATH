@@ -2,8 +2,8 @@ import type { ClerkIdentityOptions } from "./clerk-identity.js";
 import { parseSecretsKey, type SecretsKey } from "./secret-store.js";
 
 /** The mode one server process runs in. Hosted mode carries the Clerk settings it verifies tokens
- * against and the master key of every Secret store; `publishableKey` is what a client signs in
- * with, and local mode has none. */
+ * against and the master key of every Secret store, plus the previous one during a rotation;
+ * `publishableKey` is what a client signs in with, and local mode has none. */
 export type ServerMode =
   | { mode: "local"; publishableKey: null }
   | {
@@ -11,6 +11,7 @@ export type ServerMode =
       publishableKey: string;
       clerk: ClerkIdentityOptions;
       secretsKey: SecretsKey;
+      previousSecretsKey?: SecretsKey;
     };
 
 /**
@@ -34,10 +35,14 @@ export function readServerMode(env: NodeJS.ProcessEnv = process.env): ServerMode
   if (!secretsKey) {
     throw new Error("hosted mode needs PATH_SECRETS_KEY for the Secret store. Refusing to start");
   }
+  const previous = env.PATH_SECRETS_KEY_PREVIOUS;
   return {
     mode: "hosted",
     publishableKey,
     clerk: { jwtKey, allowedOrigin },
     secretsKey: parseSecretsKey(secretsKey),
+    ...(previous
+      ? { previousSecretsKey: parseSecretsKey(previous, "PATH_SECRETS_KEY_PREVIOUS") }
+      : {}),
   };
 }

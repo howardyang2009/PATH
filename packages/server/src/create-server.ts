@@ -168,6 +168,7 @@ export async function startPathServer(
     resolveUserId: mode.mode === "hosted" ? clerkUserIdResolver(mode.clerk) : undefined,
     hosted: mode.mode === "hosted",
     secretsKey: mode.mode === "hosted" ? mode.secretsKey : undefined,
+    previousSecretsKey: mode.mode === "hosted" ? mode.previousSecretsKey : undefined,
     sandbox,
     runOwner:
       limits === undefined

@@ -146,3 +146,69 @@ describe("openSecretStore", () => {
     expect(store.set("KEY_0", VALUE)).toMatchObject({ ok: true });
   });
 });
+
+describe("openSecretStore with a previous key", () => {
+  let dir: string;
+  let dbFile: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "path-secret-store-"));
+    dbFile = join(dir, "path.db");
+  });
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  function keyIds(): string[] {
+    const db = new Database(dbFile, { readonly: true });
+    const rows = db.prepare("SELECT key_id FROM user_secrets ORDER BY name").all() as {
+      key_id: string;
+    }[];
+    db.close();
+    return rows.map((row) => row.key_id);
+  }
+
+  it("reads rows under either key, and writes new ones under the current key", () => {
+    const oldKey = newKey();
+    const key = newKey();
+    const before = openSecretStore(dbFile, oldKey);
+    before.set("OLD_TOKEN", "old-value");
+    before.close();
+
+    const store = openSecretStore(dbFile, key, oldKey);
+    store.set("NEW_TOKEN", "new-value");
+    expect(store.values()).toEqual({ OLD_TOKEN: "old-value", NEW_TOKEN: "new-value" });
+    expect(keyIds()).toEqual([key.id, oldKey.id]);
+    store.close();
+  });
+
+  it("re-encrypts every row under the current key, and a second pass moves nothing", () => {
+    const oldKey = newKey();
+    const key = newKey();
+    const before = openSecretStore(dbFile, oldKey);
+    before.set("A_TOKEN", "a-value");
+    before.set("B_TOKEN", "b-value");
+    before.close();
+
+    const store = openSecretStore(dbFile, key, oldKey);
+    expect(store.reencrypt()).toBe(2);
+    expect(store.reencrypt()).toBe(0);
+    store.close();
+    expect(keyIds()).toEqual([key.id, key.id]);
+
+    const after = openSecretStore(dbFile, key);
+    expect(after.values()).toEqual({ A_TOKEN: "a-value", B_TOKEN: "b-value" });
+    after.close();
+  });
+
+  it("refuses to re-encrypt a row under a key it does not hold", () => {
+    const before = openSecretStore(dbFile, newKey());
+    before.set("TOKEN", VALUE);
+    before.close();
+
+    const store = openSecretStore(dbFile, newKey(), newKey());
+    expect(() => store.reencrypt()).toThrow(/key id/);
+    store.close();
+  });
+});

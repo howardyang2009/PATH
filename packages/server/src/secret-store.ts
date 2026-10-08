@@ -35,15 +35,18 @@ export interface SecretStore {
   remove(name: string): boolean;
   /** Every User secret decrypted, for the environment of a run the user launches. */
   values(): UserSecrets;
+  /** Re-encrypts every row not under the current key and answers how many moved. Each row moves
+   * on its own, so an interrupted pass resumes on the next. */
+  reencrypt(): number;
   close(): void;
 }
 
 /** Reads `PATH_SECRETS_KEY`: 32 bytes in base64 (`openssl rand -base64 32`). The key id is a hash
  * prefix, so it changes with the key and reveals nothing about it. */
-export function parseSecretsKey(raw: string): SecretsKey {
+export function parseSecretsKey(raw: string, variable = "PATH_SECRETS_KEY"): SecretsKey {
   const key = Buffer.from(raw, "base64");
   if (key.length !== 32) {
-    throw new Error("PATH_SECRETS_KEY must be 32 bytes in base64 (openssl rand -base64 32)");
+    throw new Error(`${variable} must be 32 bytes in base64 (openssl rand -base64 32)`);
   }
   return { id: createHash("sha256").update(key).digest("hex").slice(0, 16), key };
 }
@@ -66,8 +69,13 @@ interface SecretRow {
   ciphertext: Buffer;
 }
 
-/** Opens the Secret store in the `path.db` at `dbFile`, creating its table if absent. */
-export function openSecretStore(dbFile: string, key: SecretsKey): SecretStore {
+/** Opens the Secret store in the `path.db` at `dbFile`, creating its table if absent. Rows are
+ * written under `key`; during a rotation, rows still under `previous` read too. */
+export function openSecretStore(
+  dbFile: string,
+  key: SecretsKey,
+  previous?: SecretsKey,
+): SecretStore {
   const db = new Database(dbFile);
   db.pragma("journal_mode = WAL");
   db.exec(`
@@ -93,6 +101,13 @@ export function openSecretStore(dbFile: string, key: SecretsKey): SecretStore {
     "SELECT name, key_id, nonce, ciphertext FROM user_secrets ORDER BY name",
   );
   const remove = db.prepare<[string]>("DELETE FROM user_secrets WHERE name = ?");
+  const stale = db.prepare<[string], SecretRow>(
+    "SELECT name, key_id, nonce, ciphertext FROM user_secrets WHERE key_id != ? ORDER BY name",
+  );
+  // Matching the old key id too, so a value set while the pass runs is not overwritten.
+  const move = db.prepare<[string, Buffer, Buffer, string, string]>(
+    "UPDATE user_secrets SET key_id = ?, nonce = ?, ciphertext = ? WHERE name = ? AND key_id = ?",
+  );
 
   // The name is the additional authenticated data, so a ciphertext copied to another row fails.
   function encrypt(name: string, value: string): { nonce: Buffer; ciphertext: Buffer } {
@@ -104,12 +119,11 @@ export function openSecretStore(dbFile: string, key: SecretsKey): SecretStore {
   }
 
   function decrypt(row: SecretRow): string {
-    if (row.key_id !== key.id) {
-      throw new Error(
-        `User secret "${row.name}" is under key id ${row.key_id}, not the loaded key`,
-      );
+    const rowKey = [key, previous].find((candidate) => candidate?.id === row.key_id);
+    if (rowKey === undefined) {
+      throw new Error(`User secret "${row.name}" is under key id ${row.key_id}, not a loaded key`);
     }
-    const decipher = createDecipheriv("aes-256-gcm", key.key, row.nonce);
+    const decipher = createDecipheriv("aes-256-gcm", rowKey.key, row.nonce);
     decipher.setAAD(Buffer.from(row.name, "utf8"));
     decipher.setAuthTag(row.ciphertext.subarray(-16));
     return Buffer.concat([
@@ -141,6 +155,14 @@ export function openSecretStore(dbFile: string, key: SecretsKey): SecretStore {
       const out: { [name: string]: string } = {};
       for (const row of rows.all()) out[row.name] = decrypt(row);
       return out;
+    },
+    reencrypt() {
+      let moved = 0;
+      for (const row of stale.all(key.id)) {
+        const { nonce, ciphertext } = encrypt(row.name, decrypt(row));
+        moved += move.run(key.id, nonce, ciphertext, row.name, row.key_id).changes;
+      }
+      return moved;
     },
     close: () => db.close(),
   };

@@ -61,6 +61,8 @@ export interface RequesterContextOptions {
   hosted?: boolean;
   /** The master key each hosted requester's Secret store is encrypted under. */
   secretsKey?: SecretsKey;
+  /** The key a rotation moves rows off; rows under it still read until they move. */
+  previousSecretsKey?: SecretsKey;
   /** Hosted mode only: each requester's Starts run in a VM (ADR 0091) instead of in process. */
   sandbox?: SandboxOptions;
   /** Hosted mode only: the run limits each user's VMs are held to. */
@@ -78,6 +80,7 @@ export function createRequesterContexts({
   resolveUserId = () => DEFAULT_USER_ID,
   hosted = false,
   secretsKey,
+  previousSecretsKey,
   sandbox,
   runOwner,
 }: RequesterContextOptions): RequesterContexts {
@@ -94,7 +97,7 @@ export function createRequesterContexts({
     const opened = openProject(join(projectDir, "users", userId));
     if (!opened.success) throw new Error(opened.error);
     const store = opened.project;
-    const secrets = openSecretStore(dbFilePath(store.dir), secretsKey);
+    const secrets = openSecretStore(dbFilePath(store.dir), secretsKey, previousSecretsKey);
     const live = sandbox
       ? createSandboxedRuns(store, sandbox, runOwner?.(userId))
       : createLiveRuns(store);
