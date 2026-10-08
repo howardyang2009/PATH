@@ -19,6 +19,7 @@ import { reapSandboxes } from "./sandbox/reaper.js";
 import { readSandboxOptions } from "./sandbox/sandbox-config.js";
 import { SANDBOX_LIMITS } from "./sandbox/sandboxed-runs.js";
 import { serveStatic } from "./serve-static.js";
+import { markServerRunning } from "./server-pid.js";
 import { openVmUsage } from "./vm-usage.js";
 
 /** Built `@path/viewer` bundle (`packages/viewer/dist`); `serveStatic` 404s when it is absent or
@@ -203,6 +204,8 @@ export async function startPathServer(
     httpServer.listen(port, "127.0.0.1", () => resolvePromise());
   });
 
+  // Offline operator tools (remap-user) refuse while this marker names a live process.
+  const unmark = markServerRunning(project.dir);
   const address = httpServer.address();
   const actualPort = address && typeof address === "object" ? address.port : port;
 
@@ -219,6 +222,7 @@ export async function startPathServer(
             requesters.close();
             creators.close();
             usage?.close();
+            unmark();
             resolvePromise();
           }, reject);
         });
