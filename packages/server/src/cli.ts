@@ -1,3 +1,5 @@
+import type { RemapPair } from "./remap-user.js";
+
 const USAGE = "usage: path-server [project-dir] [--port <n>]";
 
 export interface ParsedServerArgs {
@@ -166,7 +168,7 @@ const REMAP_USER_USAGE =
 
 export interface ParsedRemapUserArgs {
   projectDir: string;
-  pairs: { from: string; to: string }[];
+  pairs: RemapPair[];
   /** Read the pairs from the Clerk instance's `external_id` values instead. */
   fromClerk: boolean;
   dryRun: boolean;

@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { openProject, pathDir } from "@path/engine";
 import {
   recoverFromStaging,
+  SANDBOX_DIR,
   SANDBOX_LOST,
   type SandboxOptions,
   stagingDir,
@@ -24,7 +25,7 @@ export async function reapSandboxes(
   if (!existsSync(usersDir)) return;
   for (const userId of readdirSync(usersDir)) {
     const storeDir = join(usersDir, userId);
-    if (!existsSync(join(pathDir(storeDir), "sandbox"))) continue;
+    if (!existsSync(join(pathDir(storeDir), SANDBOX_DIR))) continue;
     const opened = openProject(storeDir);
     if (!opened.success) {
       console.error(`reaper: cannot open the store of ${userId}: ${opened.error}`);
@@ -32,7 +33,7 @@ export async function reapSandboxes(
     }
     const store = opened.project;
     try {
-      for (const rootRunId of readdirSync(join(pathDir(storeDir), "sandbox"))) {
+      for (const rootRunId of readdirSync(join(pathDir(storeDir), SANDBOX_DIR))) {
         const refusal = recoverFromStaging(store, rootRunId, sandbox);
         if (refusal !== undefined) console.error(`reaper: run ${rootRunId}: ${refusal}`);
         await store.archive.endNonTerminal(rootRunId, "failed", SANDBOX_LOST);

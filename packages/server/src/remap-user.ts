@@ -16,7 +16,11 @@ import { type WorkflowNode, walkNodes } from "@path/schema";
 import Database from "better-sqlite3";
 import { serializeArtifact } from "./artifact-file.js";
 import { DEFAULT_USER_ID } from "./authored-layout.js";
-import { runningServerPid } from "./server-pid.js";
+import { type CreatorTable, HOST_DB_FILE, openCreatorTable } from "./creator-table.js";
+import { QUARANTINE_DIR, REMOVAL_LOG_FILE } from "./remove-shared.js";
+import { LIMITS_FILE } from "./request-limits.js";
+import { SANDBOX_DIR } from "./sandbox/sandboxed-runs.js";
+import { runningServerPid, SERVER_PID_FILE } from "./server-pid.js";
 
 // The operator's offline move of one user's data to another user id (docs/spec/path-website.md
 // §9): `local` to the owner's `sub`, and development ids to production ones. It copies, rewrites the
@@ -54,6 +58,12 @@ export interface RemapReport {
   conflicts: string[];
 }
 
+/** A Clerk user's id and the `external_id` an import set on them. */
+export interface ClerkUserIds {
+  id: string;
+  externalId: string | null;
+}
+
 export type RemapUserResult =
   | { success: true; reports: RemapReport[] }
   | { success: false; error: string; reports: RemapReport[] };
@@ -70,26 +80,29 @@ export interface RemapUserOptions {
 
 /** A folder-safe id other than `local`, which only the source of a remap may be. */
 const USER_ID = /^[A-Za-z0-9_-]+$/;
-// Host-level files in the project `.path`, which stay when `local`'s store moves; `sandbox` holds
-// per-run VM staging the Server reaps at boot.
+// Host-level entries in the project `.path`, which stay when `local`'s store moves; the VM staging
+// in `SANDBOX_DIR` is reaped at boot.
 const HOST_ONLY = new Set([
-  "host.db",
-  "limits.json",
-  "quarantine",
-  "remove-shared.log",
-  "server.pid",
-  "sandbox",
+  HOST_DB_FILE,
+  LIMITS_FILE,
+  QUARANTINE_DIR,
+  REMOVAL_LOG_FILE,
+  SERVER_PID_FILE,
+  SANDBOX_DIR,
 ]);
-const SQLITE_SIDE_FILE = /\.db-(wal|shm|journal)$/;
+const SQLITE_SIDE_SUFFIXES = ["-wal", "-shm", "-journal"];
 const EDIT_LEASE = /\.editing$/;
 const STORE_DIR = ".path";
 const STORE_DB = "path.db";
+const STORE_DB_DST = `${STORE_DIR}/${STORE_DB}`;
 
 interface CopyItem {
   src: string;
   /** Relative to the target folder, `/`-separated. */
   dst: string;
   size: number;
+  /** An authored file, a store file, or a store database, which is copied with `VACUUM INTO`. */
+  kind: "authored" | "store" | "database";
 }
 
 interface PairPlan {
@@ -153,7 +166,7 @@ export function remapUser({
     }
   }
   for (const plan of moving) {
-    moveCreatorRows(project, plan.pair);
+    withCreators(project, (creators) => creators.reassign(plan.pair.from, plan.pair.to));
     if (deleteSource) removeSource(plan);
   }
   return { success: true, reports };
@@ -207,12 +220,14 @@ function planPair(
     (parts) => parts.length === 1 && HOST_ONLY.has(parts[0] as string),
   );
   plan.items = [
-    ...authored.files.map((rel) => item(authoredDir, rel, rel)),
-    ...store.files.map((rel) => item(storeDir, rel, `${STORE_DIR}/${rel}`)),
+    ...authored.files.map((rel) => item(authoredDir, rel, rel, "authored")),
+    ...store.files.map((rel) =>
+      item(storeDir, rel, `${STORE_DIR}/${rel}`, rel.endsWith(".db") ? "database" : "store"),
+    ),
   ];
   report.notCopied = [
-    ...authored.others.map((rel) => projectPathOf(project, join(authoredDir, rel))),
-    ...store.others.map((rel) => projectPathOf(project, join(storeDir, rel))),
+    ...authored.others.map((rel) => projectPath(project, join(authoredDir, rel))),
+    ...store.others.map((rel) => projectPath(project, join(storeDir, rel))),
   ];
   if (deleteSource && report.notCopied.length > 0) {
     report.conflicts.push(
@@ -229,23 +244,19 @@ function planPair(
 
   const storeDb = join(storeDir, STORE_DB);
   if (existsSync(storeDb)) {
-    const db = openExisting(storeDb);
-    try {
+    withDb(storeDb, (db) => {
       report.rows = rowCounts(db);
-      if (report.rows.runs !== undefined) {
-        const prefix = `users/${from}/`;
-        report.workflowPaths = (
-          db
-            .prepare("SELECT COUNT(*) AS n FROM runs WHERE substr(workflow_path, 1, ?) = ?")
-            .get(prefix.length, prefix) as { n: number }
-        ).n;
-      }
-    } finally {
-      db.close();
-    }
+      if (report.rows.runs === undefined) return;
+      const prefix = `users/${from}/`;
+      report.workflowPaths = (
+        db
+          .prepare("SELECT COUNT(*) AS n FROM runs WHERE substr(workflow_path, 1, ?) = ?")
+          .get(prefix.length, prefix) as { n: number }
+      ).n;
+    });
   }
   for (const entry of plan.items) {
-    if (!entry.dst.endsWith(".workflow.json") || entry.dst.startsWith(`${STORE_DIR}/`)) continue;
+    if (entry.kind !== "authored" || !entry.dst.endsWith(".workflow.json")) continue;
     const raw = parseJson(readFileSync(entry.src, "utf8"));
     if (raw !== undefined) report.refs.push(...rewriteRefs(raw, plan, entry));
   }
@@ -256,19 +267,11 @@ function planPair(
     const raw = parseJson(readFileSync(file, "utf8"));
     for (const ref of raw === undefined ? [] : workflowRefs(raw)) {
       if (within(authoredDir, resolve(dirname(file), ref.ref))) {
-        report.sharedRefs.push({ file: projectPathOf(project, file), ref: ref.ref });
+        report.sharedRefs.push({ file: projectPath(project, file), ref: ref.ref });
       }
     }
   }
-  report.creatorRows = withCreatorTable(
-    project,
-    (db) =>
-      (
-        db.prepare("SELECT COUNT(*) AS n FROM shared_creators WHERE creator = ?").get(from) as {
-          n: number;
-        }
-      ).n,
-  );
+  report.creatorRows = withCreators(project, (creators) => creators.countBy(from));
   return plan;
 }
 
@@ -278,34 +281,27 @@ function applyPlan(plan: PairPlan): string[] {
   for (const entry of items) {
     const dst = join(targetDir, entry.dst);
     mkdirSync(dirname(dst), { recursive: true });
-    if (entry.dst.endsWith(".db")) {
+    if (entry.kind === "database") {
       // VACUUM INTO folds any WAL content into a self-contained copy.
-      const db = openExisting(entry.src);
-      try {
-        db.prepare("VACUUM INTO ?").run(dst);
-      } finally {
-        db.close();
-      }
+      withDb(entry.src, (db) => db.prepare("VACUUM INTO ?").run(dst));
     } else {
       copyFileSync(entry.src, dst);
     }
   }
 
-  const storeDb = join(targetDir, STORE_DIR, STORE_DB);
   if (plan.report.rows.runs !== undefined) {
     const from = `users/${pair.from}/`;
-    const db = new Database(storeDb);
-    try {
-      db.prepare(
-        "UPDATE runs SET workflow_path = ? || substr(workflow_path, ?) WHERE substr(workflow_path, 1, ?) = ?",
-      ).run(`users/${pair.to}/`, from.length + 1, from.length, from);
-    } finally {
-      db.close();
-    }
+    withDb(join(targetDir, STORE_DB_DST), (db) =>
+      db
+        .prepare(
+          "UPDATE runs SET workflow_path = ? || substr(workflow_path, ?) WHERE substr(workflow_path, 1, ?) = ?",
+        )
+        .run(`users/${pair.to}/`, from.length + 1, from.length, from),
+    );
   }
   const rewritten = new Set(plan.report.refs.map((ref) => ref.file));
   for (const entry of items) {
-    if (!rewritten.has(projectPathOf(project, join(targetDir, entry.dst)))) continue;
+    if (!rewritten.has(projectPath(project, join(targetDir, entry.dst)))) continue;
     const dst = join(targetDir, entry.dst);
     const raw = parseJson(readFileSync(dst, "utf8"));
     if (raw === undefined) continue;
@@ -321,13 +317,11 @@ function verify({ targetDir, items, report }: PairPlan): string[] {
   const copied = listFiles(targetDir, () => false).files.length;
   if (copied !== items.length) problems.push(`expected ${items.length} files, found ${copied}`);
   for (const entry of items) {
-    if (!entry.dst.endsWith(".db")) continue;
-    const db = openExisting(join(targetDir, entry.dst));
-    try {
+    if (entry.kind !== "database") continue;
+    const expected = entry.dst === STORE_DB_DST ? report.rows : withDb(entry.src, rowCounts);
+    withDb(join(targetDir, entry.dst), (db) => {
       const check = db.pragma("integrity_check", { simple: true });
       if (check !== "ok") problems.push(`${entry.dst}: integrity_check: ${String(check)}`);
-      const expected =
-        entry.dst === `${STORE_DIR}/${STORE_DB}` ? report.rows : rowCountsAt(entry.src);
       const actual = rowCounts(db);
       for (const [table, n] of Object.entries(expected)) {
         if (actual[table] !== n) {
@@ -336,19 +330,9 @@ function verify({ targetDir, items, report }: PairPlan): string[] {
           );
         }
       }
-    } finally {
-      db.close();
-    }
+    });
   }
   return problems;
-}
-
-function moveCreatorRows(project: string, { from, to }: RemapPair): void {
-  withCreatorTable(
-    project,
-    (db) =>
-      db.prepare("UPDATE shared_creators SET creator = ? WHERE creator = ?").run(to, from).changes,
-  );
 }
 
 function removeSource({ pair, authoredDir, storeDir, items }: PairPlan): void {
@@ -357,12 +341,12 @@ function removeSource({ pair, authoredDir, storeDir, items }: PairPlan): void {
   // `local`'s store shares the project `.path` with host files, so only what was copied goes.
   const tops = new Set(
     items
-      .filter((entry) => entry.dst.startsWith(`${STORE_DIR}/`))
+      .filter((entry) => entry.kind !== "authored")
       .map((entry) => entry.dst.split("/")[1] as string)
       .filter((top) => top !== ".gitignore"),
   );
   for (const top of tops) rmSync(join(storeDir, top), { recursive: true, force: true });
-  for (const side of ["-wal", "-shm", "-journal"]) {
+  for (const side of SQLITE_SIDE_SUFFIXES) {
     rmSync(join(storeDir, `${STORE_DB}${side}`), { force: true });
   }
 }
@@ -381,7 +365,7 @@ function rewriteRefs(raw: unknown, plan: PairPlan, entry: CopyItem): RefRewrite[
     const rel = relative(plan.authoredDir, target);
     const ref = toPosix(relative(dirname(dstFile), join(plan.targetDir, rel)));
     if (ref === node.ref) continue;
-    rewrites.push({ file: projectPathOf(plan.project, dstFile), from: node.ref, to: ref });
+    rewrites.push({ file: projectPath(plan.project, dstFile), from: node.ref, to: ref });
     node.ref = ref;
   }
   return rewrites;
@@ -406,18 +390,14 @@ function within(dir: string, abs: string): boolean {
  * The pairs a production Clerk import implies: each user imported with `external_id` set to their
  * development id moves from that id to their production id.
  */
-export function pairsFromClerkUsers(
-  users: { id: string; externalId: string | null }[],
-): RemapPair[] {
+export function pairsFromClerkUsers(users: ClerkUserIds[]): RemapPair[] {
   return users.flatMap(({ id, externalId }) => (externalId ? [{ from: externalId, to: id }] : []));
 }
 
 /** Every user of the Clerk instance `secretKey` names, paged through the Backend API. */
-export async function listClerkUsers(
-  secretKey: string,
-): Promise<{ id: string; externalId: string | null }[]> {
+export async function listClerkUsers(secretKey: string): Promise<ClerkUserIds[]> {
   const clerk = createClerkClient({ secretKey });
-  const users: { id: string; externalId: string | null }[] = [];
+  const users: ClerkUserIds[] = [];
   const limit = 500;
   for (let offset = 0; ; offset += limit) {
     const page = await clerk.users.getUserList({ limit, offset });
@@ -426,25 +406,27 @@ export async function listClerkUsers(
   }
 }
 
-/** Runs `use` on host.db's creator table; 0 when there is none. */
-function withCreatorTable(project: string, use: (db: Database.Database) => number): number {
-  const file = join(pathDir(project), "host.db");
+/** Runs `use` on the creator table; 0 when the project has no host.db yet. */
+function withCreators(project: string, use: (creators: CreatorTable) => number): number {
+  const file = join(pathDir(project), HOST_DB_FILE);
   if (!existsSync(file)) return 0;
-  const db = openExisting(file);
+  const creators = openCreatorTable(file);
   try {
-    const table = db
-      .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'shared_creators'")
-      .get();
-    return table === undefined ? 0 : use(db);
+    return use(creators);
   } finally {
-    db.close();
+    creators.close();
   }
 }
 
-/** A read-write handle even for reads: a read-only one leaves a WAL database's `-wal` and `-shm`
- * files behind, and a dry run must change nothing. */
-function openExisting(file: string): Database.Database {
-  return new Database(file, { fileMustExist: true });
+/** Runs `use` on an existing database. The handle is read-write even for reads: a read-only one
+ * leaves a WAL database's `-wal` and `-shm` files behind, and a dry run must change nothing. */
+function withDb<T>(file: string, use: (db: Database.Database) => T): T {
+  const db = new Database(file, { fileMustExist: true });
+  try {
+    return use(db);
+  } finally {
+    db.close();
+  }
 }
 
 function rowCounts(db: Database.Database): Record<string, number> {
@@ -457,15 +439,6 @@ function rowCounts(db: Database.Database): Record<string, number> {
       (db.prepare(`SELECT COUNT(*) AS n FROM "${name}"`).get() as { n: number }).n,
     ]),
   );
-}
-
-function rowCountsAt(file: string): Record<string, number> {
-  const db = openExisting(file);
-  try {
-    return rowCounts(db);
-  } finally {
-    db.close();
-  }
 }
 
 /** Regular files under `root` as `/`-separated relative paths, without SQLite side files, edit
@@ -489,7 +462,7 @@ function listFiles(
       if (entry.isDirectory()) walk(child);
       else if (
         entry.isFile() &&
-        !SQLITE_SIDE_FILE.test(entry.name) &&
+        !SQLITE_SIDE_SUFFIXES.some((suffix) => entry.name.endsWith(`.db${suffix}`)) &&
         !EDIT_LEASE.test(entry.name)
       ) {
         found.push(child.join("/"));
@@ -502,9 +475,9 @@ function listFiles(
   return { files: found.sort(), others: others.sort() };
 }
 
-function item(root: string, rel: string, dst: string): CopyItem {
+function item(root: string, rel: string, dst: string, kind: CopyItem["kind"]): CopyItem {
   const src = join(root, rel);
-  return { src, dst, size: statSync(src).size };
+  return { src, dst, size: statSync(src).size, kind };
 }
 
 function parseJson(text: string): unknown {
@@ -515,7 +488,7 @@ function parseJson(text: string): unknown {
   }
 }
 
-function projectPathOf(project: string, abs: string): string {
+function projectPath(project: string, abs: string): string {
   return toPosix(relative(project, abs));
 }
 
