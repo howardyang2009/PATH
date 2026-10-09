@@ -21,7 +21,7 @@ pnpm path run <file>.workflow.json   # run a workflow from the CLI
 pnpm serve                           # build both consoles, serve on http://localhost:8080
 ```
 
-`pnpm serve` serves the **Viewer** (launch, watch, resume and complete runs) at `/viewer/` and the
+`pnpm serve` serves a landing page at `/`, the **Viewer** (launch, watch, resume and complete runs) at `/viewer/`, and the
 **Designer** (author workflows on a canvas) at `/designer/`. Your workflows live in
 `users/local/workflow/` and `shared/workflow/`; shipped workflows can be copied into yours. Run data
 lives in `.path/`.
