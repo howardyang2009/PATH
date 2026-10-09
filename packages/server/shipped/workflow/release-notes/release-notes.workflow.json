@@ -1,9 +1,10 @@
 {
   "format": "path/workflow@6",
-  "id": "7eae7dae-ee36-4d05-80b0-8fc895783d69",
+  "id": "a9ddf94b-5bbf-4796-894a-95804b05fc02",
   "name": "release-notes",
   "config": {
-    "repo_path": ".",
+    "repo_url": "https://github.com/howardyang2009/PATH.git",
+    "repo_path": "/tmp/repo",
     "commit_range": "HEAD~15..HEAD",
     "max_revisions": "3",
     "output_file": "RELEASE_NOTES.md",
@@ -14,7 +15,20 @@
   },
   "body": [
     {
-      "id": "a728c16b-baef-40f2-9f11-2b88ac95e63e",
+      "id": "994d6284-6084-4044-8229-e1087edcbcea",
+      "name": "clone-repo",
+      "command": "git",
+      "args": [
+        "clone",
+        "--depth",
+        "50",
+        "${config.repo_url}",
+        "${config.repo_path}"
+      ],
+      "type": "binary"
+    },
+    {
+      "id": "0a7ad1bc-46ad-44ef-8072-291b586e7e65",
       "name": "gather-changes",
       "publish": {
         "raw_changes": "${output}"
@@ -31,7 +45,7 @@
     },
     {
       "type": "checkpoint",
-      "id": "4bef80da-5092-4c9d-a84d-dbf04d84053e",
+      "id": "f0b9f76d-c4ba-4036-93a1-1d0fdcc98ae2",
       "name": "have-changes",
       "condition": {
         "type": "matches",
@@ -40,7 +54,7 @@
       }
     },
     {
-      "id": "75deeaad-b265-4db1-bc8e-6d0e1b2d6e4d",
+      "id": "3b3b6d1c-f670-4134-80b2-1fc7fce04686",
       "name": "check-git-result",
       "publish": {
         "person-confirm": "${output}"
@@ -51,12 +65,12 @@
     },
     {
       "type": "parallel",
-      "id": "1912e274-158c-48a8-81d0-bb8851fc2bcf",
+      "id": "26353cca-4fe0-4a41-a749-f5e351c7f381",
       "name": "summarize",
       "join": "collect",
       "branches": [
         {
-          "id": "3397c7ea-abf4-4667-ac15-0d82b3bbaa9b",
+          "id": "a927b740-65a6-4f86-ba28-5b350e2a28d2",
           "name": "summarize-features",
           "input": {
             "raw_changes": "${context.raw_changes}"
@@ -68,7 +82,7 @@
           "type": "prompt"
         },
         {
-          "id": "6568b007-948c-44c2-b3f2-12f862cf6119",
+          "id": "a77f4178-1af2-45a0-832f-e94039a446ba",
           "name": "summrize-fixes",
           "input": {
             "raw_changes": "${context.raw_changes}"
@@ -82,7 +96,7 @@
       ]
     },
     {
-      "id": "82b2b34b-9434-4d45-be6c-1ada397ed77a",
+      "id": "ceeafd99-9873-4c66-8445-9e72c6b61e64",
       "name": "draft-notes",
       "input": {
         "features": "${context.features_summary}",
@@ -95,7 +109,7 @@
       "type": "prompt"
     },
     {
-      "id": "e1502893-05db-4803-a953-c130386ffed4",
+      "id": "6688a231-cb93-4fae-9075-b4e0883c7ca0",
       "name": "judge-draft",
       "input": {
         "draft": "${context.draft}",
@@ -110,7 +124,7 @@
     },
     {
       "type": "checkpoint",
-      "id": "ae631eea-7a80-420b-a6ff-c2ddfd56f2dc",
+      "id": "cb582bc5-05d8-4373-9899-18a855040f0f",
       "name": "verdict-wellformed",
       "condition": {
         "type": "all",
@@ -132,7 +146,7 @@
     },
     {
       "type": "while-do",
-      "id": "95e1263f-4b46-4ef6-b3cb-f4ce2e40b63b",
+      "id": "84aa5de3-c645-41e7-bff0-6abb4d8d7520",
       "name": "revise-loop",
       "condition": {
         "type": "equals",
@@ -142,7 +156,7 @@
       "max_iterations": "${config.max_revisions}",
       "node": {
         "type": "workflow",
-        "id": "3a852ff0-f822-4a18-8666-d8763f098248",
+        "id": "6149a8e0-bbec-4edb-9e71-2473b9a52b53",
         "name": "revise",
         "input": {
           "draft": "${context.draft}",
@@ -158,7 +172,7 @@
     },
     {
       "type": "branch",
-      "id": "f6a0ae5d-01ef-44a2-a800-f3ad6ee8d6db",
+      "id": "7ab77732-5c66-4b60-8c9a-265f0a7cdf9e",
       "name": "pick-format",
       "arms": [
         {
@@ -168,7 +182,7 @@
             "value": "short"
           },
           "node": {
-            "id": "b7970a7a-331b-40f6-bbca-23984741b653",
+            "id": "4cd63126-2f22-413c-9a32-71d2685d0348",
             "name": "format-short",
             "input": {
               "draft": "${context.draft}"
@@ -187,7 +201,7 @@
             "value": "long"
           },
           "node": {
-            "id": "9810b925-2f76-4db7-adb7-6e7bab8ae297",
+            "id": "1e1cfbfa-52f0-4040-8bf2-8f437bc4b31a",
             "name": "format-long",
             "input": {
               "draft": "${context.draft}"
@@ -202,7 +216,7 @@
       ]
     },
     {
-      "id": "0923ebb7-c57e-44f4-be34-5e5fc62319f8",
+      "id": "6983cafc-8037-4275-8e0f-390aaea0a070",
       "name": "write-file",
       "input": "${context.final_notes}",
       "publish": {
