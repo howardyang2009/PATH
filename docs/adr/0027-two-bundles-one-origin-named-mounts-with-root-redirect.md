@@ -4,6 +4,12 @@
 the no-auth, localhost-bind, no-CORS, #237-origin-gate posture rests on one origin). This ADR fixes
 *how* the two static bundles share that origin and why the Viewer no longer sits at `/`.
 
+## Amendment (2026-10-09)
+
+The bare root `/` no longer redirects. It serves a static landing page
+(`packages/server/site/index.html`) that introduces PATH and links to `/viewer/` and `/designer/`.
+The named mounts are unchanged, and neither surface is privileged with the root.
+
 ## Decision
 
 Two **named mounts**: the Viewer at `/viewer/`, the Designer at `/designer/`. The bare root `/`

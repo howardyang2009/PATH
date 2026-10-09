@@ -33,6 +33,9 @@ const DEFAULT_STATIC_DIR = fileURLToPath(new URL("../../viewer/dist", import.met
  * built. */
 const DEFAULT_DESIGNER_STATIC_DIR = fileURLToPath(new URL("../../designer/dist", import.meta.url));
 
+/** The landing page at `/`: one static `index.html` that links to both mounts. */
+const SITE_DIR = fileURLToPath(new URL("../site", import.meta.url));
+
 /** The two hardcoded mounts (ADR 0027) — not an open table. Prefix has no trailing slash. */
 const VIEWER_PREFIX = "/viewer";
 const DESIGNER_PREFIX = "/designer";
@@ -74,13 +77,8 @@ async function handleRequest(
 
     if (await dispatchApi(req, res, server, url)) return;
 
-    // Bare `/` redirects to the default surface; 302 (not 301) keeps the target a changeable,
-    // uncached line.
-    if (req.method === "GET" && pathname === "/") {
-      res.writeHead(302, { Location: `${VIEWER_PREFIX}/` });
-      res.end();
-      return;
-    }
+    // Bare `/` is the landing page that links to both mounts (amends ADR 0027's redirect).
+    if (req.method === "GET" && pathname === "/" && serveStatic(SITE_DIR, "/", res)) return;
 
     // Named mounts: a GET is routed by prefix, the prefix stripped, the suffix resolved in that
     // bundle's dir with its own SPA fallback. An unbuilt bundle falls through to the plain 404

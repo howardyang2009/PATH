@@ -132,7 +132,7 @@ describe("the hosted Server", () => {
 
   it("keeps the static mounts public", async () => {
     const url = await startHosted();
-    expect((await fetch(`${url}/`, { redirect: "manual" })).status).toBe(302);
+    expect((await fetch(`${url}/`)).status).toBe(200);
   });
 });
 
