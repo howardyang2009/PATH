@@ -120,10 +120,40 @@ describe("POST /v0/workflows/copy", () => {
     expect(existsSync(userRoot) ? readdirSync(userRoot) : []).toEqual([]);
   });
 
-  it("refuses to overwrite an existing copy (409)", async () => {
-    writeShipped("notes/main.workflow.json", workflow("main"));
+  it("copies a folder again into the first free `-<n>` folder and suffixes the workflow name", async () => {
+    writeShipped("notes/main.workflow.json", workflow("main", ["./child.workflow.json"]));
+    writeShipped("notes/child.workflow.json", workflow("child"));
     expect((await copy("notes/main.workflow.json")).status).toBe(201);
-    expect((await copy("notes/main.workflow.json")).status).toBe(409);
+    expect((await copy("notes/main.workflow.json")).status).toBe(201);
+
+    const res = await copy("notes/main.workflow.json");
+    expect(res.status).toBe(201);
+    const root = join("users", "local", "workflow", "notes-2");
+    expect(await res.json()).toEqual({
+      relative_path: join(root, "main.workflow.json"),
+      root_path: join("notes-2", "main.workflow.json"),
+    });
+    expect(readJson(join(root, "main.workflow.json"))).toMatchObject({ name: "main-2" });
+    expect(readJson(join(root, "child.workflow.json"))).toMatchObject({ name: "child" });
+    expect(
+      readJson(join("users", "local", "workflow", "notes", "main.workflow.json")),
+    ).toMatchObject({ name: "main" });
+    const loaded = await loadWorkflowTree(join(projectDir, root, "main.workflow.json"));
+    expect(loaded.success).toBe(true);
+  });
+
+  it("copies a top-level file again as `<stem>-1.workflow.json`", async () => {
+    writeShipped("solo.workflow.json", workflow("solo"));
+    expect((await copy("solo.workflow.json")).status).toBe(201);
+
+    const res = await copy("solo.workflow.json");
+    expect(res.status).toBe(201);
+    const target = join("users", "local", "workflow", "solo-1.workflow.json");
+    expect(await res.json()).toEqual({
+      relative_path: target,
+      root_path: "solo-1.workflow.json",
+    });
+    expect(readJson(target)).toMatchObject({ name: "solo-1" });
   });
 
   it("404s a path that is not a shipped workflow file", async () => {

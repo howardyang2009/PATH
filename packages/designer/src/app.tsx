@@ -159,7 +159,7 @@ export function App({
   };
 
   // Copy a shipped workflow into the user's folder (ADR 0086), then open the copy. A refusal
-  // (a `409` for an existing copy) rejects, and the picker shows it.
+  // rejects, and the picker shows it.
   const copyShipped = async (shippedPath: string): Promise<void> => {
     const { relativePath } = await client.copyShippedWorkflow(shippedPath);
     setDiscoveryKey((key) => key + 1);

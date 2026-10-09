@@ -264,7 +264,7 @@ function WorkflowTree({
 
 /**
  * A shipped workflow's expansion (ADR 0086): it is read-only and never launched in place, so it
- * offers one action, a copy into the user's own folder. A `409` means a copy already exists.
+ * offers one action, a copy into the user's own folder. A second copy takes a `-<n>` name.
  */
 function CopyShipped({
   client,
