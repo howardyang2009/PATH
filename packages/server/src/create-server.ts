@@ -2,6 +2,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { type LoadedStepPluginRegistry, loadStepPluginRegistry, openProject } from "@path/engine";
+import { hostedAdmission, UNLIMITED_ADMISSION } from "./admission.js";
 import { authoredLayout } from "./authored-layout.js";
 import { clerkUserIdResolver } from "./clerk-identity.js";
 import { adoptSharedItems, HOST_DB_FILE, openCreatorTable } from "./creator-table.js";
@@ -9,16 +10,13 @@ import { enforceFunnelGuard, funnelGuardEnabled } from "./funnel-guard.js";
 import { sendError } from "./http-json.js";
 import { readServerMode, type ServerMode } from "./mode.js";
 import { enforceSameOrigin } from "./origin-gate.js";
-import { createRateLimiter } from "./request-limits.js";
 import { createRequesterContexts } from "./requester.js";
 import { dispatchApi } from "./routes/api-routes.js";
 import type { ServerContext } from "./routes/route-context.js";
-import { createRunLimits } from "./run-limits.js";
 import { reapSandboxes } from "./sandbox/reaper.js";
 import { SANDBOX_LIMITS } from "./sandbox/sandboxed-runs.js";
 import { serveStatic } from "./serve-static.js";
 import { markServerRunning } from "./server-pid.js";
-import { openVmUsage } from "./vm-usage.js";
 
 /** Built `@path/viewer` bundle (`packages/viewer/dist`); `serveStatic` 404s when it is absent or
  * unbuilt. */
@@ -120,8 +118,6 @@ export async function startPathServer(
   shippedWorkflowDir?: string,
   mode: ServerMode = readServerMode(process.env, projectDir),
 ): Promise<PathServerHandle> {
-  const limitsConfig = mode.mode === "hosted" ? mode.limits : undefined;
-
   // Scan the plugin folder (server-api-v0.md §8) before `openProject`, so a broken folder throws
   // without leaving an opened db handle behind; a thrown error skips the handle that would close
   // it.
@@ -146,19 +142,16 @@ export async function startPathServer(
   // each shared item, and each user's VM time.
   const hostDb = join(project.dir, ".path", HOST_DB_FILE);
   const creators = openCreatorTable(hostDb);
-  const usage =
-    limitsConfig !== undefined
-      ? openVmUsage(hostDb, Date.now, SANDBOX_LIMITS.timeoutMs + SANDBOX_LIMITS.stopGraceMs)
-      : undefined;
-  const limits =
-    limitsConfig !== undefined && usage !== undefined
-      ? {
-          config: limitsConfig,
-          rate: createRateLimiter(),
-          run: createRunLimits({ projectDir, creators, usage }),
-          usage,
-        }
-      : undefined;
+  const admission =
+    mode.mode === "hosted"
+      ? hostedAdmission({
+          projectDir,
+          limits: mode.limits,
+          creators,
+          hostDb,
+          maxVmMs: SANDBOX_LIMITS.timeoutMs + SANDBOX_LIMITS.stopGraceMs,
+        })
+      : UNLIMITED_ADMISSION;
   const requesters = createRequesterContexts({
     projectDir,
     shippedDir: shipped,
@@ -168,26 +161,14 @@ export async function startPathServer(
     secretsKey: mode.mode === "hosted" ? mode.secretsKey : undefined,
     previousSecretsKey: mode.mode === "hosted" ? mode.previousSecretsKey : undefined,
     sandbox,
-    runOwner:
-      limits === undefined
-        ? undefined
-        : (userId) => {
-            const user = limits.config.forUser(userId);
-            return {
-              userId,
-              maxRunningVms: user.maxRunningVms,
-              startRefusal: () => limits.run.launchRefusal(userId, user)?.message,
-              meter: () => limits.usage.begin(userId),
-              importRefusal: () => limits.run.storageRefusal(userId, user, true)?.message,
-            };
-          },
+    runOwner: admission.runOwner,
   });
   // Local mode adopts today's untracked `shared/` files as created by `local`, so they stay
   // editable.
   if (mode.mode === "local") {
     adoptSharedItems(authoredLayout({ projectDir, shippedDir: shipped }), creators);
   }
-  const server: ServerContext = { mode, stepPlugins: registry, requesters, creators, limits };
+  const server: ServerContext = { mode, stepPlugins: registry, requesters, creators, admission };
   const httpServer = createServer((req, res) => {
     handleRequest(req, res, server, absStaticDir, absDesignerStaticDir, funnelGuard).catch(
       (err) => {
@@ -218,7 +199,7 @@ export async function startPathServer(
           requesters.idle().then(() => {
             requesters.close();
             creators.close();
-            usage?.close();
+            admission.close();
             unmark();
             resolvePromise();
           }, reject);

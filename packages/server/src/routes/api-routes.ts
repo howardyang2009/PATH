@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { bufferRequestBody, type RouteReply, replyError, sendReply } from "../http-json.js";
-import { megabytes, type UserLimits } from "../request-limits.js";
+import type { AdmissionGate } from "../admission.js";
+import { type RouteReply, replyError, sendReply } from "../http-json.js";
 import { handleCancelRun } from "./cancel-run.js";
 import { handleCompleteRun } from "./complete-run.js";
 import { handleDeleteRun } from "./delete-run.js";
@@ -52,7 +52,7 @@ type ApiRoute = {
   method: "GET" | "POST" | "PUT" | "DELETE";
   path: string | RegExp;
   /** The run limit a hosted request must pass first: a VM launch, or an authored write. */
-  gate?: "launch" | "write";
+  gate?: AdmissionGate;
 } & (
   | { handle(request: ApiRequest): RouteReply | Promise<RouteReply> }
   | { stream: (request: StreamRequest<[string]>) => void | Promise<void> }
@@ -149,24 +149,13 @@ export async function dispatchApi(
       sendReply(res, replyError(401, "sign-in required: missing, invalid or expired bearer token"));
       return true;
     }
-    const limits = server.limits?.config.forUser(requester.userId);
-    if (!(await withinRequestLimits(req, res, server, requester.userId, limits))) return true;
-    const run = server.limits?.run;
+    // An SSE stream is one request, counted here at connect.
+    const { admission } = server;
     const refusal =
-      run === undefined || limits === undefined || route.gate === undefined
-        ? undefined
-        : route.gate === "launch"
-          ? run.launchRefusal(requester.userId, limits)
-          : run.storageRefusal(requester.userId, limits);
+      (await admission.admitRequest(req, requester.userId)) ??
+      (route.gate === undefined ? undefined : admission.gateRefusal(requester.userId, route.gate));
     if (refusal !== undefined) {
-      const { status, message, retryAfterSeconds } = refusal;
-      sendReply(res, {
-        ...replyError(status, message),
-        headers:
-          retryAfterSeconds === undefined
-            ? undefined
-            : { "Retry-After": String(retryAfterSeconds) },
-      });
+      sendReply(res, refusal);
       return true;
     }
     const params = decodeAll(captures);
@@ -176,7 +165,7 @@ export async function dispatchApi(
     }
     const request: ApiRequest = {
       req,
-      ctx: routeContextFor(requester, server, limits),
+      ctx: routeContextFor(requester, server, server.admission.limitsOf(requester.userId)),
       params,
       query: url.searchParams,
     };
@@ -186,37 +175,6 @@ export async function dispatchApi(
     } else sendReply(res, await route.handle(request));
     return true;
   }
-  return false;
-}
-
-/**
- * Count the request against the requester's rate and read its body under their size cap, answering
- * `429` or `413` and returning `false` past either. An SSE stream is one request, counted here at
- * connect. Local mode has no limits.
- */
-async function withinRequestLimits(
-  req: IncomingMessage,
-  res: ServerResponse,
-  server: ServerContext,
-  userId: string,
-  limits: UserLimits | undefined,
-): Promise<boolean> {
-  if (server.limits === undefined || limits === undefined) return true;
-  const rate = server.limits.rate.take(userId, limits.requestsPerMinute);
-  if (!rate.ok) {
-    sendReply(res, {
-      ...replyError(429, "too many requests: try again later"),
-      headers: { "Retry-After": String(rate.retryAfterSeconds) },
-    });
-    return false;
-  }
-  if (req.method === "GET") return true;
-  const body = await bufferRequestBody(req, limits.maxBodyBytes);
-  if (body.ok) return true;
-  sendReply(res, {
-    ...replyError(413, `request body too large: at most ${megabytes(limits.maxBodyBytes)}`),
-    headers: body.close ? { Connection: "close" } : undefined,
-  });
   return false;
 }
 

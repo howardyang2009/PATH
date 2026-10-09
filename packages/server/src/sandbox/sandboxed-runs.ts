@@ -81,7 +81,8 @@ export interface RunOwner {
   importRefusal?(): string | undefined;
 }
 
-const UNLIMITED: RunOwner = { userId: "", maxRunningVms: Number.POSITIVE_INFINITY };
+/** The owner of local or untracked runs: no cap, no meter. */
+export const UNLIMITED: RunOwner = { userId: "", maxRunningVms: Number.POSITIVE_INFINITY };
 
 /** Why the host stopped a VM. */
 type StopReason = "cancel" | "timeout";
