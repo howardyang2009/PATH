@@ -161,6 +161,7 @@ Every workflow node type is a member of one flat union discriminated by `type`:
 
 | `type` | Kind | Fields |
 | --- | --- | --- |
+| v0.7.0 | 2026-10-09 | Hosted mode: Clerk sign-in, per-user stores and secrets, sandboxed runs, abuse limits. |
 | `binary` | step | `command`, `args?`, `cwd?` |
 | `prompt` | step | `prompt` |
 | `person-activity` | step | `description`, `outputSchema?`, `assignee?` |
@@ -365,15 +366,15 @@ pnpm release-notes    # dogfood: PATH summarizes its own recent commits
 
 ## Status
 
-The latest release is **v0.6.5** (2026-09-30). The workflow format is `path/workflow@6` and the store
+The latest release is **v0.7.0** (2026-10-09). The workflow format is `path/workflow@6` and the store
 schema is `SCHEMA_VERSION` 13. `main` is green: `pnpm typecheck` is clean across all packages and
-**2654 tests pass** — schema 464, engine 946, server 321, designer 471, viewer 199, client-core 213,
+**3077 tests pass** — schema 462, engine 972, server 625, designer 512, viewer 221, client-core 245,
 scripts 40.
 
 The MVP is done, and all three wayfinder maps are closed: #1 spec, #29 server API, and #40 viewer. No
-product gap is open. v0.6.5 shipped the `previous` root (#681, ADR 0079) and the authored layout:
-workflows and templates live in shipped, shared, and per-user folders (ADR 0084–0087). Work continues
-on the [#109 v-next register](https://github.com/howardyang2009/PATH/issues/109).
+product gap is open. v0.7.0 shipped hosted mode: Clerk sign-in, per-user views, stores and User
+secrets, and one sandbox VM per engine invocation (ADR 0088–0092). Work continues on the
+[#109 v-next register](https://github.com/howardyang2009/PATH/issues/109).
 
 | Release | Date | Headline |
 | --- | --- | --- |
