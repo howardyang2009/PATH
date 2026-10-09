@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
 import type { StepRequest, StepResult } from "@path/engine/plugin";
 import { defineStepPlugin, resolveAgainstWorkflowDir, z } from "@path/engine/plugin";
 
@@ -77,7 +78,11 @@ function runSpawn(request: StepRequest<typeof fields, typeof config>): Promise<S
         settle({ status: "failed", error: "cancelled", stderr });
         return;
       }
-      settle({ status: "failed", error: `failed to start "${command}": ${err.message}`, stderr });
+      // Node reports a missing `cwd` as the command's ENOENT, so name the real cause.
+      const reason = existsSync(resolvedCwd)
+        ? err.message
+        : `working directory "${resolvedCwd}" does not exist`;
+      settle({ status: "failed", error: `failed to start "${command}": ${reason}`, stderr });
     });
     child.on("close", (code) => {
       // A kill from `signal` closes the child with a null exit code — a cancellation, not a step
