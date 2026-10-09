@@ -80,16 +80,7 @@ describe("the hosted Server", () => {
 
   async function startHosted(): Promise<string> {
     stubHostedEnv();
-    handle = await startPathServer(
-      projectDir,
-      0,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      hostedMode(projectDir),
-    );
+    handle = await startPathServer(projectDir, { mode: hostedMode(projectDir) });
     return handle.url;
   }
 

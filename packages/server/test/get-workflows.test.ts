@@ -51,15 +51,7 @@ function write(relPath: string, content: string): void {
 }
 
 async function listWorkflows(): Promise<{ status: number; body: ListWorkflowsResponse }> {
-  handle = await startPathServer(
-    projectDir,
-    0,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    shippedDir,
-  );
+  handle = await startPathServer(projectDir, { shippedDir: { workflow: shippedDir } });
   const res = await fetch(`${handle.url}/v0/workflows`);
   return { status: res.status, body: (await res.json()) as ListWorkflowsResponse };
 }

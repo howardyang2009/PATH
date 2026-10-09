@@ -29,16 +29,7 @@ describe("GET /v0/auth-config", () => {
 
   it("answers hosted mode with the publishable key, without a token", async () => {
     stubHostedEnv();
-    handle = await startPathServer(
-      projectDir,
-      0,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      hostedMode(projectDir),
-    );
+    handle = await startPathServer(projectDir, { mode: hostedMode(projectDir) });
     const res = await fetch(`${handle.url}/v0/auth-config`);
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ mode: "hosted", publishableKey: PUBLISHABLE_KEY });

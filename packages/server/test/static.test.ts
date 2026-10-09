@@ -16,12 +16,10 @@ const DESIGNER_APP_JS = "console.log('path designer bundle');";
 
 /** Starts the server with the Viewer built and the Designer dir chosen by `withDesigner`. */
 async function start(withDesigner: boolean): Promise<PathServerHandle> {
-  return startPathServer(
-    projectDir,
-    0,
+  return startPathServer(projectDir, {
     staticDir,
-    withDesigner ? designerDir : join(projectDir, "no-designer"),
-  );
+    designerStaticDir: withDesigner ? designerDir : join(projectDir, "no-designer"),
+  });
 }
 
 beforeEach(async () => {

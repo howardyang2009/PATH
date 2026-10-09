@@ -184,16 +184,7 @@ export async function verifyBackup({
     }
 
     try {
-      const handle = await startPathServer(
-        copy,
-        0,
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        { mode: "local", publishableKey: null },
-      );
+      const handle = await startPathServer(copy, { mode: { mode: "local", publishableKey: null } });
       try {
         const res = await fetch(`${handle.url}/v0/runs`);
         if (res.status !== 200) problems.push(`Server answered GET /v0/runs with ${res.status}`);

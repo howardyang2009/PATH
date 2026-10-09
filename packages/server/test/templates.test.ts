@@ -66,7 +66,7 @@ function writeTemplate(
 }
 
 async function start(): Promise<PathServerHandle> {
-  handle = await startPathServer(projectDir, 0, undefined, undefined, undefined, shippedDir);
+  handle = await startPathServer(projectDir, { shippedDir: { template: shippedDir } });
   return handle;
 }
 

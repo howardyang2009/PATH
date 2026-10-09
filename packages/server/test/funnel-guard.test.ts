@@ -167,16 +167,7 @@ describe("the Funnel guard on the HTTP door", () => {
     vi.stubEnv("PATH_SECRETS_KEY", Buffer.alloc(32).toString("base64"));
     vi.stubEnv("PATH_SANDBOX_IMAGE", "path-run:test");
     stubEgressAnchor();
-    handle = await startPathServer(
-      projectDir,
-      0,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      hostedMode(projectDir),
-    );
+    handle = await startPathServer(projectDir, { mode: hostedMode(projectDir) });
     // Past the guard, the request meets hosted sign-in instead.
     expect((await get("/v0/runs", TS_NET_HOST)).status).toBe(401);
   });

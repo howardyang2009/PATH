@@ -230,7 +230,7 @@ function serve(args: string[]): void {
     console.error(parsed.error);
     process.exitCode = 2;
   } else {
-    startPathServer(parsed.args.projectDir, parsed.args.port).then(
+    startPathServer(parsed.args.projectDir, { port: parsed.args.port }).then(
       (handle) => {
         console.log(`Listening on ${handle.url}`);
         // The listen socket keeps the event loop alive, so without this the process never exits on a

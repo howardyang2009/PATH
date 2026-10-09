@@ -45,16 +45,10 @@ function writeLimits(content: unknown): void {
 
 async function start(): Promise<string> {
   stubHostedEnv();
-  handle = await startPathServer(
-    projectDir,
-    0,
-    undefined,
-    undefined,
-    undefined,
-    join(shippedDir, "template"),
-    join(shippedDir, "workflow"),
-    hostedMode(projectDir),
-  );
+  handle = await startPathServer(projectDir, {
+    shippedDir: { template: join(shippedDir, "template"), workflow: join(shippedDir, "workflow") },
+    mode: hostedMode(projectDir),
+  });
   return handle.url;
 }
 

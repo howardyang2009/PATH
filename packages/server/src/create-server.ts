@@ -1,11 +1,21 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { type LoadedStepPluginRegistry, loadStepPluginRegistry, openProject } from "@path/engine";
-import { hostedAdmission, UNLIMITED_ADMISSION } from "./admission.js";
-import { authoredLayout } from "./authored-layout.js";
+import {
+  type LoadedStepPluginRegistry,
+  loadStepPluginRegistry,
+  openProject,
+  type Project,
+} from "@path/engine";
+import { type Admission, hostedAdmission, UNLIMITED_ADMISSION } from "./admission.js";
+import { type AuthoredKind, authoredLayout } from "./authored-layout.js";
 import { clerkUserIdResolver } from "./clerk-identity.js";
-import { adoptSharedItems, HOST_DB_FILE, openCreatorTable } from "./creator-table.js";
+import {
+  adoptSharedItems,
+  type CreatorTable,
+  HOST_DB_FILE,
+  openCreatorTable,
+} from "./creator-table.js";
 import { enforceFunnelGuard, funnelGuardEnabled } from "./funnel-guard.js";
 import { sendError } from "./http-json.js";
 import { readServerMode, type ServerMode } from "./mode.js";
@@ -17,6 +27,7 @@ import { reapSandboxes } from "./sandbox/reaper.js";
 import { SANDBOX_LIMITS } from "./sandbox/sandboxed-runs.js";
 import { serveStatic } from "./serve-static.js";
 import { markServerRunning } from "./server-pid.js";
+import { hostedTenancy, localTenancy, type Tenancy } from "./tenancy.js";
 
 /** Built `@path/viewer` bundle (`packages/viewer/dist`); `serveStatic` 404s when it is absent or
  * unbuilt. */
@@ -93,6 +104,44 @@ async function handleRequest(
   }
 }
 
+/** Who a server process serves and what each user may do: the one place the mode is branched. */
+async function tenantsOf(
+  mode: ServerMode,
+  boot: {
+    projectDir: string;
+    project: Project;
+    shipped: Partial<Record<AuthoredKind, string>>;
+    creators: CreatorTable;
+    hostDb: string;
+  },
+): Promise<{ admission: Admission; tenancy: Tenancy }> {
+  const { projectDir, project, shipped, creators, hostDb } = boot;
+  if (mode.mode === "local") {
+    // Today's untracked `shared/` files are adopted as created by `local`, so they stay editable.
+    adoptSharedItems(authoredLayout({ projectDir, shippedDir: shipped }), creators);
+    return { admission: UNLIMITED_ADMISSION, tenancy: localTenancy(project) };
+  }
+  // VMs and staging a previous Server process left behind, cleared before any run starts.
+  await reapSandboxes(projectDir, mode.sandbox);
+  const admission = hostedAdmission({
+    projectDir,
+    limits: mode.limits,
+    creators,
+    hostDb,
+    maxVmMs: SANDBOX_LIMITS.timeoutMs + SANDBOX_LIMITS.stopGraceMs,
+  });
+  const tenancy = hostedTenancy({
+    projectDir,
+    projectStore: project,
+    resolveUserId: clerkUserIdResolver(mode.clerk),
+    secretsKey: mode.secretsKey,
+    previousSecretsKey: mode.previousSecretsKey,
+    sandbox: mode.sandbox,
+    runOwner: admission.runOwner,
+  });
+  return { admission, tenancy };
+}
+
 export interface PathServerHandle {
   server: Server;
   /** The bound base URL, e.g. `http://localhost:54321` — known only once the OS assigns the
@@ -108,15 +157,28 @@ export interface PathServerHandle {
  * seam; `mode` defaults to the one the environment sets, and a hosted setup that fails the gate
  * (docs/spec/path-website.md §11) throws there, before anything is opened.
  */
+export interface PathServerOptions {
+  /** `0` lets the OS pick a free port. */
+  port?: number;
+  staticDir?: string;
+  designerStaticDir?: string;
+  /** A test seam: the registry to serve in place of the scanned plugin folder. */
+  stepPlugins?: LoadedStepPluginRegistry;
+  /** A test may point a kind's shipped root elsewhere. */
+  shippedDir?: Partial<Record<AuthoredKind, string>>;
+  mode?: ServerMode;
+}
+
 export async function startPathServer(
   projectDir: string,
-  port = 0,
-  staticDir: string = DEFAULT_STATIC_DIR,
-  designerStaticDir: string = DEFAULT_DESIGNER_STATIC_DIR,
-  stepPlugins?: LoadedStepPluginRegistry,
-  shippedTemplateDir?: string,
-  shippedWorkflowDir?: string,
-  mode: ServerMode = readServerMode(process.env, projectDir),
+  {
+    port = 0,
+    staticDir = DEFAULT_STATIC_DIR,
+    designerStaticDir = DEFAULT_DESIGNER_STATIC_DIR,
+    stepPlugins,
+    shippedDir: shipped = {},
+    mode = readServerMode(process.env, projectDir),
+  }: PathServerOptions = {},
 ): Promise<PathServerHandle> {
   // Scan the plugin folder (server-api-v0.md §8) before `openProject`, so a broken folder throws
   // without leaving an opened db handle behind; a thrown error skips the handle that would close
@@ -132,42 +194,19 @@ export async function startPathServer(
   const absStaticDir = resolve(staticDir);
   const absDesignerStaticDir = resolve(designerStaticDir);
   const funnelGuard = funnelGuardEnabled(mode);
-  // One requester context per user, resolved per request (requester.ts). Local mode keeps every run
-  // in the boot project's store; hosted mode gives each user their own.
-  const shipped = { template: shippedTemplateDir, workflow: shippedWorkflowDir };
-  const sandbox = mode.mode === "hosted" ? mode.sandbox : undefined;
-  // VMs and staging a previous Server process left behind, cleared before any run starts.
-  if (sandbox !== undefined) await reapSandboxes(projectDir, sandbox);
   // The host-level tables beside the store (ADR 0088 §3, docs/spec/path-website.md §8): who created
   // each shared item, and each user's VM time.
   const hostDb = join(project.dir, ".path", HOST_DB_FILE);
   const creators = openCreatorTable(hostDb);
-  const admission =
-    mode.mode === "hosted"
-      ? hostedAdmission({
-          projectDir,
-          limits: mode.limits,
-          creators,
-          hostDb,
-          maxVmMs: SANDBOX_LIMITS.timeoutMs + SANDBOX_LIMITS.stopGraceMs,
-        })
-      : UNLIMITED_ADMISSION;
-  const requesters = createRequesterContexts({
+  const { admission, tenancy } = await tenantsOf(mode, {
     projectDir,
-    shippedDir: shipped,
-    projectStore: project,
-    resolveUserId: mode.mode === "hosted" ? clerkUserIdResolver(mode.clerk) : undefined,
-    hosted: mode.mode === "hosted",
-    secretsKey: mode.mode === "hosted" ? mode.secretsKey : undefined,
-    previousSecretsKey: mode.mode === "hosted" ? mode.previousSecretsKey : undefined,
-    sandbox,
-    runOwner: admission.runOwner,
+    project,
+    shipped,
+    creators,
+    hostDb,
   });
-  // Local mode adopts today's untracked `shared/` files as created by `local`, so they stay
-  // editable.
-  if (mode.mode === "local") {
-    adoptSharedItems(authoredLayout({ projectDir, shippedDir: shipped }), creators);
-  }
+  // One requester context per user, resolved per request (requester.ts).
+  const requesters = createRequesterContexts({ projectDir, shippedDir: shipped, tenancy });
   const server: ServerContext = { mode, stepPlugins: registry, requesters, creators, admission };
   const httpServer = createServer((req, res) => {
     handleRequest(req, res, server, absStaticDir, absDesignerStaticDir, funnelGuard).catch(

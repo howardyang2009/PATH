@@ -55,15 +55,7 @@ function readJson(relPath: string): { id: string; body: { id: string }[] } {
 }
 
 async function copy(shippedPath: string): Promise<Response> {
-  handle ??= await startPathServer(
-    projectDir,
-    0,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    shippedDir,
-  );
+  handle ??= await startPathServer(projectDir, { shippedDir: { workflow: shippedDir } });
   return fetch(`${handle.url}/v0/workflows/copy`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
