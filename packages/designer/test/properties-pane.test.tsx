@@ -177,6 +177,18 @@ describe("selection populates the pane", () => {
     expect(select.options[0]!.textContent).toBe("(default: anthropic — type)");
   });
 
+  it("names the effective worker's credential key under the worker selector", async () => {
+    const { canvas, pane } = await openPane();
+    selectNode(canvas, "alpha");
+    expect(within(pane).getByTestId("credential-hint")).toHaveTextContent(
+      "CLAUDE_CODE_OAUTH_TOKEN",
+    );
+
+    // `batch` declares no credential key, so the hint goes away.
+    fireEvent.change(within(pane).getByLabelText("worker"), { target: { value: "batch" } });
+    expect(within(pane).queryByTestId("credential-hint")).toBeNull();
+  });
+
   it("pins `worker` when a worker is picked, and drops the key when the (default) option is chosen", async () => {
     const calls = makeCalls();
     render(

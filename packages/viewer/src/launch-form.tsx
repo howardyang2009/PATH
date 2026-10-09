@@ -51,7 +51,7 @@ export function LaunchForm({
   containerTestId,
   gate = null,
   warningCount = 0,
-  configPlaceholder = '{"model": "…", "$secret": {"name": "…"}}',
+  configPlaceholder = '{"model": "claude-sonnet-5-5", "CLAUDE_CODE_OAUTH_TOKEN": {"$secret": "sk-ant-oat01-…"}}',
   plugins = [],
 }: LaunchFormProps): JSX.Element {
   const [input, setInput] = useState("{}");
