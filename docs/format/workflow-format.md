@@ -250,8 +250,10 @@ selecting it once in the file's `worker_defaults` table (§2.2). The `deepseek` 
 be **environment or config** — `config.DEEPSEEK_API_KEY` first (usually
 `{"$secret": {"$env": "DEEPSEEK_API_KEY"}}`, or a literal `$secret` typed at launch), then
 `DEEPSEEK_API_KEY` in the engine's environment as the fallback (ADR 0045) — while its endpoint is
-**environment only**, `DEEPSEEK_BASE_URL` for a gateway. `anthropic` uses the Agent SDK's own
-`ANTHROPIC_API_KEY` or subscription credential and ignores `config.DEEPSEEK_API_KEY`. A `deepseek` step
+**environment only**, `DEEPSEEK_BASE_URL` for a gateway. `anthropic` uses
+`config.CLAUDE_CODE_OAUTH_TOKEN` when it is non-empty (a subscription token from `claude setup-token`;
+`ANTHROPIC_API_KEY` is then removed from the SDK's environment), else the Agent SDK's own
+`ANTHROPIC_API_KEY` or subscription credential (ADR 0095). Each worker ignores the other's key. A `deepseek` step
 whose `config.model` still names a Claude model has that name mapped onto a DeepSeek model (opus →
 `deepseek-v4-pro`, sonnet/haiku → `deepseek-flash`) and reports the substitution as a step diagnostic
 rather than failing.

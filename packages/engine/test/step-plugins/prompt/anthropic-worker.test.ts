@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // The `anthropic` worker loads the Agent SDK through a dynamic
 // `import("@anthropic-ai/claude-agent-sdk")`; mocking the specifier lets each case script the
@@ -22,10 +22,10 @@ function session(...messages: unknown[]): AsyncIterable<unknown> {
   };
 }
 
-function request(): Parameters<typeof run>[0] {
+function request(config: { [key: string]: unknown } = {}): Parameters<typeof run>[0] {
   return {
     fields: { prompt: "Judge the draft." },
-    config: { model: "claude-sonnet-5" },
+    config: { model: "claude-sonnet-5", ...config },
     input: "a draft",
     cwd: "/tmp",
     signal: new AbortController().signal,
@@ -80,5 +80,43 @@ describe("anthropic prompt worker", () => {
     expect(result.status).toBe("failed");
     if (result.status !== "failed") throw new Error("expected a failed result");
     expect(result.error).toContain("boom; again");
+  });
+
+  describe("config.CLAUDE_CODE_OAUTH_TOKEN", () => {
+    const success = () =>
+      session({ type: "result", subtype: "success", is_error: false, result: "ok" });
+
+    beforeEach(() => {
+      vi.stubEnv("ANTHROPIC_API_KEY", "the host key");
+      vi.stubEnv("HOME", "/home/path");
+    });
+    afterEach(() => vi.unstubAllEnvs());
+
+    it("passes the token in the SDK env, keeps the host env and drops ANTHROPIC_API_KEY", async () => {
+      query.mockReturnValue(success());
+
+      await run(
+        request({
+          CLAUDE_CODE_OAUTH_TOKEN: "sk-ant-oat01-token",
+          options: { env: { ONLY: "this" } },
+        }),
+      );
+
+      const env = query.mock.calls[0]?.[0].options.env;
+      expect(env).toMatchObject({
+        CLAUDE_CODE_OAUTH_TOKEN: "sk-ant-oat01-token",
+        HOME: "/home/path",
+      });
+      expect(env).not.toHaveProperty("ANTHROPIC_API_KEY");
+    });
+
+    it("leaves the SDK env alone when the token is absent or empty", async () => {
+      query.mockReturnValue(success());
+      await run(request());
+      query.mockReturnValue(success());
+      await run(request({ CLAUDE_CODE_OAUTH_TOKEN: "" }));
+
+      for (const call of query.mock.calls) expect(call[0].options).not.toHaveProperty("env");
+    });
   });
 });

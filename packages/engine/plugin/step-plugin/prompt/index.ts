@@ -36,12 +36,13 @@ const fields = {
 
 // The `prompt` type's injected, inheritable config (ADR 0022 sub-4): the required `model`, an
 // opaque worker-side `options` bag (MCP servers, skills, system prompt) no engine code interprets,
-// and the `deepseek` worker's credential key (ADR 0045), which `anthropic` ignores — its credential
-// is the Agent SDK's own environment/subscription path.
+// and one credential key per worker: `DEEPSEEK_API_KEY` for `deepseek` (ADR 0045) and
+// `CLAUDE_CODE_OAUTH_TOKEN` for `anthropic` (ADR 0095). Each worker ignores the other's key.
 const config = {
   model: z.string(),
   options: z.record(z.string(), z.unknown()).optional(),
   DEEPSEEK_API_KEY: z.string().optional(),
+  CLAUDE_CODE_OAUTH_TOKEN: z.string().optional(),
 };
 
 /**
@@ -98,6 +99,13 @@ function describeSdkFailure(message: SdkResultMessage): string {
   return `ended with SDK result "${message.subtype}"${detail}`;
 }
 
+// The SDK's `env` replaces the subprocess environment rather than merging, so it starts from
+// `process.env`. `ANTHROPIC_API_KEY` is dropped because the SDK prefers it over the OAuth token.
+function subscriptionEnv(oauthToken: string): { [name: string]: string | undefined } {
+  const { ANTHROPIC_API_KEY: _apiKey, ...env } = process.env;
+  return { ...env, CLAUDE_CODE_OAUTH_TOKEN: oauthToken };
+}
+
 let queryPromise: Promise<SdkQuery> | undefined;
 
 // Loaded on the first `anthropic` step, then reused by every later processor.
@@ -112,12 +120,12 @@ function loadQuery(): Promise<SdkQuery> {
  * processor-concurrency slot and holds it for this call (ADR 0021 sub-5, #331) — and it `meters`,
  * reporting real `usage` and the SDK's cost estimate on its result.
  *
- * Auth is left to the SDK: it reads the subscription credential when `ANTHROPIC_API_KEY` is unset
- * and the API key when it is set, so neither path needs engine code (mvp spec §7).
+ * Auth is the SDK's own unless `config.CLAUDE_CODE_OAUTH_TOKEN` is non-empty (ADR 0095). The SDK
+ * reads the subscription credential when `ANTHROPIC_API_KEY` is unset and the API key when it is set.
  */
 async function runSdk(request: StepRequest<typeof fields, typeof config>): Promise<StepResult> {
   const { prompt } = request.fields;
-  const { model, options } = request.config;
+  const { model, options, CLAUDE_CODE_OAUTH_TOKEN: oauthToken } = request.config;
   const { input, signal } = request;
 
   if (signal.aborted) return { status: "failed", error: "cancelled" };
@@ -143,6 +151,7 @@ async function runSdk(request: StepRequest<typeof fields, typeof config>): Promi
         // §5.6).
         model,
         abortController: controller,
+        ...(oauthToken ? { env: subscriptionEnv(oauthToken) } : {}),
       },
     });
 
