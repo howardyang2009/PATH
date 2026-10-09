@@ -11,11 +11,11 @@ const CopyWorkflowBodySchema = z.object({ shipped_path: z.string().min(1) }).str
  * current user's workflow root, never over an existing copy. `shipped_path` is the `relative_path` a shipped row of
  * `GET /v0/workflows` carries.
  */
-export async function handlePostWorkflowCopy({ req, ctx }: ApiRequest): Promise<RouteReply> {
-  const body = await readRequestBody(req, CopyWorkflowBodySchema);
-  if (!body.ok) return body.reply;
+export async function handlePostWorkflowCopy({ body, ctx }: ApiRequest): Promise<RouteReply> {
+  const parsed = readRequestBody(body, CopyWorkflowBodySchema);
+  if (!parsed.ok) return parsed.reply;
 
-  const copied = copyShippedWorkflow(ctx.layout, body.data.shipped_path);
+  const copied = copyShippedWorkflow(ctx.layout, parsed.data.shipped_path);
   if (!copied.ok) return replyError(copied.status, copied.message);
   const reply: WireCopyWorkflowResponse = {
     relative_path: copied.relativePath,

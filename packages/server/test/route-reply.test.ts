@@ -1,5 +1,6 @@
 import type { IncomingMessage } from "node:http";
 import { describe, expect, it } from "vitest";
+import { NO_BODY } from "../src/request-body.js";
 import { handleGetRunBlob } from "../src/routes/get-run-blob.js";
 import { handleListRuns } from "../src/routes/list-runs.js";
 import type { RouteContext } from "../src/routes/route-context.js";
@@ -15,6 +16,7 @@ function request<Params extends string[]>(params: Params, query: Record<string, 
     ctx: {} as RouteContext,
     params,
     query: new URLSearchParams(query),
+    body: NO_BODY,
   };
 }
 

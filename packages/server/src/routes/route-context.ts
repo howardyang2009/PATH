@@ -5,6 +5,7 @@ import type { AuthoredLayout } from "../authored-layout.js";
 import type { CreatorTable } from "../creator-table.js";
 import type { LiveRuns } from "../live-runs.js";
 import type { ServerMode } from "../mode.js";
+import type { RequestBody } from "../request-body.js";
 import type { UserLimits } from "../request-limits.js";
 import type { RequesterContext, RequesterContexts } from "../requester.js";
 import type { SecretStore } from "../secret-store.js";
@@ -57,14 +58,17 @@ export function routeContextFor(
   };
 }
 
-/** One matched request, decoded: the raw HTTP request for its headers and body, the requester's
- * context, and the decoded path parameters and query. A `reply` handler needs no response object,
- * so this is the whole interface a direct test has to build. */
+/** One matched request, decoded: the raw HTTP request for its headers, the requester's context, the
+ * body already read under admission (request-body.ts), and the decoded path parameters and query. A
+ * `reply` handler needs no response object, so this is the whole interface a direct test has to
+ * build. */
 export interface ApiRequest<Params extends string[] = string[]> {
   req: IncomingMessage;
   ctx: RouteContext;
   params: Params;
   query: URLSearchParams;
+  /** The body read at the one seam; a handler never touches the request stream. */
+  body: RequestBody;
 }
 
 /** A request a `stream` route answers: the same, plus the response it owns (SSE, a file download).

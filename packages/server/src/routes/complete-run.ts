@@ -21,15 +21,15 @@ const CompleteBodySchema = z
   .strict();
 
 export async function handleCompleteRun({
-  req,
+  body,
   ctx,
   params: [stepRunId],
 }: ApiRequest<[string]>): Promise<RouteReply> {
-  const body = await readRequestBody(req, CompleteBodySchema);
-  if (!body.ok) return body.reply;
-  const output = body.data.output as JsonValue;
+  const parsed = readRequestBody(body, CompleteBodySchema);
+  if (!parsed.ok) return parsed.reply;
+  const output = parsed.data.output as JsonValue;
   if (output === undefined) return replyError(400, 'missing required field "output"');
-  const config = body.data.config as ConfigObject | undefined;
+  const config = parsed.data.config as ConfigObject | undefined;
   if (config !== undefined) {
     const envError = operatorConfigEnvError(config);
     if (envError) return replyError(400, envError);

@@ -104,6 +104,7 @@ An Architecture Decision Record (ADR) records one decision PATH has made: the sh
 | [0098](0098-one-admission-module-decides-what-a-hosted-user-may-do.md) | One admission module decides what a hosted user may do | accepted |
 | [0099](0099-tenancy-has-a-local-and-a-hosted-adapter.md) | Tenancy has a local and a hosted adapter | accepted |
 | [0100](0100-one-host-layout-names-user-folders-and-host-files.md) | One host layout names user folders and host files | accepted |
+| [0101](0101-the-request-body-is-read-at-the-admission-seam.md) | The request body is read at the admission seam | accepted |
 
 ## Superseded decisions
 

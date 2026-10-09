@@ -1,9 +1,10 @@
 import type { IncomingMessage } from "node:http";
 import type { CreatorTable } from "./creator-table.js";
-import { bufferRequestBody, type RouteReply, replyError } from "./http-json.js";
+import { type RouteReply, replyError } from "./http-json.js";
+import { type RequestBody, readBodyUnderCap } from "./request-body.js";
 import {
   createRateLimiter,
-  megabytes,
+  DEFAULT_LIMITS,
   type RequestLimits,
   type UserLimits,
 } from "./request-limits.js";
@@ -21,9 +22,10 @@ export type AdmissionGate = "launch" | "write";
 export interface Admission {
   /** The limits `userId` is held to; `undefined` in local mode, which has none. */
   limitsOf(userId: string): UserLimits | undefined;
-  /** Counts one request of `userId` and reads its body under their cap: the `429` or `413` past
-   * either. A GET is counted and its body left unread. */
-  admitRequest(req: IncomingMessage, userId: string): Promise<RouteReply | undefined>;
+  /** Counts one request of `userId` and reads its body under that user's cap — the one place a
+   * request body is read (request-body.ts). Returns the requester's own body, or the `429`/`413`
+   * refusal. A GET carries no body. */
+  admitRequest(req: IncomingMessage, userId: string): Promise<AdmissionResult>;
   /** The refusal of `gate` for `userId` now, with its `Retry-After` when it has one. */
   gateRefusal(userId: string, gate: AdmissionGate): RouteReply | undefined;
   /** What the VMs `userId` launches are held to. */
@@ -31,10 +33,17 @@ export interface Admission {
   close(): void;
 }
 
-/** Local mode: every request, launch and write passes. */
+/** A request's admission verdict: the body it may act on, or the reply that refuses it. */
+export type AdmissionResult = { ok: true; body: RequestBody } | { ok: false; reply: RouteReply };
+
+/** Local mode: every request, launch and write passes; the body is still read under the default
+ * cap, so a request's shape does not change with the mode (request-body.ts). */
 export const UNLIMITED_ADMISSION: Admission = {
   limitsOf: () => undefined,
-  admitRequest: async () => undefined,
+  async admitRequest(req) {
+    const read = await readBodyUnderCap(req, DEFAULT_LIMITS.maxBodyBytes);
+    return read.ok ? { ok: true, body: read.body } : { ok: false, reply: read.reply };
+  },
   gateRefusal: () => undefined,
   runOwner: () => UNLIMITED,
   close: () => {},
@@ -69,22 +78,20 @@ export function hostedAdmission({
   return {
     limitsOf: (userId) => limits.forUser(userId),
 
-    async admitRequest(req, userId): Promise<RouteReply | undefined> {
+    async admitRequest(req, userId): Promise<AdmissionResult> {
       const user = limits.forUser(userId);
       const taken = rate.take(userId, user.requestsPerMinute);
       if (!taken.ok) {
         return {
-          ...replyError(429, "too many requests: try again later"),
-          headers: { "Retry-After": String(taken.retryAfterSeconds) },
+          ok: false,
+          reply: {
+            ...replyError(429, "too many requests: try again later"),
+            headers: { "Retry-After": String(taken.retryAfterSeconds) },
+          },
         };
       }
-      if (req.method === "GET") return undefined;
-      const body = await bufferRequestBody(req, user.maxBodyBytes);
-      if (body.ok) return undefined;
-      return {
-        ...replyError(413, `request body too large: at most ${megabytes(user.maxBodyBytes)}`),
-        headers: body.close ? { Connection: "close" } : undefined,
-      };
+      const read = await readBodyUnderCap(req, user.maxBodyBytes);
+      return read.ok ? { ok: true, body: read.body } : { ok: false, reply: read.reply };
     },
 
     gateRefusal(userId, gate) {
