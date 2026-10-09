@@ -31,6 +31,7 @@ export {
 } from "./use-pane-resize.js";
 // The one load lifecycle, shared by the Viewer's read panes and the Designer's scans.
 export { type Resource, type ResourceOptions, useResource } from "./use-resource.js";
+export { type RunSelection, useRunSelection } from "./use-run-selection.js";
 export { type RunViewLoad, useRunView } from "./use-run-view.js";
 // The one worker-default editor, shared by the Designer's file region and the launch form.
 export {
