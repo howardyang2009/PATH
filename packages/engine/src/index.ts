@@ -1,3 +1,4 @@
+export { secretPathsOf } from "./launch-facts.js";
 export {
   type LoadedWorkflow,
   type LoadResult,

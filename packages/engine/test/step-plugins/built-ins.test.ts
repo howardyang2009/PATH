@@ -235,6 +235,17 @@ describe("the `binary` spawn worker", () => {
     }
   });
 
+  it("names a missing working directory instead of the command's ENOENT", async () => {
+    const result = await runSpawn({ command: process.execPath, cwd: "no-such-dir" }, dir);
+
+    expect(result.status).toBe("failed");
+    if (result.status === "failed") {
+      expect(result.error).toBe(
+        `failed to start "${process.execPath}": working directory "${join(dir, "no-such-dir")}" does not exist`,
+      );
+    }
+  });
+
   it("names no step in a start failure — only the command", async () => {
     const result = await runSpawn({ command: "path-no-such-binary-336" }, dir);
 

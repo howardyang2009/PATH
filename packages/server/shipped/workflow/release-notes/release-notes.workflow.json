@@ -1,9 +1,10 @@
 {
   "format": "path/workflow@6",
-  "id": "7eae7dae-ee36-4d05-80b0-8fc895783d69",
+  "id": "7c7a06d0-1fe8-4941-9919-64a257cf3cd2",
   "name": "release-notes",
   "config": {
-    "repo_path": ".",
+    "repo_url": "https://github.com/howardyang2009/PATH.git",
+    "repo_path": "/tmp/repo",
     "commit_range": "HEAD~15..HEAD",
     "max_revisions": "3",
     "output_file": "RELEASE_NOTES.md",
@@ -14,7 +15,20 @@
   },
   "body": [
     {
-      "id": "a728c16b-baef-40f2-9f11-2b88ac95e63e",
+      "id": "ebc05363-ea61-4ffb-9e7c-f2efff640e6d",
+      "name": "clone-repo",
+      "command": "git",
+      "args": [
+        "clone",
+        "--depth",
+        "50",
+        "${config.repo_url}",
+        "${config.repo_path}"
+      ],
+      "type": "binary"
+    },
+    {
+      "id": "60eecd84-2743-4071-a0c5-7107111bad5e",
       "name": "gather-changes",
       "publish": {
         "raw_changes": "${output}"
@@ -31,7 +45,7 @@
     },
     {
       "type": "checkpoint",
-      "id": "4bef80da-5092-4c9d-a84d-dbf04d84053e",
+      "id": "84c3897f-9a2f-4b97-bb43-419b11ff71a0",
       "name": "have-changes",
       "condition": {
         "type": "matches",
@@ -40,7 +54,7 @@
       }
     },
     {
-      "id": "75deeaad-b265-4db1-bc8e-6d0e1b2d6e4d",
+      "id": "602b0389-aeea-42bd-b614-5d947723a8a6",
       "name": "check-git-result",
       "publish": {
         "person-confirm": "${output}"
@@ -51,12 +65,12 @@
     },
     {
       "type": "parallel",
-      "id": "1912e274-158c-48a8-81d0-bb8851fc2bcf",
+      "id": "0ff741bc-1b5e-4404-a8cb-69528ce35822",
       "name": "summarize",
       "join": "collect",
       "branches": [
         {
-          "id": "3397c7ea-abf4-4667-ac15-0d82b3bbaa9b",
+          "id": "47c23e42-667d-495f-8678-84a35dd164e3",
           "name": "summarize-features",
           "input": {
             "raw_changes": "${context.raw_changes}"
@@ -68,7 +82,7 @@
           "type": "prompt"
         },
         {
-          "id": "6568b007-948c-44c2-b3f2-12f862cf6119",
+          "id": "21b77130-6782-49b9-9eb1-62de17e409d5",
           "name": "summrize-fixes",
           "input": {
             "raw_changes": "${context.raw_changes}"
@@ -82,7 +96,7 @@
       ]
     },
     {
-      "id": "82b2b34b-9434-4d45-be6c-1ada397ed77a",
+      "id": "09d7bbe9-0bee-4aa9-8a28-d7d40f85eb82",
       "name": "draft-notes",
       "input": {
         "features": "${context.features_summary}",
@@ -95,7 +109,7 @@
       "type": "prompt"
     },
     {
-      "id": "e1502893-05db-4803-a953-c130386ffed4",
+      "id": "2c7b781b-b085-4983-b850-a79577dee920",
       "name": "judge-draft",
       "input": {
         "draft": "${context.draft}",
@@ -110,7 +124,7 @@
     },
     {
       "type": "checkpoint",
-      "id": "ae631eea-7a80-420b-a6ff-c2ddfd56f2dc",
+      "id": "5f4ffa12-5f24-4259-adaf-88536adf9be8",
       "name": "verdict-wellformed",
       "condition": {
         "type": "all",
@@ -132,7 +146,7 @@
     },
     {
       "type": "while-do",
-      "id": "95e1263f-4b46-4ef6-b3cb-f4ce2e40b63b",
+      "id": "0c072d21-7084-453b-b030-9dc5ed629f01",
       "name": "revise-loop",
       "condition": {
         "type": "equals",
@@ -142,7 +156,7 @@
       "max_iterations": "${config.max_revisions}",
       "node": {
         "type": "workflow",
-        "id": "3a852ff0-f822-4a18-8666-d8763f098248",
+        "id": "c9424037-57ff-49c0-bf54-a03a1f3463af",
         "name": "revise",
         "input": {
           "draft": "${context.draft}",
@@ -158,7 +172,7 @@
     },
     {
       "type": "branch",
-      "id": "f6a0ae5d-01ef-44a2-a800-f3ad6ee8d6db",
+      "id": "91c74382-a04f-4741-95cd-81f3e853c055",
       "name": "pick-format",
       "arms": [
         {
@@ -168,7 +182,7 @@
             "value": "short"
           },
           "node": {
-            "id": "b7970a7a-331b-40f6-bbca-23984741b653",
+            "id": "bd2e8a79-53b2-41fd-aa13-561898e3258f",
             "name": "format-short",
             "input": {
               "draft": "${context.draft}"
@@ -187,7 +201,7 @@
             "value": "long"
           },
           "node": {
-            "id": "9810b925-2f76-4db7-adb7-6e7bab8ae297",
+            "id": "b989e6a7-e2a7-4f68-955f-11d72da73e78",
             "name": "format-long",
             "input": {
               "draft": "${context.draft}"
@@ -202,7 +216,7 @@
       ]
     },
     {
-      "id": "0923ebb7-c57e-44f4-be34-5e5fc62319f8",
+      "id": "04205e1d-aa38-42aa-be43-4d7953f790ab",
       "name": "write-file",
       "input": "${context.final_notes}",
       "publish": {
@@ -211,9 +225,8 @@
       "command": "sh",
       "args": [
         "-c",
-        "cat > \"${config.output_file}\""
+        "mkdir -p \"${config.repo_path}\" && cat > \"${config.repo_path}/${config.output_file}\""
       ],
-      "cwd": "${config.repo_path}",
       "type": "binary"
     }
   ],

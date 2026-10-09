@@ -26,8 +26,9 @@ moves or updates. And a sample usually needs edits (provider, input, config) bef
    shipped root. It is a Copy handle, not a launch handle. The workflow tree shows them in a
    `shipped` folder.
 3. **A shipped workflow is copied first, never launched or edited in place.** `POST
-   /v0/workflows/copy { shipped_path }` copies it into `users/<user-id>/workflow/`, create-only
-   (`409` when the target exists). Every copied workflow file gets fresh ids (`instantiateWorkflow`,
+   /v0/workflows/copy { shipped_path }` copies it into `users/<user-id>/workflow/` and never
+   overwrites: an existing target makes the copy take the first free `<name>-<n>` folder or file,
+   and the requested workflow's `name` gets the same `-<n>` (amended; it was a `409`). Every copied workflow file gets fresh ids (`instantiateWorkflow`,
    ADR 0006); other files copy verbatim.
 4. **The copy unit is the file's top-level folder.** A workflow with refs lives in its own folder
    under the shipped root, and Copy moves that whole folder, so relative refs still resolve (a copy
@@ -42,6 +43,6 @@ moves or updates. And a sample usually needs edits (provider, input, config) bef
 ## Consequences
 
 - A shipped workflow reaches every project that runs this Server.
-- A second copy of the same shipped workflow is refused. The user renames or deletes the first copy.
+- A second copy of the same shipped workflow lands beside the first as `<name>-1`, then `-2`.
 - The CLI still runs a shipped file by path, for example
   `pnpm path run packages/server/shipped/workflow/release-notes/release-notes.workflow.json`.

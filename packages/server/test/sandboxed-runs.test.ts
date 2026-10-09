@@ -228,6 +228,21 @@ describe("a sandboxed Start", () => {
     expect(await settled(runs, started.rootRunId)).toBe("cancelled");
   });
 
+  it("records the launch's secret config paths on the pending root, before any export", async () => {
+    const { runs } = sandboxed(inProcessVm, { slots: createVmSlots(0) });
+    const [rootFile, workflowDir, options] = await workflow("");
+    const started = await runs.start(rootFile, workflowDir, {
+      ...options,
+      operatorConfig: { CLAUDE_CODE_OAUTH_TOKEN: { $secret: "sk-ant-oat01-x" }, model: "m" },
+    });
+
+    expect(store.archive.launchFacts(started.rootRunId)).toEqual({
+      secretKeys: ["CLAUDE_CODE_OAUTH_TOKEN"],
+    });
+    runs.cancel(started.rootRunId);
+    await settled(runs, started.rootRunId);
+  });
+
   it("mounts only the job, the VM's store, the root's blobs and the workflow directory", async () => {
     const { runtime, runs } = sandboxed(inProcessVm);
     const [file, workflowDir, options] = await workflow("process.stdout.write('hi')");

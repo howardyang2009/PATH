@@ -8,7 +8,7 @@ const CopyWorkflowBodySchema = z.object({ shipped_path: z.string().min(1) }).str
 
 /**
  * `POST /v0/workflows/copy` (server-api-v0.md §7.3, ADR 0086): copy a shipped workflow into the
- * current user's workflow root, create-only. `shipped_path` is the `relative_path` a shipped row of
+ * current user's workflow root, never over an existing copy. `shipped_path` is the `relative_path` a shipped row of
  * `GET /v0/workflows` carries.
  */
 export async function handlePostWorkflowCopy({ req, ctx }: ApiRequest): Promise<RouteReply> {

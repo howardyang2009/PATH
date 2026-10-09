@@ -1,21 +1,21 @@
 {
   "format": "path/workflow@6",
-  "id": "9a9629d2-42a8-46e3-8ed2-d781c254970a",
+  "id": "939b6a1d-fb0c-4bc7-8047-5e282524780d",
   "name": "jira-workflow",
   "body": [
     {
-      "id": "d19b3987-0774-47af-a89a-638bd1bf8b2d",
+      "id": "adf0a970-46fb-42d1-b1b7-60fdbffa0f1a",
       "name": "backlog",
       "description": "backlog",
       "type": "person-activity"
     },
     {
       "type": "sequence",
-      "id": "ee2e6b3c-602b-4518-840d-a5203b3590e6",
+      "id": "e596265e-c765-4b85-885e-03b1a1fafefe",
       "name": "design",
       "body": [
         {
-          "id": "72fcc741-b890-4dff-b5ba-02ee42bcc810",
+          "id": "c416aae5-2c38-45e2-b575-f6a8f4fe3d66",
           "name": "choice-design",
           "description": "Pick which option runs next.",
           "outputSchema": {
@@ -41,7 +41,7 @@
         },
         {
           "type": "branch",
-          "id": "66b38879-2227-4d36-922a-07132d89b6f2",
+          "id": "90122dd2-9ee0-4f83-9bd2-226626b74f1f",
           "name": "on-choice",
           "arms": [
             {
@@ -52,7 +52,7 @@
               },
               "node": {
                 "type": "goto",
-                "id": "dca57f06-d86c-45bc-97db-bee850ebf4d0",
+                "id": "2302b54c-04dc-4a42-8cc1-a57a09dd3d38",
                 "name": "goto",
                 "target": "backlog",
                 "max_jumps": 3
@@ -66,7 +66,7 @@
               },
               "node": {
                 "type": "goto",
-                "id": "27a1c14c-1fd3-439c-b2b4-22b0fd9a60be",
+                "id": "da5e0268-a851-469f-a684-d6fd1cc2f21f",
                 "name": "goto-2",
                 "target": "implement",
                 "max_jumps": 3
@@ -80,7 +80,7 @@
               },
               "node": {
                 "type": "goto",
-                "id": "de16aab9-6753-4116-946c-b7b107ed19b2",
+                "id": "0f21de8b-3b09-43ec-bcaf-b21a83786b16",
                 "name": "goto-3",
                 "target": "pending",
                 "max_jumps": 3
@@ -92,11 +92,11 @@
     },
     {
       "type": "sequence",
-      "id": "941b516c-8c19-4223-9c43-3a121db70c4a",
+      "id": "02cd0136-9bc5-4ab8-9b18-2d005b8ba713",
       "name": "implement",
       "body": [
         {
-          "id": "d4d7f21b-541f-40ad-b738-3716f5277a81",
+          "id": "528fb4f9-09d4-4304-9d55-60a9564debe9",
           "name": "choice-implement",
           "description": "Pick which option runs next.",
           "outputSchema": {
@@ -122,7 +122,7 @@
         },
         {
           "type": "branch",
-          "id": "714341a0-47d7-4808-92b8-ae5ee462cb08",
+          "id": "80758801-d644-4304-bbfa-cd4f831205f6",
           "name": "on-choice-2",
           "arms": [
             {
@@ -133,7 +133,7 @@
               },
               "node": {
                 "type": "goto",
-                "id": "e9812a88-d138-45f0-9f50-44a7dfc34837",
+                "id": "a8df098c-0bcf-4142-be2d-195e147b7745",
                 "name": "goto-4",
                 "target": "design",
                 "max_jumps": 3
@@ -147,7 +147,7 @@
               },
               "node": {
                 "type": "goto",
-                "id": "ca8e0932-920e-42c3-8225-5115c02919c1",
+                "id": "b53199b4-9998-4ffe-bbf9-6b6c1335f8bd",
                 "name": "goto-5",
                 "target": "test",
                 "max_jumps": 3
@@ -161,7 +161,7 @@
               },
               "node": {
                 "type": "goto",
-                "id": "849c19f9-21e7-4f3b-9849-f61c189a022c",
+                "id": "f92105e3-125b-485c-bc26-590ba1122205",
                 "name": "goto-6",
                 "target": "pending",
                 "max_jumps": 3
@@ -173,11 +173,11 @@
     },
     {
       "type": "sequence",
-      "id": "eb1be14c-29f3-46ae-b5e1-990c49f6f88b",
+      "id": "74182d11-0709-4bbe-aaa7-bbe610514760",
       "name": "test",
       "body": [
         {
-          "id": "3de711fd-7728-44b7-842e-e83d79057463",
+          "id": "fed7201d-e7af-4ab0-8e57-833b1bbff46c",
           "name": "choice-test",
           "description": "Pick which option runs next.",
           "outputSchema": {
@@ -203,7 +203,7 @@
         },
         {
           "type": "branch",
-          "id": "7e729f38-b909-4f58-b64d-f6124cfcdd38",
+          "id": "c28d8044-e924-4416-ba31-06ad7b220b1d",
           "name": "on-choice-3",
           "arms": [
             {
@@ -214,7 +214,7 @@
               },
               "node": {
                 "type": "goto",
-                "id": "49ac2ff5-9006-46db-b5b9-5e64ea75a358",
+                "id": "705aaee3-d5b9-4df0-816d-dfe598502222",
                 "name": "goto-7",
                 "target": "implement",
                 "max_jumps": 3
@@ -228,7 +228,7 @@
               },
               "node": {
                 "type": "goto",
-                "id": "417282b6-3f7a-4b46-9c0b-050defefed14",
+                "id": "279a6f06-1f10-4b90-8844-5dc91a492b07",
                 "name": "goto-8",
                 "target": "close",
                 "max_jumps": 3
@@ -242,7 +242,7 @@
               },
               "node": {
                 "type": "goto",
-                "id": "b848e8a9-5cd1-4c9a-977c-3ac39863febd",
+                "id": "6817e6c7-e1d4-45a8-983a-37f9bf91aac6",
                 "name": "goto-9",
                 "target": "pending",
                 "max_jumps": 3
@@ -254,11 +254,11 @@
     },
     {
       "type": "sequence",
-      "id": "b94139ab-7c14-4fec-8f8a-1576a157754b",
+      "id": "a1cb7f58-04b4-402c-af76-087bf709f808",
       "name": "close",
       "body": [
         {
-          "id": "b9eff702-2a4d-4a95-99d4-3ffb6c0469ec",
+          "id": "77220547-cfc7-496e-b03f-da515f5833c6",
           "name": "choose-3",
           "description": "Pick which option runs next.",
           "outputSchema": {
@@ -269,8 +269,8 @@
                 "title": "Choice",
                 "description": "The option to run next.",
                 "enum": [
-                  "option-a",
-                  "option-b"
+                  "backlog",
+                  "end"
                 ]
               }
             },
@@ -282,21 +282,49 @@
           "type": "person-activity"
         },
         {
-          "type": "goto",
-          "id": "0fa1e9bf-ffe9-4e24-bf1d-fad93231b82e",
-          "name": "goto-16",
-          "target": "backlog",
-          "max_jumps": 3
+          "type": "branch",
+          "id": "91dab543-bc50-45ad-b764-bb92ef8039d0",
+          "name": "branch",
+          "arms": [
+            {
+              "when": {
+                "type": "equals",
+                "path": "previous.choice",
+                "value": "backlog"
+              },
+              "node": {
+                "type": "goto",
+                "id": "706c914f-e8f4-4e4b-a6fa-487308c35763",
+                "name": "goto-13",
+                "target": "backlog",
+                "max_jumps": 3
+              }
+            },
+            {
+              "when": {
+                "type": "equals",
+                "path": "previous.choice",
+                "value": "end"
+              },
+              "node": {
+                "type": "goto",
+                "id": "3f4c3a25-0185-40d3-989b-64d9d79cb91b",
+                "name": "goto-14",
+                "target": "end",
+                "max_jumps": 3
+              }
+            }
+          ]
         }
       ]
     },
     {
       "type": "sequence",
-      "id": "e33a9235-bbfb-465c-a038-0df2e8ffec11",
+      "id": "2da78605-6f48-4f97-b2ff-3b860f8c1de9",
       "name": "pending",
       "body": [
         {
-          "id": "3df24374-14af-4e5f-9e87-2037b3bb7f15",
+          "id": "faec0727-907b-4f93-bc36-b027b9d52d75",
           "name": "choice-pending",
           "description": "Pick which option runs next.",
           "outputSchema": {
@@ -322,7 +350,7 @@
         },
         {
           "type": "branch",
-          "id": "9d2f8b1d-4a04-41d3-8987-e1901b88de05",
+          "id": "5f6a6f6b-c523-424e-98e3-6a17b3fedf83",
           "name": "on-choice-5",
           "arms": [
             {
@@ -333,7 +361,7 @@
               },
               "node": {
                 "type": "goto",
-                "id": "a731ccad-e2ac-4644-a847-3c3644b1e465",
+                "id": "ade269ee-7024-464e-85db-bdcbd9d0a2b5",
                 "name": "goto-10",
                 "target": "design",
                 "max_jumps": 3
@@ -347,7 +375,7 @@
               },
               "node": {
                 "type": "goto",
-                "id": "d42c97fa-b7a9-4697-a613-ac1f715071fd",
+                "id": "e154d244-cc32-4112-bd6a-3595e1f14f20",
                 "name": "goto-11",
                 "target": "implement",
                 "max_jumps": 3
@@ -361,7 +389,7 @@
               },
               "node": {
                 "type": "goto",
-                "id": "76c869d7-851a-4302-9631-a7516ec86546",
+                "id": "4151da0a-5626-48a3-bdac-d898cf652059",
                 "name": "goto-12",
                 "target": "test",
                 "max_jumps": 3
@@ -370,6 +398,15 @@
           ]
         }
       ]
+    },
+    {
+      "type": "checkpoint",
+      "id": "f43376e3-5d16-4412-a367-de9df9747693",
+      "name": "end",
+      "condition": {
+        "type": "exists",
+        "path": "context"
+      }
     }
   ]
 }

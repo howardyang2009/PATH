@@ -794,7 +794,9 @@ Request body: `{ "shipped_path": "<relative_path of a shipped row>" }`.
 The copy unit is the file's **top-level folder** under the shipped root, so the relative refs inside
 it still resolve. A file directly under the shipped root is copied alone. Each `*.workflow.json` in
 the unit gets a fresh workflow `id` and fresh node ids (`instantiateWorkflow`); other files copy
-verbatim. The copy is **create-only** and all or nothing: it is staged in a dot-folder of the user's
+verbatim. The copy never overwrites: when the target file or folder exists, it takes the first free
+`<name>-<n>` (`release-notes-1/`, `jira-workflow-1.workflow.json`), and the requested workflow's
+`name` gets the same `-<n>`. It is all or nothing: it is staged in a dot-folder of the user's
 workflow root, which discovery skips, then renamed into place, so a failed copy leaves no partial
 folder behind.
 
@@ -807,7 +809,6 @@ Responses:
 - `403 Forbidden` — a cross-origin caller, rejected by the origin gate (§2.1).
 - `404 Not Found` — `shipped_path` is not a `*.workflow.json` file under the shipped root, or escapes
   it.
-- `409 Conflict` — the target file or folder already exists.
 
 ### 7.4 `GET /v0/workflows/download?path=<handle>[&origin=shipped]` — download a workflow
 
