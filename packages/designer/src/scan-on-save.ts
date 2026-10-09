@@ -1,56 +1,31 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { type Load, useResource } from "@path/viewer/use-resource";
+import { useRef } from "react";
 import type { SaveState } from "./session-reducer.js";
 
 /**
- * A scan's load state. On failure the last successful value is kept beside the message, so a caller
- * that must not empty itself on a read blip can keep showing it.
+ * A scan's load state: the Viewer's one load lifecycle, which keeps the last successful value on
+ * the `error` phase so a caller that must not empty itself on a read blip can keep showing it.
  */
-export type ScanLoad<T> =
-  | { phase: "loading" }
-  | { phase: "error"; message: string; lastGood: T | null }
-  | { phase: "ready"; value: T };
+export type ScanLoad<T> = Load<T>;
 
 /** Scan with `fetch` now and after each save phase in `rescanOn`; both should be stable (a new
- * identity re-scans). */
+ * identity re-scans). The re-scans keep the last value on screen rather than flashing `loading`.
+ */
 export function useScanOnSave<T>(
   fetch: () => Promise<T>,
   savePhase: SaveState["phase"],
   rescanOn: readonly SaveState["phase"][],
 ): ScanLoad<T> {
-  const [load, setLoad] = useState<ScanLoad<T>>({ phase: "loading" });
-  const lastGood = useRef<T | null>(null);
-  // Set on mount, not at init, so StrictMode's dev remount leaves it live.
-  const alive = useRef(false);
-  useEffect(() => {
-    alive.current = true;
-    return () => {
-      alive.current = false;
-    };
-  }, []);
-
-  const scan = useCallback((): void => {
-    fetch()
-      .then((value) => {
-        if (!alive.current) return;
-        lastGood.current = value;
-        setLoad({ phase: "ready", value });
-      })
-      .catch((error: unknown) => {
-        if (!alive.current) return;
-        setLoad({
-          phase: "error",
-          message: error instanceof Error ? error.message : String(error),
-          lastGood: lastGood.current,
-        });
-      });
-  }, [fetch]);
-
-  useEffect(() => {
-    scan();
-  }, [scan]);
-  useEffect(() => {
-    if (rescanOn.includes(savePhase)) scan();
-  }, [savePhase, rescanOn, scan]);
-
-  return load;
+  // The count of save phases that ask for a re-scan. It rides `useResource`'s deps, so a phase
+  // change the caller did not name starts no read.
+  const tick = useRef(0);
+  const previous = useRef(savePhase);
+  if (previous.current !== savePhase) {
+    previous.current = savePhase;
+    if (rescanOn.includes(savePhase)) tick.current += 1;
+  }
+  return useResource(fetch, [tick.current], {
+    keepLastGood: true,
+    manual: true,
+  }).load;
 }

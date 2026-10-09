@@ -1,6 +1,8 @@
 export type Load<T> =
   | { phase: "loading" }
-  | { phase: "error"; message: string }
+  /** A read that failed. `lastGood` carries the last value that landed, for a host that asked for
+   * it (`useResource`'s `keepLastGood`); it is absent otherwise. */
+  | { phase: "error"; message: string; lastGood?: T }
   | { phase: "ready"; value: T };
 
 /** `PathApiError.message` carries the server's `{ error: { message } }` envelope; anything else is

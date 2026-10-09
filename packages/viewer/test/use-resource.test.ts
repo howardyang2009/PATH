@@ -111,4 +111,43 @@ describe("useResource", () => {
 
     await waitFor(() => expect(result.current.load).toEqual({ phase: "error", message: "down" }));
   });
+
+  it("carries the last landed value on an error when keepLastGood is set", async () => {
+    let fail = false;
+    const { result } = renderHook(() =>
+      useResource(() => (fail ? Promise.reject(new Error("blip")) : Promise.resolve("kept")), [], {
+        keepLastGood: true,
+      }),
+    );
+    await waitFor(() => expect(result.current.load).toEqual({ phase: "ready", value: "kept" }));
+
+    fail = true;
+    act(() => result.current.refetch());
+    await waitFor(() =>
+      expect(result.current.load).toEqual({ phase: "error", message: "blip", lastGood: "kept" }),
+    );
+  });
+
+  it("a manual read keeps its value while a refetch is in flight", async () => {
+    const gate = deferred<string>();
+    let reads = 0;
+    const { result } = renderHook(() =>
+      useResource(
+        () => {
+          reads += 1;
+          return reads === 1 ? "first" : gate.promise;
+        },
+        [],
+        { manual: true },
+      ),
+    );
+    await waitFor(() => expect(result.current.load).toEqual({ phase: "ready", value: "first" }));
+
+    act(() => result.current.refetch());
+    // The new read is still in flight, so the last value stays on screen instead of a `loading`.
+    expect(result.current.load).toEqual({ phase: "ready", value: "first" });
+
+    act(() => gate.resolve("second"));
+    await waitFor(() => expect(result.current.load).toEqual({ phase: "ready", value: "second" }));
+  });
 });

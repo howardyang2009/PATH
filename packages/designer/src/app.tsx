@@ -68,7 +68,7 @@ export function App({
   const [dialog, setDialog] = useState<Dialog>(NO_DIALOG);
   const closeDialog = (): void => setDialog(NO_DIALOG);
   const plugins: WireStepPlugin[] =
-    session.registry.phase === "ready" ? session.registry.plugins : [];
+    session.registry.phase === "ready" ? session.registry.value : [];
 
   const active = session.frames[session.activeIndex];
   // A from-scratch buffer carries `path: null`; fold it to `undefined` so the toolbar, lease,
