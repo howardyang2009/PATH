@@ -1,0 +1,16 @@
+{
+  "format": "path/workflow@6",
+  "id": "6a1bad20-e2b3-444e-8b42-a9e339ebb561",
+  "description": "end checkpoint do nothing just make workflow complete successfully",
+  "body": [
+    {
+      "type": "checkpoint",
+      "id": "bc05af1d-3938-465f-a07a-935edac55423",
+      "name": "end",
+      "condition": {
+        "type": "exists",
+        "path": "context"
+      }
+    }
+  ]
+}

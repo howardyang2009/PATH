@@ -1,0 +1,20 @@
+{
+  "format": "path/workflow@6",
+  "id": "514970e8-1116-45b1-9d8c-cbc384437e79",
+  "description": "git clone one repository to destination path(set in config)",
+  "body": [
+    {
+      "id": "05bd4215-4830-44ba-8bea-7e97a2b3032c",
+      "name": "git-clone-repo",
+      "type": "binary",
+      "command": "git",
+      "args": [
+        "clone",
+        "--depth",
+        "50",
+        "${config.repo_url}",
+        "${config.repo_path}"
+      ]
+    }
+  ]
+}

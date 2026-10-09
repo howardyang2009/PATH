@@ -1,6 +1,6 @@
 {
   "format": "path/workflow@6",
-  "id": "a9ddf94b-5bbf-4796-894a-95804b05fc02",
+  "id": "7c7a06d0-1fe8-4941-9919-64a257cf3cd2",
   "name": "release-notes",
   "config": {
     "repo_url": "https://github.com/howardyang2009/PATH.git",
@@ -15,7 +15,7 @@
   },
   "body": [
     {
-      "id": "994d6284-6084-4044-8229-e1087edcbcea",
+      "id": "ebc05363-ea61-4ffb-9e7c-f2efff640e6d",
       "name": "clone-repo",
       "command": "git",
       "args": [
@@ -28,7 +28,7 @@
       "type": "binary"
     },
     {
-      "id": "0a7ad1bc-46ad-44ef-8072-291b586e7e65",
+      "id": "60eecd84-2743-4071-a0c5-7107111bad5e",
       "name": "gather-changes",
       "publish": {
         "raw_changes": "${output}"
@@ -45,7 +45,7 @@
     },
     {
       "type": "checkpoint",
-      "id": "f0b9f76d-c4ba-4036-93a1-1d0fdcc98ae2",
+      "id": "84c3897f-9a2f-4b97-bb43-419b11ff71a0",
       "name": "have-changes",
       "condition": {
         "type": "matches",
@@ -54,7 +54,7 @@
       }
     },
     {
-      "id": "3b3b6d1c-f670-4134-80b2-1fc7fce04686",
+      "id": "602b0389-aeea-42bd-b614-5d947723a8a6",
       "name": "check-git-result",
       "publish": {
         "person-confirm": "${output}"
@@ -65,12 +65,12 @@
     },
     {
       "type": "parallel",
-      "id": "26353cca-4fe0-4a41-a749-f5e351c7f381",
+      "id": "0ff741bc-1b5e-4404-a8cb-69528ce35822",
       "name": "summarize",
       "join": "collect",
       "branches": [
         {
-          "id": "a927b740-65a6-4f86-ba28-5b350e2a28d2",
+          "id": "47c23e42-667d-495f-8678-84a35dd164e3",
           "name": "summarize-features",
           "input": {
             "raw_changes": "${context.raw_changes}"
@@ -82,7 +82,7 @@
           "type": "prompt"
         },
         {
-          "id": "a77f4178-1af2-45a0-832f-e94039a446ba",
+          "id": "21b77130-6782-49b9-9eb1-62de17e409d5",
           "name": "summrize-fixes",
           "input": {
             "raw_changes": "${context.raw_changes}"
@@ -96,7 +96,7 @@
       ]
     },
     {
-      "id": "ceeafd99-9873-4c66-8445-9e72c6b61e64",
+      "id": "09d7bbe9-0bee-4aa9-8a28-d7d40f85eb82",
       "name": "draft-notes",
       "input": {
         "features": "${context.features_summary}",
@@ -109,7 +109,7 @@
       "type": "prompt"
     },
     {
-      "id": "6688a231-cb93-4fae-9075-b4e0883c7ca0",
+      "id": "2c7b781b-b085-4983-b850-a79577dee920",
       "name": "judge-draft",
       "input": {
         "draft": "${context.draft}",
@@ -124,7 +124,7 @@
     },
     {
       "type": "checkpoint",
-      "id": "cb582bc5-05d8-4373-9899-18a855040f0f",
+      "id": "5f4ffa12-5f24-4259-adaf-88536adf9be8",
       "name": "verdict-wellformed",
       "condition": {
         "type": "all",
@@ -146,7 +146,7 @@
     },
     {
       "type": "while-do",
-      "id": "84aa5de3-c645-41e7-bff0-6abb4d8d7520",
+      "id": "0c072d21-7084-453b-b030-9dc5ed629f01",
       "name": "revise-loop",
       "condition": {
         "type": "equals",
@@ -156,7 +156,7 @@
       "max_iterations": "${config.max_revisions}",
       "node": {
         "type": "workflow",
-        "id": "6149a8e0-bbec-4edb-9e71-2473b9a52b53",
+        "id": "c9424037-57ff-49c0-bf54-a03a1f3463af",
         "name": "revise",
         "input": {
           "draft": "${context.draft}",
@@ -172,7 +172,7 @@
     },
     {
       "type": "branch",
-      "id": "7ab77732-5c66-4b60-8c9a-265f0a7cdf9e",
+      "id": "91c74382-a04f-4741-95cd-81f3e853c055",
       "name": "pick-format",
       "arms": [
         {
@@ -182,7 +182,7 @@
             "value": "short"
           },
           "node": {
-            "id": "4cd63126-2f22-413c-9a32-71d2685d0348",
+            "id": "bd2e8a79-53b2-41fd-aa13-561898e3258f",
             "name": "format-short",
             "input": {
               "draft": "${context.draft}"
@@ -201,7 +201,7 @@
             "value": "long"
           },
           "node": {
-            "id": "1e1cfbfa-52f0-4040-8bf2-8f437bc4b31a",
+            "id": "b989e6a7-e2a7-4f68-955f-11d72da73e78",
             "name": "format-long",
             "input": {
               "draft": "${context.draft}"
@@ -216,7 +216,7 @@
       ]
     },
     {
-      "id": "6983cafc-8037-4275-8e0f-390aaea0a070",
+      "id": "04205e1d-aa38-42aa-be43-4d7953f790ab",
       "name": "write-file",
       "input": "${context.final_notes}",
       "publish": {
@@ -225,9 +225,8 @@
       "command": "sh",
       "args": [
         "-c",
-        "cat > \"${config.output_file}\""
+        "mkdir -p \"${config.repo_path}\" && cat > \"${config.repo_path}/${config.output_file}\""
       ],
-      "cwd": "${config.repo_path}",
       "type": "binary"
     }
   ],
