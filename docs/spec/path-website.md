@@ -192,8 +192,9 @@ and restart.
 
 ## 10. Network exposure
 
-**Now** ([#721](https://github.com/howardyang2009/PATH/issues/721)): Funnel is off since 2026-10-05.
-PATH is tailnet-only through `tailscale serve`. Trusted testers only, through Tailscale node sharing.
+**Now** ([#721](https://github.com/howardyang2009/PATH/issues/721)): Funnel is on since 2026-10-09,
+after the hosted-mode gate (§11) passed. The Server runs in hosted mode, so anyone on the internet
+can reach it and sign up. Funnel was off from 2026-10-05 until then.
 In local mode the Server answers `403` to any request whose `Host` is a `*.ts.net` name and that
 carries no `Tailscale-User-Login` header (a Funnel request); `PATH_FUNNEL_GUARD=off` switches this
 guard off, and hosted mode does not apply it ([#726](https://github.com/howardyang2009/PATH/issues/726)).
