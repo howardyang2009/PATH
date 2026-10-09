@@ -5,11 +5,11 @@ import { fileURLToPath } from "node:url";
 import type { LoadedStepPluginRegistry, Project } from "@path/engine";
 import { describe, expect, it } from "vitest";
 import { authoredLayout } from "../src/authored-layout.js";
-import type { CreatorTable } from "../src/creator-table.js";
 import type { RouteReply } from "../src/http-json.js";
 import type { LiveRuns, StartRunOptions } from "../src/live-runs.js";
 import { handlePostRuns as handlePostRunsWithRequest } from "../src/routes/post-runs.js";
 import type { RouteContext } from "../src/routes/route-context.js";
+import type { WriteAccess } from "../src/write-access.js";
 
 /**
  * `POST /v0/runs` carries the operator's **launch worker-default** table (ADR 0044, #517): a
@@ -53,9 +53,8 @@ function context(live: LiveRuns): RouteContext {
     live,
     stepPlugins: {} as unknown as LoadedStepPluginRegistry,
     layout: authoredLayout({ projectDir: fixturesDir }),
-    creators: {} as unknown as CreatorTable,
+    access: {} as unknown as WriteAccess,
     secrets: undefined,
-    limits: undefined,
   };
 }
 

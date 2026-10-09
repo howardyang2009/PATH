@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { authoredLayout } from "../src/authored-layout.js";
 import { openCreatorTable } from "../src/creator-table.js";
 import { discoverTemplates } from "../src/template-store.js";
+import { writeAccess } from "../src/write-access.js";
 
 /**
  * The templates shipped in `packages/server/shipped/template/` (#578, #579) are read-only source
@@ -27,9 +28,8 @@ describe("shipped templates", () => {
   it("ship at least one step-template, and every shipped template is valid", async () => {
     const registry = await loadStepPluginRegistry();
     const { entries } = discoverTemplates(
-      authoredLayout({ projectDir: projectDir }),
+      writeAccess(authoredLayout({ projectDir: projectDir }), openCreatorTable(":memory:")),
       registry,
-      openCreatorTable(":memory:"),
     );
 
     expect(entries.some((entry) => entry.kind === "step")).toBe(true);

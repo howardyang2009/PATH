@@ -13,6 +13,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { authoredLayout } from "../src/authored-layout.js";
 import { openCreatorTable } from "../src/creator-table.js";
 import { discoverTemplates, type TemplateEntry } from "../src/template-store.js";
+import { writeAccess } from "../src/write-access.js";
 
 /**
  * The shipped `person-switch` Step-Template (#581, ADR 0052): a `person-activity` ask followed by a
@@ -34,9 +35,8 @@ afterEach(() => {
 async function personSwitch(): Promise<TemplateEntry> {
   const registry = await loadStepPluginRegistry();
   const entry = discoverTemplates(
-    authoredLayout({ projectDir: dir }),
+    writeAccess(authoredLayout({ projectDir: dir }), openCreatorTable(":memory:")),
     registry,
-    openCreatorTable(":memory:"),
   ).entries.find((e) => e.kind === "step" && e.name === "person-switch");
   if (!entry) throw new Error("person-switch step-template is not shipped");
   return entry;

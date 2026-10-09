@@ -2,8 +2,6 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { formatIssues } from "@path/schema";
 import { z } from "zod";
-import type { AuthoredRefusal } from "./authored-layout.js";
-import type { CreatorTable } from "./creator-table.js";
 
 /** The per-user override map in the project `.path`, read at boot. */
 export const LIMITS_FILE = "limits.json";
@@ -113,29 +111,4 @@ export function createRateLimiter(now: () => number = Date.now): RateLimiter {
 /** A byte count as the MB a refusal message shows. */
 export function megabytes(bytes: number): string {
   return `${Math.round((bytes / (1024 * 1024)) * 10) / 10} MB`;
-}
-
-/** The `403` for a user who may create no more shared items. */
-export function sharedItemLimitRefusal(
-  limits: UserLimits | undefined,
-  creators: CreatorTable,
-  userId: string,
-): AuthoredRefusal | undefined {
-  if (limits === undefined || creators.countBy(userId) < limits.maxSharedItems) return undefined;
-  return {
-    status: 403,
-    message: `shared item limit reached (${limits.maxSharedItems}): delete a shared item first`,
-  };
-}
-
-/** The `403` for an authored file of `bytes` over the user's file size. */
-export function fileSizeRefusal(
-  limits: UserLimits | undefined,
-  bytes: number,
-): AuthoredRefusal | undefined {
-  if (limits === undefined || bytes <= limits.maxFileBytes) return undefined;
-  return {
-    status: 403,
-    message: `file too large: an authored file may be at most ${megabytes(limits.maxFileBytes)}`,
-  };
 }

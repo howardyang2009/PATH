@@ -8,6 +8,7 @@ import { type AuthoredLayout, authoredLayout } from "../src/authored-layout.js";
 import { type CreatorTable, openCreatorTable } from "../src/creator-table.js";
 import { strongEtag } from "../src/etag.js";
 import { type WorkflowStore, workflowsOf } from "../src/workflow-store.js";
+import { writeAccess } from "../src/write-access.js";
 
 const SHIPPED = join("install", "shipped", "workflow", "sample.workflow.json");
 
@@ -23,7 +24,10 @@ async function storeFor(userId: string): Promise<WorkflowStore> {
     shippedDir: { workflow: shippedDir },
     userId,
   });
-  return workflowsOf({ layout, stepPlugins: await loadStepPluginRegistry(), creators });
+  return workflowsOf({
+    access: writeAccess(layout, creators),
+    stepPlugins: await loadStepPluginRegistry(),
+  });
 }
 
 function workflow(): Record<string, unknown> {

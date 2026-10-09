@@ -1,4 +1,3 @@
-import { existsSync } from "node:fs";
 import { relative } from "node:path";
 import { duplicateIdErrors, type StepPluginRegistry, safeParseWorkflowFile } from "@path/schema";
 import {
@@ -7,15 +6,12 @@ import {
   PRECONDITION_FAILED,
   serializeArtifact,
 } from "./artifact-file.js";
-import type { AuthoredLayout } from "./authored-layout.js";
-import { confineToProjectRoot } from "./confine.js";
-import { type CreatorTable, projectPathOf, sharedWriteRefusal } from "./creator-table.js";
 import { editLease } from "./edit-lease.js";
-import { fileSizeRefusal, sharedItemLimitRefusal, type UserLimits } from "./request-limits.js";
+import type { WriteAccess } from "./write-access.js";
 
 // The workflow store: the path-addressed door onto workflow files, as the template store is the
-// id-addressed door onto templates. Both ask the authored layout which files a door may write, and
-// the creator table who may change a shared one (ADR 0088).
+// id-addressed door onto templates. Both ask the requester's write access which files a door may
+// change (ADR 0088).
 
 export type WorkflowWrite =
   | { ok: true; relativePath: string; id: string; etag: string; created: boolean }
@@ -39,35 +35,22 @@ export interface WorkflowStore {
 }
 
 export function workflowsOf(ctx: {
-  layout: AuthoredLayout;
+  access: WriteAccess;
   stepPlugins: StepPluginRegistry;
-  creators: CreatorTable;
-  /** The requester's request limits; `undefined` (local mode) checks none. */
-  limits?: UserLimits;
 }): WorkflowStore {
-  const { layout, stepPlugins, creators, limits } = ctx;
-  const { projectDir } = layout;
-  const shared = (workflowPath: string): boolean =>
-    layout.classify(workflowPath)?.origin === "shared";
+  const { access, stepPlugins } = ctx;
+  const { projectDir } = access.layout;
 
   return {
     write(workflowPath, payload, ifMatch) {
-      if (!layout.inView(workflowPath)) return { ok: false, status: 404, message: "not found" };
-      const refusal = layout.workflowRefusal(workflowPath, "write");
-      if (refusal !== undefined) return { ok: false, ...refusal };
-
-      // Path confinement (404) before schema (400): a path that escapes the root or traverses a
-      // symlink is refused regardless of the payload.
-      const absPath = confineToProjectRoot(projectDir, workflowPath, { allowMissingTail: true });
-      if (absPath === undefined) return { ok: false, status: 404, message: "not found" };
-      // A new shared file is the requester's to create, within their shared-item limit; an existing
-      // one only its creator's.
-      const sharedRefusal = existsSync(absPath)
-        ? sharedWriteRefusal(layout, creators, workflowPath, "workflow")
-        : shared(workflowPath)
-          ? sharedItemLimitRefusal(limits, creators, layout.userId)
-          : undefined;
-      if (sharedRefusal !== undefined) return { ok: false, ...sharedRefusal };
+      // Path and access (404, 403) before schema (400): a path the requester may not change is
+      // refused regardless of the payload.
+      const target = access.workflow(workflowPath);
+      if (!target.ok) return target;
+      const { absPath } = target;
+      const origin = access.layout.classify(workflowPath)?.origin ?? "user";
+      const createRefusal = target.exists ? undefined : access.createRefusal(origin);
+      if (createRefusal !== undefined) return { ok: false, ...createRefusal };
 
       // Parsed against the registry frozen at server start (ADR 0018), like every other door that
       // validates a file.
@@ -89,16 +72,14 @@ export function workflowsOf(ctx: {
           details: duplicates,
         };
       }
-      const tooLarge = fileSizeRefusal(limits, Buffer.byteLength(serializeArtifact(payload)));
+      const tooLarge = access.sizeRefusal(Buffer.byteLength(serializeArtifact(payload)));
       if (tooLarge !== undefined) return { ok: false, ...tooLarge };
 
       const written = conditionalWrite(absPath, { ifMatch, rule: "create-or-overwrite", payload });
       if (!written.ok) {
         return { ok: false, status: 412, message: PRECONDITION_FAILED[written.conflict] };
       }
-      if (written.created && shared(workflowPath)) {
-        creators.stamp(projectPathOf(layout, workflowPath), "workflow", layout.userId);
-      }
+      if (written.created) access.created(workflowPath, "workflow");
       return {
         ok: true,
         relativePath: relative(projectDir, absPath),
@@ -109,23 +90,18 @@ export function workflowsOf(ctx: {
     },
 
     remove(workflowPath, ifMatch, sessionId) {
-      if (!layout.inView(workflowPath)) return { ok: false, status: 404, message: "not found" };
-      const refusal = layout.workflowRefusal(workflowPath, "write");
-      if (refusal !== undefined) return { ok: false, ...refusal };
-
-      const absPath = confineToProjectRoot(projectDir, workflowPath);
+      const target = access.workflow(workflowPath);
+      if (!target.ok) return target;
       const lease = editLease(projectDir, workflowPath);
-      if (absPath === undefined || lease === undefined) {
+      if (!target.exists || lease === undefined) {
         return { ok: false, status: 404, message: "not found" };
       }
-      const creatorRefusal = sharedWriteRefusal(layout, creators, workflowPath, "workflow");
-      if (creatorRefusal !== undefined) return { ok: false, ...creatorRefusal };
       // The lease first: another session editing the file outranks a stale token, and either way
       // the file is untouched.
       if (lease.heldByOther(sessionId)) {
         return { ok: false, status: 409, message: "workflow is being edited in another session" };
       }
-      const removed = conditionalDelete(absPath, ifMatch);
+      const removed = conditionalDelete(target.absPath, ifMatch);
       if (!removed.ok) {
         // A file that is already gone is the `404`; a missing or stale token is the `412`.
         return removed.conflict === "missing"
@@ -133,7 +109,7 @@ export function workflowsOf(ctx: {
           : { ok: false, status: 412, message: PRECONDITION_FAILED[removed.conflict] };
       }
       lease.remove();
-      if (shared(workflowPath)) creators.forget(projectPathOf(layout, workflowPath), "workflow");
+      access.removed(workflowPath, "workflow");
       return { ok: true };
     },
   };

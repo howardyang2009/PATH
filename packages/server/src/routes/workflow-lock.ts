@@ -25,7 +25,8 @@ const LeaseOpBodySchema = z
   })
   .strict();
 
-/** The shared prologue: parse the body, find the named workflow's lease; a refusal is the reply. */
+/** The shared prologue: parse the body, find the named workflow's lease; a refusal is the reply.
+ * Only a requester who may change the file takes its lease, so a reader cannot block its writer. */
 async function leaseRequest<T extends { workflow_path: string }>(
   req: IncomingMessage,
   ctx: RouteContext,
@@ -33,9 +34,9 @@ async function leaseRequest<T extends { workflow_path: string }>(
 ): Promise<{ ok: true; body: T; lease: EditLease } | { ok: false; reply: RouteReply }> {
   const body = await readRequestBody(req, schema);
   if (!body.ok) return body;
-  const lease = ctx.layout.inView(body.data.workflow_path)
-    ? editLease(ctx.layout.projectDir, body.data.workflow_path)
-    : undefined;
+  const target = ctx.access.workflow(body.data.workflow_path);
+  if (!target.ok) return { ok: false, reply: replyError(target.status, target.message) };
+  const lease = editLease(ctx.layout.projectDir, body.data.workflow_path);
   if (lease === undefined) return { ok: false, reply: replyError(404, "not found") };
   return { ok: true, body: body.data, lease };
 }
