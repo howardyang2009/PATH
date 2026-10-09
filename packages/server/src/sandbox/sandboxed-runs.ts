@@ -18,6 +18,7 @@ import {
   pathDir,
   type RunTreeExport,
   rootRunTreeDir,
+  secretPathsOf,
 } from "@path/engine";
 import { type JsonValue, type LogEvent, LogEventSchema, type RunStatus } from "@path/schema";
 import { z } from "zod";
@@ -433,6 +434,21 @@ function parseEventLine(line: string): LogEvent | undefined {
   return event.success ? event.data : undefined;
 }
 
+/**
+ * The launch facts the host's root row carries until the VM's export replaces them: only the
+ * `$secret` config paths, so a Complete form asks for them again even before the export lands.
+ */
+function hostLaunchFacts(store: Project, job: VmJob): string | null {
+  const operation = job.operation;
+  const inherited =
+    operation.kind === "resume"
+      ? (store.archive.launchFacts(operation.predecessorRootRunId)?.secretKeys ?? [])
+      : [];
+  const own = job.operatorConfig ? secretPathsOf(job.operatorConfig) : [];
+  const secretKeys = [...new Set([...own, ...inherited])];
+  return secretKeys.length > 0 ? JSON.stringify({ secretKeys }) : null;
+}
+
 /** The host's own root row for a new tree, used until the VM's export replaces it. */
 function markRoot(store: Project, job: VmJob, status: RunStatus, resumedFrom?: string): void {
   const rootRunId = job.rootRunId;
@@ -452,6 +468,7 @@ function markRoot(store: Project, job: VmJob, status: RunStatus, resumedFrom?: s
         workflow_id: job.rootFile.id ?? null,
         workflow_name: job.rootFile.name ?? null,
         workflow_path: job.sourceWorkflowPath ?? null,
+        launch_facts: hostLaunchFacts(store, job),
       },
     ],
     events: [],
