@@ -63,6 +63,23 @@ describe("anthropic prompt worker", () => {
     expect(result).not.toHaveProperty("output");
     if (result.status !== "failed") throw new Error("expected a failed result");
     expect(result.error).toContain("Failed to authenticate: OAuth session expired");
+    expect(result.error).toContain("Set config.CLAUDE_CODE_OAUTH_TOKEN");
+  });
+
+  it("names the credential key when the SDK has no login", async () => {
+    query.mockReturnValue(
+      session({
+        type: "result",
+        subtype: "success",
+        is_error: true,
+        result: "Not logged in · Please run /login",
+      }),
+    );
+
+    const result = await run(request());
+
+    if (result.status !== "failed") throw new Error("expected a failed result");
+    expect(result.error).toContain("Set config.CLAUDE_CODE_OAUTH_TOKEN");
   });
 
   it("fails an error subtype and joins its errors", async () => {
@@ -80,6 +97,7 @@ describe("anthropic prompt worker", () => {
     expect(result.status).toBe("failed");
     if (result.status !== "failed") throw new Error("expected a failed result");
     expect(result.error).toContain("boom; again");
+    expect(result.error).not.toContain("CLAUDE_CODE_OAUTH_TOKEN");
   });
 
   describe("config.CLAUDE_CODE_OAUTH_TOKEN", () => {

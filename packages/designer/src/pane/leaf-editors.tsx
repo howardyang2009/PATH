@@ -51,7 +51,39 @@ export function PromptEditor({ file, node, plugins, commit }: LeafEditorProps): 
         onChange={(v) => commit({ ...node, prompt: v } as WorkflowNode, editKey(node.id, "prompt"))}
       />
       <WorkerSelect file={file} node={node} plugins={plugins} commit={commit} />
+      <CredentialHint worker={effectiveWorker(file, node, plugins)} />
     </>
+  );
+}
+
+// The config key each `prompt` worker reads its credential from (ADR 0045, ADR 0095).
+const CREDENTIAL_HINTS: { [worker: string]: string } = {
+  anthropic:
+    "Auth: set config CLAUDE_CODE_OAUTH_TOKEN (from `claude setup-token`) or a User secret of that name.",
+  deepseek: "Auth: set config DEEPSEEK_API_KEY or a User secret of that name.",
+};
+
+function CredentialHint({ worker }: { worker: string | undefined }): JSX.Element | null {
+  const hint = worker === undefined ? undefined : CREDENTIAL_HINTS[worker];
+  if (hint === undefined) return null;
+  return (
+    <p className="pane-hint" data-testid="credential-hint">
+      {hint}
+    </p>
+  );
+}
+
+/** The worker the step runs on in the Designer's view: pinned, else the file default, else the
+ * type's own. The launch tier lives in no file, so it is not seen here. */
+function effectiveWorker(
+  file: WorkflowFile,
+  node: WorkflowNode,
+  plugins: WireStepPlugin[],
+): string | undefined {
+  return (
+    nodeString(node, "worker") ||
+    file.worker_defaults?.[node.type] ||
+    pluginFor(node.type, plugins)?.default_worker
   );
 }
 

@@ -96,8 +96,14 @@ function describeSdkFailure(message: SdkResultMessage): string {
     : message.result
       ? `: ${message.result}`
       : "";
-  return `ended with SDK result "${message.subtype}"${detail}`;
+  const hint = AUTH_FAILURE.test(detail) ? `. ${AUTH_HINT}` : "";
+  return `ended with SDK result "${message.subtype}"${detail}${hint}`;
 }
+
+// The SDK's auth failures: an expired or revoked OAuth token, no login at all, or a bad API key.
+const AUTH_FAILURE = /failed to authenticate|not logged in|invalid api key|\/login/i;
+const AUTH_HINT =
+  "Set config.CLAUDE_CODE_OAUTH_TOKEN (from `claude setup-token`) or ANTHROPIC_API_KEY";
 
 // The SDK's `env` replaces the subprocess environment rather than merging, so it starts from
 // `process.env`. `ANTHROPIC_API_KEY` is dropped because the SDK prefers it over the OAuth token.
