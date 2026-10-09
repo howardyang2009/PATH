@@ -785,6 +785,44 @@ describe("run archive — endNonTerminal", () => {
   });
 });
 
+describe("run archive — recordRoot", () => {
+  it("writes a root row with the workflow identity and the operator's secret paths", () => {
+    const recorded = archive.recordRoot("root-r", {
+      status: "pending",
+      workflowId: "wf-1",
+      workflowName: "flow",
+      workflowPath: "users/a/workflow/flow.workflow.json",
+      operatorConfig: { worker: { token: { $secret: "sk" } } },
+    });
+
+    expect(recorded).toEqual({ ok: true });
+    const root = archive.tree("root-r")?.root;
+    expect(root).toMatchObject({
+      status: "pending",
+      workflowId: "wf-1",
+      workflowName: "flow",
+      workflowPath: "users/a/workflow/flow.workflow.json",
+      resumedFromRootRunId: null,
+    });
+    expect(archive.launchFacts("root-r")).toEqual({ secretKeys: ["worker.token"] });
+  });
+
+  it("keeps the first start time and predecessor on a rewrite, and inherits its secret paths", () => {
+    archive.recordRoot("pred", { status: "failed", operatorConfig: { k: { $secret: "x" } } });
+    archive.recordRoot("succ", { status: "pending", resumedFromRootRunId: "pred" });
+    const startedAt = archive.tree("succ")?.root?.startedAt;
+
+    archive.recordRoot("succ", { status: "running" });
+
+    expect(archive.tree("succ")?.root).toMatchObject({
+      status: "running",
+      startedAt,
+      resumedFromRootRunId: "pred",
+    });
+    expect(archive.launchFacts("succ")).toEqual({ secretKeys: ["k"] });
+  });
+});
+
 describe("openRunArchive", () => {
   it("opens a project's own db", () => {
     seedTree();

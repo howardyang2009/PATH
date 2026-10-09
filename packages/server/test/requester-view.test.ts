@@ -1,5 +1,13 @@
 import { randomUUID } from "node:crypto";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -38,16 +46,10 @@ afterEach(async () => {
 
 async function start({ hosted }: { hosted: boolean }): Promise<string> {
   if (hosted) stubHostedEnv();
-  handle = await startPathServer(
-    projectDir,
-    0,
-    undefined,
-    undefined,
-    undefined,
-    join(shippedDir, "template"),
-    join(shippedDir, "workflow"),
-    hosted ? hostedMode(projectDir) : undefined,
-  );
+  handle = await startPathServer(projectDir, {
+    shippedDir: { template: join(shippedDir, "template"), workflow: join(shippedDir, "workflow") },
+    mode: hosted ? hostedMode(projectDir) : undefined,
+  });
   return handle.url;
 }
 
@@ -283,6 +285,32 @@ describe("the requester's view in hosted mode", () => {
 });
 
 describe("local mode", () => {
+  it("leases a shared workflow only to its creator, so a reader cannot block its delete", async () => {
+    const path = "shared/workflow/team.workflow.json";
+    const url = await start({ hosted: true });
+    const put = await fetch(
+      `${url}/v0/workflows`,
+      as(ALICE, "PUT", { workflow_path: path, workflow: workflow("team") }),
+    );
+    expect(put.status).toBe(201);
+    const etag = put.headers.get("etag") ?? "";
+
+    const lock = (userId: string) =>
+      fetch(
+        `${url}/v0/workflows/lock`,
+        as(userId, "POST", { workflow_path: path, session_id: randomUUID() }),
+      );
+    expect((await lock(BOB)).status).toBe(403);
+    expect(existsSync(join(projectDir, `${path}.editing`))).toBe(false);
+
+    const request = as(ALICE, "DELETE");
+    const removed = await fetch(`${url}/v0/workflows/file?path=${path}`, {
+      ...request,
+      headers: { ...(request.headers as Record<string, string>), "If-Match": etag },
+    });
+    expect(removed.status).toBe(204);
+  });
+
   it("keeps following refs and paths anywhere in the project", async () => {
     write("examples/child.workflow.json", workflow("child"));
     const parent = write(

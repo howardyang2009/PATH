@@ -12,10 +12,11 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { openProject } from "@path/engine";
+import { dbFilePath, openProject } from "@path/engine";
 import Database from "better-sqlite3";
 import { z } from "zod";
 import { startPathServer } from "./create-server.js";
+import { userDir, userIds } from "./host-layout.js";
 
 // A backup snapshot (docs/spec/path-website.md §9): `<out>/project/` mirrors the parts of the
 // project that hold data, and `<out>/backup.json` lists its databases. The master key lives in the
@@ -170,11 +171,9 @@ export async function verifyBackup({
     }
     if (problems.length > 0) return { success: false, error: problems.join("\n") };
 
-    const usersDir = join(copy, "users");
-    const userIds = existsSync(usersDir) ? readdirSync(usersDir) : [];
-    for (const userId of userIds) {
-      if (!existsSync(join(usersDir, userId, ".path", "path.db"))) continue;
-      const opened = openProject(join(usersDir, userId));
+    for (const userId of userIds(copy)) {
+      if (!existsSync(dbFilePath(userDir(copy, userId)))) continue;
+      const opened = openProject(userDir(copy, userId));
       if (opened.success) {
         opened.project.close();
         stores += 1;
@@ -184,16 +183,7 @@ export async function verifyBackup({
     }
 
     try {
-      const handle = await startPathServer(
-        copy,
-        0,
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        { mode: "local", publishableKey: null },
-      );
+      const handle = await startPathServer(copy, { mode: { mode: "local", publishableKey: null } });
       try {
         const res = await fetch(`${handle.url}/v0/runs`);
         if (res.status !== 200) problems.push(`Server answered GET /v0/runs with ${res.status}`);

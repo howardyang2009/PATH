@@ -9,7 +9,11 @@ import { LOG_FORMAT } from "../src/logging/log-backend.js";
 import { openDb } from "../src/persistence/db.js";
 import { blobRef, dbFilePath } from "../src/persistence/paths.js";
 import { insertRun, setRunOutputRef } from "../src/persistence/run-store.js";
-import { exportTreeFromFile } from "../src/persistence/run-transfer.js";
+import {
+  countWorkflowPaths,
+  exportTreeFromFile,
+  rewriteWorkflowPaths,
+} from "../src/persistence/run-transfer.js";
 import { createRunArchive, type RunArchive } from "../src/run-archive.js";
 
 /**
@@ -208,5 +212,28 @@ describe("importTree", () => {
     forged.events[0] = { ...(forged.events[0] as object), event: '{"type":"nope"}' };
 
     expect(hostArchive.importTree("root-1", forged).ok).toBe(false);
+  });
+});
+
+describe("workflow paths across a user move", () => {
+  it("counts and rewrites only the run rows under the old prefix", () => {
+    hostArchive.recordRoot("a", { status: "succeeded", workflowPath: "users/old/workflow/a.json" });
+    hostArchive.recordRoot("b", { status: "failed", workflowPath: "users/older/workflow/b.json" });
+    hostArchive.recordRoot("c", { status: "failed", workflowPath: "shared/workflow/c.json" });
+    const file = dbFilePath(join(dir, "host"));
+
+    expect(countWorkflowPaths(file, "users/old/")).toBe(1);
+    expect(rewriteWorkflowPaths(file, "users/old/", "users/new/")).toBe(1);
+
+    expect(hostArchive.tree("a")?.root?.workflowPath).toBe("users/new/workflow/a.json");
+    expect(hostArchive.tree("b")?.root?.workflowPath).toBe("users/older/workflow/b.json");
+    expect(countWorkflowPaths(file, "users/old/")).toBe(0);
+  });
+
+  it("answers 0 for a store with no run table", () => {
+    const file = join(dir, "empty.db");
+    new Database(file).close();
+    expect(countWorkflowPaths(file, "users/old/")).toBe(0);
+    expect(rewriteWorkflowPaths(file, "users/old/", "users/new/")).toBe(0);
   });
 });

@@ -11,9 +11,10 @@ import {
   type RequesterContexts,
 } from "../src/requester.js";
 import type { SandboxRuntime } from "../src/sandbox/sandbox-runtime.js";
-import type { SandboxOptions } from "../src/sandbox/sandboxed-runs.js";
+import { type SandboxOptions, UNLIMITED } from "../src/sandbox/sandboxed-runs.js";
 import { createVmSlots } from "../src/sandbox/vm-slots.js";
 import { parseSecretsKey } from "../src/secret-store.js";
+import { hostedTenancy, localTenancy, type Tenancy } from "../src/tenancy.js";
 import { fakeRuntime } from "./fixtures/fake-sandbox.js";
 
 /**
@@ -46,6 +47,18 @@ afterEach(() => {
   rmSync(projectDir, { recursive: true, force: true });
 });
 
+/** Hosted mode for one user, `user_abc`, over `options`. */
+function hosted(options: SandboxOptions): Tenancy {
+  return hostedTenancy({
+    projectDir,
+    projectStore,
+    resolveUserId: () => "user_abc",
+    secretsKey: parseSecretsKey(Buffer.alloc(32).toString("base64")),
+    sandbox: options,
+    runOwner: () => UNLIMITED,
+  });
+}
+
 function sandbox(runtime: SandboxRuntime = fakeRuntime(async () => 0)): SandboxOptions {
   return {
     runtime,
@@ -63,7 +76,7 @@ function sandbox(runtime: SandboxRuntime = fakeRuntime(async () => 0)): SandboxO
 
 describe("createRequesterContexts", () => {
   it("resolves every request to local and the project's own store", async () => {
-    const contexts = createRequesterContexts({ projectDir, projectStore });
+    const contexts = createRequesterContexts({ projectDir, tenancy: localTenancy(projectStore) });
 
     const context = await forRequest(contexts);
 
@@ -76,7 +89,7 @@ describe("createRequesterContexts", () => {
   });
 
   it("reuses one store across a user's requests", async () => {
-    const contexts = createRequesterContexts({ projectDir, projectStore });
+    const contexts = createRequesterContexts({ projectDir, tenancy: localTenancy(projectStore) });
 
     const first = await forRequest(contexts);
     const second = await forRequest(contexts);
@@ -89,8 +102,7 @@ describe("createRequesterContexts", () => {
   it("keeps a resolved id's own layout, on the project's store", async () => {
     const contexts = createRequesterContexts({
       projectDir,
-      projectStore,
-      resolveUserId: () => "user_abc",
+      tenancy: localTenancy(projectStore, () => "user_abc"),
     });
 
     const first = await forRequest(contexts);
@@ -106,14 +118,7 @@ describe("createRequesterContexts", () => {
   });
 
   it("gives each hosted user a store of their own under their user root", async () => {
-    const contexts = createRequesterContexts({
-      projectDir,
-      projectStore,
-      resolveUserId: () => "user_abc",
-      hosted: true,
-      secretsKey: parseSecretsKey(Buffer.alloc(32).toString("base64")),
-      sandbox: sandbox(),
-    });
+    const contexts = createRequesterContexts({ projectDir, tenancy: hosted(sandbox()) });
 
     const context = await forRequest(contexts);
 
@@ -126,14 +131,7 @@ describe("createRequesterContexts", () => {
 
   it("runs a hosted requester's Starts in the sandbox", async () => {
     const runtime = fakeRuntime(async () => 0);
-    const contexts = createRequesterContexts({
-      projectDir,
-      projectStore,
-      resolveUserId: () => "user_abc",
-      hosted: true,
-      secretsKey: parseSecretsKey(Buffer.alloc(32).toString("base64")),
-      sandbox: sandbox(runtime),
-    });
+    const contexts = createRequesterContexts({ projectDir, tenancy: hosted(sandbox(runtime)) });
     const { live } = await forRequest(contexts);
 
     const file = { format: "path/workflow@6", id: "wf", name: "wf", body: [] } as const;
@@ -144,23 +142,10 @@ describe("createRequesterContexts", () => {
     contexts.close();
   });
 
-  it("refuses in-process runs in hosted mode", () => {
-    expect(() =>
-      createRequesterContexts({
-        projectDir,
-        projectStore,
-        resolveUserId: () => "user_abc",
-        hosted: true,
-        secretsKey: parseSecretsKey(Buffer.alloc(32).toString("base64")),
-      }),
-    ).toThrow(/in-process runs are refused in hosted mode/);
-  });
-
   it("resolves no context when the request proves no identity", async () => {
     const contexts = createRequesterContexts({
       projectDir,
-      projectStore,
-      resolveUserId: () => undefined,
+      tenancy: localTenancy(projectStore, () => undefined),
     });
 
     expect(await contexts.forRequest(REQUEST)).toBeUndefined();
@@ -168,7 +153,7 @@ describe("createRequesterContexts", () => {
   });
 
   it("closes the stores it holds", async () => {
-    const contexts = createRequesterContexts({ projectDir, projectStore });
+    const contexts = createRequesterContexts({ projectDir, tenancy: localTenancy(projectStore) });
     await contexts.forRequest(REQUEST);
 
     contexts.close();

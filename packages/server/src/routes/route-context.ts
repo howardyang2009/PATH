@@ -1,13 +1,14 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { LoadedStepPluginRegistry, Project } from "@path/engine";
+import type { Admission } from "../admission.js";
 import type { AuthoredLayout } from "../authored-layout.js";
 import type { CreatorTable } from "../creator-table.js";
 import type { LiveRuns } from "../live-runs.js";
 import type { ServerMode } from "../mode.js";
-import type { RateLimiter, RequestLimits, UserLimits } from "../request-limits.js";
+import type { UserLimits } from "../request-limits.js";
 import type { RequesterContext, RequesterContexts } from "../requester.js";
-import type { RunLimits } from "../run-limits.js";
 import type { SecretStore } from "../secret-store.js";
+import { type WriteAccess, writeAccess } from "../write-access.js";
 
 /** What one route handler is handed: the requester's authored layout and store, plus what the
  * process holds across requests. */
@@ -22,12 +23,10 @@ export interface RouteContext {
   /** The requester's authored layout: the files their doors read, and the ones they may write or
    * run. */
   layout: AuthoredLayout;
-  /** Who created each shared item: the one table every requester's writes are checked against. */
-  creators: CreatorTable;
+  /** Which authored files the requester may change, under their limits. */
+  access: WriteAccess;
   /** The requester's Secret store; `undefined` in local mode, which has none. */
   secrets: SecretStore | undefined;
-  /** The requester's request limits; `undefined` in local mode, which has none. */
-  limits: UserLimits | undefined;
 }
 
 /** What the process holds across every request: the registry frozen at start, and the resolver
@@ -37,9 +36,8 @@ export interface ServerContext {
   stepPlugins: LoadedStepPluginRegistry;
   requesters: RequesterContexts;
   creators: CreatorTable;
-  /** Hosted mode only: each user's limits, the request counters, and the VM time and storage the
-   * run limits are checked against. */
-  limits?: { config: RequestLimits; rate: RateLimiter; run: RunLimits };
+  /** What each user may do: unlimited in local mode. */
+  admission: Admission;
 }
 
 /** The context one request is handled under, built from the requester that request resolved to
@@ -54,9 +52,8 @@ export function routeContextFor(
     layout: requester.layout,
     live: requester.live,
     stepPlugins: server.stepPlugins,
-    creators: server.creators,
+    access: writeAccess(requester.layout, server.creators, limits),
     secrets: requester.secrets,
-    limits,
   };
 }
 

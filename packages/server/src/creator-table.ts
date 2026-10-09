@@ -1,12 +1,7 @@
 import { mkdirSync } from "node:fs";
 import { dirname, relative, resolve, sep } from "node:path";
 import Database from "better-sqlite3";
-import type {
-  AuthoredKind,
-  AuthoredLayout,
-  AuthoredRefusal,
-  AuthoredRoot,
-} from "./authored-layout.js";
+import type { AuthoredKind, AuthoredLayout } from "./authored-layout.js";
 
 // The creator table (ADR 0088 §3): a host-level map from a shared item's project path and kind to
 // the user who created it. Only that user writes or deletes the item; an item with no row is
@@ -26,9 +21,6 @@ export interface CreatorTable {
   reassign(from: string, to: string): number;
   close(): void;
 }
-
-/** The host-level database in the project `.path`: the creator table and VM-time usage. */
-export const HOST_DB_FILE = "host.db";
 
 export const SHARED_ITEM_READ_ONLY = "only the creator edits a shared item";
 
@@ -77,32 +69,6 @@ export function openCreatorTable(dbPath: string): CreatorTable {
 /** The table's key for a file: its `/`-separated path relative to the project directory. */
 export function projectPathOf(layout: AuthoredLayout, path: string): string {
   return relative(layout.projectDir, resolve(layout.projectDir, path)).split(sep).join("/");
-}
-
-/** Whether the layout's user may change the item at `path`: anything but a shared item passes
- * here, and a shared item passes only for its recorded creator. */
-export function sharedWriteRefusal(
-  layout: AuthoredLayout,
-  creators: CreatorTable,
-  path: string,
-  kind: AuthoredKind,
-): AuthoredRefusal | undefined {
-  if (layout.classify(path)?.origin !== "shared") return undefined;
-  return creators.creatorOf(projectPathOf(layout, path), kind) === layout.userId
-    ? undefined
-    : { status: 403, message: SHARED_ITEM_READ_ONLY };
-}
-
-/** Whether the layout's user may not write the scanned file at `absPath` under `root`: a shipped
- * file never, a shared one unless they created it. */
-export function readOnlyFor(
-  layout: AuthoredLayout,
-  creators: CreatorTable,
-  { absPath, root }: { absPath: string; root: AuthoredRoot },
-): boolean {
-  if (!root.writable) return true;
-  if (root.origin !== "shared") return false;
-  return creators.creatorOf(projectPathOf(layout, absPath), root.kind) !== layout.userId;
 }
 
 /** Stamp the layout's user on every shared file that has no row yet. Local mode adopts the

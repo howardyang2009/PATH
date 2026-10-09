@@ -46,16 +46,10 @@ afterEach(async () => {
 });
 
 async function start(): Promise<string> {
-  handle = await startPathServer(
-    projectDir,
-    0,
-    undefined,
-    undefined,
-    undefined,
-    join(shippedDir, "template"),
-    join(shippedDir, "workflow"),
-    process.env.CLERK_JWT_KEY ? hostedMode(projectDir) : undefined,
-  );
+  handle = await startPathServer(projectDir, {
+    shippedDir: { template: join(shippedDir, "template"), workflow: join(shippedDir, "workflow") },
+    mode: process.env.CLERK_JWT_KEY ? hostedMode(projectDir) : undefined,
+  });
   return handle.url;
 }
 

@@ -26,15 +26,7 @@ function put(root: string, relPath: string, content: string): void {
 }
 
 async function download(id: string): Promise<Response> {
-  handle = await startPathServer(
-    projectDir,
-    0,
-    undefined,
-    undefined,
-    undefined,
-    shippedDir,
-    undefined,
-  );
+  handle = await startPathServer(projectDir, { shippedDir: { template: shippedDir } });
   return fetch(`${handle.url}/v0/templates/${id}/download`);
 }
 

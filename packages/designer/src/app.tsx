@@ -177,9 +177,10 @@ export function App({
   // The lease is per file: acquire one for every *opened* frame on the stack, so a `workflow`-ref
   // descent holds a second, independently-beating lease; a frame that only failed to open or a
   // never-saved buffer takes none. The document policy below picks the doors and the leased paths
-  // from the session alone.
+  // from the session alone. A read-only file takes none: the Server leases only to its writer.
   const policy = documentPolicy(session);
-  const { sessionId, leases, takeover, reacquire } = useEditLeases(client, policy.leasedPaths);
+  const leasedPaths = policy.leasedPaths.filter((path) => !workflowReadOnly(discovery, path));
+  const { sessionId, leases, takeover, reacquire } = useEditLeases(client, leasedPaths);
   // Delete removes the root file from disk (`planDelete`): always confirmed, since it cannot be
   // undone.
   const deletePlan = planDelete(session);

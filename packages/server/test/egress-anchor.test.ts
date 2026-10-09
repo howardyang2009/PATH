@@ -63,16 +63,7 @@ describe("hosted boot", () => {
 
   it("starts with the anchor loaded", async () => {
     stubHostedEnv();
-    const handle = await startPathServer(
-      dir,
-      0,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      hostedMode(dir),
-    );
+    const handle = await startPathServer(dir, { mode: hostedMode(dir) });
     await handle.close();
   });
 });

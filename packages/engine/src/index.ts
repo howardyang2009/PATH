@@ -1,4 +1,3 @@
-export { secretPathsOf } from "./launch-facts.js";
 export {
   type LoadedWorkflow,
   type LoadResult,
@@ -24,9 +23,11 @@ export {
 } from "./persistence/marker-lease.js";
 export { dbFilePath, pathDir, rootRunTreeDir } from "./persistence/paths.js";
 export {
+  countWorkflowPaths,
   exportTreeFromFile,
   type ImportTreeResult,
   type RunTreeExport,
+  rewriteWorkflowPaths,
 } from "./persistence/run-transfer.js";
 export { type LoadedStepPluginRegistry, loadStepPluginRegistry } from "./plugin-seam/scan.js";
 export {
@@ -45,6 +46,7 @@ export {
 } from "./project.js";
 export type {
   ListRootsOptions,
+  RecordedRoot,
   RunArchive,
   RunBlobName,
   RunTree,

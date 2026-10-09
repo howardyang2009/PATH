@@ -35,15 +35,7 @@ function flow(name: string, refs: string[] = []): string {
 }
 
 async function download(path: string, origin?: "shipped"): Promise<Response> {
-  handle ??= await startPathServer(
-    projectDir,
-    0,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    shippedDir,
-  );
+  handle ??= await startPathServer(projectDir, { shippedDir: { workflow: shippedDir } });
   const suffix = origin === undefined ? "" : `&origin=${origin}`;
   return fetch(`${handle.url}/v0/workflows/download?path=${encodeURIComponent(path)}${suffix}`);
 }

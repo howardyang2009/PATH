@@ -18,18 +18,18 @@ import {
   pathDir,
   type RunTreeExport,
   rootRunTreeDir,
-  secretPathsOf,
 } from "@path/engine";
 import { type JsonValue, type LogEvent, LogEventSchema, type RunStatus } from "@path/schema";
 import { z } from "zod";
 import {
   type LiveRuns,
+  liveRunsOver,
   ResumeNotFound,
   ResumeRefused,
-  type StartedRun,
+  type RunDrive,
+  type RunExecutor,
   type StartRunOptions,
 } from "../live-runs.js";
-import { RunEventHub, streamRun } from "../run-event-hub.js";
 import type { SandboxMount, SandboxProcess, SandboxRuntime } from "./sandbox-runtime.js";
 import type { VmJob, VmLine, VmOperation } from "./vm-entry.js";
 import type { VmSlots } from "./vm-slots.js";
@@ -81,7 +81,8 @@ export interface RunOwner {
   importRefusal?(): string | undefined;
 }
 
-const UNLIMITED: RunOwner = { userId: "", maxRunningVms: Number.POSITIVE_INFINITY };
+/** The owner of local or untracked runs: no cap, no meter. */
+export const UNLIMITED: RunOwner = { userId: "", maxRunningVms: Number.POSITIVE_INFINITY };
 
 /** Why the host stopped a VM. */
 type StopReason = "cancel" | "timeout";
@@ -115,20 +116,15 @@ export function createSandboxedRuns(
   sandbox: SandboxOptions,
   owner: RunOwner = UNLIMITED,
 ): LiveRuns {
-  const hub = new RunEventHub();
-  /** Each root a VM invocation holds, queued or running, with how to stop it. */
-  const stops = new Map<string, (reason: StopReason) => void>();
+  return liveRunsOver(store, vmExecutor(store, sandbox, owner));
+}
+
+/** Runs each operation in a fresh VM; a cancel stops the VM, or takes a queued one off its slot. */
+export function vmExecutor(store: Project, sandbox: SandboxOptions, owner: RunOwner): RunExecutor {
   /** Each running root's events so far that the store does not hold yet. */
   const streamed = new Map<string, LogEvent[]>();
-  const inFlight = new Set<Promise<unknown>>();
 
-  function track<T>(work: Promise<T>): Promise<T> {
-    inFlight.add(work);
-    work.finally(() => inFlight.delete(work)).catch(() => {});
-    return work;
-  }
-
-  async function invoke(job: VmJob, env: { [name: string]: string }): Promise<Invocation> {
+  async function invoke(job: VmJob, env: { [name: string]: string }, drive: RunDrive) {
     const rootRunId = job.rootRunId;
     let reason: StopReason | undefined;
     let vm: SandboxProcess | undefined;
@@ -140,23 +136,25 @@ export function createSandboxedRuns(
       killTimer = setTimeout(() => vm?.kill(), sandbox.stopGraceMs);
     };
     const ticket = sandbox.slots.take(owner.userId, owner.maxRunningVms);
-    stops.set(rootRunId, (why) => {
+    const onCancel = (): void => {
       ticket.cancel();
-      stop(why);
-    });
+      stop("cancel");
+    };
+    if (drive.signal.aborted) onCancel();
+    else drive.signal.addEventListener("abort", onCancel, { once: true });
 
     const release = await ticket.slot;
     if (release === null || reason !== undefined) {
       release?.();
       await store.archive.endNonTerminal(rootRunId, "cancelled");
-      return { ended: "cancelled" };
+      return { ended: "cancelled" } satisfies Invocation;
     }
     // The limits may have run out while the launch waited.
     const refused = owner.startRefusal?.();
     if (refused !== undefined) {
       release();
       await store.archive.endNonTerminal(rootRunId, "failed", refused);
-      return { ended: "failed", error: refused };
+      return { ended: "failed", error: refused } satisfies Invocation;
     }
     const staging = stagingDir(store, rootRunId);
     const endMeter = owner.meter?.();
@@ -181,10 +179,10 @@ export function createSandboxedRuns(
           // `seq` only grows, so a VM cannot rewrite what a Viewer already saw.
           if (event === undefined || event.seq <= (events.at(-1)?.seq ?? 0)) return;
           events.push(event);
-          hub.publish(rootRunId, event);
+          drive.publish(event);
         },
       );
-      if (job.operation.kind !== "complete") markRoot(store, job, "running");
+      if (job.operation.kind !== "complete") recordRoot(store, job, "running");
       const timeout = setTimeout(() => stop("timeout"), sandbox.timeoutMs);
       const code = await vm.exited;
       clearTimeout(timeout);
@@ -219,22 +217,16 @@ export function createSandboxedRuns(
     }
   }
 
-  /** Runs a job for a new tree in the background; the tree's `pending` row is already written. */
-  function launch(job: VmJob, env: { [name: string]: string }): StartedRun {
+  /** Runs a job for a new tree whose `pending` row is written; the launch resolves at once. */
+  async function launch(job: VmJob, options: SharedOptions, drive: RunDrive): Promise<void> {
     const rootRunId = job.rootRunId;
-    hub.open(rootRunId);
-    track(
-      invoke(job, env)
-        .catch(async (err) => {
-          console.error(`run ${rootRunId} crashed: ${err instanceof Error ? err.stack : err}`);
-          await store.archive.endNonTerminal(rootRunId, "failed", SANDBOX_LOST);
-        })
-        .finally(() => {
-          stops.delete(rootRunId);
-          hub.close(rootRunId);
-        }),
-    );
-    return { runId: rootRunId, rootRunId };
+    drive.started({ runId: rootRunId, rootRunId });
+    try {
+      await invoke(job, vmEnv(options), drive);
+    } catch (err) {
+      console.error(`run ${rootRunId} crashed: ${err instanceof Error ? err.stack : err}`);
+      await store.archive.endNonTerminal(rootRunId, "failed", SANDBOX_LOST);
+    }
   }
 
   const vmEnv = (options: SharedOptions): { [name: string]: string } => ({
@@ -243,18 +235,18 @@ export function createSandboxedRuns(
   });
 
   return {
-    async start(rootFile, workflowDir, options) {
+    async start(rootFile, workflowDir, options, drive) {
       const job = vmJob(store, randomUUID(), rootFile, workflowDir, options, {
         kind: "start",
         input: options.input,
         operatorInput: options.operatorInput,
         launchWorkerDefaults: options.launchWorkerDefaults,
       });
-      markRoot(store, job, "pending");
-      return launch(job, vmEnv(options));
+      recordRoot(store, job, "pending");
+      await launch(job, options, drive);
     },
 
-    async resume(rootFile, resumeRootRunId, workflowDir, options) {
+    async resume(rootFile, resumeRootRunId, workflowDir, options, drive) {
       const refusal = store.checkResume(rootFile, resumeRootRunId, workflowDir, options);
       if (refusal !== undefined) {
         throw "refusal" in refusal
@@ -267,14 +259,15 @@ export function createSandboxedRuns(
         rerunFromRunId: options.rerunFromRunId,
       });
       job.copyIn = copyIn(store, [resumeRootRunId]);
-      markRoot(store, job, "pending", resumeRootRunId);
-      return launch(job, vmEnv(options));
+      recordRoot(store, job, "pending", resumeRootRunId);
+      await launch(job, options, drive);
     },
 
-    async complete(rootFile, rootRunId, stepRunId, output, workflowDir, options) {
+    async complete(rootFile, rootRunId, stepRunId, output, workflowDir, options, drive) {
       const refusal = store.checkComplete(rootFile, stepRunId, output, workflowDir, options);
       if (refusal !== undefined) return refusal;
-      if (stops.has(rootRunId)) {
+      // The VM works on a copy of the tree, so no second invocation may hold it meanwhile.
+      if (drive.held) {
         return {
           ok: false,
           reason: "lease-held",
@@ -287,13 +280,7 @@ export function createSandboxedRuns(
         output,
       });
       job.copyIn = copyIn(store, [rootRunId]);
-      hub.open(rootRunId);
-      const done = await track(
-        invoke(job, vmEnv(options)).finally(() => {
-          stops.delete(rootRunId);
-          hub.close(rootRunId);
-        }),
-      );
+      const done = await invoke(job, vmEnv(options), drive);
       return (
         done.result ?? {
           ok: true,
@@ -305,31 +292,7 @@ export function createSandboxedRuns(
       );
     },
 
-    cancel(rootRunId) {
-      const stop = stops.get(rootRunId);
-      if (stop === undefined) return false;
-      stop("cancel");
-      return true;
-    },
-
-    stream(rootRunId, afterSeq, handlers) {
-      // The store's narrative, then what the running VM streamed past it.
-      const history = (after: number | undefined): LogEvent[] => {
-        const stored = store.archive.tree(rootRunId)?.events(after) ?? [];
-        const from = Math.max(after ?? 0, stored.at(-1)?.seq ?? 0);
-        const live = streamed.get(rootRunId) ?? [];
-        return [...stored, ...live.filter((event) => event.seq > from)];
-      };
-      return streamRun(hub, history, rootRunId, afterSeq, handlers);
-    },
-
-    get cancellable() {
-      return stops.size;
-    },
-
-    async idle() {
-      while (inFlight.size > 0) await Promise.allSettled([...inFlight]);
-    },
+    unstored: (rootRunId) => streamed.get(rootRunId) ?? [],
   };
 }
 
@@ -434,46 +397,19 @@ function parseEventLine(line: string): LogEvent | undefined {
   return event.success ? event.data : undefined;
 }
 
-/**
- * The launch facts the host's root row carries until the VM's export replaces them: only the
- * `$secret` config paths, so a Complete form asks for them again even before the export lands.
- */
-function hostLaunchFacts(store: Project, job: VmJob): string | null {
-  const operation = job.operation;
-  const inherited =
-    operation.kind === "resume"
-      ? (store.archive.launchFacts(operation.predecessorRootRunId)?.secretKeys ?? [])
-      : [];
-  const own = job.operatorConfig ? secretPathsOf(job.operatorConfig) : [];
-  const secretKeys = [...new Set([...own, ...inherited])];
-  return secretKeys.length > 0 ? JSON.stringify({ secretKeys }) : null;
-}
-
 /** The host's own root row for a new tree, used until the VM's export replaces it. */
-function markRoot(store: Project, job: VmJob, status: RunStatus, resumedFrom?: string): void {
-  const rootRunId = job.rootRunId;
+function recordRoot(store: Project, job: VmJob, status: RunStatus, resumedFrom?: string): void {
   // The staging directory marks the tree as the sandbox's, so a reaper finds a queued run too.
-  mkdirSync(stagingDir(store, rootRunId), { recursive: true });
-  const now = new Date().toISOString();
-  const result = store.archive.importTree(rootRunId, {
-    runs: [
-      {
-        run_id: rootRunId,
-        root_run_id: rootRunId,
-        parent_run_id: null,
-        status,
-        started_at: store.archive.tree(rootRunId)?.root?.startedAt ?? now,
-        resumed_from_root_run_id:
-          resumedFrom ?? store.archive.tree(rootRunId)?.root?.resumedFromRootRunId ?? null,
-        workflow_id: job.rootFile.id ?? null,
-        workflow_name: job.rootFile.name ?? null,
-        workflow_path: job.sourceWorkflowPath ?? null,
-        launch_facts: hostLaunchFacts(store, job),
-      },
-    ],
-    events: [],
-  } satisfies RunTreeExport);
-  if (!result.ok) console.error(`run ${rootRunId}: ${result.error}`);
+  mkdirSync(stagingDir(store, job.rootRunId), { recursive: true });
+  const result = store.archive.recordRoot(job.rootRunId, {
+    status,
+    workflowId: job.rootFile.id,
+    workflowName: job.rootFile.name,
+    workflowPath: job.sourceWorkflowPath,
+    resumedFromRootRunId: resumedFrom,
+    operatorConfig: job.operatorConfig,
+  });
+  if (!result.ok) console.error(`run ${job.rootRunId}: ${result.error}`);
 }
 
 /**

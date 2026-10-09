@@ -99,6 +99,11 @@ An Architecture Decision Record (ADR) records one decision PATH has made: the sh
 | [0093](0093-the-api-clients-endpoint-functions-are-implementation.md) | The API client's endpoint functions are implementation, not a public surface | accepted |
 | [0094](0094-a-route-handler-answers-with-a-reply-value.md) | A route handler answers with a reply value, not a response | accepted |
 | [0095](0095-the-anthropic-worker-takes-a-subscription-token-from-config.md) | The `anthropic` worker takes a subscription token from config | accepted |
+| [0096](0096-one-write-access-decides-who-may-change-an-authored-file.md) | One write access decides who may change an authored file | accepted |
+| [0097](0097-one-run-lifecycle-core-behind-two-run-executors.md) | One run-lifecycle core behind two run executors | accepted |
+| [0098](0098-one-admission-module-decides-what-a-hosted-user-may-do.md) | One admission module decides what a hosted user may do | accepted |
+| [0099](0099-tenancy-has-a-local-and-a-hosted-adapter.md) | Tenancy has a local and a hosted adapter | accepted |
+| [0100](0100-one-host-layout-names-user-folders-and-host-files.md) | One host layout names user folders and host files | accepted |
 
 ## Superseded decisions
 

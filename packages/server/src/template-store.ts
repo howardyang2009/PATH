@@ -14,20 +14,15 @@ import {
   removeArtifact,
   serializeArtifact,
 } from "./artifact-file.js";
-import { AUTHORED_SUFFIX, type AuthoredLayout, type AuthoredOrigin } from "./authored-layout.js";
-import {
-  type CreatorTable,
-  projectPathOf,
-  readOnlyFor,
-  SHARED_ITEM_READ_ONLY,
-} from "./creator-table.js";
+import { AUTHORED_SUFFIX, type AuthoredOrigin } from "./authored-layout.js";
+import { SHARED_ITEM_READ_ONLY } from "./creator-table.js";
 import { strongEtag } from "./etag.js";
-import { fileSizeRefusal, sharedItemLimitRefusal, type UserLimits } from "./request-limits.js";
+import type { WriteAccess } from "./write-access.js";
 
 // The Template store (ADR 0050, ADR 0084): Server-owned, engine-blind discovery of
 // shipped∪shared∪user authoring templates. A template is typed by its file **suffix**, never its
 // bytes or its folder. The Step-Template is the only kind. A shared template is writable only by its
-// creator (ADR 0088).
+// creator (ADR 0088), as the requester's write access decides.
 
 export type TemplateKind = "step";
 export type TemplateOrigin = AuthoredOrigin;
@@ -161,11 +156,10 @@ function classify(
  * one and never the scan.
  */
 export function discoverTemplates(
-  layout: AuthoredLayout,
+  access: WriteAccess,
   registry: StepPluginRegistry,
-  creators: CreatorTable,
-  limits?: UserLimits,
 ): TemplateStore {
+  const { layout } = access;
   const { projectDir } = layout;
   const stepSchema = makeStepTemplateSchema(registry);
 
@@ -176,7 +170,7 @@ export function discoverTemplates(
       kind: "step",
       origin: root.origin,
       folder: dirname(relative(root.dir, absPath)).split(sep).join("/").replace(/^\.$/, ""),
-      readOnly: readOnlyFor(layout, creators, { absPath, root }),
+      readOnly: access.readOnly({ absPath, root }),
       absPath,
       etag: strongEtag(bytes),
       ...classify(bytes, stepSchema),
@@ -225,7 +219,7 @@ export function discoverTemplates(
     payload: unknown,
     precondition: { ifMatch: string | undefined; rule: "create-or-overwrite" | "overwrite" },
   ): TemplateWrite => {
-    const tooLarge = fileSizeRefusal(limits, Buffer.byteLength(serializeArtifact(payload)));
+    const tooLarge = access.sizeRefusal(Buffer.byteLength(serializeArtifact(payload)));
     if (tooLarge !== undefined) return { ok: false, status: 403, message: tooLarge.message };
     const written = conditionalWrite(absPath, { ...precondition, payload });
     if (!written.ok) {
@@ -251,10 +245,8 @@ export function discoverTemplates(
     create(kind, name, payload, folder, origin = "user") {
       const valid = validate(payload);
       if (!valid.ok) return valid;
-      if (origin === "shared") {
-        const refusal = sharedItemLimitRefusal(limits, creators, layout.userId);
-        if (refusal !== undefined) return { ok: false, status: 403, message: refusal.message };
-      }
+      const refusal = access.createRefusal(origin);
+      if (refusal !== undefined) return { ok: false, status: 403, message: refusal.message };
       // A taken id would make the scan flag one of the two entries invalid.
       const holder = byId.get(valid.id);
       if (holder !== undefined) {
@@ -277,8 +269,7 @@ export function discoverTemplates(
           message: `a ${kind} template named "${name}" already exists`,
         };
       }
-      if (written.ok && origin === "shared")
-        creators.stamp(projectPathOf(layout, absPath), "template", layout.userId);
+      if (written.ok) access.created(absPath, "template");
       return written;
     },
     update(id, payload, ifMatch) {
@@ -295,9 +286,7 @@ export function discoverTemplates(
       const found = locate(id);
       if (!found.ok) return found;
       removeArtifact(found.entry.absPath);
-      if (found.entry.origin === "shared") {
-        creators.forget(projectPathOf(layout, found.entry.absPath), "template");
-      }
+      access.removed(found.entry.absPath, "template");
       return { ok: true };
     },
   };
@@ -309,14 +298,12 @@ const storesByContext = new WeakMap<object, TemplateStore>();
 
 /** The template union one server serves, scanned once per request context. */
 export function templatesOf(ctx: {
-  layout: AuthoredLayout;
+  access: WriteAccess;
   stepPlugins: StepPluginRegistry;
-  creators: CreatorTable;
-  limits?: UserLimits;
 }): TemplateStore {
   const held = storesByContext.get(ctx);
   if (held !== undefined) return held;
-  const store = discoverTemplates(ctx.layout, ctx.stepPlugins, ctx.creators, ctx.limits);
+  const store = discoverTemplates(ctx.access, ctx.stepPlugins);
   storesByContext.set(ctx, store);
   return store;
 }

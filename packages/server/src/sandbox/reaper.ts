@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { openProject, pathDir } from "@path/engine";
+import { userDir, userIds } from "../host-layout.js";
 import {
   recoverFromStaging,
   SANDBOX_DIR,
@@ -21,10 +22,8 @@ export async function reapSandboxes(
   for (const name of await sandbox.runtime.list("path.sandbox", "run")) {
     await sandbox.runtime.remove(name);
   }
-  const usersDir = join(projectDir, "users");
-  if (!existsSync(usersDir)) return;
-  for (const userId of readdirSync(usersDir)) {
-    const storeDir = join(usersDir, userId);
+  for (const userId of userIds(projectDir)) {
+    const storeDir = userDir(projectDir, userId);
     if (!existsSync(join(pathDir(storeDir), SANDBOX_DIR))) continue;
     const opened = openProject(storeDir);
     if (!opened.success) {

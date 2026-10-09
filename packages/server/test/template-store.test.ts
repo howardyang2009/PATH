@@ -7,6 +7,7 @@ import { authoredLayout } from "../src/authored-layout.js";
 import { type CreatorTable, openCreatorTable } from "../src/creator-table.js";
 import { strongEtag } from "../src/etag.js";
 import { discoverTemplates, type TemplateStore, templatesOf } from "../src/template-store.js";
+import { writeAccess } from "../src/write-access.js";
 
 /**
  * The template store's own interface: an id lookup plus its own writes. These drive the store
@@ -30,9 +31,8 @@ let creators: CreatorTable;
 /** The template union as `userId` sees it, over the one creator table. */
 async function openStore(userId = "local"): Promise<TemplateStore> {
   return discoverTemplates(
-    authoredLayout({ projectDir, userId }),
+    writeAccess(authoredLayout({ projectDir, userId }), creators),
     await loadStepPluginRegistry(),
-    creators,
   );
 }
 
@@ -239,7 +239,7 @@ describe("templatesOf — one scan per request context", () => {
   it("hands the same store back for one context, and a fresh one per context", async () => {
     const layout = authoredLayout({ projectDir, userId: "local" });
     const stepPlugins = await loadStepPluginRegistry();
-    const ctx = { layout, stepPlugins, creators };
+    const ctx = { access: writeAccess(layout, creators), stepPlugins };
 
     expect(templatesOf(ctx)).toBe(templatesOf(ctx));
     expect(templatesOf({ ...ctx })).not.toBe(templatesOf(ctx));

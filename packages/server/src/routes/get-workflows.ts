@@ -2,7 +2,6 @@ import { readFileSync } from "node:fs";
 import { relative } from "node:path";
 import { loadWorkflowTree } from "@path/engine";
 import type { ListWorkflowsResponse, WorkflowSummary } from "@path/schema";
-import { readOnlyFor } from "../creator-table.js";
 import type { RouteReply } from "../http-json.js";
 import type { ApiRequest } from "./route-context.js";
 
@@ -27,7 +26,7 @@ function shallowIdentity(absPath: string): { id: string | null; name: string | n
  * `is_root: null` (no ref set) and its error.
  */
 export async function handleGetWorkflows({ ctx }: ApiRequest): Promise<RouteReply> {
-  const { layout, creators } = ctx;
+  const { layout } = ctx.access;
   const scanned = layout.files("workflow");
   const loaded = await Promise.all(
     scanned.map(async ({ absPath, root }) => ({
@@ -55,7 +54,7 @@ export async function handleGetWorkflows({ ctx }: ApiRequest): Promise<RouteRepl
       origin: root.origin,
       root_path: rootPath,
       action: root.writable ? "open" : result.success ? "copy" : "none",
-      read_only: readOnlyFor(layout, creators, { absPath, root }),
+      read_only: ctx.access.readOnly({ absPath, root }),
     } as const;
     if (result.success) {
       const file = result.workflow.rootFile;

@@ -6,6 +6,9 @@ import { fileURLToPath } from "node:url";
 // `shared/` root the team owns and one `users/<user-id>/` root per user under the project, each
 // with a `workflow/` and a `template/` folder. Every door asks this module where a file sits.
 
+/** The folder each user's root sits in, one subfolder per user id. */
+export const USERS_DIR = "users";
+
 /** The one user until the Server knows who is asking. */
 export const DEFAULT_USER_ID = "local";
 
@@ -84,7 +87,7 @@ export function authoredLayout({
       writable: false,
     },
     { origin: "shared", kind, dir: join(project, "shared", kind), writable: true },
-    { origin: "user", kind, dir: join(project, "users", userId, kind), writable: true },
+    { origin: "user", kind, dir: join(project, USERS_DIR, userId, kind), writable: true },
   ];
   const byKind: Record<AuthoredKind, AuthoredRoot[]> = {
     workflow: rootsOf("workflow"),
@@ -93,7 +96,7 @@ export function authoredLayout({
   // The template folder of any user is a template root: no workflow door may write one.
   const anyUserTemplate = (abs: string): boolean => {
     const parts = relative(project, abs).split(/[\\/]/);
-    return parts[0] === "users" && parts.length >= 3 && parts[2] === "template";
+    return parts[0] === USERS_DIR && parts.length >= 3 && parts[2] === "template";
   };
 
   const allRoots = [...byKind.workflow, ...byKind.template];

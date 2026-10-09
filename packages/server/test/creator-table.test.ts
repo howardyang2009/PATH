@@ -3,12 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { authoredLayout } from "../src/authored-layout.js";
-import {
-  adoptSharedItems,
-  type CreatorTable,
-  openCreatorTable,
-  sharedWriteRefusal,
-} from "../src/creator-table.js";
+import { adoptSharedItems, type CreatorTable, openCreatorTable } from "../src/creator-table.js";
 
 let projectDir: string;
 let creators: CreatorTable;
@@ -39,24 +34,6 @@ describe("creator table", () => {
 
     creators.forget("shared/workflow/a.workflow.json", "workflow");
     expect(creators.creatorOf("shared/workflow/a.workflow.json", "workflow")).toBeUndefined();
-  });
-
-  it("refuses a shared write by anyone but the creator, and passes any other origin", () => {
-    const alice = authoredLayout({ projectDir, userId: "user_alice" });
-    const bob = authoredLayout({ projectDir, userId: "user_bob" });
-    const path = "shared/workflow/a.workflow.json";
-    creators.stamp(path, "workflow", "user_alice");
-
-    expect(sharedWriteRefusal(alice, creators, path, "workflow")).toBeUndefined();
-    expect(sharedWriteRefusal(bob, creators, `./${path}`, "workflow")).toMatchObject({
-      status: 403,
-    });
-    expect(
-      sharedWriteRefusal(bob, creators, "shared/workflow/none.workflow.json", "workflow"),
-    ).toMatchObject({ status: 403 });
-    expect(
-      sharedWriteRefusal(bob, creators, "users/user_bob/workflow/x.workflow.json", "workflow"),
-    ).toBeUndefined();
   });
 
   it("adopts untracked shared files for the layout's user and keeps existing rows", () => {

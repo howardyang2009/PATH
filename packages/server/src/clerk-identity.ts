@@ -1,6 +1,6 @@
 import { verifyToken } from "@clerk/backend";
 import { firstHeader } from "./origin-gate.js";
-import type { UserIdResolver } from "./requester.js";
+import type { UserIdResolver } from "./tenancy.js";
 
 /** A Clerk user id, safe to use as a folder name. `local` never matches. */
 const CLERK_USER_ID = /^user_[A-Za-z0-9]+$/;

@@ -428,9 +428,23 @@ and issues use them exactly.
   ([ADR 0088](https://github.com/howardyang2009/PATH/blob/main/docs/adr/0088-each-request-sees-its-own-view-and-only-the-creator-writes-a-shared-item.md)).
 - **Creator** — the user who first saved a **shared** item. Only the creator edits or deletes it;
   everyone else reads, runs or copies it. A shared item with no known creator is read-only for all.
+- **Write access** — the one Server module that decides which authored files a requester may
+  change: in their view, not shipped, and for an existing shared item only its **Creator**, under the
+  requester's shared-item and file-size limits. Every door that writes, deletes or takes the edit lease
+  of an authored file asks it, so a reader cannot lease a file away from its writer
+  ([ADR 0096](https://github.com/howardyang2009/PATH/blob/main/docs/adr/0096-one-write-access-decides-who-may-change-an-authored-file.md)).
 - **Launcher** — the user who started a root run. A run is private to its launcher: it lives in the
   launcher's own **store**, and no other user can list, read, resume, complete, cancel or delete it,
   even when the workflow it ran is shared. The store a run lives in is the only record of who launched it.
+- **Tenancy** — how one Server process maps a request to its user and where that user's runs live.
+  Local mode has one user, `local`, on the project's own store with in-process runs; hosted mode
+  verifies each request and gives each user their own store, **Secret store** and VM runs. The mode is
+  branched once, where the Server boots
+  ([ADR 0099](https://github.com/howardyang2009/PATH/blob/main/docs/adr/0099-tenancy-has-a-local-and-a-hosted-adapter.md)).
+- **Admission** — what one hosted user may do, decided in one module: the request rate and body cap,
+  the run limit a launch or an authored write must pass, and the limits each queued VM is held to
+  again when it starts and when its rows import. Local mode admits everything
+  ([ADR 0098](https://github.com/howardyang2009/PATH/blob/main/docs/adr/0098-one-admission-module-decides-what-a-hosted-user-may-do.md)).
 
 ## Invariants
 
@@ -630,6 +644,12 @@ Rule of thumb: **Config flows in from outside. Context is written from inside.**
   Each root run records its **source-workflow identity** (Identity): the producing workflow's id, name,
   and store-relative path. Thus a shared store segments its runs by workflow instead of a list of
   anonymous run-ids.
+- **Run executor** — where a Server's runs execute, behind the one module that tracks them: in
+  process in local mode, or a VM per engine invocation in hosted mode. That module owns the live event
+  channels, cancel and the drain at shutdown for both; an executor only runs a Start, Resume or
+  Complete and reports when its root exists. A VM run's host root row is written by the engine's
+  run archive, never by hand
+  ([ADR 0097](https://github.com/howardyang2009/PATH/blob/main/docs/adr/0097-one-run-lifecycle-core-behind-two-run-executors.md)).
 
 ## Discovery
 
@@ -662,6 +682,10 @@ Rule of thumb: **Config flows in from outside. Context is written from inside.**
   sits; discovery, the Template store and the workflow store scan through it, and discovery sends the
   writable workflow roots to clients, so no client carries the folder layout
   ([ADR 0087](https://github.com/howardyang2009/PATH/blob/main/docs/adr/0087-the-authored-layout-decides-where-a-file-lives-and-who-may-write-it.md)).
+- **Host layout** — where a project's per-user data and the Server's own files live on disk: each
+  user's folder under `users/`, the directory their **store** opens at, and the host-level files in the
+  project `.path` that never move with a user's store
+  ([ADR 0100](https://github.com/howardyang2009/PATH/blob/main/docs/adr/0100-one-host-layout-names-user-folders-and-host-files.md)).
 - **Row action** — what a picker offers for one discovered workflow, decided by the Server and sent
   as its `action`: `open` a user or shared file, `copy` a valid shipped one, or `none` for an invalid
   shipped one. The Viewer's workflow list and the Designer's pickers switch on it instead of on

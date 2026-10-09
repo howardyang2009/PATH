@@ -1,14 +1,11 @@
 import { readFileSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
-import { pathDir } from "@path/engine";
+import { hostFile } from "./host-layout.js";
 
 // A marker that a Server holds this project open, so an offline operator tool can refuse to run
 // beside it. A crash leaves the file behind; its pid then names no live process.
 
-export const SERVER_PID_FILE = "server.pid";
-
 function pidFile(projectDir: string): string {
-  return join(pathDir(projectDir), SERVER_PID_FILE);
+  return hostFile(projectDir, "pid");
 }
 
 /** Records this process as the project's Server; the returned function removes the record if it

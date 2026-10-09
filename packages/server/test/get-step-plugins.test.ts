@@ -22,7 +22,7 @@ afterEach(async () => {
 /** `GET /v0/step-plugins` against a server started over `stepPlugins` (defaults to the real
  * scan). */
 async function getStepPlugins(stepPlugins?: LoadedStepPluginRegistry): Promise<Response> {
-  handle = await startPathServer(projectDir, 0, undefined, undefined, stepPlugins);
+  handle = await startPathServer(projectDir, { stepPlugins });
   return fetch(`${handle.url}/v0/step-plugins`);
 }
 
