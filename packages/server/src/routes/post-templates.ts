@@ -1,7 +1,6 @@
 import { NameSchema, type WireTemplateWriteResponse } from "@path/schema";
 import { z } from "zod";
-import type { RouteReply } from "../http-json.js";
-import { readRequestBody, replyError } from "../http-json.js";
+import { type RouteReply, readRequestBody, replyError } from "../http-json.js";
 import { templatesOf } from "../template-store.js";
 import type { ApiRequest } from "./route-context.js";
 
@@ -34,12 +33,12 @@ const PostTemplateBodySchema = z
  * `users/<user-id>/template/`, or `shared/template/` when `origin` is `"shared"`. The client mints the envelope `id` and the server writes it
  * verbatim, never to a shipped path. A name that already exists is a `409`; content changes go through `PUT` (§10.4).
  */
-export async function handlePostTemplates({ req, ctx }: ApiRequest): Promise<RouteReply> {
-  const body = await readRequestBody(req, PostTemplateBodySchema);
-  if (!body.ok) return body.reply;
-  const { kind, name, folder, origin } = body.data;
+export async function handlePostTemplates({ body, ctx }: ApiRequest): Promise<RouteReply> {
+  const parsed = readRequestBody(body, PostTemplateBodySchema);
+  if (!parsed.ok) return parsed.reply;
+  const { kind, name, folder, origin } = parsed.data;
   // The raw `body` sub-object, not zod's parsed copy, so the author's key order is preserved.
-  const rawBody = (body.raw as { body: unknown }).body;
+  const rawBody = (parsed.raw as { body: unknown }).body;
 
   // The store validates the envelope, refuses a taken name or id, and writes.
   const written = templatesOf(ctx).create(kind, name, rawBody, folder, origin);

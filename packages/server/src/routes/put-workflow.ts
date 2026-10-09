@@ -21,15 +21,15 @@ const PutWorkflowBodySchema = z
  * `PUT /v0/workflows` (server-api-v0.md §7, ADR 0016): the write door for create and overwrite. The
  * server is identity-agnostic (ADR 0015): it validates `id` shape but never mints or diffs it.
  */
-export async function handlePutWorkflow({ req, ctx }: ApiRequest): Promise<RouteReply> {
-  const body = await readRequestBody(req, PutWorkflowBodySchema);
-  if (!body.ok) return body.reply;
+export async function handlePutWorkflow({ req, body, ctx }: ApiRequest): Promise<RouteReply> {
+  const parsed = readRequestBody(body, PutWorkflowBodySchema);
+  if (!parsed.ok) return parsed.reply;
 
   // Serialize the *raw* object, not zod's parsed copy, so the author's key order survives (ADR
   // 0016).
-  const rawWorkflow = (body.raw as { workflow: unknown }).workflow;
+  const rawWorkflow = (parsed.raw as { workflow: unknown }).workflow;
   const written = workflowsOf(ctx).write(
-    body.data.workflow_path,
+    parsed.data.workflow_path,
     rawWorkflow,
     firstHeader(req.headers["if-match"]),
   );

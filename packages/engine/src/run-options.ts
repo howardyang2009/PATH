@@ -1,6 +1,7 @@
-import type { ConfigObject, JsonValue, RunRecord, WorkflowFile } from "@path/schema";
+import type { ConfigObject, JsonValue, WorkflowFile } from "@path/schema";
 import type { LoadedStepPluginRegistry } from "./plugin-seam/scan.js";
 import type { WorkerDescriptor } from "./plugin-seam/seam.js";
+import type { RunHistory } from "./run-history.js";
 import type { RunObserver } from "./run-observer.js";
 
 /** The public inputs and result of `runWorkflow`. */
@@ -94,12 +95,11 @@ export interface ContinuationRunOptions extends RunSeams {
 export type RunOptions = LaunchRunOptions | ContinuationRunOptions;
 
 /**
- * What a successor run needs from the original tree: its run rows plus a reader for one blob. The
- * engine core does no I/O.
+ * What a successor run needs from the original tree: its {@link RunHistory} — the rows plus a
+ * reader for one blob. The engine core does no I/O.
  */
 export interface ResumeInput {
-  originalRuns: RunRecord[];
-  readBlob: (run: RunRecord, filename: string) => JsonValue;
+  history: RunHistory;
   /** The **rerun boundary (K)** as the descent path of node ids (ADR 0032/0036): empty/undefined is
    * plain Resume. */
   rerunFromNodePath?: string[];
@@ -114,8 +114,7 @@ export interface ResumeInput {
  */
 export interface ContinueInput {
   rootRunId: string;
-  existingRuns: RunRecord[];
-  readBlob: (run: RunRecord, filename: string) => JsonValue;
+  history: RunHistory;
   target: { stepRunId: string; output: JsonValue };
 }
 

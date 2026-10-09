@@ -57,18 +57,31 @@ function request(method: string, body = ""): IncomingMessage {
 describe("hosted admission", () => {
   it("counts requests against the rate and answers 429 with Retry-After past it", async () => {
     const limits = admit({ requestsPerMinute: 1 });
-    expect(await limits.admitRequest(request("GET"), ALICE)).toBeUndefined();
+    expect(await limits.admitRequest(request("GET"), ALICE)).toMatchObject({ ok: true });
     expect(await limits.admitRequest(request("GET"), ALICE)).toMatchObject({
-      status: 429,
-      headers: { "Retry-After": "60" },
+      ok: false,
+      reply: { status: 429, headers: { "Retry-After": "60" } },
     });
   });
 
-  it("refuses a body over the cap with 413", async () => {
+  it("reads the body under the cap and refuses one over it with 413", async () => {
     const limits = admit({ maxBodyBytes: 4 });
-    expect(await limits.admitRequest(request("POST", "{}"), ALICE)).toBeUndefined();
+    // The body arrives as a value: the cap and the read are the same admission step.
+    expect(await limits.admitRequest(request("POST", "{}"), ALICE)).toMatchObject({
+      ok: true,
+      body: { present: true, raw: {} },
+    });
     expect(await limits.admitRequest(request("POST", "0123456789"), ALICE)).toMatchObject({
-      status: 413,
+      ok: false,
+      reply: { status: 413 },
+    });
+  });
+
+  it("refuses a body that is not JSON before a handler sees it", async () => {
+    const limits = admit({ maxBodyBytes: 1024 });
+    expect(await limits.admitRequest(request("POST", "{not json"), ALICE)).toMatchObject({
+      ok: false,
+      reply: { status: 400 },
     });
   });
 
@@ -111,7 +124,11 @@ describe("hosted admission", () => {
 describe("unlimited admission", () => {
   it("passes every request, gate and VM", async () => {
     expect(UNLIMITED_ADMISSION.limitsOf(ALICE)).toBeUndefined();
-    expect(await UNLIMITED_ADMISSION.admitRequest(request("POST", "{}"), ALICE)).toBeUndefined();
+    // Local mode has no cap, but the body is still read as a value at the one seam.
+    expect(await UNLIMITED_ADMISSION.admitRequest(request("POST", "{}"), ALICE)).toMatchObject({
+      ok: true,
+      body: { present: true, raw: {} },
+    });
     expect(UNLIMITED_ADMISSION.gateRefusal(ALICE, "launch")).toBeUndefined();
     expect(UNLIMITED_ADMISSION.runOwner(ALICE).maxRunningVms).toBe(Number.POSITIVE_INFINITY);
   });

@@ -11,7 +11,8 @@ import { clerkToken, hostedMode, stubHostedEnv } from "./fixtures/clerk-token.js
 /**
  * Request limits (docs/spec/path-website.md §8): in hosted mode each user gets 120 requests per
  * minute, a 1 MB request body, 50 shared items and 1 MB per authored file, and the override map in
- * `.path/limits.json` changes any of them for one user. Local mode has no limits.
+ * `.path/limits.json` changes any of them for one user. Local mode has no rate, storage or VM
+ * limit, but its request body is still read under `DEFAULT_LIMITS.maxBodyBytes` (request-body.ts).
  */
 
 const MIB = 1024 * 1024;
@@ -189,6 +190,20 @@ describe("request body", () => {
   it("answers a body over 1 MB with 413", async () => {
     const url = await start();
     const res = await fetch(`${url}/v0/secrets/BIG`, as(ALICE, "PUT", { value: "x".repeat(MIB) }));
+    expect(res.status).toBe(413);
+    expect(await errorMessage(res)).toMatch(/request body too large/);
+  });
+
+  it("caps the body in local mode too: one reader, one rule", async () => {
+    const url = await start({ hosted: false });
+    const res = await fetch(`${url}/v0/workflows`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        workflow_path: "big.workflow.json",
+        workflow: { x: "y".repeat(MIB) },
+      }),
+    });
     expect(res.status).toBe(413);
     expect(await errorMessage(res)).toMatch(/request body too large/);
   });

@@ -1,6 +1,6 @@
 import { findRootRun, isTerminal, type JsonValue, type WorkflowFile } from "@path/schema";
 import { checkCompletedOutput } from "./complete-output.js";
-import { continuationBlobReader, continuationRunOptions, sourceRuns } from "./continuation.js";
+import { continuationRunOptions } from "./continuation.js";
 import { acquireCompleteLease } from "./persistence/complete-lease.js";
 import {
   cancelNonTerminalRuns,
@@ -9,6 +9,7 @@ import {
   getRunsForRoot,
 } from "./persistence/run-store.js";
 import type { ProjectContinuationOptions, ProjectCore } from "./project.js";
+import { diskRunHistory } from "./run-history.js";
 import type { ContinuationInput } from "./run-options.js";
 
 /**
@@ -141,8 +142,7 @@ export async function completeProjectStep(
     const continuation: ContinuationInput = {
       kind: "complete",
       rootRunId,
-      existingRuns: sourceRuns(db, directRuns),
-      readBlob: continuationBlobReader(absDir),
+      history: diskRunHistory(db, absDir, directRuns),
       target: { stepRunId, output },
     };
 

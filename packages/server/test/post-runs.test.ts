@@ -1,12 +1,12 @@
 import type { IncomingMessage } from "node:http";
 import { dirname, join } from "node:path";
-import { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import type { LoadedStepPluginRegistry, Project } from "@path/engine";
 import { describe, expect, it } from "vitest";
 import { authoredLayout } from "../src/authored-layout.js";
 import type { RouteReply } from "../src/http-json.js";
 import type { LiveRuns, StartRunOptions } from "../src/live-runs.js";
+import type { RequestBody } from "../src/request-body.js";
 import { handlePostRuns as handlePostRunsWithRequest } from "../src/routes/post-runs.js";
 import type { RouteContext } from "../src/routes/route-context.js";
 import type { WriteAccess } from "../src/write-access.js";
@@ -27,8 +27,18 @@ const fixturesDir = join(dirname(fileURLToPath(import.meta.url)), "fixtures");
  * so this adapter supplies the matched-request envelope. The route reads neither `params` nor
  * `query`, and a `reply` handler owns no response object — it answers with the value.
  */
-function handlePostRuns(req: IncomingMessage, ctx: RouteContext): Promise<RouteReply> {
-  return handlePostRunsWithRequest({ req, ctx, params: [], query: new URLSearchParams() });
+function bodyOf(value: unknown): RequestBody {
+  return { present: true, raw: value };
+}
+
+function handlePostRuns(body: unknown, ctx: RouteContext): Promise<RouteReply> {
+  return handlePostRunsWithRequest({
+    req: {} as IncomingMessage,
+    ctx,
+    params: [],
+    query: new URLSearchParams(),
+    body: bodyOf(body),
+  });
 }
 
 /** A `LiveRuns` whose only live method records the `start` options and answers a fixed id pair. */
@@ -40,11 +50,6 @@ function recordingLive(): { live: LiveRuns; started: StartRunOptions[] } {
   };
   const live = { start } as unknown as LiveRuns;
   return { live, started };
-}
-
-/** A request body streamed the way `readJsonBody` consumes it — `data` then `end`. */
-function fakeReq(body: unknown): IncomingMessage {
-  return Readable.from([Buffer.from(JSON.stringify(body))]) as unknown as IncomingMessage;
 }
 
 function context(live: LiveRuns): RouteContext {
@@ -71,7 +76,7 @@ describe("POST /v0/runs input resolution", () => {
   it("falls back to the file's own input seed when the request sends no input", async () => {
     const { live, started } = recordingLive();
 
-    const result = await handlePostRuns(fakeReq({ workflow_path: WITH_INPUT }), context(live));
+    const result = await handlePostRuns({ workflow_path: WITH_INPUT }, context(live));
 
     expect(result.status).toBe(202);
     expect(started[0]!.input).toEqual(FILE_SEED);
@@ -79,22 +84,19 @@ describe("POST /v0/runs input resolution", () => {
 
   it("treats an empty override as no override", async () => {
     const { live, started } = recordingLive();
-    await handlePostRuns(fakeReq({ workflow_path: WITH_INPUT, input: {} }), context(live));
+    await handlePostRuns({ workflow_path: WITH_INPUT, input: {} }, context(live));
     expect(started[0]!.input).toEqual(FILE_SEED);
   });
 
   it("lets a non-empty override win over the file seed", async () => {
     const { live, started } = recordingLive();
-    await handlePostRuns(
-      fakeReq({ workflow_path: WITH_INPUT, input: { ticket: 9 } }),
-      context(live),
-    );
+    await handlePostRuns({ workflow_path: WITH_INPUT, input: { ticket: 9 } }, context(live));
     expect(started[0]!.input).toEqual({ ticket: 9 });
   });
 
   it("sends {} for a file with no seed and no override", async () => {
     const { live, started } = recordingLive();
-    await handlePostRuns(fakeReq({ workflow_path: WORKFLOW }), context(live));
+    await handlePostRuns({ workflow_path: WORKFLOW }, context(live));
     expect(started[0]!.input).toEqual({});
   });
 });
@@ -107,7 +109,7 @@ describe("POST /v0/runs operatorInput (ADR 0046)", () => {
     const { live, started } = recordingLive();
 
     const result = await handlePostRuns(
-      fakeReq({ workflow_path: WORKFLOW, input: { ticket: 9 } }),
+      { workflow_path: WORKFLOW, input: { ticket: 9 } },
       context(live),
     );
 
@@ -117,11 +119,11 @@ describe("POST /v0/runs operatorInput (ADR 0046)", () => {
 
   it("records no override for an empty object or an absent field", async () => {
     const empty = recordingLive();
-    await handlePostRuns(fakeReq({ workflow_path: WORKFLOW, input: {} }), context(empty.live));
+    await handlePostRuns({ workflow_path: WORKFLOW, input: {} }, context(empty.live));
     expect(empty.started[0]!.operatorInput).toBeUndefined();
 
     const absent = recordingLive();
-    await handlePostRuns(fakeReq({ workflow_path: WORKFLOW }), context(absent.live));
+    await handlePostRuns({ workflow_path: WORKFLOW }, context(absent.live));
     expect(absent.started[0]!.operatorInput).toBeUndefined();
   });
 });
@@ -131,7 +133,7 @@ describe("POST /v0/runs worker_defaults (ADR 0044, #517)", () => {
     const { live, started } = recordingLive();
 
     const result = await handlePostRuns(
-      fakeReq({ workflow_path: WORKFLOW, worker_defaults: { binary: "spawn" } }),
+      { workflow_path: WORKFLOW, worker_defaults: { binary: "spawn" } },
       context(live),
     );
 
@@ -146,7 +148,7 @@ describe("POST /v0/runs worker_defaults (ADR 0044, #517)", () => {
     // Dispatch never reads `config` for worker selection, so a table smuggled inside it is inert.
     // The launch table must come from the top-level field alone.
     await handlePostRuns(
-      fakeReq({ workflow_path: WORKFLOW, config: { worker_defaults: { binary: "spawn" } } }),
+      { workflow_path: WORKFLOW, config: { worker_defaults: { binary: "spawn" } } },
       context(live),
     );
 
@@ -157,7 +159,7 @@ describe("POST /v0/runs worker_defaults (ADR 0044, #517)", () => {
   it("leaves a request without worker_defaults unchanged (no launch table)", async () => {
     const { live, started } = recordingLive();
 
-    const result = await handlePostRuns(fakeReq({ workflow_path: WORKFLOW }), context(live));
+    const result = await handlePostRuns({ workflow_path: WORKFLOW }, context(live));
 
     expect(result.status).toBe(202);
     expect(started[0]!.launchWorkerDefaults).toBeUndefined();
@@ -167,7 +169,7 @@ describe("POST /v0/runs worker_defaults (ADR 0044, #517)", () => {
     const { live, started } = recordingLive();
 
     const result = await handlePostRuns(
-      fakeReq({ workflow_path: WORKFLOW, worker_defaults: { binary: "" } }),
+      { workflow_path: WORKFLOW, worker_defaults: { binary: "" } },
       context(live),
     );
 
@@ -191,7 +193,7 @@ describe("POST /v0/runs worker_defaults registry validation (ADR 0044, #518)", (
     const { live, started } = recordingLive();
 
     const result = await handlePostRuns(
-      fakeReq({ workflow_path: WORKFLOW, worker_defaults: { badtype: "x" } }),
+      { workflow_path: WORKFLOW, worker_defaults: { badtype: "x" } },
       context(live),
     );
 
@@ -209,7 +211,7 @@ describe("POST /v0/runs worker_defaults registry validation (ADR 0044, #518)", (
     const { live, started } = recordingLive();
 
     const result = await handlePostRuns(
-      fakeReq({ workflow_path: WORKFLOW, worker_defaults: { prompt: "nosuchworker" } }),
+      { workflow_path: WORKFLOW, worker_defaults: { prompt: "nosuchworker" } },
       context(live),
     );
 
@@ -225,10 +227,10 @@ describe("POST /v0/runs worker_defaults registry validation (ADR 0044, #518)", (
     const { live } = recordingLive();
 
     const result = await handlePostRuns(
-      fakeReq({
+      {
         workflow_path: WORKFLOW,
         worker_defaults: { badtype: "x", prompt: "nosuchworker" },
-      }),
+      },
       context(live),
     );
 

@@ -25,9 +25,9 @@ const PostRunsBodySchema = z
   })
   .strict();
 
-export async function handlePostRuns({ req, ctx }: ApiRequest): Promise<RouteReply> {
-  const body = await readRequestBody(req, PostRunsBodySchema);
-  if (!body.ok) return body.reply;
+export async function handlePostRuns({ body, ctx }: ApiRequest): Promise<RouteReply> {
+  const parsed = readRequestBody(body, PostRunsBodySchema);
+  if (!parsed.ok) return parsed.reply;
   const {
     workflow_path: workflowPath,
     input,
@@ -35,7 +35,7 @@ export async function handlePostRuns({ req, ctx }: ApiRequest): Promise<RouteRep
     worker_defaults: launchWorkerDefaults,
     log_backends: logBackendIds,
     processor_concurrency: processorConcurrency,
-  } = body.data;
+  } = parsed.data;
 
   // ADR 0012: operator config may carry a literal `$secret` but not `$env`. Rejected before the
   // filesystem is touched — a bad config invalidates the request whatever the workflow turns out to

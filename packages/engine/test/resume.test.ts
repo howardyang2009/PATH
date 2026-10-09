@@ -10,6 +10,7 @@ import { RUN_BLOB_FILE, runBlobDir } from "../src/persistence/paths.js";
 import { createPersistedObserver } from "../src/persistence/persisted-observer.js";
 import { getRunsForRoot } from "../src/persistence/run-store.js";
 import type { StepRequest, WorkerDescriptor } from "../src/plugin-seam/seam.js";
+import { runHistory } from "../src/run-history.js";
 import { type ResumeInput, runWorkflow } from "../src/run-workflow.js";
 import { type FakeObserver, fakeObserver } from "./fake-observer.js";
 import { stampNames } from "./stamp-names.js";
@@ -74,15 +75,20 @@ function promptOverride(worker: WorkerDescriptor) {
   return { prompt: { anthropic: worker } };
 }
 
-/** A reader over an in-memory original tree, recording every `<runId>/<filename>` it is asked
+/** A history over an in-memory original tree, recording every `<runId>/<filename>` it is asked
  * for. */
-function reader(blobs: { [key: string]: JsonValue }, reads: string[]): ResumeInput["readBlob"] {
-  return (record, filename) => {
+function resumeHistory(
+  runs: RunRecord[],
+  blobs: { [key: string]: JsonValue },
+  reads: string[],
+): ResumeInput["history"] {
+  const readBlob = (record: RunRecord, filename: string): JsonValue => {
     const key = `${record.runId}/${filename}`;
     reads.push(key);
     if (!(key in blobs)) throw new Error(`no such original blob: ${key}`);
     return blobs[key]!;
   };
+  return runHistory(runs, readBlob);
 }
 
 function tree(body: WorkflowFile["body"], output?: WorkflowFile["output"]): WorkflowFile {
@@ -124,30 +130,33 @@ describe("resume — reusing a node's recorded output (#172)", () => {
       workerOverrides: promptOverride(recordingWorker({ b: "FRESH_B" }, ran)),
       continuation: {
         kind: "resume",
-        originalRuns: [
-          run({
-            runId: "orig-root",
-            parentRunId: null,
-            nodeId: null,
-            nodeName: null,
-            status: "failed",
-          }),
-          run({
-            runId: "a-run",
-            parentRunId: "orig-root",
-            nodeId: "a",
-            nodeName: "a",
-            status: "succeeded",
-          }),
-          run({
-            runId: "b-run",
-            parentRunId: "orig-root",
-            nodeId: "b",
-            nodeName: "b",
-            status: "failed",
-          }),
-        ],
-        readBlob: reader({ "orig-root/input.json": {}, "a-run/output.json": "REUSED_A" }, reads),
+        history: resumeHistory(
+          [
+            run({
+              runId: "orig-root",
+              parentRunId: null,
+              nodeId: null,
+              nodeName: null,
+              status: "failed",
+            }),
+            run({
+              runId: "a-run",
+              parentRunId: "orig-root",
+              nodeId: "a",
+              nodeName: "a",
+              status: "succeeded",
+            }),
+            run({
+              runId: "b-run",
+              parentRunId: "orig-root",
+              nodeId: "b",
+              nodeName: "b",
+              status: "failed",
+            }),
+          ],
+          { "orig-root/input.json": {}, "a-run/output.json": "REUSED_A" },
+          reads,
+        ),
       },
     });
 
@@ -196,30 +205,30 @@ describe("resume — reusing a node's recorded output (#172)", () => {
       workerOverrides: promptOverride(recordingWorker({ b: "FRESH_B" }, ran)),
       continuation: {
         kind: "resume",
-        originalRuns: [
-          run({
-            runId: "orig-root",
-            parentRunId: null,
-            nodeId: null,
-            nodeName: null,
-            status: "failed",
-          }),
-          run({
-            runId: "gate-run",
-            parentRunId: "orig-root",
-            nodeId: "gate",
-            nodeName: "gate",
-            status: "succeeded",
-          }),
-          run({
-            runId: "b-run",
-            parentRunId: "orig-root",
-            nodeId: "b",
-            nodeName: "b",
-            status: "failed",
-          }),
-        ],
-        readBlob: reader(
+        history: resumeHistory(
+          [
+            run({
+              runId: "orig-root",
+              parentRunId: null,
+              nodeId: null,
+              nodeName: null,
+              status: "failed",
+            }),
+            run({
+              runId: "gate-run",
+              parentRunId: "orig-root",
+              nodeId: "gate",
+              nodeName: "gate",
+              status: "succeeded",
+            }),
+            run({
+              runId: "b-run",
+              parentRunId: "orig-root",
+              nodeId: "b",
+              nodeName: "b",
+              status: "failed",
+            }),
+          ],
           { "orig-root/input.json": {}, "gate-run/output.json": "REUSED_GATE" },
           reads,
         ),
@@ -262,23 +271,26 @@ describe("resume — reusing a node's recorded output (#172)", () => {
       workerOverrides: promptOverride(worker),
       continuation: {
         kind: "resume",
-        originalRuns: [
-          run({
-            runId: "orig-root",
-            parentRunId: null,
-            nodeId: null,
-            nodeName: null,
-            status: "failed",
-          }),
-          run({
-            runId: "a-run",
-            parentRunId: "orig-root",
-            nodeId: "a",
-            nodeName: "a",
-            status: "succeeded",
-          }),
-        ],
-        readBlob: reader({ "orig-root/input.json": {}, "a-run/output.json": "REUSED_A" }, reads),
+        history: resumeHistory(
+          [
+            run({
+              runId: "orig-root",
+              parentRunId: null,
+              nodeId: null,
+              nodeName: null,
+              status: "failed",
+            }),
+            run({
+              runId: "a-run",
+              parentRunId: "orig-root",
+              nodeId: "a",
+              nodeName: "a",
+              status: "succeeded",
+            }),
+          ],
+          { "orig-root/input.json": {}, "a-run/output.json": "REUSED_A" },
+          reads,
+        ),
       },
     });
 
@@ -304,32 +316,32 @@ describe("resume — reusing a node's recorded output (#172)", () => {
       workerOverrides: promptOverride(recordingWorker({}, ran)),
       continuation: {
         kind: "resume",
-        originalRuns: [
-          run({
-            runId: "orig-root",
-            parentRunId: null,
-            nodeId: null,
-            nodeName: null,
-            status: "failed",
-          }),
-          run({
-            runId: "sub-run",
-            parentRunId: "orig-root",
-            nodeId: "sub",
-            nodeName: "sub",
-            status: "succeeded",
-          }),
-          // A descendant inside the collapsed subtree: it must never be walked, so its blob is
-          // never read.
-          run({
-            runId: "inner-run",
-            parentRunId: "sub-run",
-            nodeId: "inner",
-            nodeName: "inner",
-            status: "succeeded",
-          }),
-        ],
-        readBlob: reader(
+        history: resumeHistory(
+          [
+            run({
+              runId: "orig-root",
+              parentRunId: null,
+              nodeId: null,
+              nodeName: null,
+              status: "failed",
+            }),
+            run({
+              runId: "sub-run",
+              parentRunId: "orig-root",
+              nodeId: "sub",
+              nodeName: "sub",
+              status: "succeeded",
+            }),
+            // A descendant inside the collapsed subtree: it must never be walked, so its blob is
+            // never read.
+            run({
+              runId: "inner-run",
+              parentRunId: "sub-run",
+              nodeId: "inner",
+              nodeName: "inner",
+              status: "succeeded",
+            }),
+          ],
           { "orig-root/input.json": {}, "sub-run/output.json": { r: "SUB" } },
           reads,
         ),
@@ -371,39 +383,39 @@ describe("resume — reusing a node's recorded output (#172)", () => {
       workerOverrides: promptOverride(recordingWorker({ y: "FRESH_Y" }, ran)),
       continuation: {
         kind: "resume",
-        originalRuns: [
-          run({
-            runId: "orig-root",
-            parentRunId: null,
-            nodeId: null,
-            nodeName: null,
-            status: "failed",
-          }),
-          // sub failed originally, so it re-enters rather than reusing — its succeeded child x
-          // reuses.
-          run({
-            runId: "sub-run",
-            parentRunId: "orig-root",
-            nodeId: "sub",
-            nodeName: "sub",
-            status: "failed",
-          }),
-          run({
-            runId: "x-run",
-            parentRunId: "sub-run",
-            nodeId: "x",
-            nodeName: "x",
-            status: "succeeded",
-          }),
-          run({
-            runId: "y-run",
-            parentRunId: "sub-run",
-            nodeId: "y",
-            nodeName: "y",
-            status: "failed",
-          }),
-        ],
-        readBlob: reader(
+        history: resumeHistory(
+          [
+            run({
+              runId: "orig-root",
+              parentRunId: null,
+              nodeId: null,
+              nodeName: null,
+              status: "failed",
+            }),
+            // sub failed originally, so it re-enters rather than reusing — its succeeded child x
+            // reuses.
+            run({
+              runId: "sub-run",
+              parentRunId: "orig-root",
+              nodeId: "sub",
+              nodeName: "sub",
+              status: "failed",
+            }),
+            run({
+              runId: "x-run",
+              parentRunId: "sub-run",
+              nodeId: "x",
+              nodeName: "x",
+              status: "succeeded",
+            }),
+            run({
+              runId: "y-run",
+              parentRunId: "sub-run",
+              nodeId: "y",
+              nodeName: "y",
+              status: "failed",
+            }),
+          ],
           {
             "orig-root/input.json": {},
             "x-run/output.json": "REUSED_X",
@@ -453,8 +465,7 @@ describe("resume — reusing a node's recorded output (#172)", () => {
       workerOverrides: promptOverride(recordingWorker({ a: "FRESH" }, ran)),
       continuation: {
         kind: "resume",
-        originalRuns: [],
-        readBlob: reader({}, []),
+        history: resumeHistory([], {}, []),
       },
     });
 
@@ -502,29 +513,31 @@ describe("resume — the original tree is read-only (#172)", () => {
       workerOverrides: promptOverride(recordingWorker({ b: "FRESH_B" }, ran)),
       continuation: {
         kind: "resume",
-        originalRuns: [
-          run({
-            runId: "orig-root",
-            parentRunId: null,
-            nodeId: null,
-            nodeName: null,
-            status: "failed",
-          }),
-          run({
-            runId: "a-run",
-            parentRunId: "orig-root",
-            nodeId: "a",
-            nodeName: "a",
-            status: "succeeded",
-          }),
-        ],
-        readBlob: (record, filename) =>
-          JSON.parse(
-            readFileSync(
-              join(runBlobDir(origDir, record.rootRunId, record.runId), filename),
-              "utf8",
-            ),
-          ) as JsonValue,
+        history: runHistory(
+          [
+            run({
+              runId: "orig-root",
+              parentRunId: null,
+              nodeId: null,
+              nodeName: null,
+              status: "failed",
+            }),
+            run({
+              runId: "a-run",
+              parentRunId: "orig-root",
+              nodeId: "a",
+              nodeName: "a",
+              status: "succeeded",
+            }),
+          ],
+          (record, filename) =>
+            JSON.parse(
+              readFileSync(
+                join(runBlobDir(origDir, record.rootRunId, record.runId), filename),
+                "utf8",
+              ),
+            ) as JsonValue,
+        ),
       },
     });
 
@@ -588,32 +601,35 @@ describe("resume — wait-one join re-evaluates and short-circuits the losers (�
       workerOverrides: promptOverride(recordingWorker({}, ran)),
       continuation: {
         kind: "resume",
-        originalRuns: [
-          run({
-            runId: "orig-root",
-            parentRunId: null,
-            nodeId: null,
-            nodeName: null,
-            status: "failed",
-          }),
-          run({
-            runId: "f-run",
-            parentRunId: "orig-root",
-            nodeId: "f",
-            nodeName: "f",
-            status: "succeeded",
-          }),
-          run({
-            runId: "s-run",
-            parentRunId: "orig-root",
-            nodeId: "s",
-            nodeName: "s",
-            status: "cancelled",
-          }),
-        ],
-        // Only the winner's blob exists; a read of the loser's would throw, proving it is never
-        // reused.
-        readBlob: reader({ "orig-root/input.json": {}, "f-run/output.json": "REUSED_F" }, reads),
+        history: resumeHistory(
+          [
+            run({
+              runId: "orig-root",
+              parentRunId: null,
+              nodeId: null,
+              nodeName: null,
+              status: "failed",
+            }),
+            run({
+              runId: "f-run",
+              parentRunId: "orig-root",
+              nodeId: "f",
+              nodeName: "f",
+              status: "succeeded",
+            }),
+            run({
+              runId: "s-run",
+              parentRunId: "orig-root",
+              nodeId: "s",
+              nodeName: "s",
+              status: "cancelled",
+            }),
+          ],
+          // Only the winner's blob exists; a read of the loser's would throw, proving it is never
+          // reused.
+          { "orig-root/input.json": {}, "f-run/output.json": "REUSED_F" },
+          reads,
+        ),
       },
     });
 
@@ -694,32 +710,32 @@ describe("resume — wait-one join re-evaluates and short-circuits the losers (�
       workerOverrides: promptOverride(recordingWorker({}, ran)),
       continuation: {
         kind: "resume",
-        originalRuns: [
-          run({
-            runId: "orig-root",
-            parentRunId: null,
-            nodeId: null,
-            nodeName: null,
-            status: "failed",
-          }),
-          run({
-            runId: "l-run",
-            parentRunId: "orig-root",
-            nodeId: "l",
-            nodeName: "l",
-            status: "succeeded",
-            finishedAt: "2026-08-09T00:00:02.000Z",
-          }),
-          run({
-            runId: "e-run",
-            parentRunId: "orig-root",
-            nodeId: "e",
-            nodeName: "e",
-            status: "succeeded",
-            finishedAt: "2026-08-09T00:00:01.000Z",
-          }),
-        ],
-        readBlob: reader(
+        history: resumeHistory(
+          [
+            run({
+              runId: "orig-root",
+              parentRunId: null,
+              nodeId: null,
+              nodeName: null,
+              status: "failed",
+            }),
+            run({
+              runId: "l-run",
+              parentRunId: "orig-root",
+              nodeId: "l",
+              nodeName: "l",
+              status: "succeeded",
+              finishedAt: "2026-08-09T00:00:02.000Z",
+            }),
+            run({
+              runId: "e-run",
+              parentRunId: "orig-root",
+              nodeId: "e",
+              nodeName: "e",
+              status: "succeeded",
+              finishedAt: "2026-08-09T00:00:01.000Z",
+            }),
+          ],
           { "orig-root/input.json": {}, "e-run/output.json": "EARLY", "l-run/output.json": "LATE" },
           reads,
         ),
@@ -798,32 +814,32 @@ describe("resume — do-not-wait re-fires a non-`succeeded` detached branch; no 
       workerOverrides: promptOverride(failingBranchWorker(ran)),
       continuation: {
         kind: "resume",
-        originalRuns: [
-          run({
-            runId: "orig-root",
-            parentRunId: null,
-            nodeId: null,
-            nodeName: null,
-            status: "failed",
-          }),
-          run({
-            runId: "pre-run",
-            parentRunId: "orig-root",
-            nodeId: "pre",
-            nodeName: "pre",
-            status: "succeeded",
-          }),
-          run({
-            runId: "d-run",
-            parentRunId: "orig-root",
-            nodeId: "d",
-            nodeName: "d",
-            status: "failed",
-          }),
-        ],
-        // The detached branch's blob is deliberately absent: any attempt to *reuse* it would throw,
-        // catching a short-circuit that tried to restore it instead of re-running.
-        readBlob: reader(
+        history: resumeHistory(
+          [
+            run({
+              runId: "orig-root",
+              parentRunId: null,
+              nodeId: null,
+              nodeName: null,
+              status: "failed",
+            }),
+            run({
+              runId: "pre-run",
+              parentRunId: "orig-root",
+              nodeId: "pre",
+              nodeName: "pre",
+              status: "succeeded",
+            }),
+            run({
+              runId: "d-run",
+              parentRunId: "orig-root",
+              nodeId: "d",
+              nodeName: "d",
+              status: "failed",
+            }),
+          ],
+          // The detached branch's blob is deliberately absent: any attempt to *reuse* it would
+          // throw, catching a short-circuit that tried to restore it instead of re-running.
           { "orig-root/input.json": {}, "pre-run/output.json": "REUSED_PRE" },
           reads,
         ),

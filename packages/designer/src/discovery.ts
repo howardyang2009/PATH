@@ -62,7 +62,7 @@ export function useWorkflowDiscovery(
   return useMemo(() => {
     if (load.phase === "ready") return { phase: "ready", scan: load.value };
     if (load.phase === "error")
-      return { phase: "error", message: load.message, scan: load.lastGood };
+      return { phase: "error", message: load.message, scan: load.lastGood ?? null };
     return load;
   }, [load]);
 }

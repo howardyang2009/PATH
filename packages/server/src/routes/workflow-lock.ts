@@ -1,7 +1,7 @@
-import type { IncomingMessage } from "node:http";
 import { z } from "zod";
 import { type EditLease, editLease } from "../edit-lease.js";
 import { type RouteReply, readRequestBody, replyError } from "../http-json.js";
+import type { RequestBody } from "../request-body.js";
 import type { ApiRequest, RouteContext } from "./route-context.js";
 
 /**
@@ -27,32 +27,32 @@ const LeaseOpBodySchema = z
 
 /** The shared prologue: parse the body, find the named workflow's lease; a refusal is the reply.
  * Only a requester who may change the file takes its lease, so a reader cannot block its writer. */
-async function leaseRequest<T extends { workflow_path: string }>(
-  req: IncomingMessage,
+function leaseRequest<T extends { workflow_path: string }>(
+  body: RequestBody,
   ctx: RouteContext,
   schema: z.ZodType<T>,
-): Promise<{ ok: true; body: T; lease: EditLease } | { ok: false; reply: RouteReply }> {
-  const body = await readRequestBody(req, schema);
-  if (!body.ok) return body;
-  const target = ctx.access.workflow(body.data.workflow_path);
+): { ok: true; body: T; lease: EditLease } | { ok: false; reply: RouteReply } {
+  const parsed = readRequestBody(body, schema);
+  if (!parsed.ok) return parsed;
+  const target = ctx.access.workflow(parsed.data.workflow_path);
   if (!target.ok) return { ok: false, reply: replyError(target.status, target.message) };
-  const lease = editLease(ctx.layout.projectDir, body.data.workflow_path);
+  const lease = editLease(ctx.layout.projectDir, parsed.data.workflow_path);
   if (lease === undefined) return { ok: false, reply: replyError(404, "not found") };
-  return { ok: true, body: body.data, lease };
+  return { ok: true, body: parsed.data, lease };
 }
 
 /** `POST /v0/workflows/lock`: acquire or take over; a live lease held by another session is a
  * `409`. */
-export async function handleWorkflowLock({ req, ctx }: ApiRequest): Promise<RouteReply> {
-  const request = await leaseRequest(req, ctx, LockBodySchema);
+export async function handleWorkflowLock({ body, ctx }: ApiRequest): Promise<RouteReply> {
+  const request = leaseRequest(body, ctx, LockBodySchema);
   if (!request.ok) return request.reply;
   const result = request.lease.acquire(request.body.session_id, request.body.takeover === true);
   return result.ok ? { status: 200, body: result.lease } : { status: 409, body: result.held };
 }
 
 /** `POST /v0/workflows/lock/heartbeat`: renew; a reclaimed or taken-over lease is a `409`. */
-export async function handleWorkflowLockHeartbeat({ req, ctx }: ApiRequest): Promise<RouteReply> {
-  const request = await leaseRequest(req, ctx, LeaseOpBodySchema);
+export async function handleWorkflowLockHeartbeat({ body, ctx }: ApiRequest): Promise<RouteReply> {
+  const request = leaseRequest(body, ctx, LeaseOpBodySchema);
   if (!request.ok) return request.reply;
   const renewed = request.lease.renew(request.body.session_id);
   return renewed
@@ -64,8 +64,8 @@ export async function handleWorkflowLockHeartbeat({ req, ctx }: ApiRequest): Pro
  * `POST /v0/workflows/lock/release`: free; always `200`, idempotent, and only the holder's own
  * lease. The Designer also sends it from `beforeunload` as a `keepalive` POST (ADR 0017).
  */
-export async function handleWorkflowLockRelease({ req, ctx }: ApiRequest): Promise<RouteReply> {
-  const request = await leaseRequest(req, ctx, LeaseOpBodySchema);
+export async function handleWorkflowLockRelease({ body, ctx }: ApiRequest): Promise<RouteReply> {
+  const request = leaseRequest(body, ctx, LeaseOpBodySchema);
   if (!request.ok) return request.reply;
   return { status: 200, body: { released: request.lease.release(request.body.session_id) } };
 }

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ProjectResumeOptions } from "../src/project.js";
+import { runHistory } from "../src/run-history.js";
 import type { RunOptions } from "../src/run-options.js";
 import type { ContinuationInput } from "../src/run-workflow.js";
 
@@ -12,8 +13,7 @@ import type { ContinuationInput } from "../src/run-workflow.js";
 
 const continuation: ContinuationInput = {
   kind: "resume",
-  originalRuns: [],
-  readBlob: () => null,
+  history: runHistory([], () => null),
 };
 
 describe("RunOptions arms", () => {

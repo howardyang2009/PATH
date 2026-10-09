@@ -6,7 +6,9 @@
   "exports": {
     ".": "./src/index.ts",
     "./viewer.css": "./src/viewer.css",
-    "./tokens.css": "./src/tokens.css"
+    "./tokens.css": "./src/tokens.css",
+    "./use-resource": "./src/use-resource.ts",
+    "./use-run-selection": "./src/use-run-selection.ts"
   },
   "scripts": {
     "dev": "vite",

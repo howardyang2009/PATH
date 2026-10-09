@@ -7,11 +7,11 @@ import {
   noContinuation,
   resolveRerunFromNodePath,
   resumeContinuation,
+  rootResumeEntry,
 } from "./continuation.js";
 import { buildLaunchFacts } from "./launch-facts.js";
 import { createProcessorSemaphore, DEFAULT_PROCESSOR_CONCURRENCY } from "./processor-semaphore.js";
 import type { EnvSource } from "./resolve-env.js";
-import { rootResumeEntry } from "./resume-plan.js";
 import type { Emit, RunIdentity } from "./run-context.js";
 import { createEmitter } from "./run-emitter.js";
 import { executeWorkflowRun } from "./run-node.js";
@@ -81,7 +81,7 @@ export async function runWorkflow(
   const { observer } = options;
 
   // The original tree's root run — the predecessor fact stamped on this fresh root's start.
-  const originalRoot = findRootRun(resumeInput?.originalRuns ?? []);
+  const originalRoot = findRootRun(resumeInput?.history.rows ?? []);
   const emit: Emit = observer
     ? async (o) => {
         await observer.observe(masker.isEmpty ? o : maskRunEvent(masker, o));

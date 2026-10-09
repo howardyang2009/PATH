@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -8,25 +8,24 @@ import {
   type LaunchFacts,
   type RunRecord,
   type WorkflowFile,
+  type WorkflowNode,
 } from "@path/schema";
 import type Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { ResumeEntry } from "../src/continuation.js";
 import {
   completeContinuation,
-  continuationBlobReader,
   continuationRunOptions,
   noContinuation,
   passFirstNode,
   recordedPasses,
   resumeContinuation,
-  sourceRuns,
+  rootResumeEntry,
   successorCapture,
 } from "../src/continuation.js";
 import { openDb } from "../src/persistence/db.js";
-import { runBlobDir } from "../src/persistence/paths.js";
-import { insertReuseRun, insertRun } from "../src/persistence/run-store.js";
-import type { ResumeEntry } from "../src/resume-plan.js";
 import type { ContinueState } from "../src/run-context.js";
+import { runHistory } from "../src/run-history.js";
 import type { RunEvent } from "../src/run-observer.js";
 
 /**
@@ -63,7 +62,7 @@ function newRow(runId: string, parentRunId: string | null, rootRunId = "root-1")
   };
 }
 
-/** The same row as the reader sees it, with the fields `sourceRuns` reads named explicitly. */
+/** The same row as the reader sees it, with the fields a continuation reads named explicitly. */
 function record(
   runId: string,
   parentRunId: string | null,
@@ -81,66 +80,6 @@ function record(
     ...extra,
   } as unknown as RunRecord;
 }
-
-describe("sourceRuns", () => {
-  it("swaps a reuse row for its source record, keeping the reuse row's own parent", () => {
-    insertRun(db, newRow("root-1", null));
-    insertRun(db, { ...newRow("step-1", "root-1"), status: "succeeded" });
-    insertReuseRun(db, {
-      runId: "reuse-1",
-      rootRunId: "root-1",
-      parentRunId: "root-1",
-      nodeId: "node-step-1",
-      nodeName: "step-1",
-      reusedFromRunId: "step-1",
-    });
-
-    const swapped = sourceRuns(db, [
-      record("reuse-1", "root-1", "root-1", { reusedFromRunId: "step-1" }),
-    ]);
-
-    // The reuse row keeps the parent it sat under, but names the source's run and tree from now on.
-    expect(swapped[0]).toMatchObject({
-      runId: "step-1",
-      rootRunId: "root-1",
-      parentRunId: "root-1",
-      status: "succeeded",
-    });
-  });
-
-  it("drops a reuse row whose source is gone, so that node re-executes", () => {
-    expect(
-      sourceRuns(db, [record("reuse-1", "root-1", "root-1", { reusedFromRunId: "vanished" })]),
-    ).toEqual([]);
-  });
-
-  it("passes an ordinary row through unchanged", () => {
-    const ordinary = record("step-1", "root-1");
-
-    expect(sourceRuns(db, [ordinary])).toEqual([ordinary]);
-  });
-});
-
-describe("continuationBlobReader", () => {
-  it("reads out of the tree the record names, which is the source tree for a swapped reuse row", () => {
-    const reader = continuationBlobReader(dir);
-    for (const [rootRunId, value] of [
-      ["source-root", { from: "source" }],
-      ["other-root", { from: "other" }],
-    ] as const) {
-      const blobDir = runBlobDir(dir, rootRunId, "step-1");
-      mkdirSync(blobDir, { recursive: true });
-      writeFileSync(join(blobDir, "output.json"), JSON.stringify(value));
-    }
-
-    expect(reader(record("step-1", "parent-1", "source-root"), "output.json")).toEqual({
-      from: "source",
-    });
-    expect(reader(record("step-1", "parent-1", "other-root"), "output.json")).toEqual({
-      from: "other",
-    });
-  });
-});
 
 describe("continuationRunOptions", () => {
   const frozen: LaunchFacts = {
@@ -243,8 +182,7 @@ const file: WorkflowFile = {
 /** A Complete-continue state over a fixed row set, targeting one parked leaf by id. */
 function continueState(existingRuns: RunRecord[], targetStepRunId: string): ContinueState {
   return {
-    existingRuns,
-    readBlob: (run) => ({ from: run.runId }),
+    history: runHistory(existingRuns, (run) => ({ from: run.runId })),
     target: { stepRunId: targetStepRunId, output: { submitted: true } },
   };
 }
@@ -253,8 +191,10 @@ describe("resumeContinuation — Resume adapter", () => {
   const counterpart = record("orig-root", null, "root-1", { nodeId: null, status: "failed" });
   const original = record("orig-1", "orig-root", "root-1", { nodeId: "a", status: "succeeded" });
   const readBlob = (run: RunRecord, filename: string) => ({ from: run.runId, file: filename });
+  const history = runHistory([counterpart, original], readBlob);
   const entry: ResumeEntry = {
-    input: { originalRuns: [counterpart, original], readBlob },
+    input: { history },
+    history,
     counterpart,
     rerunPath: [],
   };
@@ -279,15 +219,14 @@ describe("resumeContinuation — Resume adapter", () => {
 
   it("seeds a re-entered root run from its counterpart's input, never a nested one", () => {
     const reads: string[] = [];
+    const seededHistory = runHistory([counterpart, original], (run, filename) => {
+      reads.push(`${run.runId}/${filename}`);
+      return { blob: filename };
+    });
     const seeded: ResumeEntry = {
       ...entry,
-      input: {
-        originalRuns: [counterpart, original],
-        readBlob: (run, filename) => {
-          reads.push(`${run.runId}/${filename}`);
-          return { blob: filename };
-        },
-      },
+      input: { history: seededHistory },
+      history: seededHistory,
     };
 
     expect(resumeContinuation(seeded, file, true).start()).toEqual({
@@ -430,8 +369,10 @@ const gotoMap = new Map([["check", gotoCheck]]);
  * visible in the walk. */
 function passContinueState(existingRuns: RunRecord[]): ContinueState {
   return {
-    existingRuns,
-    readBlob: (run, filename) => ({ blob: `${run.runId}/${filename}` }) as JsonValue,
+    history: runHistory(
+      existingRuns,
+      (run, filename) => ({ blob: `${run.runId}/${filename}` }) as JsonValue,
+    ),
     target: { stepRunId: "leaf", output: {} },
   };
 }
@@ -521,5 +462,284 @@ describe("recordedPasses", () => {
       record("p1", "root", "root", { nodeId: null, pass: 1, status: "succeeded" }),
     ];
     expect(recordedPasses(rows, "root").map((r) => r.runId)).toEqual(["p1", "p2"]);
+  });
+});
+
+/** A predecessor tree of in-memory rows and a blob reader; no store. */
+function resumeInput(
+  rows: RunRecord[],
+  extra: Partial<Parameters<typeof rootResumeEntry>[0]> = {},
+) {
+  return rootResumeEntry({
+    history: runHistory(rows, (r, filename) => ({ blob: `${r.runId}/${filename}` }) as JsonValue),
+    ...extra,
+  });
+}
+
+/** A one-step file with the given id. */
+function binaryFile(id: string): WorkflowFile {
+  return {
+    format: FORMAT_VERSION,
+    id: "22222222-2222-4222-8222-222222222222",
+    name: "t",
+    body: [node(id)],
+  };
+}
+
+describe("the Resume plan through the Continuation seam", () => {
+  const predecessorRoot = record("orig-root", null, "root-1", { nodeId: null, status: "failed" });
+
+  it("plans plain Resume reuse of every succeeded top-level child, and re-runs the rest", () => {
+    const file = binaryFile("a");
+    file.body = [node("a"), node("b"), node("c")];
+    const runs = [
+      predecessorRoot,
+      record("ra", "orig-root", "root-1", { nodeId: "a", status: "succeeded" }),
+      record("rb", "orig-root", "root-1", { nodeId: "b", status: "succeeded" }),
+      record("rc", "orig-root", "root-1", { nodeId: "c", status: "failed" }),
+    ];
+    const c = resumeContinuation(resumeInput(runs), file, true);
+
+    expect(c.disposition(node("a"))).toMatchObject({ kind: "reuse", reusedFrom: "ra" });
+    expect(c.disposition(node("b"))).toMatchObject({ kind: "reuse", reusedFrom: "rb" });
+    // A predecessor row that did not succeed is re-run, not reused.
+    expect(c.disposition(node("c"))).toEqual({ kind: "run" });
+  });
+
+  it("suppresses the boundary node and everything serialized after it", () => {
+    const file = binaryFile("a");
+    file.body = [node("a"), node("b"), node("c")];
+    const runs = [
+      predecessorRoot,
+      record("ra", "orig-root", "root-1", { nodeId: "a", status: "succeeded" }),
+      record("rb", "orig-root", "root-1", { nodeId: "b", status: "succeeded" }),
+      record("rc", "orig-root", "root-1", { nodeId: "c", status: "succeeded" }),
+    ];
+    const c = resumeContinuation(resumeInput(runs, { rerunFromNodePath: ["b"] }), file, true);
+
+    expect(c.disposition(node("a"))).toMatchObject({ kind: "reuse" });
+    expect(c.disposition(node("b"))).toEqual({ kind: "run" });
+    expect(c.disposition(node("c"))).toEqual({ kind: "run" });
+  });
+
+  it("seeds only a root run from its counterpart's recorded input (ADR 0062)", () => {
+    const runs = [predecessorRoot];
+    const reads: string[] = [];
+    const entry: ResumeEntry = rootResumeEntry({
+      history: runHistory(runs, (run, filename) => {
+        reads.push(`${run.runId}/${filename}`);
+        return { blob: filename };
+      }),
+    });
+
+    expect(resumeContinuation(entry, binaryFile("a"), true).start()).toEqual({
+      kind: "seed",
+      seed: { blob: "input.json" },
+    });
+    expect(reads).toEqual(["orig-root/input.json"]);
+    // A nested run starts from its own interpolated input, not the counterpart's.
+    expect(resumeContinuation(entry, binaryFile("a"), false).start()).toEqual({
+      kind: "seed",
+      seed: undefined,
+    });
+  });
+});
+
+describe("enter — one operation per scope kind", () => {
+  const predecessorRoot = record("orig-root", null, "root-1", { nodeId: null, status: "failed" });
+  const identity = {
+    runId: "succ",
+    rootRunId: "succ",
+    parentRunId: "orig-root",
+    nodeId: null,
+    nodeName: null,
+  };
+
+  function nestedFile(): WorkflowFile {
+    const f = binaryFile("w");
+    f.body = [
+      { type: "workflow", id: "w", name: "w", ref: "child.json", input: {} },
+      { type: "workflow", id: "x", name: "x", ref: "child.json", input: {} },
+    ] as unknown as WorkflowFile["body"];
+    return f;
+  }
+
+  it("descends the path-node with the path's tail, and re-runs a node after the boundary entire", () => {
+    const file = nestedFile();
+    const runs = [
+      predecessorRoot,
+      record("rw", "orig-root", "root-1", { nodeId: "w", status: "failed" }),
+      record("rx", "orig-root", "root-1", { nodeId: "x", status: "succeeded" }),
+    ];
+    const entry = resumeInput(runs, {
+      rerunFromNodePath: ["w", "inner"],
+      rerunFromPasses: [null, 3],
+    });
+    const c = resumeContinuation(entry, file, false);
+
+    // `w` is the boundary's path-node: its counterpart is the one under this node, and the tail of
+    // the path rides into it.
+    const descended = c.enter({ owner: { id: "w", name: "w" } }, binaryFile("inner"), identity);
+    expect(descended.disposition(node("inner"))).toEqual({ kind: "run" });
+    // `x` is serialized after the boundary, so it re-runs entire.
+    const after = c.enter({ owner: { id: "x", name: "x" } }, binaryFile("inner"), identity);
+    expect(after.disposition(node("inner"))).toEqual({ kind: "run" });
+  });
+
+  it("reuses a succeeded while-do iteration's body, scoped to its container", () => {
+    const loop = {
+      type: "while-do",
+      id: "loop",
+      name: "loop",
+      condition: { type: "exists", path: "context.more" },
+      max_iterations: 3,
+      node: node("body"),
+    } as unknown as WorkflowNode;
+    const file = binaryFile("loop");
+    file.body = [loop, node("after")];
+    const runs = [
+      predecessorRoot,
+      record("it1", "orig-root", "root-1", { nodeId: "loop", iteration: 1, status: "succeeded" }),
+      record("b1", "it1", "root-1", { nodeId: "body", status: "succeeded" }),
+      record("it2", "orig-root", "root-1", { nodeId: "loop", iteration: 2, status: "failed" }),
+    ];
+    const c = resumeContinuation(resumeInput(runs), file, false);
+
+    const first = c.enter(
+      { owner: { id: "loop", name: "loop" }, iteration: 1 },
+      binaryFile("body"),
+      identity,
+    );
+    expect(first.disposition(node("body"))).toMatchObject({ kind: "reuse", reusedFrom: "b1" });
+    // An unsucceeded iteration container is entered fresh.
+    const second = c.enter(
+      { owner: { id: "loop", name: "loop" }, iteration: 2 },
+      binaryFile("body"),
+      identity,
+    );
+    expect(second.disposition(node("body"))).toEqual({ kind: "run" });
+  });
+
+  it("runs every iteration fresh when the loop is the boundary", () => {
+    const loop = {
+      type: "while-do",
+      id: "loop",
+      name: "loop",
+      condition: { type: "exists", path: "context.more" },
+      max_iterations: 3,
+      node: node("body"),
+    } as unknown as WorkflowNode;
+    const file = binaryFile("loop");
+    file.body = [loop];
+    const runs = [
+      predecessorRoot,
+      record("it1", "orig-root", "root-1", { nodeId: "loop", iteration: 1, status: "succeeded" }),
+      record("b1", "it1", "root-1", { nodeId: "body", status: "succeeded" }),
+    ];
+    const c = resumeContinuation(resumeInput(runs, { rerunFromNodePath: ["loop"] }), file, false);
+
+    const first = c.enter(
+      { owner: { id: "loop", name: "loop" }, iteration: 1 },
+      binaryFile("body"),
+      identity,
+    );
+    expect(first.disposition(node("body"))).toEqual({ kind: "run" });
+  });
+
+  it("pairs each goto pass with the same ordinal and opener, planning reuse inside it", () => {
+    const file = binaryFile("a");
+    file.body = [
+      { type: "goto", id: "g", name: "g", target: "a", max_jumps: 3 } as unknown as WorkflowNode,
+      node("a"),
+    ];
+    const runs = [
+      predecessorRoot,
+      record("p1", "orig-root", "root-1", { nodeId: null, pass: 1, status: "succeeded" }),
+      record("p1a", "p1", "root-1", { nodeId: "a", status: "succeeded" }),
+      record("p2", "orig-root", "root-1", { nodeId: "g", pass: 2, status: "succeeded" }),
+      record("p2a", "p2", "root-1", { nodeId: "a", status: "succeeded" }),
+      record("p3", "orig-root", "root-1", { nodeId: "g", pass: 3, status: "failed" }),
+    ];
+    const c = resumeContinuation(resumeInput(runs), file, false);
+    const opener = { id: "g", name: "g" };
+
+    expect(c.enter({ owner: null, pass: 1 }, file, identity).disposition(node("a"))).toMatchObject({
+      kind: "reuse",
+      reusedFrom: "p1a",
+    });
+    expect(
+      c.enter({ owner: opener, pass: 2 }, file, identity).disposition(node("a")),
+    ).toMatchObject({
+      kind: "reuse",
+      reusedFrom: "p2a",
+    });
+    expect(c.enter({ owner: opener, pass: 3 }, file, identity).disposition(node("a"))).toEqual({
+      kind: "run",
+    });
+  });
+
+  it("stops pairing at the first opener mismatch, for every later pass", () => {
+    const file = binaryFile("a");
+    file.body = [
+      { type: "goto", id: "g", name: "g", target: "a", max_jumps: 3 } as unknown as WorkflowNode,
+      node("a"),
+    ];
+    const runs = [
+      predecessorRoot,
+      record("p1", "orig-root", "root-1", { nodeId: null, pass: 1, status: "succeeded" }),
+      record("p1a", "p1", "root-1", { nodeId: "a", status: "succeeded" }),
+      record("p2", "orig-root", "root-1", { nodeId: "g", pass: 2, status: "succeeded" }),
+      record("p2a", "p2", "root-1", { nodeId: "a", status: "succeeded" }),
+      record("p3", "orig-root", "root-1", { nodeId: "g", pass: 3, status: "succeeded" }),
+    ];
+    const c = resumeContinuation(resumeInput(runs), file, false);
+
+    expect(c.enter({ owner: null, pass: 1 }, file, identity).disposition(node("a"))).toMatchObject({
+      kind: "reuse",
+    });
+    // Pass 2 names an opener the record does not hold, so it and pass 3 run fresh.
+    expect(
+      c
+        .enter({ owner: { id: "other", name: "other" }, pass: 2 }, file, identity)
+        .disposition(node("a")),
+    ).toEqual({ kind: "run" });
+    expect(
+      c.enter({ owner: { id: "g", name: "g" }, pass: 3 }, file, identity).disposition(node("a")),
+    ).toEqual({ kind: "run" });
+  });
+
+  it("applies the boundary inside its pass, and runs every later pass fresh", () => {
+    const file = binaryFile("a");
+    file.body = [
+      { type: "goto", id: "g", name: "g", target: "a", max_jumps: 3 } as unknown as WorkflowNode,
+      node("a"),
+    ];
+    const runs = [
+      predecessorRoot,
+      record("p1", "orig-root", "root-1", { nodeId: null, pass: 1, status: "succeeded" }),
+      record("p1a", "p1", "root-1", { nodeId: "a", status: "succeeded" }),
+      record("p2", "orig-root", "root-1", { nodeId: "g", pass: 2, status: "succeeded" }),
+      record("p2a", "p2", "root-1", { nodeId: "a", status: "succeeded" }),
+      record("p3", "orig-root", "root-1", { nodeId: "g", pass: 3, status: "succeeded" }),
+      record("p3a", "p3", "root-1", { nodeId: "a", status: "succeeded" }),
+    ];
+    const c = resumeContinuation(
+      resumeInput(runs, { rerunFromNodePath: ["a"], rerunFromPasses: [2] }),
+      file,
+      false,
+    );
+
+    // Pass 1 is before the boundary pass, so it pairs and reuses.
+    expect(c.enter({ owner: null, pass: 1 }, file, identity).disposition(node("a"))).toMatchObject({
+      kind: "reuse",
+      reusedFrom: "p1a",
+    });
+    // Pass 2 holds the boundary node, so `a` re-runs there and every later pass runs fresh.
+    expect(
+      c.enter({ owner: { id: "g", name: "g" }, pass: 2 }, file, identity).disposition(node("a")),
+    ).toEqual({ kind: "run" });
+    expect(
+      c.enter({ owner: { id: "g", name: "g" }, pass: 3 }, file, identity).disposition(node("a")),
+    ).toEqual({ kind: "run" });
   });
 });

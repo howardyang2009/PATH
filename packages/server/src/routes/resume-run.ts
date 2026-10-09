@@ -18,13 +18,13 @@ const ResumeBodySchema = z
  * predecessor's tree, so a fresh seed would be discarded.
  */
 export async function handleResumeRun({
-  req,
+  body,
   ctx,
   params: [rootRunId],
 }: ApiRequest<[string]>): Promise<RouteReply> {
-  const body = await readRequestBody(req, ResumeBodySchema);
-  if (!body.ok) return body.reply;
-  const { config, rerun_from_run_id: rerunFromRunId } = body.data;
+  const parsed = readRequestBody(body, ResumeBodySchema);
+  if (!parsed.ok) return parsed.reply;
+  const { config, rerun_from_run_id: rerunFromRunId } = parsed.data;
   if (config !== undefined) {
     const envError = operatorConfigEnvError(config);
     if (envError) return replyError(400, envError);

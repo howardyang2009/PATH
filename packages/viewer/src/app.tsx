@@ -4,7 +4,7 @@ import {
   runFileSetFromDisk,
   type UserMenuItem,
 } from "@path/client-core";
-import { useState } from "react";
+
 import { AppShell, TopBar } from "./app-shell.js";
 import { useAuthMode } from "./auth-gate.js";
 import { LaunchPanel } from "./launch-panel.js";
@@ -13,6 +13,7 @@ import { RunDetail } from "./run-detail.js";
 import { RunsList } from "./runs-list.js";
 import { SecretsPage } from "./secrets-page.js";
 import { useResource } from "./use-resource.js";
+import { useRunSelection } from "./use-run-selection.js";
 import { useRunView } from "./use-run-view.js";
 import { useViewerPage, viewerPath } from "./viewer-page.js";
 
@@ -56,9 +57,11 @@ export function App({ client }: { client: PathApiClient }) {
  * run id, not a visible row, so narrowing the list is no reason to stop watching.
  */
 function RunsConsole({ client, menuItems }: { client: PathApiClient; menuItems: UserMenuItem[] }) {
-  const [selectedRootRunId, setSelectedRootRunId] = useState<string | null>(null);
-  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
-  const [runsReloadNonce, setRunsReloadNonce] = useState(0);
+  // The watched root run, the selected node run and the list's reload nudge: one selection the
+  // Viewer shares with the Designer's dock (use-run-selection.ts).
+  const selection = useRunSelection();
+  const selectedRootRunId = selection.rootRunId;
+  const selectedRunId = selection.selectedRunId;
   const load = useRunView(client, selectedRootRunId);
   // The watched root run's source file, as the live snapshot records it.
   const rootWorkflowPath =
@@ -79,27 +82,7 @@ function RunsConsole({ client, menuItems }: { client: PathApiClient; menuItems: 
     readRunFiles.load.phase === "ready" ? readRunFiles.load.value : EMPTY_RUN_FILE_SET;
   const rootFile = runFiles.rootFile;
 
-  // Switching root run drops the node selection: a run id from the previous tree names nothing
-  // here.
-  const selectRootRun = (rootRunId: string): void => {
-    setSelectedRootRunId(rootRunId);
-    setSelectedRunId(null);
-  };
-
-  // A launch is a click plus a nudge, so the runs rail re-reads now rather than at the next tick.
-  const handleLaunched = (rootRunId: string): void => {
-    selectRootRun(rootRunId);
-    setRunsReloadNonce((nonce) => nonce + 1);
-  };
-
-  // A delete clears the selection if the centre pane was watching it, and re-reads the rail.
-  const handleDeleted = (rootRunId: string): void => {
-    if (rootRunId === selectedRootRunId) {
-      setSelectedRootRunId(null);
-      setSelectedRunId(null);
-    }
-    setRunsReloadNonce((nonce) => nonce + 1);
-  };
+  const { selectRootRun, watchNewRun: handleLaunched, onDeleted: handleDeleted } = selection;
 
   // Taken from the same snapshot the tree renders, so refs and status stay current as the run
   // executes.
@@ -119,7 +102,7 @@ function RunsConsole({ client, menuItems }: { client: PathApiClient; menuItems: 
           onSelectRootRun={selectRootRun}
           onResumed={handleLaunched}
           onDeleted={handleDeleted}
-          reloadNonce={runsReloadNonce}
+          reloadNonce={selection.reloadNonce}
           // The `Resume from …` action lives in the selected row's action panel, below plain
           // Resume. It reads the watched run's root file so the eager legal-K check greys the
           // button like the Designer's; the Viewer never edits, so `dirty` stays false.
@@ -139,7 +122,7 @@ function RunsConsole({ client, menuItems }: { client: PathApiClient; menuItems: 
             load={load}
             rootRunId={selectedRootRunId}
             selectedRunId={selectedRunId}
-            onSelectRun={setSelectedRunId}
+            onSelectRun={selection.selectRun}
             runFiles={runFiles}
           />
         )

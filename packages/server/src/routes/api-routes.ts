@@ -149,13 +149,19 @@ export async function dispatchApi(
       sendReply(res, replyError(401, "sign-in required: missing, invalid or expired bearer token"));
       return true;
     }
-    // An SSE stream is one request, counted here at connect.
-    const { admission } = server;
-    const refusal =
-      (await admission.admitRequest(req, requester.userId)) ??
-      (route.gate === undefined ? undefined : admission.gateRefusal(requester.userId, route.gate));
-    if (refusal !== undefined) {
-      sendReply(res, refusal);
+    // One admission call decides the rate and reads the request body under the user's cap
+    // (admission.ts, request-body.ts); the route's own gate is the second question.
+    const admitted = await server.admission.admitRequest(req, requester.userId);
+    if (!admitted.ok) {
+      sendReply(res, admitted.reply);
+      return true;
+    }
+    const gateRefusal =
+      route.gate === undefined
+        ? undefined
+        : server.admission.gateRefusal(requester.userId, route.gate);
+    if (gateRefusal !== undefined) {
+      sendReply(res, gateRefusal);
       return true;
     }
     const params = decodeAll(captures);
@@ -168,6 +174,7 @@ export async function dispatchApi(
       ctx: routeContextFor(requester, server, server.admission.limitsOf(requester.userId)),
       params,
       query: url.searchParams,
+      body: admitted.body,
     };
     if ("stream" in route) {
       // The matched row's own pattern decides the capture arity; `decodeAll` returns exactly those.

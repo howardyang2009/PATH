@@ -16,7 +16,7 @@ export type ReusePlan = Map<string, RunRecord>;
  * unique only within a file, so the scope bounds the match; `suppress` (Resume-from-K) makes those
  * ids re-run. */
 export function planReuse(
-  originalRuns: RunRecord[],
+  originalRuns: readonly RunRecord[],
   tree: WorkflowFile,
   parentRunId?: string,
   suppress?: Set<string>,

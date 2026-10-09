@@ -1,5 +1,5 @@
 import type { WireTemplateWriteResponse } from "@path/schema";
-import { type RouteReply, readJsonBody, replyError } from "../http-json.js";
+import { type RouteReply, replyError } from "../http-json.js";
 import { firstHeader } from "../origin-gate.js";
 import { templatesOf } from "../template-store.js";
 import type { ApiRequest } from "./route-context.js";
@@ -15,11 +15,12 @@ import type { ApiRequest } from "./route-context.js";
  */
 export async function handlePutTemplate({
   req,
+  body,
   ctx,
   params: [id],
 }: ApiRequest<[string]>): Promise<RouteReply> {
-  const raw = await readJsonBody(req);
-  if (!raw.ok) return replyError(400, "request body must be valid JSON");
+  // The body was JSON-parsed at the one body seam, so this route only keeps it verbatim.
+  const raw = { value: body.raw };
 
   // Precondition (ADR 0016): `If-Match` carrying the §10.2 etag is required, and absent or stale is
   // a `412`. The store's one call resolves, validates, decides and writes, so the check has no

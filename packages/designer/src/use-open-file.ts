@@ -1,5 +1,6 @@
 import type { PathApiClient, WireStepPlugin } from "@path/client-core";
 import { errorMessage } from "@path/viewer";
+import { type Load, useResource } from "@path/viewer/use-resource";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { loadDocument, writeDocument } from "./document.js";
 import { canonicalSerialize } from "./serialize.js";
@@ -52,11 +53,8 @@ export {
  */
 
 /** The registry fetch state — the received `GET /v0/step-plugins` snapshot the open passes are
- * relative to. */
-export type RegistryLoad =
-  | { phase: "loading" }
-  | { phase: "error"; message: string }
-  | { phase: "ready"; plugins: WireStepPlugin[] };
+ * relative to. The Viewer's one load lifecycle, named for this read. */
+export type RegistryLoad = Load<WireStepPlugin[]>;
 
 /**
  * The outcome of a Save as…: `created` (path `null` for a template), `exists` — target taken, the
@@ -98,7 +96,6 @@ export interface OpenSession {
 }
 
 export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSession {
-  const [registry, setRegistry] = useState<RegistryLoad>({ phase: "loading" });
   const [session, setSession] = useState<SessionState>(initialSessionState);
   const { frames, activeIndex, saveState } = session;
 
@@ -110,8 +107,27 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
   // The reads the reducer asked for before the registry landed. A read is a fact the author
   // requested, so it waits for its parser rather than being dropped.
   const queuedFetches = useRef<FetchRequest[]>([]);
-  // The current `apply`, for a load landing that must dispatch after the fetch resolves.
+  // The current `apply` and `performFetch`, for a load landing that must dispatch after the fetch
+  // resolves.
   const applyRef = useRef<(action: SessionAction) => void>(() => {});
+  const performFetchRef = useRef<(request: FetchRequest) => void>(() => {});
+
+  // The registry read runs through the Viewer's one load lifecycle (ADR 0076). Its `read` is
+  // identity-stable, so the hook reads exactly once and retries only on a `refetch`.
+  const readRegistry = useCallback(async (): Promise<WireStepPlugin[]> => {
+    const response = await client.getStepPlugins();
+    pluginsRef.current = response.step_plugins;
+    return response.step_plugins;
+  }, [client]);
+  const registry = useResource<WireStepPlugin[]>(readRegistry);
+
+  /** The reads the reducer asked for before the registry landed, run once it has. */
+  useEffect(() => {
+    if (registry.load.phase !== "ready") return;
+    const queued = queuedFetches.current;
+    queuedFetches.current = [];
+    for (const request of queued) performFetchRef.current(request);
+  }, [registry.load.phase]);
 
   /** Perform the read the reducer asked for, echoing its token back so a landing the author has
    * since outrun is dropped. */
@@ -146,27 +162,8 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
 
   useEffect(() => {
     applyRef.current = apply;
-  }, [apply]);
-
-  useEffect(() => {
-    let alive = true;
-    client
-      .getStepPlugins()
-      .then((response) => {
-        if (!alive) return;
-        pluginsRef.current = response.step_plugins;
-        setRegistry({ phase: "ready", plugins: response.step_plugins });
-        const queued = queuedFetches.current;
-        queuedFetches.current = [];
-        for (const request of queued) performFetch(request);
-      })
-      .catch((error: unknown) => {
-        if (alive) setRegistry({ phase: "error", message: errorMessage(error) });
-      });
-    return () => {
-      alive = false;
-    };
-  }, [client, performFetch]);
+    performFetchRef.current = performFetch;
+  }, [apply, performFetch]);
 
   // The deep-link open, applied once: the read queues behind the registry if it has not landed.
   const openedInitial = useRef(false);
@@ -244,7 +241,7 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
   );
 
   return {
-    registry,
+    registry: registry.load,
     mode: session.mode,
     frames,
     activeIndex,

@@ -1,35 +1,232 @@
 import {
   type ConfigObject,
+  findRootRun,
   type GotoNode,
   isPassRun,
-  isReuseRow,
+  isStepType,
   type JsonValue,
   type LaunchFacts,
   must,
   pathToRoot,
   type RerunFromNodePathEntry,
   type RunRecord,
+  rerunBoundaryIndex,
+  rerunDisposition,
   serialOrder,
   type WorkflowFile,
+  walkNodes,
 } from "@path/schema";
-import type Database from "better-sqlite3";
 import { descendNodePath } from "./descend-node-path.js";
 import { recoverLaunchConfig, wrapSecretsAtPaths } from "./launch-facts.js";
-import { readJsonBlob } from "./persistence/blob-store.js";
-import { RUN_BLOB_FILE, runBlobDir } from "./persistence/paths.js";
-import { getRun } from "./persistence/run-store.js";
-import { pickReusedWaitOneWinner, recordedChild } from "./plan-reuse.js";
-import {
-  enterIteration,
-  enterNested,
-  passResumer,
-  type ResumeEntry,
-  type RunResume,
-  resolveResume,
-  resumeSeed,
-} from "./resume-plan.js";
+import { RUN_BLOB_FILE } from "./persistence/paths.js";
+import { pickReusedWaitOneWinner, planReuse, type ReusePlan, recordedChild } from "./plan-reuse.js";
 import type { ChildRunKey, ContinueState, RunIdentity } from "./run-context.js";
+import type { RunHistory } from "./run-history.js";
 import type { RunObserver } from "./run-observer.js";
+import type { ResumeInput } from "./run-workflow.js";
+
+export type { RecordedScopeKey } from "./plan-reuse.js";
+
+// ── The Resume plan ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * How each scope of a successor tree resumes against the predecessor. Every scope — root run,
+ * nested `workflow` run, `while-do` iteration, goto pass — asks which recorded row is its
+ * **counterpart** and which children reuse (the **reuse plan**, boundary suppressed). Each scope
+ * kind is one `enter…` operation over one `RunResume`, pure over rows and a file.
+ */
+
+/**
+ * One level of the Resume-from-K descent path (ADR 0036): the path-node's id and the goto pass it
+ * sits in (ADR 0054 §6).
+ */
+interface RerunPathLevel {
+  nodeId: string;
+  /** The 1-based goto pass the path-node sits in at this level, or `null` for a level whose file
+   * holds no goto. */
+  pass: number | null;
+}
+
+/**
+ * What a scope carries into its workflow-run before its file is known: the read inputs, its
+ * **counterpart** (undefined = run fresh), and the remaining rerun path (`[]` = off-path).
+ */
+export interface ResumeEntry {
+  input: ResumeInput;
+  /** The predecessor tree this scope resumes against. */
+  history: RunHistory;
+  counterpart: RunRecord | undefined;
+  rerunPath: RerunPathLevel[];
+}
+
+/** One scope's resume state: its entry plus the reuse plan for its direct children. */
+interface RunResume extends ResumeEntry {
+  /** Node ids of this scope's direct children that reuse, each pointing at the original run it
+   * reuses. */
+  plan: ReusePlan;
+}
+
+/**
+ * The root run's entry: its counterpart is the predecessor's root run, carrying the whole rerun
+ * path (`Project.resume` already validated it).
+ */
+export function rootResumeEntry(input: ResumeInput): ResumeEntry {
+  const nodePath = input.rerunFromNodePath ?? [];
+  const passes = input.rerunFromPasses ?? [];
+  return {
+    input,
+    history: input.history,
+    counterpart: findRootRun(input.history.rows),
+    rerunPath: nodePath.map((nodeId, level) => ({ nodeId, pass: passes[level] ?? null })),
+  };
+}
+
+/**
+ * Producer A (ADR 0035): this level's **suppress** set — the boundary head B and every
+ * serialized-later run-producing node id, over this file's serial order (ADR 0064: a sequence body
+ * is transparent); `undefined` off-path.
+ */
+function suppressSet(
+  file: WorkflowFile,
+  rerunPath: readonly RerunPathLevel[],
+): Set<string> | undefined {
+  const bIndex = rerunBoundaryIndex(file.body, suffixOf(rerunPath));
+  if (bIndex === undefined) return undefined;
+  const suppress = new Set<string>();
+  for (const node of walkNodes(serialOrder(file.body).slice(bIndex))) {
+    if (isStepType(node.type)) suppress.add(node.id);
+  }
+  return suppress;
+}
+
+function suffixOf(rerunPath: readonly RerunPathLevel[]): string[] {
+  return rerunPath.map((level) => level.nodeId);
+}
+
+/**
+ * A scope's resume state once its file is known: the reuse plan scoped to its counterpart's
+ * children, with this level's boundary suppressed (B and after re-run); no counterpart plans
+ * nothing.
+ */
+function resolveResume(entry: ResumeEntry, file: WorkflowFile): RunResume {
+  const { counterpart } = entry;
+  return {
+    ...entry,
+    plan: counterpart
+      ? planReuse(entry.history.rows, file, counterpart.runId, suppressSet(file, entry.rerunPath))
+      : new Map(),
+  };
+}
+
+/**
+ * The context seed a resumed **root** run replays from (ADR 0062): the counterpart's recorded
+ * `input.json`, never its final `context.json`, which under Resume-from-K would leak keys written
+ * after K. `undefined` for a nested run (its own interpolated input is its seed) or a root with no
+ * counterpart.
+ */
+function resumeSeed(
+  entry: ResumeEntry | undefined,
+  isRoot: boolean,
+): { [key: string]: JsonValue } | undefined {
+  if (!entry?.counterpart || !isRoot) return undefined;
+  return entry.history.blob(entry.counterpart, RUN_BLOB_FILE.input) as {
+    [key: string]: JsonValue;
+  };
+}
+
+/**
+ * The entry a nested `workflow` node's run inherits (Producer B, ADR 0036): **descend** hands the
+ * intermediate path-node's counterpart the path's tail; **rerun-entire** (the node is after B or is
+ * K) plans no counterpart; **reuse / off-path** re-enters as plain Resume. `undefined` when not
+ * resuming.
+ */
+function enterNested(
+  resume: RunResume | undefined,
+  file: WorkflowFile,
+  nodeId: string,
+): ResumeEntry | undefined {
+  if (!resume) return undefined;
+  const disposition = rerunDisposition(file.body, suffixOf(resume.rerunPath), nodeId);
+  const counterpart =
+    disposition === "rerun-entire"
+      ? undefined
+      : recordedChild(resume.history.rows, resume.counterpart?.runId, { nodeId });
+  return {
+    input: resume.input,
+    history: resume.history,
+    counterpart,
+    rerunPath: disposition === "descend" ? resume.rerunPath.slice(1) : [],
+  };
+}
+
+/**
+ * The resume state for one `while-do` iteration (ADR 0037), or `undefined` to run it fresh: it
+ * reuses only when the loop is in this level's reuse region and the counterpart holds a
+ * **succeeded** container with this ordinal.
+ */
+function enterIteration(
+  resume: RunResume | undefined,
+  file: WorkflowFile,
+  nodeId: string,
+  iteration: number,
+): RunResume | undefined {
+  if (!resume?.counterpart) return undefined;
+  if (rerunDisposition(file.body, suffixOf(resume.rerunPath), nodeId) !== "reuse") return undefined;
+  const counterpart = recordedChild(resume.history.rows, resume.counterpart.runId, {
+    nodeId,
+    iteration,
+    succeeded: true,
+  });
+  if (!counterpart) return undefined;
+  return resolveResume(
+    { input: resume.input, history: resume.history, counterpart, rerunPath: [] },
+    file,
+  );
+}
+
+/**
+ * The resume state for each goto **pass** of one resuming workflow-run (ADR 0054 §5–6, goto spec
+ * §8.1), in walk order: a pass pairs with the predecessor's pass of the same ordinal opened by the
+ * same goto (`null` for pass 1), whatever its status. The first pass with no partner leaves the
+ * record, so it and every later pass run fresh; under Resume-from-K, passes before the boundary
+ * pass N pair as plain Resume and later ones run fresh. A boundary with no pass pairs nothing —
+ * pairing would reuse work the operator asked to drop.
+ */
+function passResumer(
+  resume: RunResume,
+  file: WorkflowFile,
+): (pass: number, openerId: string | null) => RunResume {
+  const fresh: RunResume = {
+    input: resume.input,
+    history: resume.history,
+    counterpart: undefined,
+    rerunPath: [],
+    plan: new Map(),
+  };
+  const head = resume.rerunPath[0];
+  const boundaryPass = head ? head.pass : undefined;
+  let paired = head === undefined || typeof boundaryPass === "number";
+  return (pass, openerId) => {
+    if (!paired || (typeof boundaryPass === "number" && pass > boundaryPass)) return fresh;
+    const counterpart = recordedChild(resume.history.rows, resume.counterpart?.runId, {
+      pass,
+      nodeId: openerId,
+    });
+    if (!counterpart) {
+      paired = false;
+      return fresh;
+    }
+    return resolveResume(
+      {
+        input: resume.input,
+        history: resume.history,
+        counterpart,
+        rerunPath: pass === boundaryPass ? resume.rerunPath : [],
+      },
+      file,
+    );
+  };
+}
 
 /** A node of a workflow body; a disposition is asked for one node of one file's body. */
 type WorkflowNode = WorkflowFile["body"][number];
@@ -41,27 +238,6 @@ type ParallelBranch = ParallelNode["branches"][number];
  * blobs from the tree that record belongs to, and restore the Launch facts it recorded. The two
  * **modes** differ only in the {@link Continuation} they hand the walkers.
  */
-
-/**
- * The tree's rows with every reuse row swapped for the source record it points at, keeping the
- * reuse row's own `parentRunId`; a source whose tree was since `rm`'d is dropped and re-executes.
- */
-export function sourceRuns(db: Database.Database, rows: readonly RunRecord[]): RunRecord[] {
-  return rows.flatMap((row) => {
-    if (!isReuseRow(row)) return [row];
-    const source = getRun(db, row.reusedFromRunId);
-    return source ? [{ ...source, parentRunId: row.parentRunId }] : [];
-  });
-}
-
-/** Read one blob of one run, addressed by the record's own `rootRunId` so a reused row reads the
- * source tree. */
-export function continuationBlobReader(
-  projectDir: string,
-): (run: RunRecord, filename: string) => JsonValue {
-  return (run, filename) =>
-    readJsonBlob(runBlobDir(projectDir, run.rootRunId, run.runId), filename);
-}
 
 export interface ContinuationOptions {
   operatorConfig?: ConfigObject;
@@ -235,7 +411,7 @@ function resumeFromResume(resume: RunResume, file: WorkflowFile, isRoot: boolean
       if (!original) return { kind: "run" };
       return {
         kind: "reuse",
-        output: () => resume.input.readBlob(original, RUN_BLOB_FILE.output),
+        output: () => resume.history.blob(original, RUN_BLOB_FILE.output),
         reusedFrom: original.runId,
       };
     },
@@ -276,7 +452,7 @@ export function completeContinuation(
 
 /** This run's own recorded row, or `undefined` for a run opened fresh inside the tree. */
 function ownRow(state: ContinueState, runId: string): RunRecord | undefined {
-  return state.existingRuns.find((run) => run.runId === runId);
+  return state.history.rows.find((run) => run.runId === runId);
 }
 
 function completeFromScope(
@@ -288,7 +464,7 @@ function completeFromScope(
   return {
     disposition(node, ordinal) {
       // One row under this parent answers the node; more than one is a corrupt tree and runs fresh.
-      const existing = recordedChild(state.existingRuns, parentRunId, {
+      const existing = recordedChild(state.history.rows, parentRunId, {
         nodeId: node.id,
         iteration: ordinal,
       });
@@ -308,7 +484,7 @@ function completeFromScope(
       return {
         kind: "reentry",
         existing: ownRun,
-        context: state.readBlob(ownRun, RUN_BLOB_FILE.context) as { [key: string]: JsonValue },
+        context: state.history.blob(ownRun, RUN_BLOB_FILE.context) as { [key: string]: JsonValue },
       };
     },
     enter(_key, childFile, identity) {
@@ -341,7 +517,7 @@ function completePassWalk(
   seedInput: JsonValue,
 ): PassWalkStart | PassDivergence {
   const walk = freshPassWalk(seedInput);
-  const passes = recordedPasses(state.existingRuns, parentRunId);
+  const passes = recordedPasses(state.history.rows, parentRunId);
   for (const recorded of passes) {
     if (recorded.nodeId !== null)
       walk.jumpsSpent.set(recorded.nodeId, (walk.jumpsSpent.get(recorded.nodeId) ?? 0) + 1);
@@ -350,7 +526,7 @@ function completePassWalk(
   if (!reentered) return walk;
   walk.reentered = reentered;
   walk.pass = must(reentered.pass, "pass number of a pass run");
-  walk.carried = state.readBlob(reentered, RUN_BLOB_FILE.input);
+  walk.carried = state.history.blob(reentered, RUN_BLOB_FILE.input);
   if (walk.pass === 1) return walk;
 
   // Pass N starts at its opening goto's target, which must be the node the pass recorded first: a
@@ -358,7 +534,7 @@ function completePassWalk(
   const body = file.body;
   const goto = reentered.nodeId === null ? undefined : gotos.get(reentered.nodeId);
   const target = goto && body.find((candidate) => candidate.name === goto.target);
-  const recordedFirst = state.existingRuns.find((run) => run.parentRunId === reentered.runId);
+  const recordedFirst = state.history.rows.find((run) => run.parentRunId === reentered.runId);
   if (!goto || !target || passFirstNode(target)?.id !== recordedFirst?.nodeId) {
     return {
       diverged: reentered,
@@ -387,7 +563,7 @@ export function recordedPasses(rows: readonly RunRecord[], parentRunId: string):
 
 /** The parked target leaf, when it sits under a pass row of this tree (ADR 0060 §2). */
 function parkedLeafUnder(state: ContinueState, ancestorRunId: string): ParkedLeaf | undefined {
-  const path = pathToRoot(state.existingRuns, state.target.stepRunId);
+  const path = pathToRoot(state.history.rows, state.target.stepRunId);
   if (!path.some((run) => run.parentRunId === ancestorRunId)) return undefined;
   const leaf = must(path.at(-1), "parked leaf run");
   return {
@@ -405,7 +581,7 @@ function parkedLeafUnder(state: ContinueState, ancestorRunId: string): ParkedLea
  * `outputRef` holds it.
  */
 function readExistingOutput(state: ContinueState, run: RunRecord): JsonValue {
-  return run.outputRef ? state.readBlob(run, RUN_BLOB_FILE.output) : {};
+  return run.outputRef ? state.history.blob(run, RUN_BLOB_FILE.output) : {};
 }
 
 /** The persisted denormalization of the rerun boundary path: each node id with its human name at
