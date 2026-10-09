@@ -7,11 +7,11 @@ import {
   noContinuation,
   resolveRerunFromNodePath,
   resumeContinuation,
+  rootResumeEntry,
 } from "./continuation.js";
 import { buildLaunchFacts } from "./launch-facts.js";
 import { createProcessorSemaphore, DEFAULT_PROCESSOR_CONCURRENCY } from "./processor-semaphore.js";
 import type { EnvSource } from "./resolve-env.js";
-import { rootResumeEntry } from "./resume-plan.js";
 import type { Emit, RunIdentity } from "./run-context.js";
 import { createEmitter } from "./run-emitter.js";
 import { executeWorkflowRun } from "./run-node.js";

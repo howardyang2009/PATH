@@ -106,6 +106,7 @@ An Architecture Decision Record (ADR) records one decision PATH has made: the sh
 | [0100](0100-one-host-layout-names-user-folders-and-host-files.md) | One host layout names user folders and host files | accepted |
 | [0101](0101-the-request-body-is-read-at-the-admission-seam.md) | The request body is read at the admission seam | accepted |
 | [0102](0102-one-load-lifecycle-serves-both-surfaces.md) | One load lifecycle serves both surfaces | accepted |
+| [0103](0103-the-resume-plan-is-part-of-the-continuation.md) | The Resume plan is part of the Continuation it serves | accepted |
 
 ## Superseded decisions
 
