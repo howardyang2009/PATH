@@ -23,9 +23,11 @@ export {
 } from "./persistence/marker-lease.js";
 export { dbFilePath, pathDir, rootRunTreeDir } from "./persistence/paths.js";
 export {
+  countWorkflowPaths,
   exportTreeFromFile,
   type ImportTreeResult,
   type RunTreeExport,
+  rewriteWorkflowPaths,
 } from "./persistence/run-transfer.js";
 export { type LoadedStepPluginRegistry, loadStepPluginRegistry } from "./plugin-seam/scan.js";
 export {

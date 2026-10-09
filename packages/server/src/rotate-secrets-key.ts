@@ -1,6 +1,6 @@
-import { existsSync, readdirSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync } from "node:fs";
 import { dbFilePath } from "@path/engine";
+import { userDir, userIds } from "./host-layout.js";
 import { openSecretStore, type SecretStore, type SecretsKey } from "./secret-store.js";
 
 export type RotateSecretsKeyResult =
@@ -21,13 +21,11 @@ export function rotateSecretsKey({
   key: SecretsKey;
   previous: SecretsKey | undefined;
 }): RotateSecretsKeyResult {
-  const usersDir = join(projectDir, "users");
-  const userIds = existsSync(usersDir) ? readdirSync(usersDir) : [];
   const problems: string[] = [];
   let stores = 0;
   let rows = 0;
-  for (const userId of userIds) {
-    const dbFile = dbFilePath(join(usersDir, userId));
+  for (const userId of userIds(projectDir)) {
+    const dbFile = dbFilePath(userDir(projectDir, userId));
     if (!existsSync(dbFile)) continue;
     let store: SecretStore | undefined;
     try {

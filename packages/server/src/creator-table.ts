@@ -22,9 +22,6 @@ export interface CreatorTable {
   close(): void;
 }
 
-/** The host-level database in the project `.path`: the creator table and VM-time usage. */
-export const HOST_DB_FILE = "host.db";
-
 export const SHARED_ITEM_READ_ONLY = "only the creator edits a shared item";
 
 /** Opens (creating if absent) the creator table at `dbPath`; `":memory:"` keeps it in memory. */

@@ -1,6 +1,7 @@
 import { lstatSync, readdirSync, statfsSync } from "node:fs";
 import { join } from "node:path";
 import type { CreatorTable } from "./creator-table.js";
+import { userDir } from "./host-layout.js";
 import type { UserLimits } from "./request-limits.js";
 import type { VmUsage } from "./vm-usage.js";
 
@@ -56,7 +57,7 @@ export function createRunLimits({
     if (!fresh && held && held.bytes <= limit && now() - held.at < STORAGE_CACHE_MS) {
       return held.bytes;
     }
-    let bytes = diskBytes(join(projectDir, "users", userId));
+    let bytes = diskBytes(userDir(projectDir, userId));
     for (const path of creators.pathsBy(userId)) bytes += diskBytes(join(projectDir, path));
     measured.set(userId, { bytes, at: now() });
     return bytes;

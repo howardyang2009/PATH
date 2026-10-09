@@ -9,18 +9,17 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
-import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { createClerkClient } from "@clerk/backend";
-import { pathDir } from "@path/engine";
+import { countWorkflowPaths, dbFilePath, pathDir, rewriteWorkflowPaths } from "@path/engine";
 import { type WorkflowNode, walkNodes } from "@path/schema";
 import Database from "better-sqlite3";
 import { serializeArtifact } from "./artifact-file.js";
-import { DEFAULT_USER_ID } from "./authored-layout.js";
-import { type CreatorTable, HOST_DB_FILE, openCreatorTable } from "./creator-table.js";
-import { QUARANTINE_DIR, REMOVAL_LOG_FILE } from "./remove-shared.js";
-import { LIMITS_FILE } from "./request-limits.js";
+import { DEFAULT_USER_ID, USERS_DIR } from "./authored-layout.js";
+import { type CreatorTable, openCreatorTable } from "./creator-table.js";
+import { HOST_FILES, hostFile, storeDirOf, userDir } from "./host-layout.js";
 import { SANDBOX_DIR } from "./sandbox/sandboxed-runs.js";
-import { runningServerPid, SERVER_PID_FILE } from "./server-pid.js";
+import { runningServerPid } from "./server-pid.js";
 
 // The operator's offline move of one user's data to another user id (docs/spec/path-website.md
 // §9): `local` to the owner's `sub`, and development ids to production ones. It copies, rewrites the
@@ -82,18 +81,12 @@ export interface RemapUserOptions {
 const USER_ID = /^[A-Za-z0-9_-]+$/;
 // Host-level entries in the project `.path`, which stay when `local`'s store moves; the VM staging
 // in `SANDBOX_DIR` is reaped at boot.
-const HOST_ONLY = new Set([
-  HOST_DB_FILE,
-  LIMITS_FILE,
-  QUARANTINE_DIR,
-  REMOVAL_LOG_FILE,
-  SERVER_PID_FILE,
-  SANDBOX_DIR,
-]);
+const HOST_ONLY = new Set<string>([...Object.values(HOST_FILES), SANDBOX_DIR]);
 const SQLITE_SIDE_SUFFIXES = ["-wal", "-shm", "-journal"];
 const EDIT_LEASE = /\.editing$/;
-const STORE_DIR = ".path";
-const STORE_DB = "path.db";
+// The engine's names for a store's folder and database, as a target folder's relative paths.
+const STORE_DIR = basename(pathDir(""));
+const STORE_DB = basename(dbFilePath(""));
 const STORE_DB_DST = `${STORE_DIR}/${STORE_DB}`;
 
 interface CopyItem {
@@ -179,9 +172,9 @@ function planPair(
   { deleteSource, skipEmpty }: { deleteSource: boolean; skipEmpty: boolean },
 ): PairPlan {
   const { from, to } = pair;
-  const authoredDir = join(project, "users", from);
-  const storeDir = from === DEFAULT_USER_ID ? pathDir(project) : join(authoredDir, STORE_DIR);
-  const targetDir = join(project, "users", to);
+  const authoredDir = userDir(project, from);
+  const storeDir = pathDir(storeDirOf(project, from));
+  const targetDir = userDir(project, to);
   const report: RemapReport = {
     from,
     to,
@@ -244,16 +237,8 @@ function planPair(
 
   const storeDb = join(storeDir, STORE_DB);
   if (existsSync(storeDb)) {
-    withDb(storeDb, (db) => {
-      report.rows = rowCounts(db);
-      if (report.rows.runs === undefined) return;
-      const prefix = `users/${from}/`;
-      report.workflowPaths = (
-        db
-          .prepare("SELECT COUNT(*) AS n FROM runs WHERE substr(workflow_path, 1, ?) = ?")
-          .get(prefix.length, prefix) as { n: number }
-      ).n;
-    });
+    report.rows = withDb(storeDb, rowCounts);
+    report.workflowPaths = countWorkflowPaths(storeDb, `${USERS_DIR}/${from}/`);
   }
   for (const entry of plan.items) {
     if (entry.kind !== "authored" || !entry.dst.endsWith(".workflow.json")) continue;
@@ -289,14 +274,11 @@ function applyPlan(plan: PairPlan): string[] {
     }
   }
 
-  if (plan.report.rows.runs !== undefined) {
-    const from = `users/${pair.from}/`;
-    withDb(join(targetDir, STORE_DB_DST), (db) =>
-      db
-        .prepare(
-          "UPDATE runs SET workflow_path = ? || substr(workflow_path, ?) WHERE substr(workflow_path, 1, ?) = ?",
-        )
-        .run(`users/${pair.to}/`, from.length + 1, from.length, from),
+  if (plan.report.workflowPaths > 0) {
+    rewriteWorkflowPaths(
+      join(targetDir, STORE_DB_DST),
+      `${USERS_DIR}/${pair.from}/`,
+      `${USERS_DIR}/${pair.to}/`,
     );
   }
   const rewritten = new Set(plan.report.refs.map((ref) => ref.file));
@@ -408,7 +390,7 @@ export async function listClerkUsers(secretKey: string): Promise<ClerkUserIds[]>
 
 /** Runs `use` on the creator table; 0 when the project has no host.db yet. */
 function withCreators(project: string, use: (creators: CreatorTable) => number): number {
-  const file = join(pathDir(project), HOST_DB_FILE);
+  const file = hostFile(project, "db");
   if (!existsSync(file)) return 0;
   const creators = openCreatorTable(file);
   try {

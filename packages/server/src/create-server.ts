@@ -1,5 +1,5 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
-import { join, resolve } from "node:path";
+import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   type LoadedStepPluginRegistry,
@@ -10,13 +10,9 @@ import {
 import { type Admission, hostedAdmission, UNLIMITED_ADMISSION } from "./admission.js";
 import { type AuthoredKind, authoredLayout } from "./authored-layout.js";
 import { clerkUserIdResolver } from "./clerk-identity.js";
-import {
-  adoptSharedItems,
-  type CreatorTable,
-  HOST_DB_FILE,
-  openCreatorTable,
-} from "./creator-table.js";
+import { adoptSharedItems, type CreatorTable, openCreatorTable } from "./creator-table.js";
 import { enforceFunnelGuard, funnelGuardEnabled } from "./funnel-guard.js";
+import { hostFile } from "./host-layout.js";
 import { sendError } from "./http-json.js";
 import { readServerMode, type ServerMode } from "./mode.js";
 import { enforceSameOrigin } from "./origin-gate.js";
@@ -196,7 +192,7 @@ export async function startPathServer(
   const funnelGuard = funnelGuardEnabled(mode);
   // The host-level tables beside the store (ADR 0088 §3, docs/spec/path-website.md §8): who created
   // each shared item, and each user's VM time.
-  const hostDb = join(project.dir, ".path", HOST_DB_FILE);
+  const hostDb = hostFile(project.dir, "db");
   const creators = openCreatorTable(hostDb);
   const { admission, tenancy } = await tenantsOf(mode, {
     projectDir,

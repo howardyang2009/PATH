@@ -1,7 +1,7 @@
 import type { IncomingMessage } from "node:http";
-import { join } from "node:path";
 import { dbFilePath, openProject, type Project } from "@path/engine";
 import { DEFAULT_USER_ID } from "./authored-layout.js";
+import { userDir } from "./host-layout.js";
 import { createLiveRuns, type LiveRuns } from "./live-runs.js";
 import {
   createSandboxedRuns,
@@ -84,7 +84,7 @@ export function hostedTenancy(options: HostedTenancyOptions): Tenancy {
     hosted: true,
     resolveUserId: options.resolveUserId,
     openUser(userId) {
-      const result = openProject(join(projectDir, "users", userId));
+      const result = openProject(userDir(projectDir, userId));
       if (!result.success) throw new Error(result.error);
       const store = result.project;
       const user: UserStore = {

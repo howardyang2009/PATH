@@ -101,6 +101,44 @@ export function exportTreeFromFile(dbFile: string, rootRunId: string): RunTreeEx
   }
 }
 
+/** How many run rows of the store at `dbFile` record a workflow path under `prefix`; `0` for a store
+ * with no run table. */
+export function countWorkflowPaths(dbFile: string, prefix: string): number {
+  return withRunTable(dbFile, (db) => {
+    const row = db
+      .prepare("SELECT COUNT(*) AS n FROM runs WHERE substr(workflow_path, 1, ?) = ?")
+      .get(prefix.length, prefix) as { n: number };
+    return row.n;
+  });
+}
+
+/** Moves each run row's workflow path under `from` to the same path under `to`, in the store at
+ * `dbFile`; returns how many rows moved. */
+export function rewriteWorkflowPaths(dbFile: string, from: string, to: string): number {
+  return withRunTable(dbFile, (db) => {
+    const moved = db
+      .prepare(
+        "UPDATE runs SET workflow_path = ? || substr(workflow_path, ?) WHERE substr(workflow_path, 1, ?) = ?",
+      )
+      .run(to, from.length + 1, from.length, from);
+    return moved.changes;
+  });
+}
+
+/** Runs `use` on an existing store that has a run table, else answers 0. The handle is read-write
+ * even to count: a read-only one leaves a WAL database's side files behind. */
+function withRunTable(dbFile: string, use: (db: Database.Database) => number): number {
+  const db = new Database(dbFile, { fileMustExist: true });
+  try {
+    const table = db
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'runs'")
+      .get();
+    return table === undefined ? 0 : use(db);
+  } finally {
+    db.close();
+  }
+}
+
 /** A blob ref a row may hold: `runs/<root>/<run>/<file>`, no `.` or `..` segment. */
 function confinedRef(ref: string, rootRunId: string): boolean {
   const parts = ref.split("/");

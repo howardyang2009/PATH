@@ -1,10 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
 import { formatIssues } from "@path/schema";
 import { z } from "zod";
-
-/** The per-user override map in the project `.path`, read at boot. */
-export const LIMITS_FILE = "limits.json";
+import { hostFile } from "./host-layout.js";
 
 // Request and run limits: what one hosted user may do through the API and in VMs. The defaults
 // hold for everyone; `.path/limits.json` overrides any of them per user id.
@@ -45,7 +42,7 @@ export interface RequestLimits {
 /** The limits of a project: the defaults, plus the overrides in `.path/limits.json` when it exists.
  * A malformed file throws, so the Server refuses to start. */
 export function readRequestLimits(projectDir: string): RequestLimits {
-  const path = join(projectDir, ".path", LIMITS_FILE);
+  const path = hostFile(projectDir, "limits");
   const users = new Map<string, UserLimits>();
   if (existsSync(path)) {
     let raw: unknown;
