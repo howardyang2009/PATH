@@ -30,7 +30,7 @@ An Architecture Decision Record (ADR) records one decision PATH has made: the sh
 | [0024](0024-engine-owns-leaf-step-shaping-a-worker-owns-its-verdict.md) | The engine owns a leaf step's terminal shaping; a worker owns its own verdict | accepted |
 | [0025](0025-designer-carries-all-seven-run-surfaces-reshaped-run-meaning-moves-into-client-core.md) | The Designer carries all seven run surfaces, reshaped; shared run-meaning moves into `@path/client-core` | accepted |
 | [0026](0026-designer-refuses-to-open-a-file-with-an-unregistered-step-type.md) | The Designer refuses to open a file with an unregistered step type, rather than opening it read-only or boxing the unknown node | accepted |
-| [0027](0027-two-bundles-one-origin-named-mounts-with-root-redirect.md) | Two bundles, one origin: named mounts with a root redirect | accepted |
+| [0027](0027-two-bundles-one-origin-named-mounts-with-root-redirect.md) | Two bundles, one origin: named mounts with a root redirect | accepted; amended: `/` is a landing page |
 | [0028](0028-designer-is-a-separate-package-not-a-viewer-route.md) | `@path/designer` is a separate package, not a viewer route | partly superseded by [ADR 0031](0031-designer-reuses-the-viewers-run-panels.md) |
 | [0029](0029-designer-canvas-is-the-block-grammar-no-arbitrary-dag.md) | The Designer canvas is the block grammar; no arbitrary DAG | accepted |
 | [0030](0030-clean-is-content-equality-to-the-save-point-baseline.md) | "Clean" is content-equality to the save-point baseline; one save-point serves launch, lease, and `If-Match` | accepted |

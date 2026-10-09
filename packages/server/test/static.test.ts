@@ -41,10 +41,13 @@ afterEach(async () => {
 });
 
 describe("@path/server named mounts + per-mount SPA fallback", () => {
-  it("GET / redirects (302) to /viewer/ so the default surface stays a changeable line", async () => {
-    const res = await fetch(`${handle.url}/`, { redirect: "manual" });
-    expect(res.status).toBe(302);
-    expect(res.headers.get("location")).toBe("/viewer/");
+  it("GET / serves the landing page that links to both mounts", async () => {
+    const res = await fetch(`${handle.url}/`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toMatch(/text\/html/);
+    const html = await res.text();
+    expect(html).toContain('href="/viewer/"');
+    expect(html).toContain('href="/designer/"');
   });
 
   it("serves the Viewer index.html at the mount root /viewer/", async () => {
