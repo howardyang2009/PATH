@@ -753,6 +753,12 @@ Rule of thumb: **Config flows in from outside. Context is written from inside.**
   reuse-marker and the §5.7 cost-SUM traversal keep reaching into the original tree for as long as the
   successor tree itself exists, not just while the successor runs. Liveness is what the block-by-default
   check of `path runs rm` tests for (resume-run-identity.md).
+- **Run history** — the predecessor tree as a **continuation** sees it: the rows a scope matches its
+  **counterpart** against, plus a way to read one run's blob. It is the one handle a Resume or a Complete
+  carries, on `ResumeInput`, `ContinueInput` and `ContinueState` alike, and it is where the storage seam
+  lives: a store adapter performs the **direct-to-source** swap when the handle is built (ADR 0001), so a
+  **reuse row** is already resolved and its blob is read from the source tree. An in-memory row set with
+  a stub reader is the adapter a test uses. _Avoid_: original runs, existing runs (for the handle).
 
 ## Surfaces
 
