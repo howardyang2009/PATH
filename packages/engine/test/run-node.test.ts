@@ -16,6 +16,7 @@ import type { StepRequest, WorkerDescriptor } from "../src/plugin-seam/seam.js";
 import { createProcessorSemaphore } from "../src/processor-semaphore.js";
 import type { ContinueState, NodeExecContext, RunContext } from "../src/run-context.js";
 import { createEmitter } from "../src/run-emitter.js";
+import { runHistory } from "../src/run-history.js";
 import type { RunEvent } from "../src/run-observer.js";
 import { runNode, runSequence } from "../src/run-workflow.js";
 import { flat } from "./fake-observer.js";
@@ -1230,12 +1231,14 @@ describe("runNode — workflow step", () => {
       continuation: completeRun({
         // The parked tree's nested run is still `running` (ADR 0038: awaiting does not propagate),
         // so the replay re-drives it under the identity its parked descendants already carry.
-        existingRuns: [existingRow({ runId: "child-run", nodeId: "nested", status: "running" })],
-        readBlob: (row, filename): JsonValue => {
-          reads.push(`${row.runId}:${filename}`);
-          // A re-entered run starts from its restored blackboard, not a fresh input seed.
-          return filename === "context.json" ? { name: "world" } : {};
-        },
+        history: runHistory(
+          [existingRow({ runId: "child-run", nodeId: "nested", status: "running" })],
+          (row, filename): JsonValue => {
+            reads.push(`${row.runId}:${filename}`);
+            // A re-entered run starts from its restored blackboard, not a fresh input seed.
+            return filename === "context.json" ? { name: "world" } : {};
+          },
+        ),
         target: { stepRunId: "a-parked-leaf-deeper-down", output: null },
       }),
     });
@@ -1263,15 +1266,17 @@ describe("runNode — a node's own recorded row decides the walk (ADR 0041)", ()
     const requests: StepRequest[] = [];
     const { run, observed } = makeRun({
       continuation: completeRun({
-        existingRuns: [
-          existingRow({
-            runId: "done-run",
-            nodeId: "ask",
-            status: "succeeded",
-            outputRef: "runs/root/done/output.json",
-          }),
-        ],
-        readBlob: () => "recorded-output",
+        history: runHistory(
+          [
+            existingRow({
+              runId: "done-run",
+              nodeId: "ask",
+              status: "succeeded",
+              outputRef: "runs/root/done/output.json",
+            }),
+          ],
+          () => "recorded-output",
+        ),
         target: { stepRunId: "some-other-leaf", output: null },
       }),
       runtime: promptRuntime(recordingWorker(requests)),
@@ -1288,8 +1293,10 @@ describe("runNode — a node's own recorded row decides the walk (ADR 0041)", ()
   it("transitions the parked leaf being Completed in place, under its own run id", async () => {
     const { run, observed } = makeRun({
       continuation: completeRun({
-        existingRuns: [existingRow({ runId: "parked-run", nodeId: "ask", status: "awaiting" })],
-        readBlob: () => null,
+        history: runHistory(
+          [existingRow({ runId: "parked-run", nodeId: "ask", status: "awaiting" })],
+          () => null,
+        ),
         target: { stepRunId: "parked-run", output: "the person's answer" },
       }),
     });
@@ -1309,8 +1316,10 @@ describe("runNode — a node's own recorded row decides the walk (ADR 0041)", ()
     const requests: StepRequest[] = [];
     const { run, observed } = makeRun({
       continuation: completeRun({
-        existingRuns: [existingRow({ runId: "other-parked", nodeId: "ask", status: "awaiting" })],
-        readBlob: () => null,
+        history: runHistory(
+          [existingRow({ runId: "other-parked", nodeId: "ask", status: "awaiting" })],
+          () => null,
+        ),
         target: { stepRunId: "a-different-leaf", output: null },
       }),
       runtime: promptRuntime(recordingWorker(requests)),
@@ -1325,8 +1334,10 @@ describe("runNode — a node's own recorded row decides the walk (ADR 0041)", ()
     const requests: StepRequest[] = [];
     const { run, observed } = makeRun({
       continuation: completeRun({
-        existingRuns: [existingRow({ runId: "cancelled-run", nodeId: "ask", status: "cancelled" })],
-        readBlob: () => null,
+        history: runHistory(
+          [existingRow({ runId: "cancelled-run", nodeId: "ask", status: "cancelled" })],
+          () => null,
+        ),
         target: { stepRunId: "some-other-leaf", output: null },
       }),
       runtime: promptRuntime(recordingWorker(requests)),

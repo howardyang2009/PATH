@@ -81,7 +81,7 @@ export async function runWorkflow(
   const { observer } = options;
 
   // The original tree's root run — the predecessor fact stamped on this fresh root's start.
-  const originalRoot = findRootRun(resumeInput?.originalRuns ?? []);
+  const originalRoot = findRootRun(resumeInput?.history.rows ?? []);
   const emit: Emit = observer
     ? async (o) => {
         await observer.observe(masker.isEmpty ? o : maskRunEvent(masker, o));

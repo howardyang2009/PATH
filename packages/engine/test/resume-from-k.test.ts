@@ -2,6 +2,7 @@ import { join } from "node:path";
 import type { JsonValue, RunRecord, WorkflowFile } from "@path/schema";
 import { describe, expect, it } from "vitest";
 import type { StepRequest, WorkerDescriptor } from "../src/plugin-seam/seam.js";
+import { runHistory } from "../src/run-history.js";
 import { type ResumeInput, runWorkflow } from "../src/run-workflow.js";
 import { type FakeObserver, fakeObserver } from "./fake-observer.js";
 import { stampNames } from "./stamp-names.js";
@@ -62,13 +63,18 @@ function promptOverride(worker: WorkerDescriptor) {
   return { prompt: { anthropic: worker } };
 }
 
-function reader(blobs: { [key: string]: JsonValue }, reads: string[]): ResumeInput["readBlob"] {
-  return (record, filename) => {
+function resumeHistory(
+  runs: RunRecord[],
+  blobs: { [key: string]: JsonValue },
+  reads: string[],
+): ResumeInput["history"] {
+  const readBlob = (record: RunRecord, filename: string): JsonValue => {
     const key = `${record.runId}/${filename}`;
     reads.push(key);
     if (!(key in blobs)) throw new Error(`no such original blob: ${key}`);
     return blobs[key]!;
   };
+  return runHistory(runs, readBlob);
 }
 
 function tree(body: WorkflowFile["body"], output?: WorkflowFile["output"]): WorkflowFile {
@@ -132,8 +138,11 @@ describe("Resume-from-K — top-level boundary (ADR 0035)", () => {
       workerOverrides: promptOverride(recordingWorker({ b: "FRESH_B", c: "FRESH_C" }, ran)),
       continuation: {
         kind: "resume",
-        originalRuns: abcOriginalRuns(),
-        readBlob: reader({ "orig-root/input.json": {}, "a-run/output.json": "REUSED_A" }, reads),
+        history: resumeHistory(
+          abcOriginalRuns(),
+          { "orig-root/input.json": {}, "a-run/output.json": "REUSED_A" },
+          reads,
+        ),
         // K = b: a is <K and reuses; b and c are ≥K and re-run.
         rerunFromNodePath: ["b"],
       },
@@ -183,37 +192,40 @@ describe("Resume-from-K — top-level boundary (ADR 0035)", () => {
       workerOverrides: promptOverride(recordingWorker({ inner: "FRESH_INNER" }, ran)),
       continuation: {
         kind: "resume",
-        originalRuns: [
-          run({
-            runId: "orig-root",
-            parentRunId: null,
-            nodeId: null,
-            nodeName: null,
-            status: "succeeded",
-          }),
-          run({
-            runId: "a-run",
-            parentRunId: "orig-root",
-            nodeId: "a",
-            nodeName: "a",
-            status: "succeeded",
-          }),
-          run({
-            runId: "sub-run",
-            parentRunId: "orig-root",
-            nodeId: "sub",
-            nodeName: "sub",
-            status: "succeeded",
-          }),
-          run({
-            runId: "inner-run",
-            parentRunId: "sub-run",
-            nodeId: "inner",
-            nodeName: "inner",
-            status: "succeeded",
-          }),
-        ],
-        readBlob: reader({ "orig-root/input.json": {}, "a-run/output.json": "REUSED_A" }, reads),
+        history: resumeHistory(
+          [
+            run({
+              runId: "orig-root",
+              parentRunId: null,
+              nodeId: null,
+              nodeName: null,
+              status: "succeeded",
+            }),
+            run({
+              runId: "a-run",
+              parentRunId: "orig-root",
+              nodeId: "a",
+              nodeName: "a",
+              status: "succeeded",
+            }),
+            run({
+              runId: "sub-run",
+              parentRunId: "orig-root",
+              nodeId: "sub",
+              nodeName: "sub",
+              status: "succeeded",
+            }),
+            run({
+              runId: "inner-run",
+              parentRunId: "sub-run",
+              nodeId: "inner",
+              nodeName: "inner",
+              status: "succeeded",
+            }),
+          ],
+          { "orig-root/input.json": {}, "a-run/output.json": "REUSED_A" },
+          reads,
+        ),
         // K = sub (a ≥K workflow node): its whole subtree re-runs, inner included.
         rerunFromNodePath: ["sub"],
       },
@@ -244,37 +256,37 @@ describe("Resume-from-K — the superset invariant (spec §4)", () => {
         workerOverrides: promptOverride(recordingWorker({ c: "FRESH_C" }, ran)),
         continuation: {
           kind: "resume",
-          originalRuns: [
-            run({
-              runId: "orig-root",
-              parentRunId: null,
-              nodeId: null,
-              nodeName: null,
-              status: "failed",
-            }),
-            run({
-              runId: "a-run",
-              parentRunId: "orig-root",
-              nodeId: "a",
-              nodeName: "a",
-              status: "succeeded",
-            }),
-            run({
-              runId: "b-run",
-              parentRunId: "orig-root",
-              nodeId: "b",
-              nodeName: "b",
-              status: "succeeded",
-            }),
-            run({
-              runId: "c-run",
-              parentRunId: "orig-root",
-              nodeId: "c",
-              nodeName: "c",
-              status: "failed",
-            }),
-          ],
-          readBlob: reader(
+          history: resumeHistory(
+            [
+              run({
+                runId: "orig-root",
+                parentRunId: null,
+                nodeId: null,
+                nodeName: null,
+                status: "failed",
+              }),
+              run({
+                runId: "a-run",
+                parentRunId: "orig-root",
+                nodeId: "a",
+                nodeName: "a",
+                status: "succeeded",
+              }),
+              run({
+                runId: "b-run",
+                parentRunId: "orig-root",
+                nodeId: "b",
+                nodeName: "b",
+                status: "succeeded",
+              }),
+              run({
+                runId: "c-run",
+                parentRunId: "orig-root",
+                nodeId: "c",
+                nodeName: "c",
+                status: "failed",
+              }),
+            ],
             {
               "orig-root/input.json": {},
               "a-run/output.json": "REUSED_A",
@@ -360,8 +372,8 @@ describe("Resume-from-K — nested boundary (ADR 0036)", () => {
       ),
       continuation: {
         kind: "resume",
-        originalRuns: asubdOriginalRuns(),
-        readBlob: reader(
+        history: resumeHistory(
+          asubdOriginalRuns(),
           {
             "orig-root/input.json": {},
             "a-run/output.json": "REUSED_A",
@@ -414,51 +426,51 @@ describe("Resume-from-K — nested boundary (ADR 0036)", () => {
       workerOverrides: promptOverride(recordingWorker({ k: "FRESH_K", p2: "FRESH_P2" }, ran)),
       continuation: {
         kind: "resume",
-        originalRuns: [
-          run({
-            runId: "orig-root",
-            parentRunId: null,
-            nodeId: null,
-            nodeName: null,
-            status: "succeeded",
-          }),
-          run({
-            runId: "sub-run",
-            parentRunId: "orig-root",
-            nodeId: "sub",
-            nodeName: "sub",
-            status: "succeeded",
-          }),
-          run({
-            runId: "p-run",
-            parentRunId: "sub-run",
-            nodeId: "p",
-            nodeName: "p",
-            status: "succeeded",
-          }),
-          run({
-            runId: "k-run",
-            parentRunId: "sub-run",
-            nodeId: "k",
-            nodeName: "k",
-            status: "succeeded",
-          }),
-          run({
-            runId: "sub2-run",
-            parentRunId: "orig-root",
-            nodeId: "sub2",
-            nodeName: "sub2",
-            status: "succeeded",
-          }),
-          run({
-            runId: "p2-run",
-            parentRunId: "sub2-run",
-            nodeId: "p2",
-            nodeName: "p2",
-            status: "succeeded",
-          }),
-        ],
-        readBlob: reader(
+        history: resumeHistory(
+          [
+            run({
+              runId: "orig-root",
+              parentRunId: null,
+              nodeId: null,
+              nodeName: null,
+              status: "succeeded",
+            }),
+            run({
+              runId: "sub-run",
+              parentRunId: "orig-root",
+              nodeId: "sub",
+              nodeName: "sub",
+              status: "succeeded",
+            }),
+            run({
+              runId: "p-run",
+              parentRunId: "sub-run",
+              nodeId: "p",
+              nodeName: "p",
+              status: "succeeded",
+            }),
+            run({
+              runId: "k-run",
+              parentRunId: "sub-run",
+              nodeId: "k",
+              nodeName: "k",
+              status: "succeeded",
+            }),
+            run({
+              runId: "sub2-run",
+              parentRunId: "orig-root",
+              nodeId: "sub2",
+              nodeName: "sub2",
+              status: "succeeded",
+            }),
+            run({
+              runId: "p2-run",
+              parentRunId: "sub2-run",
+              nodeId: "p2",
+              nodeName: "p2",
+              status: "succeeded",
+            }),
+          ],
           { "orig-root/input.json": {}, "sub-run/input.json": {}, "p-run/output.json": "REUSED_P" },
           reads,
         ),
@@ -503,25 +515,25 @@ describe("Resume-from-K — a sequence body is transparent (ADR 0064)", () => {
       workerOverrides: promptOverride(recordingWorker({}, ran)),
       continuation: {
         kind: "resume",
-        originalRuns: [
-          run({
-            runId: "orig-root",
-            parentRunId: null,
-            nodeId: null,
-            nodeName: null,
-            status: "succeeded",
-          }),
-          ...["a", "b", "c", "d", "e"].map((id) =>
+        history: resumeHistory(
+          [
             run({
-              runId: `${id}-run`,
-              parentRunId: "orig-root",
-              nodeId: id,
-              nodeName: id,
+              runId: "orig-root",
+              parentRunId: null,
+              nodeId: null,
+              nodeName: null,
               status: "succeeded",
             }),
-          ),
-        ],
-        readBlob: reader(
+            ...["a", "b", "c", "d", "e"].map((id) =>
+              run({
+                runId: `${id}-run`,
+                parentRunId: "orig-root",
+                nodeId: id,
+                nodeName: id,
+                status: "succeeded",
+              }),
+            ),
+          ],
           {
             "orig-root/input.json": {},
             "a-run/output.json": "REUSED_A",
@@ -564,37 +576,37 @@ describe("Resume-from-K — a sequence body is transparent (ADR 0064)", () => {
       workerOverrides: promptOverride(recordingWorker({}, ran)),
       continuation: {
         kind: "resume",
-        originalRuns: [
-          run({
-            runId: "orig-root",
-            parentRunId: null,
-            nodeId: null,
-            nodeName: null,
-            status: "succeeded",
-          }),
-          run({
-            runId: "sub-run",
-            parentRunId: "orig-root",
-            nodeId: "sub",
-            nodeName: "sub",
-            status: "succeeded",
-          }),
-          run({
-            runId: "inner-run",
-            parentRunId: "sub-run",
-            nodeId: "inner",
-            nodeName: "inner",
-            status: "succeeded",
-          }),
-          run({
-            runId: "c-run",
-            parentRunId: "orig-root",
-            nodeId: "c",
-            nodeName: "c",
-            status: "succeeded",
-          }),
-        ],
-        readBlob: reader(
+        history: resumeHistory(
+          [
+            run({
+              runId: "orig-root",
+              parentRunId: null,
+              nodeId: null,
+              nodeName: null,
+              status: "succeeded",
+            }),
+            run({
+              runId: "sub-run",
+              parentRunId: "orig-root",
+              nodeId: "sub",
+              nodeName: "sub",
+              status: "succeeded",
+            }),
+            run({
+              runId: "inner-run",
+              parentRunId: "sub-run",
+              nodeId: "inner",
+              nodeName: "inner",
+              status: "succeeded",
+            }),
+            run({
+              runId: "c-run",
+              parentRunId: "orig-root",
+              nodeId: "c",
+              nodeName: "c",
+              status: "succeeded",
+            }),
+          ],
           { "orig-root/input.json": {}, "sub-run/output.json": { r: "REUSED" } },
           reads,
         ),
@@ -637,8 +649,8 @@ describe("Resume-from-K — a sequence body is transparent (ADR 0064)", () => {
       workerOverrides: promptOverride(recordingWorker({}, ran)),
       continuation: {
         kind: "resume",
-        originalRuns: asubdOriginalRuns(),
-        readBlob: reader(
+        history: resumeHistory(
+          asubdOriginalRuns(),
           {
             "orig-root/input.json": {},
             "a-run/output.json": "REUSED_A",

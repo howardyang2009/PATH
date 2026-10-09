@@ -7,15 +7,11 @@ import {
   type RunStatus,
   type WorkflowFile,
 } from "@path/schema";
-import {
-  continuationBlobReader,
-  continuationRunOptions,
-  sourceRuns,
-  successorCapture,
-} from "./continuation.js";
+import { continuationRunOptions, successorCapture } from "./continuation.js";
 import { getLaunchFacts, getRunsForRoot } from "./persistence/run-store.js";
 import type { ProjectCore, ProjectResumeOptions } from "./project.js";
 import { type LegalKContainer, type LegalKReasonCode, resolveLegalK } from "./resume-legal-k.js";
+import { diskRunHistory } from "./run-history.js";
 import type { ContinuationInput } from "./run-options.js";
 
 /**
@@ -186,12 +182,11 @@ export async function resumeProjectRun(
 
   // The continuation recipe Resume and Complete share: rows with reuse rows swapped for their
   // source, a read-only blob reader, and the recorded launch facts.
-  const originalRuns = sourceRuns(db, directRuns);
+  const history = diskRunHistory(db, absDir, directRuns);
   const capture = successorCapture();
   const continuation: ContinuationInput = {
     kind: "resume",
-    originalRuns,
-    readBlob: continuationBlobReader(absDir),
+    history,
     rerunFromNodePath,
     rerunFromPasses,
   };

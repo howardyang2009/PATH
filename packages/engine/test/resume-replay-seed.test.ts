@@ -2,6 +2,7 @@ import { join } from "node:path";
 import type { JsonValue, RunRecord, WorkflowFile } from "@path/schema";
 import { describe, expect, it } from "vitest";
 import type { StepRequest, WorkerDescriptor } from "../src/plugin-seam/seam.js";
+import { runHistory } from "../src/run-history.js";
 import { type ResumeInput, runWorkflow } from "../src/run-workflow.js";
 import { type FakeObserver, fakeObserver } from "./fake-observer.js";
 import { stampNames } from "./stamp-names.js";
@@ -67,13 +68,18 @@ function promptOverride(worker: WorkerDescriptor) {
   return { prompt: { anthropic: worker } };
 }
 
-function reader(blobs: { [key: string]: JsonValue }, reads: string[]): ResumeInput["readBlob"] {
-  return (record, filename) => {
+function resumeHistory(
+  runs: RunRecord[],
+  blobs: { [key: string]: JsonValue },
+  reads: string[],
+): ResumeInput["history"] {
+  const readBlob = (record: RunRecord, filename: string): JsonValue => {
     const key = `${record.runId}/${filename}`;
     reads.push(key);
     if (!(key in blobs)) throw new Error(`no such original blob: ${key}`);
     return blobs[key]!;
   };
+  return runHistory(runs, readBlob);
 }
 
 function tree(body: WorkflowFile["body"], output?: WorkflowFile["output"]): WorkflowFile {
@@ -109,15 +115,29 @@ const xyFile = () =>
     { seen: "${context.seenByB}", x: "${context.x}" },
   );
 
-const xyOriginalRuns = (
+/** The straight-line predecessor tree of a Resume-from-K case, over the caller's blob map. */
+const xyHistory = (
   rootStatus: RunRecord["status"],
   cStatus: RunRecord["status"],
-): RunRecord[] => [
-  run({ runId: "orig-root", parentRunId: null, nodeId: null, nodeName: null, status: rootStatus }),
-  run({ runId: "a-run", parentRunId: "orig-root", nodeId: "a", status: "succeeded" }),
-  run({ runId: "b-run", parentRunId: "orig-root", nodeId: "b", status: "succeeded" }),
-  run({ runId: "c-run", parentRunId: "orig-root", nodeId: "c", status: cStatus }),
-];
+  blobs: { [key: string]: JsonValue },
+  reads: string[],
+): ResumeInput["history"] =>
+  resumeHistory(
+    [
+      run({
+        runId: "orig-root",
+        parentRunId: null,
+        nodeId: null,
+        nodeName: null,
+        status: rootStatus,
+      }),
+      run({ runId: "a-run", parentRunId: "orig-root", nodeId: "a", status: "succeeded" }),
+      run({ runId: "b-run", parentRunId: "orig-root", nodeId: "b", status: "succeeded" }),
+      run({ runId: "c-run", parentRunId: "orig-root", nodeId: "c", status: cStatus }),
+    ],
+    blobs,
+    reads,
+  );
 
 describe("replay from seed — straight-line file", () => {
   it("Resume-from-K: K sees the seed value, not the one a later node wrote (the y=0 / y=5 case)", async () => {
@@ -130,8 +150,9 @@ describe("replay from seed — straight-line file", () => {
       workerOverrides: promptOverride(recordingWorker({ c: "5" }, ran)),
       continuation: {
         kind: "resume",
-        originalRuns: xyOriginalRuns("succeeded", "succeeded"),
-        readBlob: reader(
+        history: xyHistory(
+          "succeeded",
+          "succeeded",
           {
             "orig-root/input.json": { y: 0 },
             "orig-root/context.json": { y: "5", x: "1", seenByB: 0 },
@@ -160,8 +181,9 @@ describe("replay from seed — straight-line file", () => {
       continuation: {
         kind: "resume",
         // The original failed at c: a and b reuse and re-publish over the seed, c re-runs.
-        originalRuns: xyOriginalRuns("failed", "failed"),
-        readBlob: reader(
+        history: xyHistory(
+          "failed",
+          "failed",
           {
             "orig-root/input.json": { y: 0 },
             "orig-root/context.json": { y: 0, x: "1", seenByB: 0 },
@@ -198,18 +220,21 @@ describe("replay from seed — `previous` (ADR 0079)", () => {
         workerOverrides: promptOverride(recordingWorker({}, ran)),
         continuation: {
           kind: "resume",
-          originalRuns: [
-            run({
-              runId: "orig-root",
-              parentRunId: null,
-              nodeId: null,
-              nodeName: null,
-              status: "failed",
-            }),
-            run({ runId: "a-run", parentRunId: "orig-root", nodeId: "a", status: "succeeded" }),
-            run({ runId: "b-run", parentRunId: "orig-root", nodeId: "b", status: "failed" }),
-          ],
-          readBlob: reader({ "orig-root/input.json": {}, "a-run/output.json": "1" }, []),
+          history: resumeHistory(
+            [
+              run({
+                runId: "orig-root",
+                parentRunId: null,
+                nodeId: null,
+                nodeName: null,
+                status: "failed",
+              }),
+              run({ runId: "a-run", parentRunId: "orig-root", nodeId: "a", status: "succeeded" }),
+              run({ runId: "b-run", parentRunId: "orig-root", nodeId: "b", status: "failed" }),
+            ],
+            { "orig-root/input.json": {}, "a-run/output.json": "1" },
+            [],
+          ),
         },
       },
     );
@@ -251,25 +276,25 @@ describe("replay from seed — while-do", () => {
       workerOverrides: promptOverride(recordingWorker({ body: "FRESH" }, ran)),
       continuation: {
         kind: "resume",
-        originalRuns: [
-          run({
-            runId: "orig-root",
-            parentRunId: null,
-            nodeId: null,
-            nodeName: null,
-            status: "succeeded",
-          }),
-          run({ runId: "a-run", parentRunId: "orig-root", nodeId: "a", status: "succeeded" }),
-          run({
-            runId: "iter-1",
-            parentRunId: "orig-root",
-            nodeId: "loop",
-            iteration: 1,
-            status: "succeeded",
-          }),
-          run({ runId: "body-1", parentRunId: "iter-1", nodeId: "body", status: "succeeded" }),
-        ],
-        readBlob: reader(
+        history: resumeHistory(
+          [
+            run({
+              runId: "orig-root",
+              parentRunId: null,
+              nodeId: null,
+              nodeName: null,
+              status: "succeeded",
+            }),
+            run({ runId: "a-run", parentRunId: "orig-root", nodeId: "a", status: "succeeded" }),
+            run({
+              runId: "iter-1",
+              parentRunId: "orig-root",
+              nodeId: "loop",
+              iteration: 1,
+              status: "succeeded",
+            }),
+            run({ runId: "body-1", parentRunId: "iter-1", nodeId: "body", status: "succeeded" }),
+          ],
           {
             "orig-root/input.json": {},
             "orig-root/context.json": { fromA: "A", done: "OLD" },
@@ -323,39 +348,44 @@ describe("replay from seed — while-do", () => {
       workerOverrides: promptOverride(recordingWorker({ late: "LATE" }, ran)),
       continuation: {
         kind: "resume",
-        originalRuns: [
-          run({
-            runId: "orig-root",
-            parentRunId: null,
-            nodeId: null,
-            nodeName: null,
-            status: "succeeded",
-          }),
-          run({
-            runId: "iter-1",
-            parentRunId: "orig-root",
-            nodeId: "loop",
-            iteration: 1,
-            status: "succeeded",
-          }),
-          run({ runId: "body-1", parentRunId: "iter-1", nodeId: "body", status: "succeeded" }),
-          run({
-            runId: "iter-2",
-            parentRunId: "orig-root",
-            nodeId: "loop",
-            iteration: 2,
-            status: "succeeded",
-          }),
-          run({ runId: "body-2", parentRunId: "iter-2", nodeId: "body", status: "succeeded" }),
-          run({
-            runId: "after-run",
-            parentRunId: "orig-root",
-            nodeId: "after",
-            status: "succeeded",
-          }),
-          run({ runId: "late-run", parentRunId: "orig-root", nodeId: "late", status: "succeeded" }),
-        ],
-        readBlob: reader(
+        history: resumeHistory(
+          [
+            run({
+              runId: "orig-root",
+              parentRunId: null,
+              nodeId: null,
+              nodeName: null,
+              status: "succeeded",
+            }),
+            run({
+              runId: "iter-1",
+              parentRunId: "orig-root",
+              nodeId: "loop",
+              iteration: 1,
+              status: "succeeded",
+            }),
+            run({ runId: "body-1", parentRunId: "iter-1", nodeId: "body", status: "succeeded" }),
+            run({
+              runId: "iter-2",
+              parentRunId: "orig-root",
+              nodeId: "loop",
+              iteration: 2,
+              status: "succeeded",
+            }),
+            run({ runId: "body-2", parentRunId: "iter-2", nodeId: "body", status: "succeeded" }),
+            run({
+              runId: "after-run",
+              parentRunId: "orig-root",
+              nodeId: "after",
+              status: "succeeded",
+            }),
+            run({
+              runId: "late-run",
+              parentRunId: "orig-root",
+              nodeId: "late",
+              status: "succeeded",
+            }),
+          ],
           {
             "orig-root/input.json": { n: "0" },
             "orig-root/context.json": { n: "LATE", seenN: "2" },
@@ -409,20 +439,20 @@ describe("replay from seed — nested workflow step", () => {
       workerOverrides: promptOverride(recordingWorker({ q: "late" }, ran)),
       continuation: {
         kind: "resume",
-        originalRuns: [
-          run({
-            runId: "orig-root",
-            parentRunId: null,
-            nodeId: null,
-            nodeName: null,
-            status: "succeeded",
-          }),
-          run({ runId: "sub-run", parentRunId: "orig-root", nodeId: "sub", status: "succeeded" }),
-          run({ runId: "p-run", parentRunId: "sub-run", nodeId: "p", status: "succeeded" }),
-          run({ runId: "k-run", parentRunId: "sub-run", nodeId: "k", status: "succeeded" }),
-          run({ runId: "q-run", parentRunId: "sub-run", nodeId: "q", status: "succeeded" }),
-        ],
-        readBlob: reader(
+        history: resumeHistory(
+          [
+            run({
+              runId: "orig-root",
+              parentRunId: null,
+              nodeId: null,
+              nodeName: null,
+              status: "succeeded",
+            }),
+            run({ runId: "sub-run", parentRunId: "orig-root", nodeId: "sub", status: "succeeded" }),
+            run({ runId: "p-run", parentRunId: "sub-run", nodeId: "p", status: "succeeded" }),
+            run({ runId: "k-run", parentRunId: "sub-run", nodeId: "k", status: "succeeded" }),
+            run({ runId: "q-run", parentRunId: "sub-run", nodeId: "q", status: "succeeded" }),
+          ],
           {
             "orig-root/input.json": {},
             "orig-root/context.json": { sub: { seenV: "orig" } },
@@ -500,24 +530,24 @@ describe("replay from seed — parallel joins", () => {
       workerOverrides: promptOverride(recordingWorker({}, [])),
       continuation: {
         kind: "resume",
-        originalRuns: [
-          run({
-            runId: "orig-root",
-            parentRunId: null,
-            nodeId: null,
-            nodeName: null,
-            status: "succeeded",
-          }),
-          run({ runId: "l-run", parentRunId: "orig-root", nodeId: "l", status: "succeeded" }),
-          run({ runId: "r-run", parentRunId: "orig-root", nodeId: "r", status: "succeeded" }),
-          run({
-            runId: "after-run",
-            parentRunId: "orig-root",
-            nodeId: "after",
-            status: "succeeded",
-          }),
-        ],
-        readBlob: reader(
+        history: resumeHistory(
+          [
+            run({
+              runId: "orig-root",
+              parentRunId: null,
+              nodeId: null,
+              nodeName: null,
+              status: "succeeded",
+            }),
+            run({ runId: "l-run", parentRunId: "orig-root", nodeId: "l", status: "succeeded" }),
+            run({ runId: "r-run", parentRunId: "orig-root", nodeId: "r", status: "succeeded" }),
+            run({
+              runId: "after-run",
+              parentRunId: "orig-root",
+              nodeId: "after",
+              status: "succeeded",
+            }),
+          ],
           {
             "orig-root/input.json": {},
             "orig-root/context.json": {},
@@ -574,24 +604,24 @@ describe("replay from seed — parallel joins", () => {
       workerOverrides: promptOverride(recordingWorker({}, [])),
       continuation: {
         kind: "resume",
-        originalRuns: [
-          run({
-            runId: "orig-root",
-            parentRunId: null,
-            nodeId: null,
-            nodeName: null,
-            status: "succeeded",
-          }),
-          run({ runId: "f-run", parentRunId: "orig-root", nodeId: "f", status: "succeeded" }),
-          run({ runId: "s-run", parentRunId: "orig-root", nodeId: "s", status: "cancelled" }),
-          run({
-            runId: "after-run",
-            parentRunId: "orig-root",
-            nodeId: "after",
-            status: "succeeded",
-          }),
-        ],
-        readBlob: reader(
+        history: resumeHistory(
+          [
+            run({
+              runId: "orig-root",
+              parentRunId: null,
+              nodeId: null,
+              nodeName: null,
+              status: "succeeded",
+            }),
+            run({ runId: "f-run", parentRunId: "orig-root", nodeId: "f", status: "succeeded" }),
+            run({ runId: "s-run", parentRunId: "orig-root", nodeId: "s", status: "cancelled" }),
+            run({
+              runId: "after-run",
+              parentRunId: "orig-root",
+              nodeId: "after",
+              status: "succeeded",
+            }),
+          ],
           {
             "orig-root/input.json": {},
             "orig-root/context.json": { fromF: "F" },
@@ -623,18 +653,18 @@ describe("replay from seed — secrets", () => {
       workerOverrides: promptOverride(recordingWorker({}, ran)),
       continuation: {
         kind: "resume",
-        originalRuns: [
-          run({
-            runId: "orig-root",
-            parentRunId: null,
-            nodeId: null,
-            nodeName: null,
-            status: "succeeded",
-          }),
-          run({ runId: "a-run", parentRunId: "orig-root", nodeId: "a", status: "succeeded" }),
-          run({ runId: "b-run", parentRunId: "orig-root", nodeId: "b", status: "succeeded" }),
-        ],
-        readBlob: reader(
+        history: resumeHistory(
+          [
+            run({
+              runId: "orig-root",
+              parentRunId: null,
+              nodeId: null,
+              nodeName: null,
+              status: "succeeded",
+            }),
+            run({ runId: "a-run", parentRunId: "orig-root", nodeId: "a", status: "succeeded" }),
+            run({ runId: "b-run", parentRunId: "orig-root", nodeId: "b", status: "succeeded" }),
+          ],
           {
             "orig-root/input.json": {},
             "orig-root/context.json": { token: "[secret:apiKey]" },
@@ -660,8 +690,12 @@ describe("replay from seed — the successor records its seed", () => {
       workerOverrides: promptOverride(recordingWorker({ c: "5" }, [])),
       continuation: {
         kind: "resume",
-        originalRuns: xyOriginalRuns("succeeded", "succeeded"),
-        readBlob: reader({ "orig-root/input.json": { y: 0 }, "a-run/output.json": "1" }, []),
+        history: xyHistory(
+          "succeeded",
+          "succeeded",
+          { "orig-root/input.json": { y: 0 }, "a-run/output.json": "1" },
+          [],
+        ),
         rerunFromNodePath: ["b"],
       },
     });
@@ -696,20 +730,19 @@ describe("replay from seed — secrets in a nested seed", () => {
       workerOverrides: promptOverride(recordingWorker({}, ran)),
       continuation: {
         kind: "resume",
-        originalRuns: [
-          run({
-            runId: "orig-root",
-            parentRunId: null,
-            nodeId: null,
-            nodeName: null,
-            status: "succeeded",
-          }),
-          run({ runId: "sub-run", parentRunId: "orig-root", nodeId: "sub", status: "succeeded" }),
-          run({ runId: "p-run", parentRunId: "sub-run", nodeId: "p", status: "succeeded" }),
-          run({ runId: "k-run", parentRunId: "sub-run", nodeId: "k", status: "succeeded" }),
-        ],
-        readBlob: reader(
-          // A read of the child's masked seed would throw: it is not supplied.
+        history: resumeHistory(
+          [
+            run({
+              runId: "orig-root",
+              parentRunId: null,
+              nodeId: null,
+              nodeName: null,
+              status: "succeeded",
+            }),
+            run({ runId: "sub-run", parentRunId: "orig-root", nodeId: "sub", status: "succeeded" }),
+            run({ runId: "p-run", parentRunId: "sub-run", nodeId: "p", status: "succeeded" }),
+            run({ runId: "k-run", parentRunId: "sub-run", nodeId: "k", status: "succeeded" }),
+          ], // A read of the child masked seed would throw: it is not supplied.
           { "orig-root/input.json": {}, "p-run/output.json": "P" },
           [],
         ),

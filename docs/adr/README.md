@@ -108,6 +108,7 @@ An Architecture Decision Record (ADR) records one decision PATH has made: the sh
 | [0102](0102-one-load-lifecycle-serves-both-surfaces.md) | One load lifecycle serves both surfaces | accepted |
 | [0103](0103-the-resume-plan-is-part-of-the-continuation.md) | The Resume plan is part of the Continuation it serves | accepted |
 | [0104](0104-one-run-selection-serves-both-consoles.md) | One run selection serves both consoles | accepted |
+| [0105](0105-one-run-history-carries-the-predecessor-tree.md) | One run history carries the predecessor tree | accepted |
 
 ## Superseded decisions
 

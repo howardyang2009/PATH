@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -15,20 +15,17 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { ResumeEntry } from "../src/continuation.js";
 import {
   completeContinuation,
-  continuationBlobReader,
   continuationRunOptions,
   noContinuation,
   passFirstNode,
   recordedPasses,
   resumeContinuation,
   rootResumeEntry,
-  sourceRuns,
   successorCapture,
 } from "../src/continuation.js";
 import { openDb } from "../src/persistence/db.js";
-import { runBlobDir } from "../src/persistence/paths.js";
-import { insertReuseRun, insertRun } from "../src/persistence/run-store.js";
 import type { ContinueState } from "../src/run-context.js";
+import { runHistory } from "../src/run-history.js";
 import type { RunEvent } from "../src/run-observer.js";
 
 /**
@@ -83,66 +80,6 @@ function record(
     ...extra,
   } as unknown as RunRecord;
 }
-
-describe("sourceRuns", () => {
-  it("swaps a reuse row for its source record, keeping the reuse row's own parent", () => {
-    insertRun(db, newRow("root-1", null));
-    insertRun(db, { ...newRow("step-1", "root-1"), status: "succeeded" });
-    insertReuseRun(db, {
-      runId: "reuse-1",
-      rootRunId: "root-1",
-      parentRunId: "root-1",
-      nodeId: "node-step-1",
-      nodeName: "step-1",
-      reusedFromRunId: "step-1",
-    });
-
-    const swapped = sourceRuns(db, [
-      record("reuse-1", "root-1", "root-1", { reusedFromRunId: "step-1" }),
-    ]);
-
-    // The reuse row keeps the parent it sat under, but names the source's run and tree from now on.
-    expect(swapped[0]).toMatchObject({
-      runId: "step-1",
-      rootRunId: "root-1",
-      parentRunId: "root-1",
-      status: "succeeded",
-    });
-  });
-
-  it("drops a reuse row whose source is gone, so that node re-executes", () => {
-    expect(
-      sourceRuns(db, [record("reuse-1", "root-1", "root-1", { reusedFromRunId: "vanished" })]),
-    ).toEqual([]);
-  });
-
-  it("passes an ordinary row through unchanged", () => {
-    const ordinary = record("step-1", "root-1");
-
-    expect(sourceRuns(db, [ordinary])).toEqual([ordinary]);
-  });
-});
-
-describe("continuationBlobReader", () => {
-  it("reads out of the tree the record names, which is the source tree for a swapped reuse row", () => {
-    const reader = continuationBlobReader(dir);
-    for (const [rootRunId, value] of [
-      ["source-root", { from: "source" }],
-      ["other-root", { from: "other" }],
-    ] as const) {
-      const blobDir = runBlobDir(dir, rootRunId, "step-1");
-      mkdirSync(blobDir, { recursive: true });
-      writeFileSync(join(blobDir, "output.json"), JSON.stringify(value));
-    }
-
-    expect(reader(record("step-1", "parent-1", "source-root"), "output.json")).toEqual({
-      from: "source",
-    });
-    expect(reader(record("step-1", "parent-1", "other-root"), "output.json")).toEqual({
-      from: "other",
-    });
-  });
-});
 
 describe("continuationRunOptions", () => {
   const frozen: LaunchFacts = {
@@ -245,8 +182,7 @@ const file: WorkflowFile = {
 /** A Complete-continue state over a fixed row set, targeting one parked leaf by id. */
 function continueState(existingRuns: RunRecord[], targetStepRunId: string): ContinueState {
   return {
-    existingRuns,
-    readBlob: (run) => ({ from: run.runId }),
+    history: runHistory(existingRuns, (run) => ({ from: run.runId })),
     target: { stepRunId: targetStepRunId, output: { submitted: true } },
   };
 }
@@ -255,8 +191,10 @@ describe("resumeContinuation — Resume adapter", () => {
   const counterpart = record("orig-root", null, "root-1", { nodeId: null, status: "failed" });
   const original = record("orig-1", "orig-root", "root-1", { nodeId: "a", status: "succeeded" });
   const readBlob = (run: RunRecord, filename: string) => ({ from: run.runId, file: filename });
+  const history = runHistory([counterpart, original], readBlob);
   const entry: ResumeEntry = {
-    input: { originalRuns: [counterpart, original], readBlob },
+    input: { history },
+    history,
     counterpart,
     rerunPath: [],
   };
@@ -281,15 +219,14 @@ describe("resumeContinuation — Resume adapter", () => {
 
   it("seeds a re-entered root run from its counterpart's input, never a nested one", () => {
     const reads: string[] = [];
+    const seededHistory = runHistory([counterpart, original], (run, filename) => {
+      reads.push(`${run.runId}/${filename}`);
+      return { blob: filename };
+    });
     const seeded: ResumeEntry = {
       ...entry,
-      input: {
-        originalRuns: [counterpart, original],
-        readBlob: (run, filename) => {
-          reads.push(`${run.runId}/${filename}`);
-          return { blob: filename };
-        },
-      },
+      input: { history: seededHistory },
+      history: seededHistory,
     };
 
     expect(resumeContinuation(seeded, file, true).start()).toEqual({
@@ -432,8 +369,10 @@ const gotoMap = new Map([["check", gotoCheck]]);
  * visible in the walk. */
 function passContinueState(existingRuns: RunRecord[]): ContinueState {
   return {
-    existingRuns,
-    readBlob: (run, filename) => ({ blob: `${run.runId}/${filename}` }) as JsonValue,
+    history: runHistory(
+      existingRuns,
+      (run, filename) => ({ blob: `${run.runId}/${filename}` }) as JsonValue,
+    ),
     target: { stepRunId: "leaf", output: {} },
   };
 }
@@ -528,12 +467,11 @@ describe("recordedPasses", () => {
 
 /** A predecessor tree of in-memory rows and a blob reader; no store. */
 function resumeInput(
-  originalRuns: RunRecord[],
+  rows: RunRecord[],
   extra: Partial<Parameters<typeof rootResumeEntry>[0]> = {},
 ) {
   return rootResumeEntry({
-    originalRuns,
-    readBlob: (r, filename) => ({ blob: `${r.runId}/${filename}` }) as JsonValue,
+    history: runHistory(rows, (r, filename) => ({ blob: `${r.runId}/${filename}` }) as JsonValue),
     ...extra,
   });
 }
@@ -588,11 +526,10 @@ describe("the Resume plan through the Continuation seam", () => {
     const runs = [predecessorRoot];
     const reads: string[] = [];
     const entry: ResumeEntry = rootResumeEntry({
-      originalRuns: runs,
-      readBlob: (run, filename) => {
+      history: runHistory(runs, (run, filename) => {
         reads.push(`${run.runId}/${filename}`);
         return { blob: filename };
-      },
+      }),
     });
 
     expect(resumeContinuation(entry, binaryFile("a"), true).start()).toEqual({

@@ -1,15 +1,10 @@
-import {
-  type ConfigObject,
-  type JsonValue,
-  type RunRecord,
-  type WorkflowFile,
-  walkNodes,
-} from "@path/schema";
+import { type ConfigObject, type JsonValue, type WorkflowFile, walkNodes } from "@path/schema";
 import type { Continuation } from "./continuation.js";
 import type { LoadedStepPluginRegistry } from "./plugin-seam/scan.js";
 import type { ProcessorSemaphore } from "./processor-semaphore.js";
 import type { EnvSource } from "./resolve-env.js";
 import type { Emitter } from "./run-emitter.js";
+import type { RunHistory } from "./run-history.js";
 import type { RunEvent } from "./run-observer.js";
 
 /**
@@ -169,12 +164,11 @@ export interface ChildRunKey {
 
 /**
  * The Complete-continue state threaded through a replay over the appendable tree (ADR 0041).
- * `existingRuns` is every row read once, reuse rows pre-swapped for their source; `target` names
- * the parked leaf to complete — the walk transitions it `awaiting → succeeded` and parks again at
- * any other `awaiting` leaf (park-at-join).
+ * `history` is this tree's own rows, read once, with their blobs; `target` names the parked leaf to
+ * complete — the walk transitions it `awaiting → succeeded` and parks again at any other `awaiting`
+ * leaf (park-at-join).
  */
 export interface ContinueState {
-  existingRuns: RunRecord[];
-  readBlob: (run: RunRecord, filename: string) => JsonValue;
+  history: RunHistory;
   target: { stepRunId: string; output: JsonValue };
 }
