@@ -62,7 +62,7 @@ function newRow(runId: string, parentRunId: string | null, rootRunId = "root-1")
   };
 }
 
-/** The same row as the reader sees it, with the fields `sourceRuns` reads named explicitly. */
+/** The same row as the reader sees it, with the fields a continuation reads named explicitly. */
 function record(
   runId: string,
   parentRunId: string | null,
