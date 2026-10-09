@@ -1,4 +1,3 @@
-export { secretPathsOf } from "./launch-facts.js";
 export {
   type LoadedWorkflow,
   type LoadResult,
@@ -45,6 +44,7 @@ export {
 } from "./project.js";
 export type {
   ListRootsOptions,
+  RecordedRoot,
   RunArchive,
   RunBlobName,
   RunTree,

@@ -159,199 +159,222 @@ export interface RunStreamHandlers {
 export type Unsubscribe = () => void;
 
 /**
- * One `LiveRuns` per server process, over the process's one `Project`; runs execute in-process
- * (server-api-v0.md §0).
+ * What a run gets from the `LiveRuns` that drives it: the signal a cancel aborts, the moment its
+ * root exists, and where its events fan out to subscribers.
  */
-export function createLiveRuns(project: Project): LiveRuns {
-  const hub = new RunEventHub();
-  /**
-   * The root runs executing here with the `AbortController` whose signal went to `runWorkflow`;
-   * filed and dropped per outcome.
-   */
-  const controllers = new Map<string, AbortController>();
+export interface RunDrive {
+  /** Aborted when the run is cancelled. */
+  readonly signal: AbortSignal;
+  /** Whether another drive of this root is live here; only a Complete can meet one. */
+  readonly held: boolean;
+  /** The tree's root exists: resolves `start` or `resume`, files the root for cancel and opens its
+   * channel. Only the first call counts. */
+  started(run: StartedRun): void;
+  /** Fans one event of the root out to its subscribers. */
+  publish(event: LogEvent): void;
+  /** A log backend that publishes each event it is written, for an engine that runs here. */
+  readonly backend: LogBackend;
+}
 
-  /**
-   * Every in-flight run's own promise; each removes itself on settle, so `idle` drains the set. The
-   * chain never rejects.
-   */
-  const inFlight = new Set<Promise<void>>();
-  function track(runChain: Promise<void>): void {
-    const entry = runChain.finally(() => inFlight.delete(entry));
+/**
+ * Where a run executes, behind `LiveRuns` (ADR 0091): in process, or in a VM per invocation. An
+ * executor's `start` and `resume` settle when the run does; a rejection before `drive.started`
+ * rejects the launch.
+ */
+export interface RunExecutor {
+  start(
+    rootFile: WorkflowFile,
+    workflowDir: string,
+    options: StartRunOptions,
+    drive: RunDrive,
+  ): Promise<unknown>;
+  resume(
+    rootFile: WorkflowFile,
+    resumeRootRunId: string,
+    workflowDir: string,
+    options: ResumeRunOptions,
+    drive: RunDrive,
+  ): Promise<unknown>;
+  complete(
+    rootFile: WorkflowFile,
+    rootRunId: string,
+    stepRunId: string,
+    output: JsonValue,
+    workflowDir: string,
+    options: CompleteRunOptions,
+    drive: RunDrive,
+  ): Promise<CompleteResult>;
+  /** Events a running root sent that the store does not hold yet, for a stream's replay. */
+  unstored?(rootRunId: string): readonly LogEvent[];
+}
+
+/**
+ * The runs one store executes, over `executor`: one owner for the live channels, the cancel
+ * registry, Complete's ownership of a root, and the drain a shutdown awaits.
+ */
+export function liveRunsOver(store: Project, executor: RunExecutor): LiveRuns {
+  const hub = new RunEventHub();
+  /** Each root driven here, with the controller its cancel aborts. */
+  const drives = new Map<string, AbortController>();
+  /** Every in-flight drive; each removes itself on settle, so `idle` drains the set. */
+  const inFlight = new Set<Promise<unknown>>();
+  function track(work: Promise<unknown>): void {
+    const entry = work.finally(() => inFlight.delete(entry)).catch(() => {});
     inFlight.add(entry);
   }
 
-  /** The tracking `start` and `resume` share: the start deferred, the controller filed for
-   * `cancel`, the live-forwarding backend, and the teardown that drops both on any outcome. */
-  function beginTracked(): {
-    started: ReturnType<typeof createDeferred<StartedRun>>;
-    hooks: {
-      extraBackends: LogBackend[];
-      extraObservers: RunObserver[];
-      signal: AbortSignal;
-      warn: (message: string) => void;
-    };
-    finalize: () => void;
-  } {
-    // Resolved on the first workflow-run start: the response goes out before the run finishes, not
-    // before it starts.
+  /** A new tree: resolves once its root exists, and keeps the root filed until the run settles. */
+  function launch(run: (drive: RunDrive) => Promise<unknown>): Promise<StartedRun> {
     const started = createDeferred<StartedRun>();
     const controller = new AbortController();
-    let registeredRootRunId: string | undefined;
-
-    const captureObserver: RunObserver = {
-      observe({ runId, rootRunId, event }) {
-        // A workflow-run's start is its implicit root step's `step-started`.
-        if (event?.type !== "step-started" || event.step_type !== WORKFLOW_STEP_TYPE) return;
-        // Fires for every run in the tree, all sharing one `rootRunId` — register on the first.
-        if (registeredRootRunId === undefined) {
-          registeredRootRunId = rootRunId;
-          controllers.set(rootRunId, controller);
-        }
-        started.resolve({ runId, rootRunId });
+    let rootRunId: string | undefined;
+    const drive: RunDrive = {
+      signal: controller.signal,
+      held: false,
+      started(ids) {
+        if (rootRunId !== undefined) return;
+        rootRunId = ids.rootRunId;
+        drives.set(rootRunId, controller);
+        hub.open(rootRunId);
+        started.resolve(ids);
       },
+      publish(event) {
+        if (rootRunId !== undefined) hub.publish(rootRunId, event);
+      },
+      backend: createLiveLogBackend(hub),
     };
-
-    return {
-      started,
-      hooks: {
-        // Lets subscribers (§5) see every event in `seq` order; never throws, so it cannot fail the
-        // run.
-        extraBackends: [createLiveLogBackend(hub)],
-        // Appended after persistence: this resolves the deferred, so a caller may read the run the
-        // moment it does.
-        extraObservers: [captureObserver],
-        signal: controller.signal,
-        warn: (message) => console.error(`warning: ${message}`),
-      },
-      // Tearing both registries down here makes "on every outcome" true by construction.
-      finalize: () => {
-        if (registeredRootRunId === undefined) return; // never started; neither holds an entry
-        controllers.delete(registeredRootRunId);
-        // Backstop for the one path with no terminal event (a `runWorkflow` rejection); idempotent.
-        hub.close(registeredRootRunId);
-      },
-    };
+    track(
+      run(drive)
+        .catch((err) => started.reject(err))
+        .finally(() => {
+          if (rootRunId === undefined) return;
+          drives.delete(rootRunId);
+          // Backstop for a run that ended with no terminal event; idempotent.
+          hub.close(rootRunId);
+        }),
+    );
+    return started.promise;
   }
 
   return {
-    async start(rootFile, workflowDir, options): Promise<StartedRun> {
-      const { started, hooks, finalize } = beginTracked();
-      // Fire-and-forget: the run keeps executing after `start` resolves; a rejection also settles
-      // `started`.
-      track(
-        project
-          .run(rootFile, workflowDir, { ...options, ...hooks })
-          .then(
-            (result) => {
-              if (result.status === "failed") console.error(`run failed: ${result.error}`);
-            },
-            (err) => {
-              started.reject(err);
-              console.error(`run crashed: ${err instanceof Error ? err.stack : String(err)}`);
-            },
-          )
-          .finally(finalize),
-      );
+    start: (rootFile, workflowDir, options) =>
+      launch((drive) => executor.start(rootFile, workflowDir, options, drive)),
 
-      return started.promise;
+    resume: (rootFile, resumeRootRunId, workflowDir, options) =>
+      launch((drive) => executor.resume(rootFile, resumeRootRunId, workflowDir, options, drive)),
+
+    async complete(rootFile, rootRunId, stepRunId, output, workflowDir, options) {
+      // A Complete re-drives an existing tree (ADR 0041): it files the known root so Cancel
+      // reaches the tail, unless a live drive of that root already owns its controller and channel.
+      const held = drives.has(rootRunId);
+      const controller = new AbortController();
+      if (!held) {
+        drives.set(rootRunId, controller);
+        hub.open(rootRunId);
+      }
+      const work = executor.complete(rootFile, rootRunId, stepRunId, output, workflowDir, options, {
+        signal: controller.signal,
+        held,
+        started: () => {},
+        publish: (event) => hub.publish(rootRunId, event),
+        backend: createLiveLogBackend(hub),
+      });
+      track(work);
+      try {
+        return await work;
+      } finally {
+        if (!held) {
+          drives.delete(rootRunId);
+          hub.close(rootRunId);
+        }
+      }
     },
 
-    async resume(rootFile, resumeRootRunId, workflowDir, options): Promise<StartedRun> {
-      const { started, hooks, finalize } = beginTracked();
-      track(
-        project
-          .resume(rootFile, resumeRootRunId, workflowDir, { ...options, ...hooks })
-          .then(
-            (result) => {
-              // No successor started: reject with the shape the route branches on (refusal, or
-              // 404).
-              if (!result.found) {
-                started.reject(
-                  "refusal" in result
-                    ? new ResumeRefused(result.refusal.status, result.refusal.message)
-                    : new ResumeNotFound(result.error),
-                );
-                return;
-              }
-              if (result.status === "failed") console.error(`resumed run failed: ${result.error}`);
-            },
-            (err) => {
-              started.reject(err);
-              console.error(
-                `resumed run crashed: ${err instanceof Error ? err.stack : String(err)}`,
-              );
-            },
-          )
-          .finally(finalize),
-      );
-
-      return started.promise;
-    },
-
-    cancel(rootRunId: string): boolean {
-      const controller = controllers.get(rootRunId);
+    cancel(rootRunId) {
+      const controller = drives.get(rootRunId);
       if (!controller) return false;
       // A second cancel of a still-unwinding run is a no-op that still answers `true`.
       controller.abort();
       return true;
     },
 
-    async complete(
-      rootFile,
-      rootRunId,
-      stepRunId,
-      output,
-      workflowDir,
-      options,
-    ): Promise<CompleteResult> {
-      // A Complete re-drives the existing tree (ADR 0041), so no fresh start exists — file the
-      // controller under the known root id so Cancel reaches the tail, and stream the tail live.
-      const controller = new AbortController();
-      // Own the controller/channel only when no drive is active for this root: a concurrent
-      // Complete the engine lease rejects must not clobber the live drive's controller or close its
-      // subscribers.
-      const owns = !controllers.has(rootRunId);
-      if (owns) controllers.set(rootRunId, controller);
-      const drive = project.complete(rootFile, stepRunId, output, workflowDir, {
-        ...options,
-        extraBackends: [createLiveLogBackend(hub)],
-        signal: controller.signal,
-        warn: (message) => console.error(`warning: ${message}`),
-      });
-      // Track the whole drive so a graceful shutdown drains it; it settles either way, so never
-      // rejects.
-      track(
-        drive.then(
-          () => {},
-          () => {},
-        ),
-      );
-      try {
-        return await drive;
-      } finally {
-        if (owns) {
-          controllers.delete(rootRunId);
-          // Backstop for a rejection (no drive ran) or a missing terminal; idempotent and
-          // channel-safe.
-          hub.close(rootRunId);
-        }
-      }
-    },
-
-    stream(rootRunId, afterSeq, handlers): Unsubscribe {
-      const history = (after: number | undefined) =>
-        project.archive.tree(rootRunId)?.events(after) ?? [];
+    stream(rootRunId, afterSeq, handlers) {
+      // The store's narrative, then what the executor sent past it.
+      const history = (after: number | undefined): LogEvent[] => {
+        const stored = store.archive.tree(rootRunId)?.events(after) ?? [];
+        const unstored = executor.unstored?.(rootRunId) ?? [];
+        const from = Math.max(after ?? 0, stored.at(-1)?.seq ?? 0);
+        return [...stored, ...unstored.filter((event) => event.seq > from)];
+      };
       return streamRun(hub, history, rootRunId, afterSeq, handlers);
     },
 
-    get cancellable(): number {
-      return controllers.size;
+    get cancellable() {
+      return drives.size;
     },
 
-    async idle(): Promise<void> {
-      // Loop: a run tracked at snapshot time can settle while we await, so drain until the set is
-      // empty.
-      while (inFlight.size > 0) await Promise.all([...inFlight]);
+    async idle() {
+      // A drive tracked at snapshot time can settle while we await, so drain until none is left.
+      while (inFlight.size > 0) await Promise.allSettled([...inFlight]);
     },
+  };
+}
+
+/** The in-process `LiveRuns` of local mode (server-api-v0.md §0): runs execute in this process. */
+export function createLiveRuns(project: Project): LiveRuns {
+  return liveRunsOver(project, inProcessExecutor(project));
+}
+
+/** Runs each operation through the engine in this process. */
+export function inProcessExecutor(project: Project): RunExecutor {
+  const warn = (message: string): void => console.error(`warning: ${message}`);
+  /** Files the root as soon as its implicit root step starts: a workflow-run's start. */
+  const startObserver = (drive: RunDrive): RunObserver => ({
+    observe({ runId, rootRunId, event }) {
+      if (event?.type === "step-started" && event.step_type === WORKFLOW_STEP_TYPE) {
+        drive.started({ runId, rootRunId });
+      }
+    },
+  });
+  const hooks = (drive: RunDrive) => ({
+    // Lets subscribers (§5) see every event in `seq` order; never throws, so it cannot fail the run.
+    extraBackends: [drive.backend],
+    // Appended after persistence, so a caller may read the run the moment `start` resolves.
+    extraObservers: [startObserver(drive)],
+    signal: drive.signal,
+    warn,
+  });
+  const crashed = (what: string) => (err: unknown) => {
+    console.error(`${what} crashed: ${err instanceof Error ? err.stack : String(err)}`);
+    throw err;
+  };
+
+  return {
+    start: (rootFile, workflowDir, options, drive) =>
+      project.run(rootFile, workflowDir, { ...options, ...hooks(drive) }).then((result) => {
+        if (result.status === "failed") console.error(`run failed: ${result.error}`);
+      }, crashed("run")),
+
+    resume: (rootFile, resumeRootRunId, workflowDir, options, drive) =>
+      project
+        .resume(rootFile, resumeRootRunId, workflowDir, { ...options, ...hooks(drive) })
+        .then((result) => {
+          // No successor started: the refusal, or a 404, is the launch's rejection.
+          if (!result.found) {
+            throw "refusal" in result
+              ? new ResumeRefused(result.refusal.status, result.refusal.message)
+              : new ResumeNotFound(result.error);
+          }
+          if (result.status === "failed") console.error(`resumed run failed: ${result.error}`);
+        }, crashed("resumed run")),
+
+    // A concurrent Complete is refused by the engine's own lease, not here.
+    complete: (rootFile, _rootRunId, stepRunId, output, workflowDir, options, drive) =>
+      project.complete(rootFile, stepRunId, output, workflowDir, {
+        ...options,
+        extraBackends: [drive.backend],
+        signal: drive.signal,
+        warn,
+      }),
   };
 }

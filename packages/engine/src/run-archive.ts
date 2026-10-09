@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import {
+  type ConfigObject,
   displayStatusByRun,
   findRootRun,
   isReuseRow,
@@ -12,6 +13,7 @@ import {
   subtree,
 } from "@path/schema";
 import type Database from "better-sqlite3";
+import { secretPathsOf } from "./launch-facts.js";
 import { createDbLogBackend, reuseMarkerReferences } from "./logging/db-backend.js";
 import { LOG_FORMAT } from "./logging/log-backend.js";
 import { createNdjsonBackend } from "./logging/ndjson-backend.js";
@@ -96,6 +98,12 @@ export interface RunArchive {
    * `importTree` in `persistence/run-transfer.ts` lists. */
   importTree(rootRunId: string, exported: unknown): ImportTreeResult;
   /**
+   * Writes a tree's root row alone, for a run another process drives (ADR 0091), replacing what
+   * this root held. A rewrite keeps the first `started_at` and predecessor; the launch facts carry
+   * only the `$secret` config paths, the operator's own and the predecessor's.
+   */
+  recordRoot(rootRunId: string, root: RecordedRoot): ImportTreeResult;
+  /**
    * Ends a tree no engine drives any more (its process was lost or stopped): every `pending`,
    * `running` or `awaiting` run becomes `status`, and the root's narrative closes with a
    * `step-finished` carrying `error`. Resolves with the number of runs ended.
@@ -105,6 +113,18 @@ export interface RunArchive {
     status: "failed" | "cancelled",
     error?: string,
   ): Promise<number>;
+}
+
+/** The root row a host records for a run it hands to another process. */
+export interface RecordedRoot {
+  status: RunStatus;
+  workflowId?: string;
+  workflowName?: string;
+  workflowPath?: string;
+  /** The predecessor of a Resume successor. */
+  resumedFromRootRunId?: string;
+  /** The operator config as supplied, `$secret` wrappers intact. */
+  operatorConfig?: ConfigObject;
 }
 
 export interface ListRootsOptions {
@@ -249,6 +269,32 @@ export function createRunArchive(db: Database.Database, projectDir: string): Run
     exportTree: (rootRunId) => exportTree(db, rootRunId),
 
     importTree: (rootRunId, exported) => importTree(db, rootRunId, exported),
+
+    recordRoot(rootRunId, root) {
+      const held = getRunsForRoot(db, rootRunId).find((run) => run.runId === rootRunId);
+      const resumedFrom = root.resumedFromRootRunId ?? held?.resumedFromRootRunId ?? undefined;
+      const inherited =
+        resumedFrom === undefined ? [] : (getLaunchFacts(db, resumedFrom)?.secretKeys ?? []);
+      const own = root.operatorConfig ? secretPathsOf(root.operatorConfig) : [];
+      const secretKeys = [...new Set([...own, ...inherited])];
+      return importTree(db, rootRunId, {
+        runs: [
+          {
+            run_id: rootRunId,
+            root_run_id: rootRunId,
+            parent_run_id: null,
+            status: root.status,
+            started_at: held?.startedAt ?? new Date().toISOString(),
+            resumed_from_root_run_id: resumedFrom ?? null,
+            workflow_id: root.workflowId ?? null,
+            workflow_name: root.workflowName ?? null,
+            workflow_path: root.workflowPath ?? null,
+            launch_facts: secretKeys.length > 0 ? JSON.stringify({ secretKeys }) : null,
+          },
+        ],
+        events: [],
+      } satisfies RunTreeExport);
+    },
 
     async endNonTerminal(rootRunId, status, error) {
       const ended = endNonTerminalRuns(db, rootRunId, status);
