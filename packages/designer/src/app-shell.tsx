@@ -51,7 +51,9 @@ export function AppShell({
   return (
     <div className="shell" data-has-dock={runDock ? "true" : "false"}>
       <header className="topbar">
-        <span className="brand">PATH</span>
+        <a className="brand" href="/">
+          PATH
+        </a>
         <span className="brand-sub">designer</span>
         {modeSwitch ?? null}
         {/* The centre slot always renders, so the toolbar keeps the right end with or without a

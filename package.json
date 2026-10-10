@@ -15,7 +15,7 @@
     "format": "biome check --write .",
     "sandcastle": "tsx .sandcastle/main.mts",
     "path": "tsx packages/engine/bin/path.ts",
-    "serve": "pnpm --filter @path/viewer run build && pnpm --filter @path/designer run build && tsx packages/server/bin/path-server.ts . --port 8080",
+    "serve": "pnpm --filter @path/viewer run build && pnpm --filter @path/designer run build && tsx packages/server/bin/path-server.ts . --port 8081",
     "host-serve": ". ~/.config/path/hosted.env && pnpm --filter @path/viewer run build && pnpm --filter @path/designer run build && tsx packages/server/bin/path-server.ts . --port 8080",
     "release-notes": "pnpm path run docs/acceptance-workflow/release-notes.workflow.json"
   },

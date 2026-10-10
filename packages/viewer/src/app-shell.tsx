@@ -73,7 +73,9 @@ export function AppShell({ workflows, runs, detail, nodeIo, menuItems }: AppShel
 export function TopBar({ sub, menuItems }: { sub: string; menuItems?: UserMenuItem[] }) {
   return (
     <header className="topbar">
-      <span className="brand">PATH</span>
+      <a className="brand" href="/">
+        PATH
+      </a>
       <span className="brand-sub">{sub}</span>
       <UserMenu items={menuItems} />
     </header>

@@ -21,6 +21,8 @@
 }
 
 .brand {
+  color: inherit;
+  text-decoration: none;
   font-weight: 650;
   letter-spacing: 0.02em;
 }
@@ -247,7 +249,10 @@ button.workflow-folder-row:focus-visible {
 .workflow-row {
   width: 100%;
   display: grid;
-  grid-template-columns: 1fr auto;
+  /* The label takes the free width; each tag after it gets its own auto column on the same line. */
+  grid-template-columns: 1fr;
+  grid-auto-flow: column;
+  grid-auto-columns: auto;
   align-items: center;
   gap: 2px 8px;
   text-align: left;
@@ -276,7 +281,6 @@ button.workflow-row:focus-visible {
 
 /* An unlaunchable file: dimmer than a launchable row, but still a toggle for its error detail. */
 .workflow-row--invalid {
-  grid-template-columns: 1fr auto;
   opacity: 0.75;
 }
 

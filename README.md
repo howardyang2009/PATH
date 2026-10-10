@@ -18,7 +18,7 @@ Needs Node 24+ and pnpm 12 (`corepack enable`).
 pnpm install
 pnpm test
 pnpm path run <file>.workflow.json   # run a workflow from the CLI
-pnpm serve                           # build both consoles, serve on http://localhost:8080
+pnpm serve                           # build both consoles, serve on http://localhost:8081
 ```
 
 `pnpm serve` serves a landing page at `/`, the **Viewer** (launch, watch, resume and complete runs) at `/viewer/`, and the
