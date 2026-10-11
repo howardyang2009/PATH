@@ -6,7 +6,13 @@
     <title>PATH viewer</title>
   </head>
   <body>
-    <div id="root"></div>
+    <!-- Shown until React's first render replaces it: sign-in setup can take seconds. -->
+    <div id="root">
+      <div class="boot-loader" role="status">
+        <span class="boot-spinner" aria-hidden="true"></span>
+        <span class="boot-label">Loading PATH viewer…</span>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
