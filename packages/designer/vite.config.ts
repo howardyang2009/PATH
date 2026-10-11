@@ -1,7 +1,7 @@
 /// <reference types="vitest/config" />
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
-import { consoleConfig } from "../../vite.base.mjs";
+import { consoleConfig, preloadClerk } from "../../vite.base.mjs";
 
 const baseConfig = consoleConfig("/designer/");
 
@@ -9,7 +9,7 @@ export default defineConfig({
   ...baseConfig,
   // The Designer is mounted at `/designer/` on `path-server` (ADR 0027), a peer of the Viewer's
   // `/viewer/`, so every bundle URL is absolute from that mount root.
-  plugins: [react()],
+  plugins: [react(), preloadClerk()],
   test: {
     ...baseConfig.test,
     // Build one jsdom environment per worker and reuse it across that worker's files, instead of
