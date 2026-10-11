@@ -1,7 +1,7 @@
 /// <reference types="vitest/config" />
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
-import { consoleConfig } from "../../vite.base.mjs";
+import { consoleConfig, preloadClerk } from "../../vite.base.mjs";
 
 const baseConfig = consoleConfig("/viewer/");
 
@@ -9,7 +9,7 @@ export default defineConfig({
   ...baseConfig,
   // The Viewer is mounted at `/viewer/` on `path-server` (ADR 0027). `path-server` 302-redirects
   // bare `/` to `/viewer/`.
-  plugins: [react()],
+  plugins: [react(), preloadClerk()],
   test: {
     ...baseConfig.test,
     // Not `vmThreads`: that pool would build one jsdom per worker, but the live-stream tests push
