@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import {
   type ConfigObject,
   type ControllerType,
@@ -321,6 +322,7 @@ export async function runNode(
       await run.emitter.emit(node, {
         type: "reuse-marker",
         original_run_id: disposition.reusedFrom,
+        reuse_run_id: randomUUID(),
       });
     outcome = { status: "succeeded", output };
   } else if (disposition.kind === "settle") {

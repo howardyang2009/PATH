@@ -170,6 +170,31 @@ describe("RunViewModel", () => {
     expect(model.getState().narrative.map((e) => e.seq)).toEqual([1, 2, 3, 4]);
   });
 
+  it("shows a reused node's row from its reuse-marker before any tree read holds it", () => {
+    const model = new RunViewModel(ROOT);
+    model.applyEvent(stepStarted(1, ROOT, null));
+    model.applyEvent({
+      type: "reuse-marker",
+      seq: 2,
+      ts: "t2",
+      run_id: ROOT,
+      node_id: "fetch",
+      node_name: "fetch",
+      original_run_id: "old-fetch",
+      reuse_run_id: "reuse-1",
+    });
+
+    const reused = model.getState().runs.get("reuse-1");
+    expect(reused).toMatchObject({
+      parentRunId: ROOT,
+      nodeId: "fetch",
+      status: "succeeded",
+      reusedFromRunId: "old-fetch",
+    });
+    // The marker asserts nothing about the run it is attributed to.
+    expect(model.getState().runs.get(ROOT)?.status).toBe("running");
+  });
+
   it("ignores duplicate seqs (replay/live overlap) and keeps the narrative seq-ordered", () => {
     const model = new RunViewModel(ROOT);
     model.applyEvent(stepStarted(1, ROOT, null));
