@@ -1,5 +1,6 @@
-import { displayStatusByRun, must, toWireLaunchFacts, toWireRunRecord } from "@path/schema";
+import { must, toWireLaunchFacts, toWireRunRecord } from "@path/schema";
 import { type RouteReply, replyError } from "../http-json.js";
+import { liveDisplayStatus } from "../live-status.js";
 import { resolveTree } from "./resolve-run.js";
 import type { ApiRequest } from "./route-context.js";
 
@@ -22,7 +23,9 @@ export function handleGetRun({ ctx, params: [rootRunId] }: ApiRequest<[string]>)
       status: rootRow.status,
       output: tree.output() ?? null,
       runs: tree.runs.map(toWireRunRecord),
-      display_status: Object.fromEntries(displayStatusByRun(tree.runs)),
+      display_status: Object.fromEntries(
+        liveDisplayStatus(tree.runs, ctx.live.unstored(rootRunId)),
+      ),
       ...(launchFacts === undefined ? {} : { launch_facts: toWireLaunchFacts(launchFacts) }),
     },
   };

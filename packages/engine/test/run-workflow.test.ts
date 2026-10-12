@@ -1580,6 +1580,7 @@ describe("runWorkflow — RunObserver hooks (ticket #18 seam)", () => {
         node_name: null,
         step_type: "workflow",
         worker_name: "workflow",
+        parent_run_id: null,
       },
       // Source-workflow identity is stamped on the root start (#202): the file's own GUID + name.
       // No `workflowPath` here — this caller passed no `sourceWorkflowPath`.

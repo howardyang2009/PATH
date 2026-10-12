@@ -24,6 +24,9 @@ const StepStartedSchema = z
     // The *name* of the worker the step ran on (ADR 0021 sub-14): a leaf carries its resolved name
     // (`spawn`/`anthropic`); a workflow-run's implicit-root-step event carries `"workflow"`.
     worker_name: z.string(),
+    // The run this one starts under, null for the root, so a reader can place a run before a tree
+    // read holds its row; absent on pre-field persisted lines.
+    parent_run_id: z.string().nullable().optional(),
   })
   .strict();
 
