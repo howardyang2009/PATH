@@ -170,7 +170,9 @@ Most recent first (`ORDER BY started_at DESC`). This is the root-run summary sha
 
 `display_status` is the status to show. It equals `status`, except a `running` root with a parked
 `awaiting` leaf below an unbroken chain of `running` ancestors reads `awaiting`. The stored root status
-stays `running` (ADR 0038); the server derives this from the tree at read time. The `status` filter
+stays `running` (ADR 0038); the server derives this from the tree at read time. For a hosted run whose
+VM still runs, the tree is the stored rows with the VM's events so far applied, since its rows reach
+the store only when the VM exits. The `status` filter
 matches `display_status`, so `?status=awaiting` lists the parked roots and `?status=running` leaves
 them out.
 
@@ -494,7 +496,7 @@ envelope level (`run_id`, `node_id`, `seq`, `ts`), so no field translation is ne
 other endpoints.
 
 ```
-data: {"type":"step-started","seq":1,"ts":"...","run_id":"...","node_id":null,"node_name":null,"step_type":"workflow","worker_name":"workflow"}
+data: {"type":"step-started","seq":1,"ts":"...","run_id":"...","node_id":null,"node_name":null,"step_type":"workflow","worker_name":"workflow","parent_run_id":null}
 
 data: {"type":"step-finished","seq":2,"ts":"...","run_id":"...","node_id":"<uuid>","node_name":"draft","status":"succeeded"}
 ```

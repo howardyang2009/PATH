@@ -57,6 +57,7 @@ describe("createEmitter — a workflow-run's start", () => {
           node_name: null,
           step_type: "workflow",
           worker_name: "workflow",
+          parent_run_id: null,
         },
         payload: {
           kind: "started",
@@ -204,6 +205,7 @@ describe("createEmitter — step sub-emitter", () => {
         node_name: "compile",
         step_type: "binary",
         worker_name: "spawn",
+        parent_run_id: "child-run",
       },
       payload: { kind: "started", parentRunId: "child-run", input: { x: 1 } },
     });

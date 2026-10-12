@@ -152,7 +152,12 @@ export function createEmitter(identity: RunIdentity, emit: Emit): Emitter {
       return send(
         runId,
         self,
-        { type: "step-started", step_type: WORKFLOW_STEP_TYPE, worker_name: WORKFLOW_STEP_TYPE },
+        {
+          type: "step-started",
+          step_type: WORKFLOW_STEP_TYPE,
+          worker_name: WORKFLOW_STEP_TYPE,
+          parent_run_id: parentRunId,
+        },
         {
           kind: "started",
           parentRunId,
@@ -192,7 +197,12 @@ export function createEmitter(identity: RunIdentity, emit: Emit): Emitter {
           return send(
             stepRunId,
             node,
-            { type: "step-started", step_type: args.stepType, worker_name: args.workerName },
+            {
+              type: "step-started",
+              step_type: args.stepType,
+              worker_name: args.workerName,
+              parent_run_id: runId,
+            },
             { kind: "started", parentRunId: runId, input: args.input },
           );
         },

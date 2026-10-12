@@ -49,6 +49,8 @@ export interface LiveRuns {
     workflowDir: string,
     options: CompleteRunOptions,
   ): Promise<CompleteResult>;
+  /** Events a running root sent that the store does not hold yet; empty unless a VM runs it. */
+  unstored(rootRunId: string): readonly LogEvent[];
   /** How many runs are cancellable here — 0 once every started run has settled. */
   readonly cancellable: number;
   /** Resolves once every run started here has settled — the drain a shutdown awaits before closing
@@ -308,6 +310,8 @@ export function liveRunsOver(store: Project, executor: RunExecutor): LiveRuns {
       };
       return streamRun(hub, history, rootRunId, afterSeq, handlers);
     },
+
+    unstored: (rootRunId) => executor.unstored?.(rootRunId) ?? [],
 
     get cancellable() {
       return drives.size;

@@ -1,11 +1,13 @@
 import {
   type ListRunsResponse,
   RUN_STATUSES,
+  type RunRecord,
   type RunStatus,
   toRootRunSummary,
 } from "@path/schema";
 import { type RouteReply, replyError } from "../http-json.js";
-import type { ApiRequest } from "./route-context.js";
+import { liveDisplayStatus } from "../live-status.js";
+import type { ApiRequest, RouteContext } from "./route-context.js";
 
 /**
  * `GET /v0/runs` (server-api-v0.md §3): the root-run summary list. `limit` (default 50), `status`,
@@ -34,16 +36,42 @@ export function handleListRuns({ ctx, query }: ApiRequest): RouteReply {
   // empty* param means "no filter"; an unknown GUID matches nothing, so no format check is needed.
   const workflowId = query.get("workflow_id") || undefined;
 
-  const rows = ctx.store.archive.listRoots({ limit, status, workflowId });
+  const rows = listRoots(ctx, { limit, status, workflowId });
   // Each summary carries the masked-secret *names* its launch recorded (ADR 0046), never values.
   const body: ListRunsResponse = {
-    runs: rows.map((row) =>
-      toRootRunSummary(
-        row,
-        ctx.store.archive.displayStatus(row),
-        ctx.store.archive.launchFacts(row.runId)?.secretKeys,
-      ),
+    runs: rows.map(({ row, display }) =>
+      toRootRunSummary(row, display, ctx.store.archive.launchFacts(row.runId)?.secretKeys),
     ),
   };
   return { status: 200, body };
+}
+
+/** The page of roots with each one's display status as it stands live. A stored `running` root can
+ * display either in-flight status, so those filters read both and filter on the live one. */
+function listRoots(
+  ctx: RouteContext,
+  options: { limit?: number; status?: RunStatus; workflowId?: string },
+): { row: RunRecord; display: RunStatus }[] {
+  const { archive } = ctx.store;
+  const withDisplay = (row: RunRecord) => ({ row, display: liveDisplay(ctx, row) });
+  if (options.status !== "running" && options.status !== "awaiting") {
+    return archive.listRoots(options).map(withDisplay);
+  }
+  const all = { ...options, limit: Number.MAX_SAFE_INTEGER };
+  const inFlight = [
+    ...archive.listRoots({ ...all, status: "running" }),
+    ...archive.listRoots({ ...all, status: "awaiting" }),
+  ];
+  return inFlight
+    .map(withDisplay)
+    .filter(({ display }) => display === options.status)
+    .sort((a, b) => (b.row.startedAt ?? "").localeCompare(a.row.startedAt ?? ""))
+    .slice(0, options.limit ?? 50);
+}
+
+function liveDisplay(ctx: RouteContext, root: RunRecord): RunStatus {
+  const unstored = ctx.live.unstored(root.runId);
+  if (unstored.length === 0) return ctx.store.archive.displayStatus(root);
+  const rows = ctx.store.archive.tree(root.runId)?.runs ?? [root];
+  return liveDisplayStatus(rows, unstored).get(root.runId) ?? root.status;
 }
