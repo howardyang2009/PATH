@@ -112,7 +112,7 @@ export function createPersistedObserver(db: Database.Database, projectDir: strin
         // `reuse-marker` event stays the cost/rm record.
         case "reuse-marker":
           insertReuseRun(db, {
-            runId: randomUUID(),
+            runId: event.reuse_run_id ?? randomUUID(),
             rootRunId,
             parentRunId: runId,
             nodeId: must(event.node_id, "node id of a reuse-marker event"),

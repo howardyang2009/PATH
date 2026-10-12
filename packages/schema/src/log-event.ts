@@ -140,9 +140,15 @@ const GotoExhaustedSchema = z
 // A resumed tree reused one node's recorded work instead of re-running it
 // (resume-restore-semantics.md §6): no step events fire, so this marker is the log's only record of
 // the reuse. Fires once per reuse decision; `original_run_id` back-references the run in the
-// *original* tree that holds the real data.
+// *original* tree that holds the real data. `reuse_run_id` names the reuse row the marker records, so
+// a live viewer can show that row before a tree read holds it; absent on pre-field persisted lines.
 const ReuseMarkerSchema = z
-  .object({ type: z.literal("reuse-marker"), ...envelope, original_run_id: z.string() })
+  .object({
+    type: z.literal("reuse-marker"),
+    ...envelope,
+    original_run_id: z.string(),
+    reuse_run_id: z.string().optional(),
+  })
   .strict();
 
 // A leaf step entered `awaiting`: the worker returned `{ status: "awaiting" }` and the engine

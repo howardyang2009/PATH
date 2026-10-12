@@ -190,11 +190,13 @@ describe("createPersistedObserver", () => {
     await root.runStarted({ input: {} });
     await root.emit(
       { id: "greet", name: "greet" },
-      { type: "reuse-marker", original_run_id: "orig" },
+      { type: "reuse-marker", original_run_id: "orig", reuse_run_id: "reuse-1" },
     );
 
     const reuse = getRunsForRoot(db, "root-1").find((r) => r.runId !== "root-1");
+    // The row takes the marker's id, so a live viewer's row and the tree read's are one run.
     expect(reuse).toMatchObject({
+      runId: "reuse-1",
       parentRunId: "root-1",
       nodeId: "greet",
       status: "succeeded",

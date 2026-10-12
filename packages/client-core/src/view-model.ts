@@ -149,6 +149,26 @@ export class RunViewModel {
   }
 
   private applyToRun(event: LogEvent): void {
+    // A reused node fires no step events; its marker is the only live record of its reuse row,
+    // which a hosted run's tree read holds only once the run ends.
+    if (event.type === "reuse-marker") {
+      if (event.reuse_run_id === undefined || this.runs.has(event.reuse_run_id)) return;
+      this.runs.set(
+        event.reuse_run_id,
+        blankRunRecord({
+          runId: event.reuse_run_id,
+          rootRunId: this.rootRunId,
+          parentRunId: event.run_id,
+          nodeId: event.node_id,
+          nodeName: event.node_name,
+          status: "succeeded",
+          startedAt: event.ts,
+          finishedAt: event.ts,
+          reusedFromRunId: event.original_run_id,
+        }),
+      );
+      return;
+    }
     const existing = this.runs.get(event.run_id);
     // An event can name a run before its row arrives (parentage comes from the row): start it
     // blank.
