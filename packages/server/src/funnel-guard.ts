@@ -4,22 +4,38 @@ import type { ServerMode } from "./mode.js";
 import { firstHeader } from "./origin-gate.js";
 
 /**
- * The local-mode Funnel guard: a `*.ts.net` Host with no `Tailscale-User-Login` came through a
- * public Tailscale Funnel, so the Server refuses it and fails closed instead of exposing an
- * unauthenticated, in-process run executor (docs/spec/path-website.md §10).
+ * The local-mode guard: local mode answers only a loopback `Host` or a `tailscale serve` request,
+ * and refuses every other ingress (Funnel, Cloudflare Tunnel, a port-forward), so it fails closed
+ * instead of exposing an unauthenticated, in-process run executor (docs/spec/path-website.md §10).
  */
 
-/** True for a Funnel request: a `*.ts.net` Host naming something, with no Serve identity header. */
-export function isFunnelRequest(req: IncomingMessage): boolean {
-  if (firstHeader(req.headers["tailscale-user-login"]) !== undefined) return false;
-  const host = firstHeader(req.headers.host)?.toLowerCase();
-  if (host === undefined) return false;
-  const hostname = host.split(":")[0] ?? "";
-  return hostname.replace(/\.$/, "").endsWith(".ts.net");
+const LOOPBACK_HOSTNAMES = new Set(["localhost", "127.0.0.1", "[::1]"]);
+
+/** Headers a reverse proxy or Cloudflare adds; a loopback `Host` that carries one was proxied. */
+const PROXY_HEADERS = ["cf-connecting-ip", "cf-ray", "x-forwarded-for", "forwarded"];
+
+function hostnameOf(host: string): string {
+  const name = host.startsWith("[") ? host.slice(0, host.indexOf("]") + 1) : host.split(":")[0];
+  return (name ?? "").toLowerCase().replace(/\.$/, "");
 }
 
-/** Whether the Funnel guard runs: local mode only, unless `PATH_FUNNEL_GUARD=off` switches it
- * off. */
+/** True unless the request is plain loopback use or a tailnet request through `tailscale serve`. */
+export function isPublicRequest(req: IncomingMessage): boolean {
+  const host = firstHeader(req.headers.host);
+  if (host === undefined) return true;
+  const hostname = hostnameOf(host);
+  if (req.headers["cf-connecting-ip"] !== undefined || req.headers["cf-ray"] !== undefined) {
+    return true;
+  }
+  if (LOOPBACK_HOSTNAMES.has(hostname)) {
+    return PROXY_HEADERS.some((name) => req.headers[name] !== undefined);
+  }
+  // `tailscale serve` sets the identity header and Funnel strips it.
+  const isServe = firstHeader(req.headers["tailscale-user-login"]) !== undefined;
+  return !(isServe && hostname.endsWith(".ts.net"));
+}
+
+/** Whether the guard runs: local mode only, unless `PATH_FUNNEL_GUARD=off` switches it off. */
 export function funnelGuardEnabled(
   mode: ServerMode,
   env: NodeJS.ProcessEnv = process.env,
@@ -27,19 +43,20 @@ export function funnelGuardEnabled(
   return mode.mode === "local" && env.PATH_FUNNEL_GUARD?.trim().toLowerCase() !== "off";
 }
 
-/** On a Funnel request in local mode answers `403` and returns `false` (the caller must stop). */
+/** On a public request in local mode answers `403` and returns `false` (the caller must stop). */
 export function enforceFunnelGuard(
   req: IncomingMessage,
   res: ServerResponse,
   enabled: boolean,
 ): boolean {
-  if (enabled && isFunnelRequest(req)) {
+  if (enabled && isPublicRequest(req)) {
     sendError(
       res,
       403,
-      "funnel guard: a *.ts.net Host without Tailscale-User-Login is a public Tailscale Funnel " +
-        "request, which local mode refuses. Reach PATH over the tailnet (tailscale serve) or " +
-        "set PATH_FUNNEL_GUARD=off to allow it",
+      "funnel guard: local mode answers only localhost and tailscale serve requests, and this one " +
+        "came through a public ingress (Tailscale Funnel, Cloudflare Tunnel or another proxy). " +
+        "Reach PATH over the tailnet (tailscale serve), run the Server in hosted mode, or set " +
+        "PATH_FUNNEL_GUARD=off to allow it",
     );
     return false;
   }
