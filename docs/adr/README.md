@@ -109,6 +109,7 @@ An Architecture Decision Record (ADR) records one decision PATH has made: the sh
 | [0103](0103-the-resume-plan-is-part-of-the-continuation.md) | The Resume plan is part of the Continuation it serves | accepted |
 | [0104](0104-one-run-selection-serves-both-consoles.md) | One run selection serves both consoles | accepted |
 | [0105](0105-one-run-history-carries-the-predecessor-tree.md) | One run history carries the predecessor tree | accepted |
+| [0106](0106-path-is-served-at-path-rheinwegde-de-through-cloudflare-tunnel.md) | PATH is served at path.rheinwegde.de through Cloudflare Tunnel | accepted |
 
 ## Superseded decisions
 
