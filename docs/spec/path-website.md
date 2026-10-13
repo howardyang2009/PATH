@@ -195,9 +195,12 @@ and restart.
 **Now** ([#721](https://github.com/howardyang2009/PATH/issues/721)): Funnel is on since 2026-10-09,
 after the hosted-mode gate (§11) passed. The Server runs in hosted mode, so anyone on the internet
 can reach it and sign up. Funnel was off from 2026-10-05 until then.
-In local mode the Server answers `403` to any request whose `Host` is a `*.ts.net` name and that
-carries no `Tailscale-User-Login` header (a Funnel request); `PATH_FUNNEL_GUARD=off` switches this
-guard off, and hosted mode does not apply it ([#726](https://github.com/howardyang2009/PATH/issues/726)).
+In local mode the Server answers only a loopback `Host` with no proxy header, or a `*.ts.net` `Host`
+that carries `Tailscale-User-Login` (`tailscale serve`); it answers `403` to everything else, so
+Funnel, Cloudflare Tunnel and any other public ingress fail closed. `PATH_FUNNEL_GUARD=off` switches
+this guard off, and hosted mode does not apply it
+([#726](https://github.com/howardyang2009/PATH/issues/726),
+[#785](https://github.com/howardyang2009/PATH/issues/785)).
 
 **Egress** ([#724](https://github.com/howardyang2009/PATH/issues/724),
 [#740](https://github.com/howardyang2009/PATH/issues/740)): VMs run on one fixed network

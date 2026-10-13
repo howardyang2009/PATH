@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type PathServerHandle, startPathServer } from "../src/create-server.js";
-import { funnelGuardEnabled, isFunnelRequest } from "../src/funnel-guard.js";
+import { funnelGuardEnabled, isPublicRequest } from "../src/funnel-guard.js";
 import type { ServerMode } from "../src/mode.js";
 import { hostedMode } from "./fixtures/clerk-token.js";
 import { stubEgressAnchor } from "./fixtures/egress-status.js";
@@ -15,41 +15,87 @@ function req(headers: Record<string, string | string[] | undefined>): IncomingMe
   return { headers } as unknown as IncomingMessage;
 }
 
-describe("isFunnelRequest", () => {
+describe("isPublicRequest", () => {
   it("treats a *.ts.net Host with no Tailscale-User-Login as a Funnel request", () => {
-    expect(isFunnelRequest(req({ host: "mac-mini.tailnet.ts.net" }))).toBe(true);
+    expect(isPublicRequest(req({ host: "mac-mini.tailnet.ts.net" }))).toBe(true);
   });
 
   it("ignores the port on the Host", () => {
-    expect(isFunnelRequest(req({ host: "mac-mini.tailnet.ts.net:443" }))).toBe(true);
+    expect(isPublicRequest(req({ host: "mac-mini.tailnet.ts.net:443" }))).toBe(true);
   });
 
   it("matches the Host case-insensitively", () => {
-    expect(isFunnelRequest(req({ host: "MAC-MINI.TAILNET.TS.NET" }))).toBe(true);
+    expect(isPublicRequest(req({ host: "MAC-MINI.TAILNET.TS.NET" }))).toBe(true);
   });
 
   it("passes a tailnet request that carries the Serve identity header", () => {
     expect(
-      isFunnelRequest(
+      isPublicRequest(
         req({ host: "mac-mini.tailnet.ts.net", "tailscale-user-login": "owner@example.com" }),
       ),
     ).toBe(false);
   });
 
   it("passes a plain localhost request", () => {
-    expect(isFunnelRequest(req({ host: "localhost:5173" }))).toBe(false);
+    expect(isPublicRequest(req({ host: "localhost:5173" }))).toBe(false);
   });
 
-  it("passes a request with no Host at all", () => {
-    expect(isFunnelRequest(req({}))).toBe(false);
+  it("refuses a request with no Host at all", () => {
+    expect(isPublicRequest(req({}))).toBe(true);
   });
 
-  it("does not treat the bare tailnet domain as a Funnel name", () => {
-    expect(isFunnelRequest(req({ host: "ts.net" }))).toBe(false);
+  it("refuses the bare tailnet domain even with Tailscale-User-Login", () => {
+    expect(isPublicRequest(req({ host: "ts.net", "tailscale-user-login": "a@b.c" }))).toBe(true);
+  });
+
+  it("refuses a custom-domain Host, as Cloudflare Tunnel sends it", () => {
+    expect(isPublicRequest(req({ host: "path.rheinwegde.de" }))).toBe(true);
+  });
+
+  it("refuses a custom-domain Host that forges Tailscale-User-Login", () => {
+    expect(
+      isPublicRequest(req({ host: "path.rheinwegde.de", "tailscale-user-login": "a@b.c" })),
+    ).toBe(true);
+  });
+
+  it("passes the loopback addresses", () => {
+    expect(isPublicRequest(req({ host: "127.0.0.1:8787" }))).toBe(false);
+    expect(isPublicRequest(req({ host: "[::1]:8787" }))).toBe(false);
+  });
+
+  it.each(["cf-connecting-ip", "cf-ray", "x-forwarded-for", "forwarded"])(
+    "refuses a loopback Host that carries %s",
+    (name) => {
+      expect(isPublicRequest(req({ host: "localhost:8787", [name]: "203.0.113.7" }))).toBe(true);
+    },
+  );
+
+  it("refuses a Serve-shaped request that carries Cloudflare headers", () => {
+    expect(
+      isPublicRequest(
+        req({
+          host: "mac-mini.tailnet.ts.net",
+          "tailscale-user-login": "a@b.c",
+          "cf-connecting-ip": "203.0.113.7",
+        }),
+      ),
+    ).toBe(true);
+  });
+
+  it("passes a Serve request that carries X-Forwarded-For", () => {
+    expect(
+      isPublicRequest(
+        req({
+          host: "mac-mini.tailnet.ts.net",
+          "tailscale-user-login": "a@b.c",
+          "x-forwarded-for": "100.64.0.1",
+        }),
+      ),
+    ).toBe(false);
   });
 
   it("ignores a trailing root dot on the Host", () => {
-    expect(isFunnelRequest(req({ host: "mac-mini.tailnet.ts.net." }))).toBe(true);
+    expect(isPublicRequest(req({ host: "mac-mini.tailnet.ts.net." }))).toBe(true);
   });
 });
 
@@ -78,7 +124,7 @@ describe("funnelGuardEnabled", () => {
   });
 });
 
-describe("the Funnel guard on the HTTP door", () => {
+describe("the funnel guard on the HTTP door", () => {
   const TS_NET_HOST = "mac-mini.tailnet.ts.net";
   const LOGIN_HEADER = "tailscale-user-login";
 
@@ -146,6 +192,17 @@ describe("the Funnel guard on the HTTP door", () => {
   it("passes the same request when it carries Tailscale-User-Login", async () => {
     const res = await get("/v0/runs", TS_NET_HOST, { [LOGIN_HEADER]: "owner@example.com" });
     expect(res.status).toBe(200);
+  });
+
+  it("refuses a custom-domain Host, as Cloudflare Tunnel sends it", async () => {
+    const res = await get("/v0/runs", "path.rheinwegde.de", { "cf-connecting-ip": "203.0.113.7" });
+    expect(res.status).toBe(403);
+    expect(errorMessage(res.body)).toContain("Cloudflare Tunnel");
+  });
+
+  it("refuses a localhost Host that a proxy forwarded", async () => {
+    const res = await get("/v0/runs", "localhost", { "x-forwarded-for": "203.0.113.7" });
+    expect(res.status).toBe(403);
   });
 
   it("passes a localhost request", async () => {
