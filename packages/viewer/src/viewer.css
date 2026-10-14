@@ -80,6 +80,21 @@
   background: var(--ground);
 }
 
+.sign-in-screen button {
+  font: inherit;
+  font-weight: 600;
+  color: var(--accent-ink);
+  background: var(--accent);
+  border: none;
+  border-radius: 6px;
+  padding: 6px 16px;
+  cursor: pointer;
+}
+
+.sign-in-screen button:hover {
+  background: var(--accent-strong);
+}
+
 /* The three panes: fixed rails around a fluid centre; each pane scrolls on its own so the live
    narrative never pushes the runs list out of view. */
 .panes {
@@ -500,12 +515,16 @@ button.workflow-row:focus-visible {
   font: inherit;
   font-size: var(--fs-sm);
   font-weight: 600;
-  color: #fff;
+  color: var(--accent-ink);
   background: var(--accent);
   border: none;
   border-radius: 6px;
   padding: 6px 12px;
   cursor: pointer;
+}
+
+.launch-submit:hover:not(:disabled) {
+  background: var(--accent-strong);
 }
 
 .launch-submit:disabled {
@@ -783,6 +802,7 @@ button.workflow-row:focus-visible {
 }
 
 .card-action:hover {
+  border-color: var(--accent);
   color: var(--text);
 }
 
@@ -976,6 +996,10 @@ button.workflow-row:focus-visible {
 }
 
 /* The one loud button: filled with the failed color, since confirming here destroys data. */
+.delete-cancel:hover {
+  border-color: var(--accent);
+}
+
 .delete-confirm {
   font: inherit;
   font-size: var(--fs-sm);

@@ -15,8 +15,11 @@
   --text: #1c2128;
   --text-muted: #656d76;
 
-  /* Accent — indigo, selection/interactive only (not decoration). */
-  --accent: #4c6ef5;
+  /* Accent — RheinWeg Rhine blue, selection/interactive only (not decoration). Buttons fill with
+   * `--accent`, darken to `--accent-strong` on hover, and set their label in `--accent-ink`. */
+  --accent: #1d6a9e;
+  --accent-strong: #175680;
+  --accent-ink: #ffffff;
 
   /* Run-status foreground + soft background pairs. Glyphs live in JS, next to the colors. */
   --status-running-fg: #1f6feb;
@@ -49,7 +52,8 @@
   --border: #30363d;
   --text: #e6edf3;
   --text-muted: #8b949e;
-  --accent: #5c7cff;
+  --accent: #3b86bf;
+  --accent-strong: #2f73a6;
 
   --status-running-fg: #58a6ff;
   --status-running-bg: #12283f;
@@ -72,7 +76,8 @@
     --border: #30363d;
     --text: #e6edf3;
     --text-muted: #8b949e;
-    --accent: #5c7cff;
+    --accent: #3b86bf;
+  --accent-strong: #2f73a6;
 
     --status-running-fg: #58a6ff;
     --status-running-bg: #12283f;
