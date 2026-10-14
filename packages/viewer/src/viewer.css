@@ -56,6 +56,17 @@
   letter-spacing: 0.02em;
 }
 
+.brand-by {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  text-decoration: none;
+}
+
+.brand-by:hover {
+  color: var(--accent);
+}
+
 .brand-sub {
   color: var(--text-muted);
   font-size: var(--fs-xs);
