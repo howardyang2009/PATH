@@ -16,6 +16,8 @@ function record(overrides: Record<string, unknown>) {
     parent_run_id: ROOT,
     node_id: "step-x",
     worker_name: "spawn",
+    iteration: null,
+    pass: null,
     status: "pending",
     started_at: null,
     finished_at: null,
