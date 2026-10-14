@@ -1,6 +1,7 @@
 import {
   EMPTY_RUN_FILE_SET,
   isTerminal,
+  narrativeRows,
   type PathApiClient,
   type RunFileSet,
 } from "@path/client-core";
@@ -125,7 +126,7 @@ export function RunDetail({
 
       <hr className="row-resizer" aria-label="Resize run tree" {...treeHandleProps} />
 
-      <Narrative events={state.narrative} stream={state.stream} />
+      <Narrative events={narrativeRows(state.narrative, state.runs)} stream={state.stream} />
     </div>
   );
 }
