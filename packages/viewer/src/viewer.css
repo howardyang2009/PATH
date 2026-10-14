@@ -477,6 +477,15 @@ button.workflow-row:focus-visible {
   margin: 0;
 }
 
+/* The worker's credential hint takes the row's full width, under both dropdowns. */
+.worker-default-credential {
+  flex: 1 1 100%;
+  margin: 0;
+  font-size: var(--fs-xs);
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
 .worker-default-add {
   align-self: flex-start;
 }

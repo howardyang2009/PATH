@@ -1,4 +1,9 @@
-import { type PathApiClient, parseJsonField, type WireStepPlugin } from "@path/client-core";
+import {
+  credentialPlaceholder,
+  type PathApiClient,
+  parseJsonField,
+  type WireStepPlugin,
+} from "@path/client-core";
 import { useState } from "react";
 import { JsonField } from "./json-field.js";
 import { errorMessage } from "./load-state.js";
@@ -30,6 +35,9 @@ export interface LaunchFormProps {
    * (ADR 0044). Empty, and with no multi-worker type on offer the field is not rendered at all.
    */
   plugins?: readonly WireStepPlugin[];
+  /** The workers the workflow's own steps run on, when the surface knows them; their credentials
+   * name the config placeholder. */
+  workers?: readonly string[];
 }
 
 type Submit = { phase: "idle" } | { phase: "sending" } | { phase: "error"; message: string };
@@ -53,6 +61,7 @@ export function LaunchForm({
   warningCount = 0,
   configPlaceholder = '{"model": "claude-sonnet-5-5", "CLAUDE_CODE_OAUTH_TOKEN": {"$secret": "sk-ant-oat01-…"}}',
   plugins = [],
+  workers = [],
 }: LaunchFormProps): JSX.Element {
   const [input, setInput] = useState("{}");
   const [config, setConfig] = useState("");
@@ -80,6 +89,9 @@ export function LaunchForm({
   // reason off-screen — so a bad value forces its own field open.
   const inputOpen = showInput || !inputResult.ok;
   const configOpen = showConfig || !configResult.ok;
+  // A launch worker default can add a worker the file does not use, so its credential joins in.
+  const placeholder =
+    credentialPlaceholder([...workers, ...Object.values(workerDefaults)]) ?? configPlaceholder;
   const hasWorkerChoices = workerDefaultCandidates(plugins).length > 0;
   const workerDefaultCount = Object.keys(workerDefaults).length;
   const canLaunch =
@@ -156,7 +168,7 @@ export function LaunchForm({
           onChange={setConfig}
           result={configResult}
           rows={3}
-          placeholder={configPlaceholder}
+          placeholder={placeholder}
         />
       )}
 

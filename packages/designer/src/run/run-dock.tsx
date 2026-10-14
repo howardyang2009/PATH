@@ -158,6 +158,7 @@ export function RunDock(props: RunDockProps): JSX.Element {
                 client={props.client}
                 plugins={props.plugins}
                 workflowPath={props.workflowPath}
+                rootFile={props.rootFile}
                 dirty={props.dirty}
                 warningCount={props.warningCount}
                 onLaunched={props.onLaunched}

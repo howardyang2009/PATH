@@ -436,6 +436,35 @@ describe("LaunchPanel", () => {
     });
   });
 
+  it("names a launch worker default's credential in its row and in the config placeholder", async () => {
+    const stepPlugins = {
+      step_plugins: [
+        {
+          name: "prompt",
+          fields: {},
+          workers: ["anthropic", "deepseek"],
+          default_worker: "anthropic",
+        },
+      ],
+    };
+    const { client } = stubClient({ workflows: [ROOT], stepPlugins });
+    mount(client);
+    fireEvent.click(await screen.findByTestId("workflow-row-release-notes.workflow.json"));
+
+    fireEvent.click(await screen.findByTestId("launch-worker-defaults-toggle"));
+    fireEvent.click(screen.getByTestId("worker-default-add"));
+    fireEvent.change(screen.getByLabelText("worker"), { target: { value: "deepseek" } });
+
+    expect(screen.getByTestId("worker-default-credential-prompt")).toHaveTextContent(
+      "Auth: set config DEEPSEEK_API_KEY or a User secret of that name.",
+    );
+    fireEvent.click(screen.getByTestId("launch-config-toggle"));
+    expect(screen.getByTestId("launch-config")).toHaveAttribute(
+      "placeholder",
+      expect.stringContaining("DEEPSEEK_API_KEY"),
+    );
+  });
+
   it("omits worker_defaults when the launch worker-default field is opened but left empty", async () => {
     const { client, calls } = stubClient({ workflows: [ROOT], stepPlugins: PLUGINS });
     mount(client);
