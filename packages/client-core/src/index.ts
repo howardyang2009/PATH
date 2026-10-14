@@ -99,6 +99,7 @@ export {
   validateCompleteDraft,
 } from "./complete-form.js";
 export { type ConnectedRun, type ConnectRunOptions, connectRunViewModel } from "./connect.js";
+export { credentialHint, credentialPlaceholder } from "./credential-hints.js";
 export { eventMessage } from "./event-message.js";
 // What a run's events and rows *mean*, as against how a surface draws them: one right answer each,
 // so a second surface reaching a different answer would be showing a different run.

@@ -1,5 +1,7 @@
 import type { PathApiClient, WireStepPlugin } from "@path/client-core";
+import type { WorkflowFile } from "@path/schema";
 import { LaunchForm } from "@path/viewer";
+import { fileWorkers } from "../effective-worker.js";
 
 export interface RunLaunchProps {
   client: PathApiClient;
@@ -8,6 +10,8 @@ export interface RunLaunchProps {
   plugins: readonly WireStepPlugin[];
   /** The file open on the canvas; `null` for a never-saved buffer. */
   workflowPath: string | null;
+  /** The open buffer's parsed root file, or `null`; its workers name the config placeholder. */
+  rootFile: WorkflowFile | null;
   /** A launch runs the bytes on disk, so a dirty buffer gates it (ADR 0025). */
   dirty: boolean;
   /** Soft cross-node warning count; launch is badged, not blocked. */
@@ -22,6 +26,7 @@ export function RunLaunch({
   client,
   plugins,
   workflowPath,
+  rootFile,
   dirty,
   warningCount,
   onLaunched,
@@ -37,6 +42,7 @@ export function RunLaunch({
     <LaunchForm
       client={client}
       plugins={plugins}
+      workers={rootFile === null ? [] : fileWorkers(rootFile, plugins)}
       workflowPath={workflowPath}
       onLaunched={onLaunched}
       submitLabel="Run workflow"

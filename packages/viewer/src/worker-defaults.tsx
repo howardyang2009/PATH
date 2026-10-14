@@ -1,4 +1,4 @@
-import type { WireStepPlugin } from "@path/client-core";
+import { credentialHint, type WireStepPlugin } from "@path/client-core";
 
 /**
  * The worker-default editor, shared by the Designer's file `worker_defaults` region and the
@@ -74,6 +74,7 @@ export function WorkerDefaultsEditor({
       {entries.map(([type, worker]) => {
         const plugin = pluginOf(type);
         const workerOptions = plugin ? plugin.workers : [worker];
+        const credential = credentialHint(worker);
         // A type appears once: offer this row's own type plus every candidate no other row uses.
         const typeOptions = [
           type,
@@ -121,6 +122,14 @@ export function WorkerDefaultsEditor({
             >
               ✕
             </button>
+            {credential !== undefined && (
+              <p
+                className="worker-default-credential"
+                data-testid={`worker-default-credential-${type}`}
+              >
+                {credential}
+              </p>
+            )}
           </div>
         );
       })}
