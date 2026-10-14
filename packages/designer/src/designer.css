@@ -57,6 +57,17 @@ body {
   letter-spacing: 0.02em;
 }
 
+.brand-by {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  text-decoration: none;
+}
+
+.brand-by:hover {
+  color: var(--accent);
+}
+
 .brand-sub {
   color: var(--text-muted);
   font-size: var(--fs-sm);
@@ -777,10 +788,11 @@ body {
 }
 
 .pane-btn:hover {
-  border-color: var(--text-muted);
+  border-color: var(--accent);
 }
 
-.pane-btn-danger {
+.pane-btn-danger,
+.pane-btn-danger:hover {
   color: var(--k-workflow);
   border-color: var(--k-workflow);
 }
@@ -1347,7 +1359,7 @@ body {
 }
 
 .mode-switch-option:has(input:checked) {
-  color: var(--surface);
+  color: var(--accent-ink);
   background: var(--accent);
 }
 
@@ -1355,11 +1367,26 @@ body {
   padding: 5px 14px;
   font: inherit;
   font-weight: 600;
-  color: var(--surface);
+  color: var(--accent-ink);
   background: var(--accent);
   border: 1px solid var(--accent);
   border-radius: 6px;
   cursor: pointer;
+}
+
+.save-btn:hover:not(:disabled),
+.run-submit:hover:not(:disabled),
+.new-file-start:hover:not(:disabled),
+.ref-choose-target:hover:not(:disabled),
+.dialog-actions .new-file-create:hover:not(:disabled) {
+  background: var(--accent-strong);
+  border-color: var(--accent-strong);
+}
+
+/* Secondary buttons keep a neutral fill and take the accent border on hover. */
+.toolbar-btn:hover:not(:disabled),
+.dialog-actions button:hover:not(:disabled):not(.new-file-create) {
+  border-color: var(--accent);
 }
 
 .save-btn:disabled {
@@ -1788,7 +1815,7 @@ body {
   border: 1px solid var(--accent);
   border-radius: 6px;
   background: var(--accent);
-  color: #fff;
+  color: var(--accent-ink);
   cursor: pointer;
 }
 
@@ -1848,7 +1875,7 @@ body {
   padding: 6px 16px;
   font: inherit;
   font-weight: 600;
-  color: var(--surface);
+  color: var(--accent-ink);
   background: var(--accent);
   border: 1px solid var(--accent);
   border-radius: 6px;
@@ -2066,7 +2093,7 @@ body {
 
 .dialog-actions .new-file-create {
   font-weight: 600;
-  color: var(--surface);
+  color: var(--accent-ink);
   background: var(--accent);
   border-color: var(--accent);
 }
@@ -2260,7 +2287,7 @@ body {
 .ref-choose-target {
   padding: 8px 12px;
   font: inherit;
-  color: var(--surface);
+  color: var(--accent-ink);
   background: var(--accent);
   border: 1px solid var(--accent);
   border-radius: 6px;

@@ -3,7 +3,12 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>PATH</title>
+    <link
+      rel="icon"
+      type="image/svg+xml"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%231d6a9e'/%3E%3Cpath d='M6 20c4-6 8 2 12-4s6-4 8-2' fill='none' stroke='%23fff' stroke-width='2.5' stroke-linecap='round'/%3E%3C/svg%3E"
+    />
+    <title>PATH by RheinWeg</title>
     <style>
       :root {
         --bg: #f7f7f5;
@@ -11,7 +16,7 @@
         --muted: #5c5c57;
         --card: #ffffff;
         --border: #dcdcd6;
-        --accent: #2f5bd3;
+        --accent: #1d6a9e;
       }
       @media (prefers-color-scheme: dark) {
         :root {
@@ -20,7 +25,7 @@
           --muted: #a3a39d;
           --card: #20201e;
           --border: #353532;
-          --accent: #7b9cf5;
+          --accent: #3b86bf;
         }
       }
       * {
@@ -79,6 +84,16 @@
         color: var(--muted);
         font-size: 14px;
       }
+      .brand-by {
+        color: var(--muted);
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 13px;
+        font-weight: 400;
+        text-decoration: none;
+      }
+      .brand-by:hover {
+        color: var(--accent);
+      }
       footer a {
         color: inherit;
       }
@@ -86,7 +101,7 @@
   </head>
   <body>
     <main>
-      <h1>PATH</h1>
+      <h1>PATH <a class="brand-by" href="https://rheinwegde.vercel.app/de/">by RheinWeg</a></h1>
       <p class="lead">
         PATH runs workflows that can stop and start again. Steps do the work, controllers route it,
         and workers decide how each step runs. A stopped run resumes without repeating what already
@@ -103,7 +118,8 @@
         </a>
       </div>
       <footer>
-        <a href="https://github.com/howardyang2009/PATH">PATH on GitHub</a>
+        <a href="https://github.com/howardyang2009/PATH">PATH on GitHub</a> ·
+        <a href="https://rheinwegde.vercel.app/de/">by RheinWeg</a>
       </footer>
     </main>
   </body>
