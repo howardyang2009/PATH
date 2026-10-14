@@ -54,6 +54,9 @@ export function AppShell({
         <a className="brand" href="/">
           PATH
         </a>
+        <a className="brand-by" href="https://rheinwegde.vercel.app/de/">
+          by RheinWeg
+        </a>
         <span className="brand-sub">designer</span>
         {modeSwitch ?? null}
         {/* The centre slot always renders, so the toolbar keeps the right end with or without a

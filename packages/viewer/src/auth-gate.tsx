@@ -35,6 +35,7 @@ function SignInScreen({ auth }: { auth: AuthSession }) {
   return (
     <main className="sign-in-screen">
       <span className="brand">PATH</span>
+      <span className="brand-by">by RheinWeg</span>
       <p>Sign in to continue.</p>
       <button type="button" onClick={() => void auth.signIn()}>
         Sign in
