@@ -239,7 +239,9 @@ describe("RunsList", () => {
     const { client, urls } = stubClient([RUNNING]);
 
     const { rerender } = renderList(client, { reloadNonce: 0 });
-    await waitFor(() => expect(urls).toHaveLength(1));
+    // The first read must finish, or its own "Loading" note is still on screen.
+    await screen.findByTestId(`run-row-${RUNNING.run_id}`);
+    expect(urls).toHaveLength(1);
 
     rerender(
       <RunsList
