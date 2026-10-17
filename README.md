@@ -27,7 +27,8 @@ pnpm serve                           # build both consoles, serve on http://loca
 lives in `.path/`.
 
 PATH also runs in a hosted mode: Clerk sign-in, per-user stores and secrets, and one sandbox VM per
-run. See [`docs/spec/path-website.md`](docs/spec/path-website.md).
+run. The hosted site is [path.rheinwegde.de](https://path.rheinwegde.de), served through Cloudflare
+Tunnel (ADR 0106). See [`docs/spec/path-website.md`](docs/spec/path-website.md).
 
 ## Layout
 
@@ -49,6 +50,6 @@ packages/designer     React authoring console
 
 ## Status
 
-Latest release **v0.7.0** (2026-10-09). Release notes live on the
+Latest release **v0.7.1** (2026-10-17). Release notes live on the
 [releases page](https://github.com/howardyang2009/PATH/releases); older history is in
 [`CHANGELOG.md`](CHANGELOG.md). MIT licensed.
