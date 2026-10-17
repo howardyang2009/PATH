@@ -76,7 +76,7 @@ export function TopBar({ sub, menuItems }: { sub: string; menuItems?: UserMenuIt
       <a className="brand" href="/">
         PATH
       </a>
-      <a className="brand-by" href="https://rheinwegde.de/de/">
+      <a className="brand-by" href="https://rheinwegde.de/">
         by RheinWeg
       </a>
       <span className="brand-sub">{sub}</span>
