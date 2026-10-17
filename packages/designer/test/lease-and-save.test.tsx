@@ -169,6 +169,8 @@ describe("Designer save through the write route", () => {
       <App client={stubClient({ files: filesWith(idless), calls })} initialPath={ROOT_PATH} />,
     );
     await screen.findByText("draft");
+    // The shortcut saves only once the dirty buffer has enabled Save.
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save" })).toBeEnabled());
 
     const notCancelled = fireEvent.keyDown(window, { key: "s", ctrlKey: true });
 
