@@ -54,7 +54,7 @@ export function AppShell({
         <a className="brand" href="/">
           PATH
         </a>
-        <a className="brand-by" href="https://rheinwegde.vercel.app/de/">
+        <a className="brand-by" href="https://rheinwegde.de/de/">
           by RheinWeg
         </a>
         <span className="brand-sub">designer</span>
