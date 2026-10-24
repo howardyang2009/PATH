@@ -275,17 +275,6 @@ describe("edit-tree — replace (#369: the pane's content commit)", () => {
     expect(g.body[0]!.id).toBe(uuid(2)); // top-level sibling untouched
   });
 
-  it("re-keys a node — the match is on the old id, the replacement carries the new one", () => {
-    const f = fixture();
-    const g = apply(f, {
-      kind: "replace",
-      id: uuid(2),
-      node: { ...(f.body[0] as WorkflowNode), id: uuid(99) },
-    });
-    expect(g.body[0]!.id).toBe(uuid(99));
-    expect(locate(g, uuid(2))).toBeNull();
-  });
-
   it("is a no-op for an absent id (returns the same file reference)", () => {
     const f = fixture();
     expect(apply(f, { kind: "replace", id: uuid(999), node: leaf(60, "x") })).toBe(f);

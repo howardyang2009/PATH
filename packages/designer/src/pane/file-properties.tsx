@@ -4,7 +4,7 @@ import { WorkerDefaultsEditor, workerDefaultCandidates } from "@path/viewer";
 import { type EditCommit, type EditKey, editKey } from "../edit-key.js";
 import { withOptionalKey } from "../edit-target.js";
 import { referenceablePaths } from "../interp-suggest.js";
-import { fillPlaceholderOnTab, IdRow, ReadOnlyRow, TextField } from "../pane-controls.js";
+import { fillPlaceholderOnTab, ReadOnlyRow, TextField } from "../pane-controls.js";
 import { type KeyedRow, useKeyedRows, validateFileInputDraft } from "../validated-draft.js";
 import { ConfigEditor } from "./config-region.js";
 import { JsonDraftField, KeyedRowField, PaneSection } from "./fields.js";
@@ -35,11 +35,7 @@ export function FileProperties({
         value={file.name}
         onChange={(name) => applyEdit({ ...file, name }, editKey(file.id, "name"))}
       />
-      <IdRow
-        id={file.id}
-        onReKey={() => applyEdit({ ...file, id: crypto.randomUUID() })}
-        what="the workflow"
-      />
+      <ReadOnlyRow label="id" value={file.id} />
       <ReadOnlyRow label="format" value={file.format} />
       <hr className="pane-divider" />
       <FileConfigRegion key={`file-config-${file.id}`} file={file} applyEdit={applyEdit} />

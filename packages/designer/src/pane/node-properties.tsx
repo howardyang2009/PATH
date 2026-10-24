@@ -16,7 +16,7 @@ import { directionGlyph, gotoTargetOptions } from "../goto-view.js";
 import { carriesEnvelope } from "../grammar.js";
 import { referenceablePaths } from "../interp-suggest.js";
 import { nodeKind } from "../node-kind.js";
-import { fillPlaceholderOnTab, IdRow, SelectField, TextField } from "../pane-controls.js";
+import { fillPlaceholderOnTab, ReadOnlyRow, SelectField, TextField } from "../pane-controls.js";
 import { StepEnvelopeFields } from "./config-region.js";
 import { MaxIterationsField, PaneSection } from "./fields.js";
 import {
@@ -33,27 +33,18 @@ export function NodeProperties({
   node,
   plugins,
   applyEdit,
-  onReselect,
   onAddRefTarget,
 }: {
   file: WorkflowFile;
   node: WorkflowNode;
   plugins: WireStepPlugin[];
   applyEdit: EditCommit<WorkflowFile>;
-  onReselect: (id: string) => void;
   onAddRefTarget?: (nodeId: string) => void;
 }): JSX.Element {
   // A field edit passes its identity so a run of keystrokes folds to one undo entry; a discrete
   // change passes none, so it is its own entry.
   const commit = (next: WorkflowNode, key?: EditKey): void =>
     applyEdit(replaceNode(file, next), key);
-  const reKey = (): void => {
-    const id = crypto.randomUUID();
-    // The one edit found by its *previous* id: the re-key replaces the node that holds `node.id`
-    // today.
-    applyEdit(replaceNode(file, { ...node, id }, node.id));
-    onReselect(id);
-  };
   const site = locate(file, node.id);
   const role = occupantRole(site, file);
   const condSuggest = referenceablePaths(file, ROOTS.condition);
@@ -76,7 +67,7 @@ export function NodeProperties({
         value={node.name}
         onChange={(name) => commit({ ...node, name }, editKey(node.id, "name"))}
       />
-      <IdRow id={node.id} onReKey={reKey} what={`"${node.name}"`} />
+      <ReadOnlyRow label="id" value={node.id} />
       <PaneSection key={`fields-${node.id}`} title={node.type} className="pane-fields" defaultOpen>
         {site?.where === "arm" ? (
           <ConditionField

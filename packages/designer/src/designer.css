@@ -694,7 +694,7 @@ body {
 
 /* A single-line property (Name, Id, Command, Join, …) lays its label and its one control on one row:
    the label sits in a fixed-width first column so every such row's value column lines up down the
-   pane, the control fills the rest. A trailing block child (a re-key warning, a validation error)
+   pane, the control fills the rest. A trailing block child (a validation error)
    drops to its own full-width row beneath them. */
 .pane-field-row {
   display: grid;
@@ -756,24 +756,12 @@ body {
   white-space: pre;
 }
 
-.pane-id-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
 .pane-id {
   font-family: var(--font-mono);
   font-size: var(--fs-xs);
   color: var(--text-muted);
   word-break: break-all;
   flex: 1;
-}
-
-.pane-rekey-confirm {
-  display: inline-flex;
-  gap: 6px;
 }
 
 .pane-btn {
@@ -789,18 +777,6 @@ body {
 
 .pane-btn:hover {
   border-color: var(--accent);
-}
-
-.pane-btn-danger,
-.pane-btn-danger:hover {
-  color: var(--k-workflow);
-  border-color: var(--k-workflow);
-}
-
-.pane-warn {
-  margin: 0;
-  font-size: var(--fs-xs);
-  color: var(--k-workflow);
 }
 
 .pane-error {

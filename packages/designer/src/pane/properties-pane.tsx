@@ -9,7 +9,7 @@ import { NodeProperties } from "./node-properties.js";
  * The properties pane: a single-click on a canvas node populates it; an empty-canvas click (or a
  * node the active file no longer holds) shows the **file's own** properties. Layout is fixed
  * top-to-bottom: the node's **role** (only when its container gives one), a one-line kind
- * explanation, then `name`, `id` (a confirmation-gated re-key, ADR 0015), and the kind's own fields
+ * explanation, then `name`, the read-only `id` (ADR 0015), and the kind's own fields
  * expanded. The payload regions — a step's **config**, **input**, **context writes** and
  * **reference**, and the file's own equivalents — start collapsed, and each is keyed by its owner,
  * so a section resets to its default when the selection moves rather than opening a region the
@@ -27,8 +27,6 @@ export interface PropertiesPaneProps {
   selectedId: string | null;
   plugins: WireStepPlugin[];
   applyEdit: EditCommit<WorkflowFile>;
-  /** Re-point the selection after a re-key changes a node's id (ADR 0015). */
-  onReselect: (id: string) => void;
   /** Open the ref-target chooser for an empty `workflow` node; absent when the active file has no
    * path (a ref is stored relative to its file), in which case the plain path field is the
    * editor. */
@@ -40,7 +38,6 @@ export function PropertiesPane({
   selectedId,
   plugins,
   applyEdit,
-  onReselect,
   onAddRefTarget,
 }: PropertiesPaneProps): JSX.Element {
   const node = selectedId === null ? null : findById(file.body, selectedId);
@@ -53,7 +50,6 @@ export function PropertiesPane({
       node={node}
       plugins={plugins}
       applyEdit={applyEdit}
-      onReselect={onReselect}
       onAddRefTarget={onAddRefTarget}
     />
   );

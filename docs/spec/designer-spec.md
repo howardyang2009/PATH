@@ -135,8 +135,9 @@ these points that the UI must honour. Each matches the `@path/schema` types
 **Node identity** is the pair from
 [ADR 0015](../adr/0015-designer-node-identity-client-mints-preserve-on-save.md): a durable **`id`**
 (client-minted UUIDv4, stable across rename, reorder, and reparent) and a human **`name`** (unique in
-the file; the parallel output key above). Both are edited in the pane. To re-key the `id` is a
-deliberate, **confirmation-gated** action, because it breaks resume's plan-reuse match for that node.
+the file; the parallel output key above). The pane edits `name` and shows the `id` read-only: the
+Designer never changes an existing `id`, because a new one breaks resume's plan-reuse match for that
+node.
 
 ### Structure on the canvas, content in the pane
 
@@ -163,12 +164,12 @@ have several parents.) Blocks within a file are never descended into; they are a
 **Pane layout.** The pane reads top-to-bottom, **orientation before editing**. First, the node's
 **role**, when an occupant-of gives it one: `branch arm (N of M)`, `branch else fallback`, `parallel
 branch`. Second, any **explanatory copy** for the kind, gathered into one block rather than scattered
-per field. Then a divider, and third, the **editable fields**: `name` first, then the `id` (its re-key
-button on the same row, the change confirmation-gated), then the kind-specific fields. Explanation and
+per field. Then a divider, and third, the **editable fields**: `name` first, then the read-only `id`,
+then the kind-specific fields. Explanation and
 role lead, so the author knows *what they are editing* before the inputs. A plain node with neither
 opens straight at the fields.
 
-`name` and the `id` (with its re-key) are the pane's **anchor**: the editable fields, always shown,
+`name` and the `id` are the pane's **anchor**: always shown,
 never folded away — they are how the author knows which node is in view. Below them the pane is a stack
 of **collapsible sections**, each one's header acting as its own toggle. The kind's own fields are one
 such section and start **expanded**: they fold, but folding is an option for a busy node, never a step

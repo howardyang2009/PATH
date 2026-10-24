@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { App } from "../src/app.js";
 
 /**
- * #369 — the properties pane: a selection populates it, the id re-key is confirmation-gated, and
+ * #369 — the properties pane: a selection populates it, the id is read-only, and
  * the three editor tiers (hand-built, generic, raw JSON) resolve per step type. Later tickets added
  * the file worker-defaults (#505) and the person-activity editor (#487).
  */
@@ -272,30 +272,12 @@ describe("selection populates the pane", () => {
   });
 });
 
-describe("the id re-key is confirmation-gated", () => {
-  it("re-keys only after Confirm, and keeps the node selected under its new id", async () => {
+describe("the id is read-only", () => {
+  it("shows the node's id with no control to change it", async () => {
     const { canvas, pane } = await openPane();
     selectNode(canvas, "alpha");
     expect(within(pane).getByText(uuid(2))).toBeInTheDocument();
-
-    fireEvent.click(within(pane).getByRole("button", { name: "Re-key" }));
-    // A warning and the confirm/cancel appear; the id has not changed yet.
-    expect(within(pane).getByRole("alert")).toHaveTextContent(/breaks resume plan-reuse/);
-    expect(within(pane).getByText(uuid(2))).toBeInTheDocument();
-
-    fireEvent.click(within(pane).getByRole("button", { name: "Confirm re-key" }));
-    // The id changed to a fresh UUID and the pane still edits the same node (its name survives).
-    expect(within(pane).queryByText(uuid(2))).not.toBeInTheDocument();
-    expect((within(pane).getByLabelText("name") as HTMLInputElement).value).toBe("alpha");
-  });
-
-  it("cancels the re-key, leaving the id untouched", async () => {
-    const { canvas, pane } = await openPane();
-    selectNode(canvas, "alpha");
-    fireEvent.click(within(pane).getByRole("button", { name: "Re-key" }));
-    fireEvent.click(within(pane).getByRole("button", { name: "Cancel" }));
-    expect(within(pane).getByText(uuid(2))).toBeInTheDocument();
-    expect(within(pane).queryByRole("button", { name: "Confirm re-key" })).not.toBeInTheDocument();
+    expect(within(pane).queryByRole("button", { name: /re-key/i })).not.toBeInTheDocument();
   });
 });
 

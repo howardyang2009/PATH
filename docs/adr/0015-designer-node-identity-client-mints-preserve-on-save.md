@@ -7,6 +7,11 @@
 container shape of [ADR 0014](./0014-single-node-container-slots-and-sequence-logicer.md), under which
 every slot occupant is an ordinary node that carries its own `id`.
 
+## Amendment (2026-10-24)
+
+The Designer has no re-key control. The `id` shows read-only in the properties pane, for a node and
+for the workflow file, so the only id changes in a session are a mint, a duplicate and a delete.
+
 A canvas editor rewrites the whole file on every save. ADR 0006 made the node `id` the key that
 `plan-reuse` matches a successor node to a predecessor run on, "assigned once, never regenerated." So if
 the Designer re-mints an `id` on a reorder, a rename, a reparent, or a paste, **every prior run of that
