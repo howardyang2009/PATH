@@ -50,6 +50,16 @@ describe("@path/server named mounts + per-mount SPA fallback", () => {
     expect(html).toContain('href="/designer/"');
   });
 
+  it.each([
+    ["/privacy", "Privacy Policy"],
+    ["/terms", "Terms of Service"],
+  ])("GET %s serves the %s page", async (path, title) => {
+    const res = await fetch(`${handle.url}${path}`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toMatch(/text\/html/);
+    expect(await res.text()).toContain(`<title>PATH ${title}</title>`);
+  });
+
   it("serves the Viewer index.html at the mount root /viewer/", async () => {
     const res = await fetch(`${handle.url}/viewer/`);
     expect(res.status).toBe(200);

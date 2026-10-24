@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link
+      rel="icon"
+      type="image/svg+xml"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%231d6a9e'/%3E%3Cpath d='M6 20c4-6 8 2 12-4s6-4 8-2' fill='none' stroke='%23fff' stroke-width='2.5' stroke-linecap='round'/%3E%3C/svg%3E"
+    />
+    <title>PATH Privacy Policy</title>
+    <style>
+      :root {
+        --bg: #f7f7f5;
+        --fg: #1c1c1a;
+        --muted: #5c5c57;
+        --border: #dcdcd6;
+        --accent: #1d6a9e;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #161615;
+          --fg: #ececea;
+          --muted: #a3a39d;
+          --border: #353532;
+          --accent: #3b86bf;
+        }
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--fg);
+        font: 16px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif;
+      }
+      main {
+        max-width: 720px;
+        margin: 0 auto;
+        padding: 48px 16px 64px;
+      }
+      h1 {
+        margin: 0 0 4px;
+        font-size: 32px;
+      }
+      h2 {
+        margin: 36px 0 8px;
+        font-size: 20px;
+      }
+      .stand {
+        margin: 0 0 24px;
+        color: var(--muted);
+      }
+      a {
+        color: var(--accent);
+      }
+      code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 14px;
+      }
+      footer {
+        margin-top: 48px;
+        padding-top: 16px;
+        border-top: 1px solid var(--border);
+        color: var(--muted);
+        font-size: 14px;
+      }
+      footer a {
+        color: inherit;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <p><a href="/">&larr; PATH</a></p>
+      <h1>Privacy Policy</h1>
+      <p class="stand">Last updated: 24 October 2026</p>
+
+      <p>
+        This policy explains what personal data the hosted PATH application at
+        <a href="https://path.rheinwegde.de/">path.rheinwegde.de</a> (the Viewer, the Designer and
+        their API) processes, why, and what rights you have. It does not cover a copy of PATH that
+        you run yourself from the open-source code; that copy sends nothing to us.
+      </p>
+
+      <h2>1. Controller</h2>
+      <p>
+        The controller under the General Data Protection Regulation (GDPR) is:<br />
+        Liying Zhu, RheinWeg<br />
+        Im Rosengärtchen 70, 61440 Oberursel (Taunus), Germany<br />
+        Phone: +49 160 1168307<br />
+        Email: <a href="mailto:rheinwegde@gmail.com">rheinwegde@gmail.com</a>
+      </p>
+
+      <h2>2. Your account and sign-in</h2>
+      <p>
+        You sign in through Clerk (Clerk, Inc., 660 King Street, Unit 345, San Francisco, CA 94107,
+        USA). Clerk stores your account data: email address, name and profile picture if you give
+        them, the sign-in method you use, and session and security data such as IP address and
+        browser type. PATH itself does not keep a user table. It receives only a signed token for
+        each request and uses its user id (for example <code>user_2abc…</code>) to keep your files
+        and runs apart from those of other users.
+      </p>
+      <p>
+        If you choose "Sign in with Google", Google (Google Ireland Limited, Gordon House, Barrow
+        Street, Dublin 4, Ireland) confirms your identity and shares your name, email address and
+        profile picture with Clerk. PATH asks Google for no other data and has no access to your
+        Google account, Gmail, Drive or contacts.
+      </p>
+      <p>
+        Legal basis: Art. 6(1)(b) GDPR, because the account is needed to provide the service you
+        asked for. Clerk processes the data on our behalf under a data processing agreement.
+      </p>
+
+      <h2>3. What you put into PATH</h2>
+      <p>
+        We store what you create and do in PATH so that the application works:
+      </p>
+      <ul>
+        <li>
+          Workflows and step templates you save, private to you or shared with all users if you
+          choose "shared". Other signed-in users can read a shared item. Only you can change or
+          delete it.
+        </li>
+        <li>
+          Runs you launch: their inputs, outputs, logs, files and status. Runs are private to you.
+        </li>
+        <li>
+          Secrets you set on the Secrets page, such as API keys. They are encrypted at rest
+          (AES-256-GCM). No page or API returns a secret value, and run logs mask them.
+        </li>
+        <li>Usage counters used to enforce fair-use limits, such as run time per day.</li>
+      </ul>
+      <p>
+        Legal basis: Art. 6(1)(b) GDPR. Please do not put special categories of personal data
+        (health, religion and similar) or other people's personal data into PATH unless you are
+        allowed to.
+      </p>
+
+      <h2>4. Where the data is stored</h2>
+      <p>
+        PATH runs on our own server in Germany. Each run executes in its own isolated virtual
+        machine on that server. Traffic reaches the server through Cloudflare (Cloudflare, Inc., 101
+        Townsend St, San Francisco, CA 94107, USA), which also manages DNS for rheinwegde.de.
+        Cloudflare processes connection data, including your IP address, to deliver and protect
+        the site.
+      </p>
+      <p>
+        Nightly backups are encrypted on our server before upload and stored with Backblaze
+        (Backblaze, Inc., 201 Baldwin Ave, San Mateo, CA 94401, USA). Backblaze cannot read them.
+      </p>
+      <p>
+        Legal basis for hosting, security and backups: Art. 6(1)(f) GDPR. Our legitimate interest is
+        a secure, reliable service.
+      </p>
+
+      <h2>5. Third-party services your workflows call</h2>
+      <p>
+        A workflow step can call outside services, for example an AI model provider such as
+        Anthropic or DeepSeek, or any web address a step names. When you run such a workflow, PATH
+        sends the data that step uses to that service, with the credentials you supplied. That
+        service then processes the data under its own terms and privacy policy. You decide which
+        services your workflows call and what data they send.
+      </p>
+
+      <h2>6. Transfers outside the EU</h2>
+      <p>
+        Clerk, Google, Cloudflare and Backblaze may process data in the USA. Each of them is
+        certified under the EU-US Data Privacy Framework, and their data processing agreements
+        include the EU Standard Contractual Clauses.
+      </p>
+
+      <h2>7. Cookies and tracking</h2>
+      <p>
+        PATH uses only the cookies and browser storage that sign-in needs: Clerk's session cookies
+        (for example <code>__session</code> and <code>__client_uat</code>), and browser storage for
+        small interface settings. They are strictly necessary for the service you asked for (§ 25(2)
+        no. 2 TDDDG). We use no analytics, advertising or tracking tools.
+      </p>
+
+      <h2>8. How long we keep data</h2>
+      <ul>
+        <li>Your workflows, templates, runs and secrets: until you delete them or your account.</li>
+        <li>
+          Shared items that we remove for breaking the <a href="/terms">Terms</a>: up to 30 days in
+          quarantine, then deleted.
+        </li>
+        <li>Backups: up to 6 months, after which deleted data is gone from every copy.</li>
+        <li>
+          Account data at Clerk: until you delete your account. You can delete it from the account
+          menu, or ask us by email; we then also delete your files, runs and secrets.
+        </li>
+      </ul>
+
+      <h2>9. Your rights</h2>
+      <p>Within the limits of the law, you have the right to:</p>
+      <ul>
+        <li>access the data we hold about you (Art. 15 GDPR)</li>
+        <li>correct wrong data (Art. 16 GDPR)</li>
+        <li>have your data deleted (Art. 17 GDPR)</li>
+        <li>restrict processing (Art. 18 GDPR)</li>
+        <li>receive your data in a portable format (Art. 20 GDPR)</li>
+        <li>object to processing based on Art. 6(1)(f) GDPR (Art. 21 GDPR)</li>
+      </ul>
+      <p>
+        To use these rights, email the address above. You can also complain to a data protection
+        authority. Ours is Der Hessische Beauftragte für Datenschutz und Informationsfreiheit,
+        Gustav-Stresemann-Ring 1, 65189 Wiesbaden, Germany.
+      </p>
+
+      <h2>10. Children</h2>
+      <p>PATH is not meant for anyone under 16. We do not knowingly collect their data.</p>
+
+      <h2>11. Changes</h2>
+      <p>
+        When we change this policy, we update the date at the top. If a change affects how we use
+        data you already gave us, we tell you before it applies.
+      </p>
+
+      <footer>
+        <a href="/">PATH</a> · <a href="/terms">Terms of Service</a> ·
+        <a href="https://rheinwegde.de/de/impressum/">Impressum</a>
+      </footer>
+    </main>
+  </body>
+</html>
