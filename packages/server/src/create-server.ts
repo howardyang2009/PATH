@@ -33,8 +33,15 @@ const DEFAULT_STATIC_DIR = fileURLToPath(new URL("../../viewer/dist", import.met
  * built. */
 const DEFAULT_DESIGNER_STATIC_DIR = fileURLToPath(new URL("../../designer/dist", import.meta.url));
 
-/** The landing page at `/`: one static `index.html` that links to both mounts. */
+/** The static site pages: the landing page at `/` (links to both mounts) and the legal pages. */
 const SITE_DIR = fileURLToPath(new URL("../site", import.meta.url));
+
+/** Exact site paths, mapped to their file in `SITE_DIR`. */
+const SITE_PAGES = new Map([
+  ["/", "/"],
+  ["/privacy", "/privacy.html"],
+  ["/terms", "/terms.html"],
+]);
 
 /** The two hardcoded mounts (ADR 0027) — not an open table. Prefix has no trailing slash. */
 const VIEWER_PREFIX = "/viewer";
@@ -78,7 +85,8 @@ async function handleRequest(
     if (await dispatchApi(req, res, server, url)) return;
 
     // Bare `/` is the landing page that links to both mounts (amends ADR 0027's redirect).
-    if (req.method === "GET" && pathname === "/" && serveStatic(SITE_DIR, "/", res)) return;
+    const sitePage = SITE_PAGES.get(pathname);
+    if (req.method === "GET" && sitePage && serveStatic(SITE_DIR, sitePage, res)) return;
 
     // Named mounts: a GET is routed by prefix, the prefix stripped, the suffix resolved in that
     // bundle's dir with its own SPA fallback. An unbuilt bundle falls through to the plain 404

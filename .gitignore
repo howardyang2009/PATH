@@ -14,3 +14,4 @@ dist/
 /users/
 /shared/
 .env
+client_secret_*
