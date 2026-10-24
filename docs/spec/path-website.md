@@ -143,7 +143,8 @@ ingress).
 1. Stop new sign-ups: Clerk sign-up mode to invite-only.
 2. Slow one user: set their overrides to 0 (VM time, running VMs, shared items).
 3. Block one user: ban in Clerk; effective within 60 s.
-4. Take the site offline: `tailscale funnel off` (or stop the tunnel after the move).
+4. Take the site offline: stop the Cloudflare Tunnel (`sudo launchctl bootout
+   system/com.cloudflare.cloudflared`).
 
 **`path-server remove-shared <path>`** ([#723](https://github.com/howardyang2009/PATH/issues/723)):
 safe while the Server runs. Moves the file to `.path/quarantine/<date>/` for 30 days (or `--purge`),
