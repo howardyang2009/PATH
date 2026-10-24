@@ -17,13 +17,8 @@ export function withOptionalKey<T extends object>(value: T, key: string, next: u
   return next === undefined ? withoutKey(value, key) : ({ ...value, [key]: next } as T);
 }
 
-/** Commit a node edit in place in its body; `at` is the id the body holds **now** — the previous id
- * for a re-key. An unknown id is `editFile`'s no-op, so a stale commit is nothing to write rather
- * than a crash. */
-export function replaceNode(
-  file: WorkflowFile,
-  node: WorkflowNode,
-  at: string = node.id,
-): WorkflowFile {
-  return unwrapEdit(editFile(file, { kind: "replace", id: at, node }));
+/** Commit a node edit in place in its body. An unknown id is `editFile`'s no-op, so a stale commit
+ * is nothing to write rather than a crash. */
+export function replaceNode(file: WorkflowFile, node: WorkflowNode): WorkflowFile {
+  return unwrapEdit(editFile(file, { kind: "replace", id: node.id, node }));
 }

@@ -2,6 +2,12 @@
 
 **Status:** accepted. Refines the move to production in [ADR 0092](0092-v1-runs-on-a-clerk-development-instance-over-tailscale.md).
 
+## Amendment (2026-10-24)
+
+The move is done, without the user import: the development users were not moved to the production
+Clerk instance and `path-server remap-user` was not run. Every user signs up again and starts empty.
+Funnel is off.
+
 ## Context
 
 ADR 0092 left the production domain open. The owner chose `path.rheinwegde.de`. Cloudflare

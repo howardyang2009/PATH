@@ -370,7 +370,6 @@ export function App({
               selectedId={selectedId}
               plugins={plugins}
               applyEdit={(next, key) => session.apply({ type: "applyEdit", next, key })}
-              onReselect={setSelectedId}
               // The ref-target chooser needs the parent's path to store a relative ref, so offer it
               // only for a file that has one; a from-scratch root falls back to the plain path
               // field.

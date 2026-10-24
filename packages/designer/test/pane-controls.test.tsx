@@ -1,13 +1,12 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
-import { fillPlaceholderOnTab, IdRow, NumberField, TextField } from "../src/pane-controls.js";
+import { fillPlaceholderOnTab, NumberField, TextField } from "../src/pane-controls.js";
 
 /**
  * The pane's generic field vocabulary (`pane-controls.tsx`), lifted out of `properties-pane.tsx`.
- * These hit the atoms head-on — the coercion a number field does, the Tab-fills-placeholder
- * handler, and the confirmation gate on a re-key (ADR 0015) — without mounting the whole pane and a
- * workflow buffer.
+ * These hit the atoms head-on — the coercion a number field does and the Tab-fills-placeholder
+ * handler — without mounting the whole pane and a workflow buffer.
  */
 
 describe("NumberField", () => {
@@ -63,27 +62,5 @@ describe("fillPlaceholderOnTab", () => {
     fireEvent.change(input, { target: { value: "typed" } });
     fireEvent.keyDown(input, { key: "Tab" });
     expect(input.value).toBe("typed");
-  });
-});
-
-describe("IdRow", () => {
-  it("gates a re-key behind a confirm, and Cancel disarms it", () => {
-    const onReKey = vi.fn();
-    render(<IdRow id="abc" onReKey={onReKey} what={'"step-one"'} />);
-    fireEvent.click(screen.getByRole("button", { name: "Re-key" }));
-    // Armed: the warning shows and nothing has committed yet.
-    expect(screen.getByRole("alert")).toBeTruthy();
-    expect(onReKey).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
-    expect(screen.queryByRole("alert")).toBeNull();
-    expect(onReKey).not.toHaveBeenCalled();
-  });
-
-  it("commits the re-key only on Confirm", () => {
-    const onReKey = vi.fn();
-    render(<IdRow id="abc" onReKey={onReKey} what={'"step-one"'} />);
-    fireEvent.click(screen.getByRole("button", { name: "Re-key" }));
-    fireEvent.click(screen.getByRole("button", { name: "Confirm re-key" }));
-    expect(onReKey).toHaveBeenCalledTimes(1);
   });
 });

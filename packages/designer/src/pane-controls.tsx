@@ -26,56 +26,6 @@ export function fillPlaceholderOnTab(e: ReactKeyboardEvent<HTMLElement>): void {
   el.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
-/**
- * The `id` row: the read-only id and a confirmation-gated re-key, guarded because minting a new id
- * breaks resume plan-reuse (ADR 0015).
- */
-export function IdRow({
-  id,
-  onReKey,
-  what,
-}: {
-  id: string;
-  onReKey: () => void;
-  what: string;
-}): JSX.Element {
-  const [confirming, setConfirming] = useState(false);
-  return (
-    <div className="pane-field pane-field-row">
-      <span className="pane-label">id</span>
-      <div className="pane-id-row">
-        <code className="pane-id">{id}</code>
-        {confirming ? (
-          <span className="pane-rekey-confirm">
-            <button
-              type="button"
-              className="pane-btn pane-btn-danger"
-              onClick={() => {
-                onReKey();
-                setConfirming(false);
-              }}
-            >
-              Confirm re-key
-            </button>
-            <button type="button" className="pane-btn" onClick={() => setConfirming(false)}>
-              Cancel
-            </button>
-          </span>
-        ) : (
-          <button type="button" className="pane-btn" onClick={() => setConfirming(true)}>
-            Re-key
-          </button>
-        )}
-      </div>
-      {confirming ? (
-        <p className="pane-warn" role="alert">
-          Re-keying {what} mints a new id and breaks resume plan-reuse for existing runs.
-        </p>
-      ) : null}
-    </div>
-  );
-}
-
 export function TextField({
   label,
   value,
