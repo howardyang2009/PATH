@@ -12,7 +12,8 @@ ADRs: [0088](../adr/0088-each-request-sees-its-own-view-and-only-the-creator-wri
 (secrets), [0090](../adr/0090-the-user-id-is-the-clerk-sub-verified-on-every-request.md) (identity),
 [0091](../adr/0091-a-hosted-run-executes-in-one-vm-per-engine-invocation.md) (run executor),
 [0092](../adr/0092-v1-runs-on-a-clerk-development-instance-over-tailscale.md) (Clerk instance and
-ingress).
+ingress, V1), [0106](../adr/0106-path-is-served-at-path-rheinwegde-de-through-cloudflare-tunnel.md)
+(production domain and tunnel).
 
 ## 1. Scope
 
@@ -193,9 +194,11 @@ and restart.
 
 ## 10. Network exposure
 
-**Now** ([#721](https://github.com/howardyang2009/PATH/issues/721)): Funnel is on since 2026-10-09,
-after the hosted-mode gate (§11) passed. The Server runs in hosted mode, so anyone on the internet
-can reach it and sign up. Funnel was off from 2026-10-05 until then.
+**Now**: since 2026-10-24 the only public ingress is Cloudflare Tunnel: `cloudflared` (the
+`launchd` daemon `com.cloudflare.cloudflared`) routes `https://path.rheinwegde.de` to the Server on
+`localhost:8080` (ADR 0106). The Server runs in hosted mode against the Clerk production instance, so
+anyone on the internet can reach it and sign up. Tailscale Funnel is off. It served the site from
+2026-10-09 until then ([#721](https://github.com/howardyang2009/PATH/issues/721)).
 In local mode the Server answers only a loopback `Host` with no proxy header, or a `*.ts.net` `Host`
 that carries `Tailscale-User-Login` (`tailscale serve`); it answers `403` to everything else, so
 Funnel, Cloudflare Tunnel and any other public ingress fail closed. `PATH_FUNNEL_GUARD=off` switches
@@ -215,10 +218,12 @@ rules); hosted mode refuses to boot unless that file is from this boot, `pf` is 
 anchor has its block rules. Files and steps: `packages/server/sandbox/egress/`. An allowlist proxy waits for its trigger (an abuse complaint, signs of scanning, or the move to
 production).
 
-**Move to production** ([#712](https://github.com/howardyang2009/PATH/issues/712), ADR 0092):
-trigger-based. Buy a domain, move DNS to Cloudflare, run Cloudflare Tunnel, import users into the
-production Clerk instance with `external_id` = old `sub`, run `path-server remap-user`, change
-`authorizedParties` to the new origin.
+**Move to production** ([#712](https://github.com/howardyang2009/PATH/issues/712), ADR 0092,
+ADR 0106): done 2026-10-24. `rheinwegde.de` is on Cloudflare DNS, the tunnel serves
+`path.rheinwegde.de`, and `PATH_ALLOWED_ORIGIN` (the `authorizedParties` origin) is that hostname. The
+Clerk production instance runs on `clerk.path.rheinwegde.de`. No users were imported: every user
+signs up again and starts with an empty `users/<sub>/`. The development users' folders stay on disk,
+unreachable. `path-server remap-user --from-clerk` stays for a later import.
 
 ## 11. Hosted-mode gate
 

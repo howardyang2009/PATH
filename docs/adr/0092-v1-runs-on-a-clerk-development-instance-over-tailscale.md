@@ -1,6 +1,6 @@
 # V1 runs on a Clerk development instance over Tailscale
 
-**Status:** accepted.
+**Status:** accepted; its move to production is done (2026-10-24, [ADR 0106](0106-path-is-served-at-path-rheinwegde-de-through-cloudflare-tunnel.md)).
 
 ## Context
 
