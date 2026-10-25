@@ -784,6 +784,11 @@ Rule of thumb: **Config flows in from outside. Context is written from inside.**
 - **Baseline** — the on-disk bytes (and their ETag) a **Buffer** last synced with: its last successful
   open or save. It is what the write route's `If-Match` precondition carries (ADR 0016) and the value a
   buffer is compared against to decide clean-versus-dirty. A `200` save advances it; nothing else moves it.
+- **Error code** — the stable, language-neutral name of a message PATH owns, such as
+  `run.resume.illegal-k`. It travels with its params on the wire and in the run log, and the client
+  renders it in the viewer's language; the English text beside it is only a fallback. Text PATH does
+  not own (a worker's stderr, an external API body) has no error code and is shown as written
+  (ADR 0107).
 - **Save-point** — the moment a save advances the **Baseline**. A buffer is **clean** when its canonical
   serialization is byte-identical to the baseline (a content relation, not a mutation flag), and **dirty**
   otherwise. One save-point serves three consumers the same way — launch gates on clean, the `If-Match`
