@@ -80,6 +80,11 @@
         color: var(--muted);
       }
       footer {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px 16px;
         margin-top: 48px;
         color: var(--muted);
         font-size: 14px;
@@ -97,12 +102,108 @@
       footer a {
         color: inherit;
       }
+      .lang-open {
+        display: inline-flex;
+        margin-left: auto;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 12px;
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        background: var(--card);
+        color: var(--fg);
+        font: inherit;
+        font-size: 14px;
+        cursor: pointer;
+      }
+      .lang-open:hover,
+      .lang-open:focus-visible {
+        border-color: var(--accent);
+      }
+      .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+        white-space: nowrap;
+      }
+      dialog {
+        width: min(24rem, calc(100vw - 2rem));
+        margin: auto;
+        padding: 0;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        background: var(--card);
+        color: var(--fg);
+        box-shadow: 0 12px 32px rgb(0 0 0 / 0.2);
+      }
+      dialog::backdrop {
+        background: rgb(0 0 0 / 0.35);
+      }
+      .lang-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 20px 20px 12px;
+      }
+      .lang-head h2 {
+        margin: 0;
+        font-size: 18px;
+      }
+      .lang-close {
+        display: inline-flex;
+        padding: 4px;
+        border: 0;
+        border-radius: 6px;
+        background: none;
+        color: var(--muted);
+        cursor: pointer;
+      }
+      .lang-close:hover {
+        color: var(--fg);
+      }
+      .lang-list {
+        margin: 0;
+        padding: 0 8px 8px;
+        list-style: none;
+      }
+      .lang-list button {
+        display: flex;
+        width: 100%;
+        align-items: center;
+        justify-content: space-between;
+        padding: 8px 12px;
+        border: 0;
+        border-radius: 8px;
+        background: none;
+        color: inherit;
+        font: inherit;
+        text-align: left;
+        cursor: pointer;
+      }
+      .lang-list button:hover,
+      .lang-list button[aria-current] {
+        background: var(--bg);
+      }
+      .lang-list small {
+        display: block;
+        color: var(--muted);
+        font-size: 14px;
+      }
+      .lang-list svg {
+        visibility: hidden;
+        color: var(--accent);
+      }
+      .lang-list button[aria-current] svg {
+        visibility: visible;
+      }
     </style>
   </head>
   <body>
     <main>
       <h1>PATH <a class="brand-by" href="https://rheinwegde.de/">by RheinWeg</a></h1>
-      <p class="lead">
+      <p class="lead" data-i18n="lead">
         PATH runs workflows that can stop and start again. Steps do the work, controllers route it,
         and workers decide how each step runs. A stopped run resumes without repeating what already
         succeeded, and a person can be a step.
@@ -110,19 +211,130 @@
       <div class="cards">
         <a class="card" href="/viewer/">
           <h2>Viewer &rarr;</h2>
-          <p>Launch workflows, watch runs live, resume and complete them.</p>
+          <p data-i18n="viewer">Launch workflows, watch runs live, resume and complete them.</p>
         </a>
         <a class="card" href="/designer/">
           <h2>Designer &rarr;</h2>
-          <p>Author workflows and step templates on a visual canvas.</p>
+          <p data-i18n="designer">Author workflows and step templates on a visual canvas.</p>
         </a>
       </div>
       <footer>
-        <a href="https://github.com/howardyang2009/PATH">PATH on GitHub</a> ·
-        <a href="https://rheinwegde.de/">by RheinWeg</a> ·
-        <a href="/privacy">Privacy</a> ·
-        <a href="/terms">Terms</a>
+        <span>
+          <a href="https://github.com/howardyang2009/PATH" data-i18n="github">PATH on GitHub</a> ·
+          <a href="https://rheinwegde.de/">by RheinWeg</a> ·
+          <a href="/privacy" data-i18n="privacy">Privacy</a> ·
+          <a href="/terms" data-i18n="terms">Terms</a>
+        </span>
+        <button type="button" class="lang-open" aria-haspopup="dialog">
+          <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18" />
+          </svg>
+          <span class="sr-only" data-i18n="langLabel">Language</span>
+          <span id="lang-current">English</span>
+        </button>
       </footer>
     </main>
+
+    <dialog id="lang-dialog" aria-labelledby="lang-dialog-title">
+      <div class="lang-head">
+        <h2 id="lang-dialog-title" data-i18n="langTitle">Choose your language</h2>
+        <button type="button" class="lang-close" aria-label="Close">
+          <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18" /></svg>
+        </button>
+      </div>
+      <ul class="lang-list">
+        <li><button type="button" lang="de" data-lang="de"><span>Deutsch<small data-i18n="nameDe">German</small></span><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L19 7" /></svg></button></li>
+        <li><button type="button" lang="en" data-lang="en"><span>English<small data-i18n="nameEn">English</small></span><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L19 7" /></svg></button></li>
+        <li><button type="button" lang="zh" data-lang="zh"><span>中文<small data-i18n="nameZh">Chinese</small></span><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L19 7" /></svg></button></li>
+      </ul>
+    </dialog>
+
+    <script>
+      // Language choice shared with rheinwegde.de and AiBlocks through one RHEINWEG_LOCALE cookie on
+      // the parent domain; its values are AiBlocks' Locale ids, so Chinese is "zh-CN". English text
+      // stays in the markup and is read back from it.
+      (function () {
+        var OWN = { de: "Deutsch", en: "English", zh: "中文" };
+        var T = {
+          en: {},
+          de: {
+            lead: "PATH führt Workflows aus, die anhalten und wieder starten können. Schritte erledigen die Arbeit, Controller leiten sie weiter, und Worker entscheiden, wie jeder Schritt läuft. Ein angehaltener Lauf setzt fort, ohne zu wiederholen, was bereits gelungen ist, und auch ein Mensch kann ein Schritt sein.",
+            viewer: "Workflows starten, Läufe live verfolgen, fortsetzen und abschließen.",
+            designer: "Workflows und Schrittvorlagen auf einer visuellen Arbeitsfläche erstellen.",
+            github: "PATH auf GitHub",
+            privacy: "Datenschutz",
+            terms: "Nutzungsbedingungen",
+            langLabel: "Sprache",
+            langTitle: "Sprache wählen",
+            close: "Schließen",
+            nameDe: "Deutsch",
+            nameEn: "Englisch",
+            nameZh: "Chinesisch",
+          },
+          zh: {
+            lead: "PATH 运行可以停止并重新开始的工作流。步骤完成工作，控制器负责路由，执行器决定每个步骤如何运行。停止的运行恢复时不会重复已经成功的部分，而且人也可以是一个步骤。",
+            viewer: "启动工作流，实时查看运行，恢复并完成运行。",
+            designer: "在可视化画布上编写工作流和步骤模板。",
+            github: "GitHub 上的 PATH",
+            privacy: "隐私政策",
+            terms: "使用条款",
+            langLabel: "语言",
+            langTitle: "选择语言",
+            close: "关闭",
+            nameDe: "德语",
+            nameEn: "英语",
+            nameZh: "中文",
+          },
+        };
+        var toCookie = { de: "de", en: "en", zh: "zh-CN" };
+        var fromCookie = { de: "de", en: "en", "zh-CN": "zh" };
+        var domain = /(^|\.)rheinwegde\.de$/.test(location.hostname) ? "; domain=.rheinwegde.de" : "";
+        var dialog = document.getElementById("lang-dialog");
+        var nodes = document.querySelectorAll("[data-i18n]");
+        var close = dialog.querySelector(".lang-close");
+        nodes.forEach(function (n) {
+          T.en[n.dataset.i18n] = n.textContent.trim().replace(/\s+/g, " ");
+        });
+        T.en.close = close.getAttribute("aria-label");
+
+        function apply(lang) {
+          document.documentElement.lang = lang;
+          nodes.forEach(function (n) {
+            n.textContent = T[lang][n.dataset.i18n];
+          });
+          close.setAttribute("aria-label", T[lang].close);
+          document.getElementById("lang-current").textContent = OWN[lang];
+          dialog.querySelectorAll("[data-lang]").forEach(function (b) {
+            if (b.dataset.lang === lang) b.setAttribute("aria-current", "true");
+            else b.removeAttribute("aria-current");
+          });
+          dialog.querySelectorAll("small").forEach(function (s) {
+            s.lang = lang;
+          });
+        }
+
+        var m = document.cookie.match(/(?:^|; )RHEINWEG_LOCALE=([^;]*)/);
+        apply((m && fromCookie[m[1]]) || "en");
+
+        document.querySelector(".lang-open").addEventListener("click", function () {
+          dialog.showModal();
+        });
+        close.addEventListener("click", function () {
+          dialog.close();
+        });
+        // A click on the backdrop lands on the dialog element itself.
+        dialog.addEventListener("click", function (e) {
+          if (e.target === dialog) dialog.close();
+        });
+        dialog.querySelectorAll("[data-lang]").forEach(function (b) {
+          b.addEventListener("click", function () {
+            var lang = b.dataset.lang;
+            document.cookie = "RHEINWEG_LOCALE=" + toCookie[lang] + "; path=/; max-age=31536000; samesite=lax" + domain;
+            apply(lang);
+            dialog.close();
+          });
+        });
+      })();
+    </script>
   </body>
 </html>
