@@ -180,11 +180,21 @@ A new leaf package. The Viewer, the Designer, `client-core` and the server impor
 
 ## 11. Build order
 
-1. `@path/i18n` foundation (section 3, CI of section 9).
-2. Locale wiring in `client-core`, the Viewer and the Designer (section 4).
-3. In parallel after 2: Viewer strings, Designer strings (two slices), `client-core` display text,
-   the error-code wire and server refusals.
-4. After the wire: engine run-event codes, old-event matching, schema validation codes.
-5. Legal pages after 1 (they need `pickLocale`).
-6. The glossary approval gates every review, not the build.
-7. PR #800 is marked ready when every build issue is closed.
+1. `@path/i18n` foundation (section 3, CI of section 9):
+   [#810](https://github.com/howardyang2009/PATH/issues/810).
+2. Locale wiring in `client-core`, the Viewer and the Designer (section 4):
+   [#811](https://github.com/howardyang2009/PATH/issues/811).
+3. In parallel after 2: Viewer strings ([#812](https://github.com/howardyang2009/PATH/issues/812)),
+   Designer strings ([#813](https://github.com/howardyang2009/PATH/issues/813),
+   [#814](https://github.com/howardyang2009/PATH/issues/814)), `client-core` display text
+   ([#815](https://github.com/howardyang2009/PATH/issues/815)), the error-code wire and server
+   refusals ([#816](https://github.com/howardyang2009/PATH/issues/816)).
+4. After the wire: engine run-event codes ([#817](https://github.com/howardyang2009/PATH/issues/817)),
+   then old-event matching ([#818](https://github.com/howardyang2009/PATH/issues/818)); schema
+   validation codes ([#819](https://github.com/howardyang2009/PATH/issues/819)).
+5. Legal pages after 1, because they need `pickLocale`
+   ([#820](https://github.com/howardyang2009/PATH/issues/820)).
+6. The glossary approval gates every review, not the build
+   ([#821](https://github.com/howardyang2009/PATH/issues/821)).
+7. PR #800 is marked ready when every build issue is closed
+   ([#822](https://github.com/howardyang2009/PATH/issues/822)).
