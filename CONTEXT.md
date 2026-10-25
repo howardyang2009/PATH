@@ -789,6 +789,10 @@ Rule of thumb: **Config flows in from outside. Context is written from inside.**
   renders it in the viewer's language; the English text beside it is only a fallback. Text PATH does
   not own (a worker's stderr, an external API body) has no error code and is shown as written
   (ADR 0107).
+- **Locale** — the language a page shows: `de`, `en` or `zh-CN`. A page picks it once, at load: the
+  `RHEINWEG_LOCALE` cookie the user set on the landing page first, then the first of the browser's
+  languages that is German, Chinese or English, else `en`. Only the landing page's explicit pick writes
+  the cookie; a fallback never does. All Chinese is Simplified, so every `zh*` preference means `zh-CN`.
 - **Save-point** — the moment a save advances the **Baseline**. A buffer is **clean** when its canonical
   serialization is byte-identical to the baseline (a content relation, not a mutation flag), and **dirty**
   otherwise. One save-point serves three consumers the same way — launch gates on clean, the `If-Match`
