@@ -794,3 +794,61 @@ Rule of thumb: **Config flows in from outside. Context is written from inside.**
   otherwise. One save-point serves three consumers the same way — launch gates on clean, the `If-Match`
   precondition sends the baseline ETag, and the lease heartbeat beats unconditionally beside them
   (ADR 0025, ADR 0030).
+
+## Translations
+
+The UI shows each term below in German and Chinese exactly as given here: one word per concept, in
+every surface. A term marked _kept_ stays English on purpose. The product names **PATH**, **PATH
+Viewer** and **PATH Designer**, and the node-kind badges on the canvas (`CHECKPOINT`, `GOTO`, the join
+labels), stay English in every language, because a badge is the `type` the author writes in the JSON;
+the tooltip and palette text around a badge are translated.
+
+German addresses the user as "Sie". Chinese is Simplified, uses full-width punctuation (，。：), puts a
+space between Chinese and Latin text or digits (`步骤 3`, `运行 PATH`), and avoids 您 in favour of
+neutral phrasing.
+
+| English | de | zh |
+|---|---|---|
+| Workflow | Workflow (pl. Workflows) _kept_ | 工作流 |
+| Run (noun) | Lauf (pl. Läufe) | 运行 |
+| run (verb) | ausführen | 运行 |
+| Step | Schritt | 步骤 |
+| Step type | Schritttyp | 步骤类型 |
+| Worker | Worker _kept_ | 执行器 |
+| Default worker | Standard-Worker | 默认执行器 |
+| Worker-default | Worker-Vorgabe | 执行器预设 |
+| Controller | Controller _kept_ | 控制器 |
+| Structure Controller / Graph Controller | Struktur-Controller / Graph-Controller | 结构控制器 / 图控制器 |
+| Join mode | Zusammenführung | 汇合方式 |
+| Pass | Durchgang | 轮次 |
+| Checkpoint | Checkpoint _kept_ | 检查点 |
+| Input / Output | Eingabe / Ausgabe | 输入 / 输出 |
+| Context | Kontext | 上下文 |
+| Previous | Vorheriger Schritt | 上一步 |
+| Person-activity | Personenaktivität | 人工活动 |
+| Awaiting | Wartet | 等待中 |
+| Cancel / Cancellation | Abbrechen / Abbruch | 取消 |
+| Run tree | Laufbaum | 运行树 |
+| Run history | Laufverlauf | 运行历史 |
+| Run event / Log event | Laufereignis / Protokollereignis | 运行事件 / 日志事件 |
+| Trace | Trace _kept_ | 追踪 |
+| Template | Vorlage | 模板 |
+| Step-Template / Workflow-Template | Schrittvorlage / Workflow-Vorlage | 步骤模板 / 工作流模板 |
+| Template instance | Vorlageninstanz | 模板实例 |
+| Template edit mode | Vorlagenmodus | 模板编辑模式 |
+| Step-type plugin / Step-plugin registry | Schritttyp-Plugin / Plugin-Verzeichnis | 步骤类型插件 / 插件注册表 |
+| launch (verb) / Launcher | starten / Gestartet von | 启动 / 启动者 |
+| Launch facts | Startangaben | 启动信息 |
+| Config / Operator config | Konfiguration / Betreiberkonfiguration | 配置 / 运维配置 |
+| Secret / User secret | Secret _kept_ / Benutzer-Secret | 密钥 / 用户密钥 |
+| Project directory | Projektverzeichnis | 项目目录 |
+| Creator | Ersteller | 创建者 |
+| Buffer | Entwurf | 草稿 |
+| Baseline / Save-point | Gespeicherter Stand / Speicherpunkt | 已保存版本 / 保存点 |
+| Resume | Fortsetzen | 恢复 |
+| Resumed-from | Fortgesetzt von | 恢复自 |
+| Successor run | Folgelauf | 后续运行 |
+| Rerun / Rerun boundary (K) | Erneut ausführen / Wiederholgrenze | 重新运行 / 重跑起点 |
+| Reuse / Reuse row | Wiederverwenden / Übernommener Schritt | 复用 / 复用步骤 |
+
+_Avoid_: Arbeitsablauf, Ausführer, Steuerung, Geheimnis, Puffer (de); 缓冲区, 工人 (zh).
