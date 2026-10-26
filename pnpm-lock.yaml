@@ -355,6 +355,9 @@ importers:
       '@clerk/backend':
         specifier: ^3.22.0
         version: 3.22.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+      '@formatjs/icu-messageformat-parser':
+        specifier: ^3.5.22
+        version: 3.5.22
       '@path/engine':
         specifier: workspace:*
         version: link:../engine

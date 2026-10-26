@@ -1,6 +1,7 @@
 import type { IncomingMessage } from "node:http";
 import { encodeEventFrame } from "@path/schema";
 import { replyRefusal, sendReply } from "../http-json.js";
+import { withOldErrorCode } from "../old-error-code.js";
 import { resolveTree } from "./resolve-run.js";
 import type { StreamRequest } from "./route-context.js";
 
@@ -22,7 +23,7 @@ function parseLastEventId(req: IncomingMessage): number | undefined {
 /**
  * `GET /v0/runs/:root_run_id/events` (server-api-v0.md §5): the SSE event stream. Which events a
  * subscriber gets, and in what order, is `LiveRuns.stream`'s guarantee; this route owns the 404,
- * the `Last-Event-ID` header, and the socket.
+ * the `Last-Event-ID` header, the socket, and the code of an error stored before codes.
  */
 export function handleGetRunEvents({
   req,
@@ -40,7 +41,7 @@ export function handleGetRunEvents({
   res.writeHead(200, SSE_HEADERS);
 
   const unsubscribe = ctx.live.stream(rootRunId, parseLastEventId(req), {
-    onEvent: (event) => res.write(encodeEventFrame(event)),
+    onEvent: (event) => res.write(encodeEventFrame(withOldErrorCode(event))),
     onEnd: () => res.end(),
   });
 

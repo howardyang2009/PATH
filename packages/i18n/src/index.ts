@@ -1,4 +1,4 @@
-export { englishText, isMessageKey } from "./english.js";
+export { englishErrorTemplates, englishText, isMessageKey } from "./english.js";
 export { isLocale, LOCALES, type Locale, pickLocale } from "./locale.js";
 export {
   type ErrorCode,
