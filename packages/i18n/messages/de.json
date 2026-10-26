@@ -225,7 +225,8 @@
       "downloadDirty": "Ungespeicherte Änderungen sind nicht enthalten. Die gespeicherte Datei herunterladen?",
       "couldNotDownload": "Herunterladen nicht möglich: {message}",
       "templatesDoNotRun": "Vorlagen werden nicht ausgeführt. Wechseln Sie in den Workflow-Modus, um einen Workflow auszuführen.",
-      "saveWorkflowAs": "Workflow speichern unter"
+      "saveWorkflowAs": "Workflow speichern unter",
+      "paneIdle": "Öffnen Sie {mode, select, template {eine Vorlage} other {einen Workflow}} und wählen Sie einen Knoten zum Bearbeiten."
     },
     "document": {
       "readOnly": "Schreibgeschützt: Nur der Ersteller kann speichern. Verwenden Sie „Speichern unter“.",

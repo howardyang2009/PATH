@@ -1,6 +1,8 @@
 import { stubClient } from "@path/client-core/test-utils";
+import { loadMessages } from "@path/i18n";
 import { FORMAT_VERSION } from "@path/schema";
 import { fireEvent, render, screen, within } from "@testing-library/react";
+import { IntlProvider } from "use-intl";
 import { describe, expect, it } from "vitest";
 import { App } from "../src/app.js";
 
@@ -119,6 +121,33 @@ describe("Designer shell (the tracer bullet, still true)", () => {
   it("shows an empty canvas when no file is opened", async () => {
     render(<App client={stubClient()} />);
     expect(await screen.findByText("Empty canvas")).toBeInTheDocument();
+  });
+
+  it("names the edit mode in the idle pane hint", async () => {
+    render(<App client={stubClient()} />);
+    expect(
+      await screen.findByText("Open a workflow and select a node to edit it."),
+    ).toBeInTheDocument();
+    const mode = screen.getByRole("radiogroup", { name: "Edit mode" });
+    fireEvent.click(within(mode).getByRole("radio", { name: "Template" }));
+    expect(
+      await screen.findByText("Open a template and select a node to edit it."),
+    ).toBeInTheDocument();
+  });
+
+  it.each([
+    ["de", "Öffnen Sie einen Workflow und wählen Sie einen Knoten zum Bearbeiten."],
+    ["zh-CN", "打开一个工作流，然后选择要编辑的节点。"],
+  ] as const)("shows the idle pane hint in %s", async (locale, hint) => {
+    const messages = await loadMessages(locale);
+    render(<App client={stubClient()} />, {
+      wrapper: ({ children }) => (
+        <IntlProvider locale={locale} messages={messages}>
+          {children}
+        </IntlProvider>
+      ),
+    });
+    expect(await screen.findByText(hint)).toBeInTheDocument();
   });
 });
 

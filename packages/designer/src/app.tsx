@@ -380,7 +380,7 @@ export function App({
           ) : (
             <div className="pane pane-idle">
               <p className="pane-hint">
-                Open a {inTemplateMode ? "template" : "workflow"} and select a node to edit it.
+                {t("paneIdle", { mode: inTemplateMode ? "template" : "workflow" })}
               </p>
             </div>
           )

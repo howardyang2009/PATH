@@ -225,7 +225,8 @@
       "downloadDirty": "Unsaved edits are not included. Download the saved file?",
       "couldNotDownload": "Could not download: {message}",
       "templatesDoNotRun": "Templates do not run. Switch to Workflow mode to run a workflow.",
-      "saveWorkflowAs": "Save workflow as"
+      "saveWorkflowAs": "Save workflow as",
+      "paneIdle": "Open a {mode, select, template {template} other {workflow}} and select a node to edit it."
     },
     "document": {
       "readOnly": "Read-only: only the creator can save. Use Save as.",
