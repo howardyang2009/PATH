@@ -1,9 +1,13 @@
 import { DEFAULT_PLUGINS, type StubServerOptions, stubClient } from "@path/client-core/test-utils";
-import { FORMAT_VERSION } from "@path/schema";
+import { type Locale, loadMessages } from "@path/i18n";
+import { FORMAT_VERSION, type WorkflowFile } from "@path/schema";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { IntlProvider } from "use-intl";
 import { describe, expect, it } from "vitest";
 import { App } from "../src/app.js";
+import { ConflictMarker, ConflictProvider } from "../src/conflict-context.js";
 import { openWorkflowFile } from "../src/open-workflow.js";
+import { fileProblems, problemMarks } from "../src/problems.js";
 import { ProblemsPanel } from "../src/problems-panel.js";
 import { canonicalSerialize } from "../src/serialize.js";
 
@@ -126,6 +130,106 @@ describe("dangling-`workflow`-ref marker + launch badge", () => {
     await waitFor(() =>
       expect(screen.queryByRole("region", { name: "Problems" })).not.toBeInTheDocument(),
     );
+  });
+});
+
+/** A file with one duplicate publish key and one goto of each refused rule. */
+function schemaProblemsFile(): WorkflowFile {
+  const goto = (id: number, name: string, target: string) =>
+    ({ type: "goto", id: uuid(id), name, target, max_jumps: 3 }) as never;
+  const leaf = (id: number, name: string, publish?: Record<string, string>) =>
+    ({ type: "prompt", id: uuid(id), name, prompt: "x", ...(publish ? { publish } : {}) }) as never;
+  return {
+    format: FORMAT_VERSION,
+    id: uuid(1),
+    name: "flow",
+    body: [
+      {
+        type: "parallel",
+        id: uuid(2),
+        name: "fan",
+        join: "collect",
+        branches: [leaf(3, "b1", { k: "${output.a}" }), leaf(4, "b2", { k: "${output.a}" })],
+      } as never,
+      { type: "sequence", id: uuid(5), name: "group", body: [leaf(6, "check")] } as never,
+      goto(7, "self", "self"),
+      goto(8, "inner", "check"),
+      goto(9, "absent", "nowhere"),
+      {
+        type: "while-do",
+        id: uuid(10),
+        name: "poll",
+        condition: { type: "exists", path: "context.k" },
+        node: goto(11, "out", "group"),
+      } as never,
+    ],
+  };
+}
+
+async function renderInLocale(locale: Locale, ui: JSX.Element): Promise<void> {
+  const messages = await loadMessages(locale);
+  render(ui, {
+    wrapper: ({ children }) => (
+      <IntlProvider locale={locale} messages={messages}>
+        {children}
+      </IntlProvider>
+    ),
+  });
+}
+
+describe("publish-set and goto problems in each Locale", () => {
+  it.each([
+    [
+      "en",
+      [
+        'duplicate publish key "k": sibling parallel branches must not publish the same context key',
+        'goto "self" targets itself',
+        'goto target "check" is not a first-level node',
+        'goto target "nowhere" not found in this file',
+        'goto "out" may not sit under while-do "poll"',
+      ],
+    ],
+    [
+      "de",
+      [
+        "doppelter publish-Schlüssel „k“: parallele Geschwisterzweige dürfen nicht denselben Kontextschlüssel veröffentlichen",
+        "goto „self“ zielt auf sich selbst",
+        "goto-Ziel „check“ ist kein Knoten der ersten Ebene",
+        "goto-Ziel „nowhere“ in dieser Datei nicht gefunden",
+        "goto „out“ darf nicht unter while-do „poll“ stehen",
+      ],
+    ],
+    [
+      "zh-CN",
+      [
+        "publish 键“k”重复：同级并行分支不能发布相同的上下文键",
+        "goto“self”的目标是它自己",
+        "goto 目标“check”不是第一层节点",
+        "在此文件中未找到 goto 目标“nowhere”",
+        "goto“out”不能位于 while-do“poll”之下",
+      ],
+    ],
+  ] as const)("%s renders the panel rows and the ⚠ markers", async (locale, texts) => {
+    const problems = fileProblems(schemaProblemsFile());
+    const marks = problemMarks(problems);
+    await renderInLocale(
+      locale,
+      <ConflictProvider value={marks}>
+        <ProblemsPanel problems={problems} />
+        {[...marks.keys()].map((id) => (
+          <ConflictMarker key={id} id={id} />
+        ))}
+      </ConflictProvider>,
+    );
+    const panel = screen.getByRole("region");
+    const markerTitles = screen
+      .getAllByRole("img", { name: /^Validation error|^Validierungsfehler|^校验错误/ })
+      .map((marker) => marker.getAttribute("title") ?? "");
+    expect(markerTitles).toHaveLength(problems.length);
+    for (const text of texts) {
+      expect(within(panel).getByText(text, { exact: false })).toBeInTheDocument();
+      expect(markerTitles).toContain(text);
+    }
   });
 });
 
