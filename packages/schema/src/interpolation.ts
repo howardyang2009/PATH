@@ -1,14 +1,13 @@
+import type { Message } from "@path/i18n";
 import { z } from "zod";
+import { codedMessage, messageIssue } from "./coded-issue.js";
 import { checkDotPath } from "./dot-path.js";
 import type { JsonValue } from "./json-value.js";
 import type { InterpolationRoot } from "./roots.js";
 
 export type { InterpolationRoot } from "./roots.js";
 
-export interface InterpolationCheckResult {
-  ok: boolean;
-  error?: string;
-}
+export type InterpolationCheckResult = { ok: true } | { ok: false; error: Message };
 
 /** One piece of an interpolable string (docs/format/workflow-format.md §6). A bare `$` not followed
  * by `{` is inert literal text and arrives inside a `literal` token. */
@@ -75,17 +74,23 @@ export function checkInterpolationSyntax(
     if (token.kind === "unclosed") {
       return {
         ok: false,
-        error: `unclosed placeholder starting at index ${token.index} in "${value}"`,
+        error: codedMessage("interpolation.unclosed", { index: token.index, value }),
       };
     }
     if (token.kind !== "placeholder") continue;
 
     if (token.path.length === 0) {
-      return { ok: false, error: "empty placeholder: `${}` is not a valid interpolation" };
+      return { ok: false, error: codedMessage("schema.interpolation.empty") };
     }
     const result = checkDotPath(token.path, allowedRoots);
     if (!result.ok) {
-      return { ok: false, error: `${result.error} in "\${${token.path}}"` };
+      return {
+        ok: false,
+        error: codedMessage("schema.interpolation.bad-path", {
+          reason: result.error,
+          path: token.path,
+        }),
+      };
     }
   }
   return { ok: true };
@@ -96,12 +101,10 @@ export function checkInterpolationSyntax(
 export function interpolationIssues(
   value: unknown,
   allowedRoots: readonly InterpolationRoot[],
-): { path: (string | number)[]; error: string }[] {
+): { path: (string | number)[]; error: Message }[] {
   if (typeof value === "string") {
     const result = checkInterpolationSyntax(value, allowedRoots);
-    return result.ok
-      ? []
-      : [{ path: [], error: result.error ?? `invalid interpolation in "${value}"` }];
+    return result.ok ? [] : [{ path: [], error: result.error }];
   }
   const entries: [string | number, unknown][] = Array.isArray(value)
     ? value.map((item, index) => [index, item])
@@ -132,9 +135,7 @@ export function holdsPlaceholder(value: unknown): boolean {
 export function interpolableString(allowedRoots: readonly InterpolationRoot[]) {
   return z.string().superRefine((value, ctx) => {
     const result = checkInterpolationSyntax(value, allowedRoots);
-    if (!result.ok) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, message: result.error });
-    }
+    if (!result.ok) ctx.addIssue({ code: z.ZodIssueCode.custom, ...messageIssue(result.error) });
   });
 }
 

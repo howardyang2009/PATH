@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { basename, dirname, join, relative, sep } from "node:path";
+import type { Message } from "@path/i18n";
 import {
   makeStepTemplateSchema,
   type StepPluginRegistry,
@@ -71,7 +72,7 @@ export type WritableTemplate =
  * fails the registry-relative envelope is the `400`, its issues in `details`. */
 export type TemplateWrite =
   | { ok: true; id: string; relativePath: string; etag: string }
-  | ({ ok: false; status: 400; details?: string[] } & Refusal)
+  | ({ ok: false; status: 400; details?: Message[] } & Refusal)
   | ({ ok: false; status: 403 | 404 | 409 | 412 } & Refusal);
 
 export type TemplateRemove = { ok: true } | ({ ok: false; status: 403 | 404 } & Refusal);
@@ -207,11 +208,11 @@ export function discoverTemplates(
 
   const validate = (
     payload: unknown,
-  ): { ok: true; id: string } | ({ ok: false; status: 400; details: string[] } & Refusal) => {
+  ): { ok: true; id: string } | ({ ok: false; status: 400; details: Message[] } & Refusal) => {
     const parsed = safeParseStepTemplateWith(stepSchema, payload);
     return parsed.success
       ? { ok: true, id: parsed.data.id }
-      : { ok: false, status: 400, code: "template.invalid", details: parsed.errors };
+      : { ok: false, status: 400, code: "template.invalid", details: parsed.issues };
   };
 
   const writeAt = (

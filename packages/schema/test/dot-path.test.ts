@@ -37,29 +37,29 @@ describe("resolveDotPath", () => {
   it("reports an unknown root", () => {
     expect(resolveDotPath(roots, "config.anything")).toEqual({
       found: false,
-      error: 'unknown root "config"',
+      error: { key: "errors.schema.dot-path.unknown-root", params: { root: "config" } },
     });
   });
 
   it("reports a missing key, an out-of-bounds index, and a walk into a non-object", () => {
     expect(resolveDotPath(roots, "context.nope")).toEqual({
       found: false,
-      error: 'key "nope" not found',
+      error: { key: "errors.schema.dot-path.missing-key", params: { segment: "nope" } },
     });
     expect(resolveDotPath(roots, "context.nested.deep.9")).toEqual({
       found: false,
-      error: 'index "9" is out of bounds',
+      error: { key: "errors.schema.dot-path.out-of-bounds", params: { segment: "9" } },
     });
     expect(resolveDotPath(roots, "output.x")).toEqual({
       found: false,
-      error: '"x" reaches into a non-object value',
+      error: { key: "errors.schema.dot-path.non-object", params: { segment: "x" } },
     });
   });
 
   it("does not resolve inherited properties", () => {
     expect(resolveDotPath(roots, "context.toString")).toEqual({
       found: false,
-      error: 'key "toString" not found',
+      error: { key: "errors.schema.dot-path.missing-key", params: { segment: "toString" } },
     });
   });
 
@@ -69,7 +69,10 @@ describe("resolveDotPath", () => {
     const result = resolveDotPath(roots, "context.nested.missing");
     expect(result.found).toBe(false);
     if (result.found) throw new Error("expected a failure");
-    expect(result.error).not.toContain("context.nested.missing");
+    expect(result.error).toEqual({
+      key: "errors.schema.dot-path.missing-key",
+      params: { segment: "missing" },
+    });
   });
 });
 

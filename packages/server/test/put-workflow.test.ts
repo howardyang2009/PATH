@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { englishText, type Message } from "@path/i18n";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { type PathServerHandle, startPathServer } from "../src/create-server.js";
 
@@ -45,6 +46,12 @@ async function put(
     headers: { "Content-Type": "application/json", ...headers },
     body: JSON.stringify({ workflow_path: workflowPath, workflow: wf }),
   });
+}
+
+/** Each `details` message in English, one per line. */
+async function detailText(res: Response): Promise<string> {
+  const { error } = (await res.json()) as { error: { details: Message[] } };
+  return error.details.map(englishText).join("\n");
 }
 
 describe("PUT /v0/workflows", () => {
@@ -248,6 +255,30 @@ describe("PUT /v0/workflows", () => {
       expect(res.status).toBe(400);
     });
 
+    it("400s a PATH refinement with its error code in details", async () => {
+      const res = await put(
+        "dupname.workflow.json",
+        workflow({
+          body: [
+            { type: "binary", id: randomUUID(), name: "a", command: "echo" },
+            { type: "binary", id: randomUUID(), name: "a", command: "echo" },
+          ],
+        }),
+      );
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { error: { code: string; details: unknown[] } };
+      expect(body.error.code).toBe("workflow.invalid");
+      expect(body.error.details).toEqual([
+        {
+          key: "shared.issueAtPath",
+          params: {
+            path: "body.1.name",
+            issue: { key: "errors.schema.file.duplicate-name", params: { name: "a" } },
+          },
+        },
+      ]);
+    });
+
     it("400s an id-less body (PUT is strict where GET is lenient, ADR 0015)", async () => {
       const res = await put("idless.workflow.json", {
         format: "path/workflow@6",
@@ -269,9 +300,7 @@ describe("PUT /v0/workflows", () => {
       const res = await put("dup.workflow.json", wf);
       expect(res.status).toBe(400);
 
-      const detail = ((await res.json()) as { error: { details: string[] } }).error.details.join(
-        "\n",
-      );
+      const detail = await detailText(res);
       expect(detail).toContain("body.1.id");
       expect(detail).toContain("body.0.id");
       expect(() => readFileSync(join(projectDir, "dup.workflow.json"))).toThrow();
@@ -285,9 +314,7 @@ describe("PUT /v0/workflows", () => {
       });
       const res = await put("selfdup.workflow.json", wf);
       expect(res.status).toBe(400);
-      const detail = ((await res.json()) as { error: { details: string[] } }).error.details.join(
-        "\n",
-      );
+      const detail = await detailText(res);
       expect(detail).toContain("body.0.id");
       expect(detail).toContain("id already used at id");
     });

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { codedIssue } from "./coded-issue.js";
 import type { ConfigValue } from "./config-value-type.js";
 import { hasOnlyEnvKey } from "./env.js";
 import { hasOnlySecretKey } from "./secret.js";
@@ -23,15 +24,6 @@ const SecretWrapperSchema = z
 const WrapperSchemas = [SecretWrapperSchema, EnvWrapperSchema] as const;
 const knownWrapperKeys = WrapperSchemas.flatMap((schema) => Object.keys(schema.shape));
 
-/** Reported as a reserved key, not an unknown wrapper: a literal `$`-prefixed key is
- * unexpressible. */
-function reservedKeyMessage(key: string): string {
-  return (
-    `"${key}" is a reserved key — a sole "$"-prefixed key names a config wrapper ` +
-    `(known: ${knownWrapperKeys.map((known) => `"${known}"`).join(", ")})`
-  );
-}
-
 /** A sole `$`-prefixed key is a wrapper or a load error, never literal data. Config is `z.record`,
  * so §10's unknown-field rejection does not reach inside it: without this gate `{"$evn": "TOKEN"}`
  * would validate as an ordinary object and the worker would receive the wrapper. Multi-key objects
@@ -39,16 +31,17 @@ function reservedKeyMessage(key: string): string {
 const PlainConfigObjectSchema = z.lazy(() =>
   z
     .record(z.string(), ConfigValueSchema)
-    .refine((obj) => !hasOnlySecretKey(obj), {
-      message: '"$secret" wrapper value must be a string or an {"$env": "NAME"} wrapper',
-    })
-    .refine((obj) => !hasOnlyEnvKey(obj), {
-      message: '"$env" wrapper value must be a string',
-    })
+    .refine((obj) => !hasOnlySecretKey(obj), codedIssue("schema.config.secret-wrapper"))
+    .refine((obj) => !hasOnlyEnvKey(obj), codedIssue("schema.config.env-wrapper"))
     .superRefine((obj, ctx) => {
       const key = soleKey(obj);
       if (key === undefined || !key.startsWith("$") || knownWrapperKeys.includes(key)) return;
-      ctx.addIssue({ code: z.ZodIssueCode.custom, message: reservedKeyMessage(key) });
+      // A reserved key, not an unknown wrapper: a literal `$`-prefixed key is unexpressible.
+      const known = knownWrapperKeys.map((each) => `"${each}"`).join(", ");
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        ...codedIssue("schema.config.reserved-key", { key, known }),
+      });
     }),
 );
 

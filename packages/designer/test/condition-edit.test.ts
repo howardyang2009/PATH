@@ -1,5 +1,8 @@
+import { loadMessages, type Message, renderMessage, type Translate } from "@path/i18n";
 import type { Condition } from "@path/schema";
-import { describe, expect, it } from "vitest";
+import { createTranslator } from "use-intl/core";
+import { afterEach, describe, expect, it } from "vitest";
+import { z } from "zod";
 import {
   CONDITION_TYPES,
   changeConditionType,
@@ -71,5 +74,42 @@ describe("validateCondition rejects an ill-typed condition", () => {
 
   it("flags a range with neither bound", () => {
     expect(validateCondition({ type: "range", path: "context.n" } as Condition)).not.toBeNull();
+  });
+
+  it("returns a PATH refinement as its error code", () => {
+    expect(validateCondition({ type: "range", path: "context.n" } as Condition)).toEqual({
+      key: "errors.schema.condition.range-bounds",
+    });
+  });
+
+  it("returns a built-in zod issue as zod's own text", () => {
+    expect(
+      validateCondition({ type: "one-of", path: "context.n", values: [] } as Condition),
+    ).toEqual({ key: "shared.verbatim", params: { text: expect.stringMatching(/>=1/) } });
+  });
+});
+
+/** What the Designer shows under `?lang=de`: the de catalogue, and zod's de locale that `mountApp`
+ * sets. */
+async function inGerman(condition: Condition): Promise<string> {
+  z.config(z.locales.de());
+  const t = createTranslator({ locale: "de", messages: await loadMessages("de") }) as Translate;
+  return renderMessage(t, validateCondition(condition) as Message);
+}
+
+afterEach(() => {
+  z.config(z.locales.en());
+});
+
+describe("an invalid condition under ?lang=de", () => {
+  it("shows a PATH refinement in German", async () => {
+    expect(await inGerman({ type: "range", path: "context.n" } as Condition)).toBe(
+      "eine range-Bedingung braucht mindestens min oder max",
+    );
+  });
+
+  it("shows a built-in zod issue in German", async () => {
+    const text = await inGerman({ type: "one-of", path: "context.n", values: [] } as Condition);
+    expect(text).toMatch(/^Zu klein/);
   });
 });

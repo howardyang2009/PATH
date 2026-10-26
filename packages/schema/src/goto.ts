@@ -1,3 +1,5 @@
+import type { Message } from "@path/i18n";
+import { codedMessage } from "./coded-issue.js";
 import type { GotoNode, WorkflowNode } from "./node-type.js";
 import { childBodies, childNodePath, walkNodes } from "./node-walk.js";
 import type { WorkflowFile } from "./workflow-file-type.js";
@@ -17,7 +19,7 @@ export interface GotoIssue {
   nodeId: string;
   /** The goto node itself for `placement`; its `target` field for the three target rules. */
   path: (string | number)[];
-  message: string;
+  message: Message;
 }
 
 /** Every refused goto in a file body, in document order. A misplaced goto is reported as
@@ -51,30 +53,38 @@ export function gotoIssues(file: WorkflowFile): GotoIssue[] {
     const issue = (
       rule: GotoIssueRule,
       path: (string | number)[],
-      message: string,
+      message: Message,
     ): GotoIssue[] => [{ rule, nodeId: node.id, path, message }];
     if (barrier) {
       return issue(
         "placement",
         nodePath,
-        `goto "${node.name}" may not sit under ${barrier.type} "${barrier.name}"`,
+        codedMessage("schema.goto.placement", {
+          name: node.name,
+          barrierType: barrier.type,
+          barrier: barrier.name,
+        }),
       );
     }
     const targetPath = [...nodePath, "target"];
     if (node.target === node.name)
-      return issue("target-self", targetPath, `goto "${node.name}" targets itself`);
+      return issue(
+        "target-self",
+        targetPath,
+        codedMessage("schema.goto.target-self", { name: node.name }),
+      );
     if (firstLevel.has(node.target)) return [];
     if (everyName.has(node.target)) {
       return issue(
         "target-inner",
         targetPath,
-        `goto target "${node.target}" is not a first-level node`,
+        codedMessage("schema.goto.target-inner", { target: node.target }),
       );
     }
     return issue(
       "target-absent",
       targetPath,
-      `goto target "${node.target}" not found in this file`,
+      codedMessage("goto.target-not-found", { target: node.target }),
     );
   };
 

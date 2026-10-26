@@ -1,5 +1,6 @@
 import { relative } from "node:path";
-import { duplicateIdErrors, type StepPluginRegistry, safeParseWorkflowFile } from "@path/schema";
+import type { Message } from "@path/i18n";
+import { duplicateIdIssues, type StepPluginRegistry, safeParseWorkflowFile } from "@path/schema";
 import {
   conditionalDelete,
   conditionalWrite,
@@ -16,7 +17,7 @@ import type { WriteAccess } from "./write-access.js";
 
 export type WorkflowWrite =
   | { ok: true; relativePath: string; id: string; etag: string; created: boolean }
-  | ({ ok: false; status: 400 | 403 | 404 | 412; details?: string[] } & Refusal);
+  | ({ ok: false; status: 400 | 403 | 404 | 412; details?: Message[] } & Refusal);
 
 export type WorkflowRemove =
   | { ok: true }
@@ -61,10 +62,10 @@ export function workflowsOf(ctx: {
           ok: false,
           status: 400,
           code: "workflow.invalid",
-          details: validation.errors,
+          details: validation.issues,
         };
       }
-      const duplicates = duplicateIdErrors(validation.data);
+      const duplicates = duplicateIdIssues(validation.data);
       if (duplicates.length > 0) {
         return {
           ok: false,

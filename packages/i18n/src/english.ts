@@ -1,6 +1,12 @@
 import { createTranslator } from "use-intl/core";
 import en from "../messages/en.json" with { type: "json" };
-import { type Message, type MessageKey, renderMessage, type Translate } from "./message.js";
+import {
+  type ErrorCode,
+  type Message,
+  type MessageKey,
+  renderMessage,
+  type Translate,
+} from "./message.js";
 
 const translate = createTranslator({ locale: "en", messages: en }) as Translate;
 
@@ -17,4 +23,17 @@ export function isMessageKey(key: string): key is MessageKey {
     node = (node as Record<string, unknown>)[segment];
   }
   return typeof node === "string";
+}
+
+/** Every `errors.<code>` message of the `en` catalogue as its code and ICU template. */
+export function englishErrorTemplates(): [ErrorCode, string][] {
+  const templates: [ErrorCode, string][] = [];
+  const visit = (node: object, prefix: string): void => {
+    for (const [name, value] of Object.entries(node)) {
+      if (typeof value === "string") templates.push([`${prefix}${name}` as ErrorCode, value]);
+      else visit(value, `${prefix}${name}.`);
+    }
+  };
+  visit(en.errors, "");
+  return templates;
 }

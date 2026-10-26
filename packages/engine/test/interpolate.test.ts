@@ -36,6 +36,17 @@ describe("resolveDotPath", () => {
 
   it("throws on a missing key", () => {
     expect(() => resolveDotPath(scope, "config.nope")).toThrow(InterpolationError);
+    try {
+      resolveDotPath(scope, "config.nope");
+    } catch (err) {
+      expect((err as InterpolationError).reason).toEqual({
+        key: "errors.interpolation.unresolved",
+        params: {
+          path: "config.nope",
+          reason: { key: "errors.schema.dot-path.missing-key", params: { segment: "nope" } },
+        },
+      });
+    }
   });
 
   it("throws on an out-of-bounds array index", () => {

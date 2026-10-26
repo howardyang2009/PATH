@@ -112,7 +112,7 @@ describe("gotoIssues — the four load refusals, as data", () => {
         rule: "target-absent",
         nodeId: g.id,
         path: ["body", 1, "target"],
-        message: 'goto target "retry" not found in this file',
+        message: { key: "errors.goto.target-not-found", params: { target: "retry" } },
       },
     ]);
   });
@@ -127,7 +127,7 @@ describe("gotoIssues — the four load refusals, as data", () => {
         rule: "target-inner",
         nodeId: g.id,
         path: ["body", 1, "target"],
-        message: 'goto target "check" is not a first-level node',
+        message: { key: "errors.schema.goto.target-inner", params: { target: "check" } },
       },
     ]);
   });
@@ -139,7 +139,7 @@ describe("gotoIssues — the four load refusals, as data", () => {
         rule: "target-self",
         nodeId: g.id,
         path: ["body", 1, "target"],
-        message: 'goto "loop" targets itself',
+        message: { key: "errors.schema.goto.target-self", params: { name: "loop" } },
       },
     ]);
   });
@@ -174,13 +174,19 @@ describe("gotoIssues — the four load refusals, as data", () => {
         rule: "placement",
         nodeId: inLoop.id,
         path: ["body", 1, "node", "body", 0],
-        message: 'goto "x" may not sit under while-do "poll"',
+        message: {
+          key: "errors.schema.goto.placement",
+          params: { name: "x", barrierType: "while-do", barrier: "poll" },
+        },
       },
       {
         rule: "placement",
         nodeId: inFan.id,
         path: ["body", 2, "branches", 0, "arms", 0, "node"],
-        message: 'goto "y" may not sit under parallel "fan"',
+        message: {
+          key: "errors.schema.goto.placement",
+          params: { name: "y", barrierType: "parallel", barrier: "fan" },
+        },
       },
     ]);
   });

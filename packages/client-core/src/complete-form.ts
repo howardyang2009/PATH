@@ -1,3 +1,4 @@
+import { isMessageKey, type Message, type MessageParam, verbatim } from "@path/i18n";
 import {
   holdsPlaceholder,
   isPlainObject,
@@ -135,26 +136,37 @@ export function validateCompleteDraft(
 /** The Complete route's `400` decoded onto the form: per-field messages plus any form-level
  * ones. */
 export interface MappedCompleteErrors {
-  fieldErrors: Record<string, string>;
-  formErrors: string[];
+  fieldErrors: Record<string, Message>;
+  formErrors: Message[];
 }
 
 /** Map the route's ajv issues onto the form: a `required` issue names its field in
  * `params.missingProperty`, every other in `instancePath`; one naming no field lands at the form
- * level. Messages are shown **verbatim** — the server owns the wording.
+ * level. ajv's messages are shown **verbatim**; an issue PATH owns renders from its code.
  */
 export function mapCompleteErrors(details: JsonValue | undefined): MappedCompleteErrors {
-  const fieldErrors: Record<string, string> = {};
-  const formErrors: string[] = [];
+  const fieldErrors: Record<string, Message> = {};
+  const formErrors: Message[] = [];
   if (!Array.isArray(details)) return { fieldErrors, formErrors };
   for (const raw of details) {
     if (!isPlainObject(raw)) continue;
-    const message = typeof raw.message === "string" ? raw.message : "Invalid value.";
+    const message = issueMessage(raw);
     const key = fieldKeyOf(raw);
     if (key === null) formErrors.push(message);
     else if (fieldErrors[key] === undefined) fieldErrors[key] = message;
   }
   return { fieldErrors, formErrors };
+}
+
+function issueMessage(issue: { [key: string]: JsonValue }): Message {
+  const key = `errors.${String(issue.code)}`;
+  if (typeof issue.code === "string" && isMessageKey(key)) {
+    const params = isPlainObject(issue.params)
+      ? { params: issue.params as Record<string, MessageParam> }
+      : {};
+    return { key, ...params };
+  }
+  return verbatim(typeof issue.message === "string" ? issue.message : "Invalid value.");
 }
 
 /** The field an ajv issue is about, or `null` for a form-level one. */

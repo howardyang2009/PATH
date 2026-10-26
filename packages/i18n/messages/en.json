@@ -213,7 +213,8 @@
       "defaultOption": "{option} (default)",
       "remove": "Remove this worker default",
       "add": "+ add worker default"
-    }
+    },
+    "issueAtPath": "{path}: {issue}"
   },
   "designer": {
     "app": {
@@ -490,13 +491,11 @@
     },
     "draft": {
       "notJson": "Not valid JSON: {error}",
-      "invalidInterpolation": "invalid interpolation",
       "payloadNotObject": "The payload must be a JSON object.",
       "fileInputNotObject": "The workflow input must be a JSON object.",
       "outputSchemaNotObject": "The output schema must be a JSON object.",
       "maxIterationsRequired": "Required — a positive whole number, or a $'{'config.…'}' / $'{'context.…'}' reference.",
       "positiveWholeNumber": "Must be a positive whole number.",
-      "maxIterationsInvalid": "Invalid interpolation.",
       "invalidCondition": "invalid condition"
     },
     "pane": {
@@ -883,6 +882,62 @@
       "exited-with-tail": "exited with code {code}: {tail}",
       "start-failed": "failed to start \"{command}\": {reason}",
       "cwd-missing": "failed to start \"{command}\": working directory \"{cwd}\" does not exist"
+    },
+    "schema": {
+      "dot-path": {
+        "empty": "empty path",
+        "invalid-root": "invalid root \"{root}\" in \"{path}\" — must be one of {roots}",
+        "malformed-segment": "malformed dot-path segment \"{segment}\" in \"{path}\"",
+        "unknown-root": "unknown root \"{root}\"",
+        "non-object": "\"{segment}\" reaches into a non-object value",
+        "out-of-bounds": "index \"{segment}\" is out of bounds",
+        "missing-key": "key \"{segment}\" not found"
+      },
+      "condition": {
+        "output-root": "\"{path}\": a condition reads the predecessor's output as \"previous\", not \"output\" (ADR 0079)",
+        "invalid-regex": "\"{pattern}\" is not a valid regular expression: {reason}",
+        "range-bounds": "a range condition requires at least one of min/max"
+      },
+      "config": {
+        "secret-wrapper": "\"$secret\" wrapper value must be a string or an '{'\"$env\": \"NAME\"'}' wrapper",
+        "env-wrapper": "\"$env\" wrapper value must be a string",
+        "reserved-key": "\"{key}\" is a reserved key — a sole \"$\"-prefixed key names a config wrapper (known: {known})"
+      },
+      "interpolation": {
+        "empty": "empty placeholder: `$'{}'` is not a valid interpolation",
+        "bad-path": "{reason} in \"$'{'{path}'}'\""
+      },
+      "node": {
+        "absolute-ref": "ref must be a relative path, not absolute",
+        "unknown-worker": "unknown worker \"{worker}\" — \"{type}\" ships {workers}",
+        "unknown-type": "unknown step type \"{type}\" — no plugin contributes it. Known types: {known}. To add it, add a step-type plugin folder packages/engine/plugin/step-plugin/{type}/ in your PATH tree",
+        "unknown-type-value": "unknown step type {type} — no plugin contributes it. Known types: {known}. To add it, add the step-type plugin folder for it under packages/engine/plugin/step-plugin/ in your PATH tree",
+        "bad-name": "name must match ^[a-z][a-z0-9-]*$",
+        "bad-id": "id must be a UUIDv4"
+      },
+      "file": {
+        "duplicate-name": "duplicate name \"{name}\": names must be unique across the whole file",
+        "duplicate-id": "duplicate id \"{id}\": id already used at {firstPath}"
+      },
+      "publish": {
+        "sibling-race": "duplicate publish key \"{key}\": sibling parallel branches must not publish the same context key",
+        "detached": "publish \"{key}\" inside a do-not-wait branch: a fire-and-forget branch runs past the join and may not publish (do-not-wait-join.md §4)"
+      },
+      "goto": {
+        "placement": "goto \"{name}\" may not sit under {barrierType} \"{barrier}\"",
+        "target-self": "goto \"{name}\" targets itself",
+        "target-inner": "goto target \"{target}\" is not a first-level node"
+      },
+      "format": {
+        "newer": "{format} is newer than this engine reads ({current}) — upgrade PATH to read it",
+        "superseded": "{format} is no longer read — run {codemods} to migrate this file to {current}"
+      },
+      "template": {
+        "no-description": "description must be a non-empty string"
+      },
+      "output-schema": {
+        "invalid": "outputSchema is not a valid JSON Schema: {reason}"
+      }
     }
   }
 }

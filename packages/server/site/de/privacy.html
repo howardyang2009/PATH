@@ -1,0 +1,276 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link
+      rel="icon"
+      type="image/svg+xml"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%231d6a9e'/%3E%3Cpath d='M6 20c4-6 8 2 12-4s6-4 8-2' fill='none' stroke='%23fff' stroke-width='2.5' stroke-linecap='round'/%3E%3C/svg%3E"
+    />
+    <title>PATH Datenschutzerklärung</title>
+    <style>
+      :root {
+        --bg: #f7f7f5;
+        --fg: #1c1c1a;
+        --muted: #5c5c57;
+        --border: #dcdcd6;
+        --accent: #1d6a9e;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #161615;
+          --fg: #ececea;
+          --muted: #a3a39d;
+          --border: #353532;
+          --accent: #3b86bf;
+        }
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--fg);
+        font: 16px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif;
+      }
+      main {
+        max-width: 720px;
+        margin: 0 auto;
+        padding: 48px 16px 64px;
+      }
+      h1 {
+        margin: 0 0 4px;
+        font-size: 32px;
+      }
+      h2 {
+        margin: 36px 0 8px;
+        font-size: 20px;
+      }
+      .stand {
+        margin: 0 0 24px;
+        color: var(--muted);
+      }
+      a {
+        color: var(--accent);
+      }
+      code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 14px;
+      }
+      footer {
+        margin-top: 48px;
+        padding-top: 16px;
+        border-top: 1px solid var(--border);
+        color: var(--muted);
+        font-size: 14px;
+      }
+      footer a {
+        color: inherit;
+      }
+      .langs {
+        margin: 0 0 16px;
+        color: var(--muted);
+        font-size: 14px;
+      }
+      .langs [aria-current] {
+        color: var(--fg);
+        font-weight: 600;
+      }
+      .courtesy {
+        margin: 0 0 16px;
+        padding: 12px 16px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <nav class="langs" aria-label="Sprache">
+        <span aria-current="page">Deutsch</span> ·
+        <a href="/en/privacy" lang="en" hreflang="en">English</a> ·
+        <a href="/zh/privacy" lang="zh-CN" hreflang="zh-CN">中文</a>
+      </nav>
+      <p><a href="/">&larr; PATH</a></p>
+      <h1>Datenschutzerklärung</h1>
+      <p class="stand">Stand: <time datetime="2026-10-26">26. Oktober 2026</time></p>
+
+      <p>
+        Diese Erklärung beschreibt, welche personenbezogenen Daten die gehostete PATH-Anwendung unter
+        <a href="https://path.rheinwegde.de/">path.rheinwegde.de</a> (PATH Viewer, PATH Designer und
+        ihre API) verarbeitet, zu welchem Zweck und welche Rechte Sie haben. Sie gilt nicht für eine
+        Kopie von PATH, die Sie selbst aus dem Open-Source-Code betreiben; diese Kopie sendet uns
+        nichts.
+      </p>
+
+      <h2>1. Verantwortlicher</h2>
+      <p>
+        Verantwortlicher im Sinne der Datenschutz-Grundverordnung (DSGVO) ist:<br />
+        Liying Zhu, RheinWeg<br />
+        Im Rosengärtchen 70, 61440 Oberursel (Taunus), Deutschland<br />
+        Telefon: +49 160 1168307<br />
+        E-Mail: <a href="mailto:rheinwegde@gmail.com">rheinwegde@gmail.com</a>
+      </p>
+
+      <h2>2. Ihr Konto und die Anmeldung</h2>
+      <p>
+        Sie melden sich über Clerk an (Clerk, Inc., 660 King Street, Unit 345, San Francisco, CA
+        94107, USA). Clerk speichert Ihre Kontodaten: E-Mail-Adresse, Name und Profilbild, sofern Sie
+        diese angeben, die von Ihnen genutzte Anmeldemethode sowie Sitzungs- und Sicherheitsdaten wie
+        IP-Adresse und Browsertyp. PATH selbst führt keine Benutzertabelle. PATH erhält mit jeder
+        Anfrage nur ein signiertes Token und nutzt dessen Benutzer-ID (zum Beispiel
+        <code>user_2abc…</code>), um Ihre Dateien und Läufe von denen anderer Benutzer zu trennen.
+      </p>
+      <p>
+        Wenn Sie „Mit Google anmelden“ wählen, bestätigt Google (Google Ireland Limited, Gordon
+        House, Barrow Street, Dublin 4, Irland) Ihre Identität und übermittelt Ihren Namen, Ihre
+        E-Mail-Adresse und Ihr Profilbild an Clerk. PATH fordert bei Google keine weiteren Daten an
+        und hat keinen Zugriff auf Ihr Google-Konto, Gmail, Drive oder Ihre Kontakte.
+      </p>
+      <p>
+        Rechtsgrundlage: Art. 6 Abs. 1 lit. b DSGVO, da das Konto erforderlich ist, um den von Ihnen
+        angeforderten Dienst zu erbringen. Clerk verarbeitet die Daten in unserem Auftrag auf
+        Grundlage eines Vertrags zur Auftragsverarbeitung.
+      </p>
+
+      <h2>3. Was Sie in PATH eingeben</h2>
+      <p>
+        Wir speichern, was Sie in PATH erstellen und tun, damit die Anwendung funktioniert:
+      </p>
+      <ul>
+        <li>
+          Workflows und Schrittvorlagen, die Sie speichern: privat für Sie oder mit allen Benutzern
+          geteilt, wenn Sie „Geteilt“ wählen. Andere angemeldete Benutzer können ein geteiltes
+          Element lesen. Nur Sie können es ändern oder löschen.
+        </li>
+        <li>
+          Läufe, die Sie starten: ihre Eingaben, Ausgaben, Protokolle, Dateien und ihr Status. Läufe
+          sind privat.
+        </li>
+        <li>
+          Secrets, die Sie auf der Seite „Secrets“ hinterlegen, zum Beispiel API-Schlüssel. Sie werden
+          verschlüsselt gespeichert (AES-256-GCM). Keine Seite und keine API gibt den Wert eines
+          Secrets zurück, und Laufprotokolle maskieren sie.
+        </li>
+        <li>
+          Nutzungszähler, mit denen wir die Grenzen der fairen Nutzung durchsetzen, zum Beispiel die
+          Laufzeit pro Tag.
+        </li>
+      </ul>
+      <p>
+        Rechtsgrundlage: Art. 6 Abs. 1 lit. b DSGVO. Bitte geben Sie keine besonderen Kategorien
+        personenbezogener Daten (Gesundheit, Religion und Ähnliches) und keine personenbezogenen Daten
+        anderer Personen in PATH ein, es sei denn, Sie sind dazu berechtigt.
+      </p>
+
+      <h2>4. Wo die Daten gespeichert werden</h2>
+      <p>
+        PATH läuft auf unserem eigenen Server in Deutschland. Jeder Lauf wird auf diesem Server in
+        einer eigenen, isolierten virtuellen Maschine ausgeführt. Der Datenverkehr erreicht den Server
+        über Cloudflare (Cloudflare, Inc., 101 Townsend St, San Francisco, CA 94107, USA), das auch
+        das DNS für rheinwegde.de verwaltet. Cloudflare verarbeitet Verbindungsdaten einschließlich
+        Ihrer IP-Adresse, um die Website auszuliefern und zu schützen.
+      </p>
+      <p>
+        Nächtliche Sicherungen werden auf unserem Server verschlüsselt, bevor sie hochgeladen und bei
+        Backblaze (Backblaze, Inc., 201 Baldwin Ave, San Mateo, CA 94401, USA) gespeichert werden.
+        Backblaze kann sie nicht lesen.
+      </p>
+      <p>
+        Rechtsgrundlage für Hosting, Sicherheit und Sicherungen: Art. 6 Abs. 1 lit. f DSGVO. Unser
+        berechtigtes Interesse ist ein sicherer und zuverlässiger Dienst.
+      </p>
+
+      <h2>5. Dienste Dritter, die Ihre Workflows aufrufen</h2>
+      <p>
+        Ein Schritt eines Workflows kann externe Dienste aufrufen, zum Beispiel einen Anbieter von
+        KI-Modellen wie Anthropic oder DeepSeek oder jede Webadresse, die ein Schritt angibt. Wenn Sie
+        einen solchen Workflow ausführen, sendet PATH die Daten, die dieser Schritt verwendet, mit den
+        von Ihnen angegebenen Zugangsdaten an diesen Dienst. Der Dienst verarbeitet die Daten dann
+        nach seinen eigenen Bedingungen und seiner eigenen Datenschutzerklärung. Sie entscheiden,
+        welche Dienste Ihre Workflows aufrufen und welche Daten sie senden.
+      </p>
+
+      <h2>6. Übermittlungen außerhalb der EU</h2>
+      <p>
+        Clerk, Google, Cloudflare und Backblaze können Daten in den USA verarbeiten. Jedes dieser
+        Unternehmen ist nach dem EU-US Data Privacy Framework zertifiziert, und ihre Verträge zur
+        Auftragsverarbeitung enthalten die Standardvertragsklauseln der EU.
+      </p>
+
+      <h2>7. Cookies und Tracking</h2>
+      <p>
+        PATH verwendet nur Cookies und Browserspeicher, die für den von Ihnen angeforderten Dienst
+        unbedingt erforderlich sind (§ 25 Abs. 2 Nr. 2 TDDDG):
+      </p>
+      <ul>
+        <li>
+          die Sitzungscookies von Clerk (zum Beispiel <code>__session</code> und
+          <code>__client_uat</code>), die Sie angemeldet halten;
+        </li>
+        <li>
+          <code>RHEINWEG_LOCALE</code>, das die Sprache speichert, die Sie selbst in einem Sprachmenü
+          wählen. Es wird auf <code>.rheinwegde.de</code> gesetzt, damit die Wahl auch auf den
+          anderen Seiten von RheinWeg gilt, und 1 Jahr lang gespeichert;
+        </li>
+        <li>Browserspeicher für kleine Einstellungen der Oberfläche.</li>
+      </ul>
+      <p>Wir verwenden keine Analyse-, Werbe- oder Tracking-Werkzeuge.</p>
+
+      <h2>8. Wie lange wir Daten speichern</h2>
+      <ul>
+        <li>
+          Ihre Workflows, Vorlagen, Läufe und Secrets: bis Sie diese oder Ihr Konto löschen.
+        </li>
+        <li>
+          Geteilte Elemente, die wir wegen eines Verstoßes gegen die
+          <a href="/de/terms">Nutzungsbedingungen</a> entfernen: bis zu 30 Tage in Quarantäne,
+          danach gelöscht.
+        </li>
+        <li>
+          Sicherungen: bis zu 6 Monate; danach sind gelöschte Daten aus jeder Kopie entfernt.
+        </li>
+        <li>
+          Kontodaten bei Clerk: bis Sie Ihr Konto löschen. Sie können es über das Kontomenü löschen
+          oder uns per E-Mail darum bitten; wir löschen dann auch Ihre Dateien, Läufe und Secrets.
+        </li>
+      </ul>
+
+      <h2>9. Ihre Rechte</h2>
+      <p>Im Rahmen der gesetzlichen Vorschriften haben Sie das Recht auf:</p>
+      <ul>
+        <li>Auskunft über die Daten, die wir über Sie speichern (Art. 15 DSGVO)</li>
+        <li>Berichtigung unrichtiger Daten (Art. 16 DSGVO)</li>
+        <li>Löschung Ihrer Daten (Art. 17 DSGVO)</li>
+        <li>Einschränkung der Verarbeitung (Art. 18 DSGVO)</li>
+        <li>Erhalt Ihrer Daten in einem übertragbaren Format (Art. 20 DSGVO)</li>
+        <li>
+          Widerspruch gegen eine Verarbeitung auf Grundlage von Art. 6 Abs. 1 lit. f DSGVO
+          (Art. 21 DSGVO)
+        </li>
+      </ul>
+      <p>
+        Um diese Rechte auszuüben, schreiben Sie an die oben genannte E-Mail-Adresse. Sie können sich
+        auch bei einer Datenschutz-Aufsichtsbehörde beschweren. Für uns zuständig ist Der Hessische
+        Beauftragte für Datenschutz und Informationsfreiheit, Gustav-Stresemann-Ring 1, 65189
+        Wiesbaden, Deutschland.
+      </p>
+
+      <h2>10. Kinder</h2>
+      <p>
+        PATH ist nicht für Personen unter 16 Jahren bestimmt. Wir erheben ihre Daten nicht
+        wissentlich.
+      </p>
+
+      <h2>11. Änderungen</h2>
+      <p>
+        Wenn wir diese Erklärung ändern, aktualisieren wir das Datum oben. Betrifft eine Änderung die
+        Verwendung von Daten, die Sie uns bereits gegeben haben, informieren wir Sie, bevor sie gilt.
+      </p>
+
+      <footer>
+        <a href="/">PATH</a> · <a href="/de/terms">Nutzungsbedingungen</a> ·
+        <a href="https://rheinwegde.de/de/impressum/">Impressum</a>
+      </footer>
+    </main>
+  </body>
+</html>

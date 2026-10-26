@@ -1,4 +1,4 @@
-import { type ErrorCode, englishText, type Message, type MessageParam, verbatim } from "@path/i18n";
+import { type ErrorCode, englishText, type Message, type MessageParam } from "@path/i18n";
 import {
   type JsonValue,
   mapSecrets,
@@ -52,7 +52,7 @@ export function resolveDotPath(scope: InterpolationScope, path: string): JsonVal
   if (!resolved.found) {
     throw new InterpolationError("interpolation.unresolved", {
       path,
-      reason: verbatim(resolved.error),
+      reason: resolved.error,
     });
   }
   // Secrets are unwrapped on the way out (format §7.3): masking is a persistence-boundary concern,

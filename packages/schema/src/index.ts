@@ -15,6 +15,7 @@
 // This barrel is the package's one interface: no consumer imports a schema module by path, so a
 // named subpath export would be a seam with no second adapter. A new name reaches consumers here.
 
+export { issueMessages, zodIssueMessage } from "./coded-issue.js";
 export type {
   AllCondition,
   AnyCondition,
@@ -115,6 +116,7 @@ export { must } from "./must.js";
 // doors cannot disagree about which occurrence offends, which one already held the value, and why.
 export {
   duplicateIdErrors,
+  duplicateIdIssues,
   type IdentityOccurrence,
   identityIssues,
   type NodeIdentityIssue,

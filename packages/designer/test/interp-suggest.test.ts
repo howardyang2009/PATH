@@ -82,10 +82,9 @@ describe("parseInputDraft", () => {
     expect(parseInputDraft('{ "x": "${context.a" }', ROOTS.typeField).ok).toBe(false);
     // `output` is not a legal input root — checked at every string leaf, raw whole-string included.
     expect(parseInputDraft('{ "x": "${output.a}" }', ROOTS.typeField).ok).toBe(false);
-    // The schema's own text until its validation codes land.
     expect(parseInputDraft("${output.a}", ROOTS.typeField)).toMatchObject({
       ok: false,
-      error: { key: "shared.verbatim" },
+      error: { key: "errors.schema.interpolation.bad-path" },
     });
     expect(parseInputDraft("${context.a", ROOTS.typeField).ok).toBe(false);
   });

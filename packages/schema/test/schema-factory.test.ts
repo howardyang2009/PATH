@@ -82,12 +82,51 @@ describe("makeWorkflowFileSchema — multi-worker selection", () => {
     expect(message).toContain("curl");
   });
 
+  it("codes an unknown worker name for the client", () => {
+    const result = safeParseWorkflowFile(
+      file([apiCallNode({ worker: "telnet" })]),
+      apiCallRegistry(),
+    );
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect(result.issues).toEqual([
+      {
+        key: "shared.issueAtPath",
+        params: {
+          path: "body.0.worker",
+          issue: {
+            key: "errors.schema.node.unknown-worker",
+            params: { worker: "telnet", type: "api-call", workers: '"fetch" | "curl"' },
+          },
+        },
+      },
+    ]);
+  });
+
   it("accepts an absent worker (optional — the engine resolves it to the default)", () => {
     expect(schema.safeParse(file([apiCallNode()])).success).toBe(true);
   });
 });
 
 describe("makeWorkflowFileSchema — unknown / absent type", () => {
+  it("codes an unknown step type for the client", () => {
+    const result = safeParseWorkflowFile(file([apiCallNode({ type: "foo" })]), apiCallRegistry());
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect(result.issues).toEqual([
+      {
+        key: "shared.issueAtPath",
+        params: {
+          path: "body.0.type",
+          issue: {
+            key: "errors.schema.node.unknown-type",
+            params: { type: "foo", known: expect.stringContaining("api-call") },
+          },
+        },
+      },
+    ]);
+  });
+
   it("echoes the bad value, lists known types, aggregates every missing type, and names the remedy", () => {
     const result = safeParseWorkflowFile(
       file([apiCallNode({ type: "foo" }), { type: "bar", id: ID3, name: "other" }]),

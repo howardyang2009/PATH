@@ -1,8 +1,16 @@
-import { cpSync, existsSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  cpSync,
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { dbFilePath, openDb, readNdjsonLog } from "@path/engine";
+import { dbFilePath, openDb, readNdjsonLog, rootRunTreeDir } from "@path/engine";
 import { createEventFrameDecoder, type EventFrame, type LogEvent } from "@path/schema";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { type PathServerHandle, startPathServer } from "../src/create-server.js";
@@ -878,6 +886,81 @@ describe("GET /v0/runs/:root_run_id/events — live SSE stream", () => {
     expect(frames.length).toBeGreaterThan(0);
     expect(frames[0]!.event.seq).toBe(3);
     expect(frames.every((f) => f.event.seq > 2)).toBe(true);
+  });
+});
+
+describe("GET /v0/runs/:root_run_id/events — an error stored before codes (ADR 0107 point 5)", () => {
+  const runLogPath = (rootRunId: string) => join(rootRunTreeDir(projectDir, rootRunId), "run.log");
+
+  /** Rewrites the run's first `step-finished` event, in `run.log` and `log_events`, as one recorded
+   * before the engine wrote codes: `error` set, no `error_code` or `error_params`. */
+  function storeAsOldEvent(rootRunId: string, error: string): LogEvent {
+    const lines = readFileSync(runLogPath(rootRunId), "utf8").trimEnd().split("\n");
+    const index = lines.findIndex((line) => JSON.parse(line).type === "step-finished");
+    const { error_code: _code, error_params: _params, ...event } = JSON.parse(lines[index]!);
+    const stored = JSON.stringify({ ...event, error });
+    lines[index] = stored;
+    writeFileSync(runLogPath(rootRunId), `${lines.join("\n")}\n`);
+    const db = openDb(dbFilePath(projectDir));
+    try {
+      db.prepare(`UPDATE log_events SET event = ? WHERE root_run_id = ? AND seq = ?`).run(
+        stored,
+        rootRunId,
+        event.seq,
+      );
+    } finally {
+      db.close();
+    }
+    return JSON.parse(stored);
+  }
+
+  /** Both stores of the run's narrative, as stored. */
+  function storedNarrative(rootRunId: string): { runLog: string; rows: unknown[] } {
+    const db = openDb(dbFilePath(projectDir));
+    try {
+      const rows = db
+        .prepare(`SELECT * FROM log_events WHERE root_run_id = ? ORDER BY seq`)
+        .all(rootRunId);
+      return { runLog: readFileSync(runLogPath(rootRunId), "utf8"), rows };
+    } finally {
+      db.close();
+    }
+  }
+
+  async function servedEvent(rootRunId: string, seq: number): Promise<LogEvent | undefined> {
+    const frames = await readSseStream(await fetch(`${handle.url}/v0/runs/${rootRunId}/events`));
+    return frames.find((f) => f.event.seq === seq)?.event;
+  }
+
+  async function failedRun(): Promise<string> {
+    const { root_run_id } = (await (
+      await postRun({ workflow_path: "failing-step.workflow.json" })
+    ).json()) as { root_run_id: string };
+    await pollUntilTerminal(root_run_id);
+    return root_run_id;
+  }
+
+  it("serves a known old error with its code and params, and leaves the stored row unchanged", async () => {
+    const rootRunId = await failedRun();
+    const { seq } = storeAsOldEvent(rootRunId, 'step "boom": exited with code 3: boom');
+    const before = storedNarrative(rootRunId);
+
+    expect(await servedEvent(rootRunId, seq)).toMatchObject({
+      error: 'step "boom": exited with code 3: boom',
+      error_code: "step.failed",
+      error_params: {
+        name: "boom",
+        error: { key: "errors.spawn.exited-with-tail", params: { code: "3", tail: "boom" } },
+      },
+    });
+    expect(storedNarrative(rootRunId)).toEqual(before);
+  });
+
+  it("serves an old error that matches no template as stored", async () => {
+    const rootRunId = await failedRun();
+    const stored = storeAsOldEvent(rootRunId, "a worker said something PATH does not own");
+
+    expect(await servedEvent(rootRunId, stored.seq)).toEqual(stored);
   });
 });
 

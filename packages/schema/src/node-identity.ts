@@ -1,3 +1,5 @@
+import { englishText, type Message } from "@path/i18n";
+import { codedMessage } from "./coded-issue.js";
 import { IdSchema } from "./ids.js";
 import type { WorkflowNode } from "./node-type.js";
 import { childBodies, childNodePath } from "./node-walk.js";
@@ -120,14 +122,24 @@ export function nodeIdentityIssues(
 /**
  * The duplicate-`id` refusal every door that runs or writes a file applies (ADR 0015): the
  * workflow's own `id` shares the nodes' namespace, and Resume pairs nodes by `id`. The load
- * refinement leaves it out so the Designer can open such a file and name the pair. One line per
+ * refinement leaves it out so the Designer can open such a file and name the pair. One message per
  * offence, naming both paths.
  */
-export function duplicateIdErrors(file: WorkflowFile): string[] {
+export function duplicateIdIssues(file: WorkflowFile): Message[] {
   const occurrences = [workflowIdentityOccurrence(file), ...nodeIdentityOccurrences(file)];
-  return identityIssues(occurrences, ["duplicate-id"]).map((issue) => {
-    const path = [...issue.path, "id"].join(".");
-    const first = [...(issue.firstPath ?? []), "id"].join(".");
-    return `${path}: duplicate id "${String(issue.value)}": id already used at ${first}`;
-  });
+  return identityIssues(occurrences, ["duplicate-id"]).map((issue) => ({
+    key: "shared.issueAtPath",
+    params: {
+      path: [...issue.path, "id"].join("."),
+      issue: codedMessage("schema.file.duplicate-id", {
+        id: String(issue.value),
+        firstPath: [...(issue.firstPath ?? []), "id"].join("."),
+      }),
+    },
+  }));
+}
+
+/** {@link duplicateIdIssues} as English lines, for the CLI and logs. */
+export function duplicateIdErrors(file: WorkflowFile): string[] {
+  return duplicateIdIssues(file).map(englishText);
 }

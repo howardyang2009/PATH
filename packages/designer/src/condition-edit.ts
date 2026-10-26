@@ -1,9 +1,10 @@
-import { type Message, verbatim } from "@path/i18n";
+import type { Message } from "@path/i18n";
 import {
   type Condition,
   ConditionSchema,
   type JsonScalar,
   LEAF_CONDITION_TYPES,
+  zodIssueMessage,
 } from "@path/schema";
 
 /** The pure edit vocabulary the typed `Condition` builder is built on: it edits the structured AST,
@@ -121,11 +122,11 @@ export function changeConditionType(prev: Condition, next: Condition["type"]): C
   return { type: combinator, of: [defaultCondition()] };
 }
 
-/** Validate a whole condition against the schema; returns the first issue message, or `null` when
- * valid. The zod text travels verbatim until the schema slice maps issues. */
+/** Validate a whole condition against the schema; returns the first issue as a `Message`, or `null`
+ * when valid. */
 export function validateCondition(condition: Condition): Message | null {
   const result = ConditionSchema.safeParse(condition);
   if (result.success) return null;
-  const message = result.error.issues[0]?.message;
-  return message === undefined ? { key: "designer.draft.invalidCondition" } : verbatim(message);
+  const issue = result.error.issues[0];
+  return issue === undefined ? { key: "designer.draft.invalidCondition" } : zodIssueMessage(issue);
 }

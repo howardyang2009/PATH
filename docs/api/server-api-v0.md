@@ -738,7 +738,7 @@ Responses:
 - `400 Bad Request` — the body is not valid JSON, the envelope is malformed (`workflow_path` missing or
   empty, `workflow` absent), `workflow_path` is a template path (§10.6), or `workflow` fails
   `@path/schema` (including a duplicate `id`, or an absent `id`). `error.details` carries the
-  validation issues.
+  validation issues, one `Message` (`{ key, params }`, ADR 0107) per issue.
 - `404 Not Found` — `workflow_path` resolves outside the project root, or any component of the resolved
   path is a symlink. The write refuses to *traverse* a symlink (a per-component check), a stronger
   stance than discovery's, which only refuses to *list* one. A symlinked parent directory could

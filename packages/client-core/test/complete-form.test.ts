@@ -1,3 +1,4 @@
+import { verbatim } from "@path/i18n";
 import type { JsonValue } from "@path/schema";
 import { describe, expect, it } from "vitest";
 import {
@@ -103,8 +104,8 @@ describe("validateCompleteDraft", () => {
     const out = coerceCompleteOutput(fields, { approved: true, riskLevel: "extreme" });
     const errs = validateCompleteDraft(schema, out);
 
-    expect(errs.fieldErrors.reviewer).toMatch(/required/i);
-    expect(errs.fieldErrors.riskLevel).toMatch(/one of/i);
+    expect(errs.fieldErrors.reviewer).toEqual(verbatim(expect.stringMatching(/required/i)));
+    expect(errs.fieldErrors.riskLevel).toEqual(verbatim(expect.stringMatching(/one of/i)));
     expect(errs.fieldErrors.approved).toBeUndefined();
   });
 
@@ -112,7 +113,9 @@ describe("validateCompleteDraft", () => {
     const outputSchema: JsonValue = { type: "object", properties: { amount: { type: "number" } } };
     const out = { amount: Number.NaN } as unknown as JsonValue;
 
-    expect(validateCompleteDraft(outputSchema, out).fieldErrors.amount).toMatch(/number/i);
+    expect(validateCompleteDraft(outputSchema, out).fieldErrors.amount).toEqual(
+      verbatim(expect.stringMatching(/number/i)),
+    );
   });
 
   it("catches a constraint the form could previously not see — the mirror's whole gap", () => {
@@ -123,8 +126,8 @@ describe("validateCompleteDraft", () => {
       properties: { code: { type: "string", pattern: "^[A-Z]{3}$" } },
     };
 
-    expect(validateCompleteDraft(outputSchema, { code: "nope" }).fieldErrors.code).toMatch(
-      /pattern/i,
+    expect(validateCompleteDraft(outputSchema, { code: "nope" }).fieldErrors.code).toEqual(
+      verbatim(expect.stringMatching(/pattern/i)),
     );
     expect(validateCompleteDraft(outputSchema, { code: "ABC" }).fieldErrors).toEqual({});
   });
@@ -139,14 +142,17 @@ describe("validateCompleteDraft", () => {
   it("reports an uncompilable schema at the form level rather than throwing", () => {
     const bad: JsonValue = { type: "object", properties: { x: { type: "nonsense" } } };
 
-    expect(validateCompleteDraft(bad, { x: 1 }).formErrors.join(" ")).toMatch(
-      /not a valid JSON Schema/,
-    );
+    expect(validateCompleteDraft(bad, { x: 1 }).formErrors).toEqual([
+      {
+        key: "errors.schema.output-schema.invalid",
+        params: { reason: expect.stringContaining("schema is invalid") },
+      },
+    ]);
   });
 });
 
 describe("mapCompleteErrors", () => {
-  it("maps ajv required + field issues to their keys, verbatim messages", () => {
+  it("maps ajv required + field issues to their keys, as verbatim messages", () => {
     const details: JsonValue = [
       {
         instancePath: "",
@@ -162,16 +168,31 @@ describe("mapCompleteErrors", () => {
       },
     ];
     const mapped = mapCompleteErrors(details);
-    expect(mapped.fieldErrors.reviewer).toBe("must have required property 'reviewer'");
-    expect(mapped.fieldErrors.riskLevel).toBe("must be equal to one of the allowed values");
+    expect(mapped.fieldErrors.reviewer).toEqual(verbatim("must have required property 'reviewer'"));
+    expect(mapped.fieldErrors.riskLevel).toEqual(
+      verbatim("must be equal to one of the allowed values"),
+    );
     expect(mapped.formErrors).toEqual([]);
   });
 
   it("routes an unattributable issue to the form level", () => {
-    const details: JsonValue = [{ message: "outputSchema is not a valid JSON Schema: …" }];
+    const details: JsonValue = [{ message: "bad output" }];
     const mapped = mapCompleteErrors(details);
     expect(mapped.fieldErrors).toEqual({});
-    expect(mapped.formErrors).toEqual(["outputSchema is not a valid JSON Schema: …"]);
+    expect(mapped.formErrors).toEqual([verbatim("bad output")]);
+  });
+
+  it("renders an issue PATH owns from its code and params", () => {
+    const details: JsonValue = [
+      {
+        message: "outputSchema is not a valid JSON Schema: boom",
+        code: "schema.output-schema.invalid",
+        params: { reason: "boom" },
+      },
+    ];
+    expect(mapCompleteErrors(details).formErrors).toEqual([
+      { key: "errors.schema.output-schema.invalid", params: { reason: "boom" } },
+    ]);
   });
 
   it("returns empty maps for absent or non-array details", () => {

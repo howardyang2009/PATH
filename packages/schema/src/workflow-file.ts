@@ -1,4 +1,6 @@
+import { englishText, type Message } from "@path/i18n";
 import { z } from "zod";
+import { codedIssue, codedMessage, issueMessages, messageIssue } from "./coded-issue.js";
 import { ConfigObjectSchema } from "./config.js";
 import { formatIssues } from "./format-issues.js";
 import { gotoIssues } from "./goto.js";
@@ -51,7 +53,11 @@ function checkWorkerDefaults(
 ): void {
   if (!file.worker_defaults) return;
   for (const { type, message } of collectWorkerDefaultIssues(file.worker_defaults, registry)) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["worker_defaults", type], message });
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["worker_defaults", type],
+      ...messageIssue(message),
+    });
   }
 }
 
@@ -69,16 +75,16 @@ function checkWorkflowFileInvariants(
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       path: [...issue.path, "name"],
-      message: `duplicate name "${String(issue.value)}": names must be unique across the whole file`,
+      ...codedIssue("schema.file.duplicate-name", { name: String(issue.value) }),
     });
   }
 
   for (const issue of publishSetIssues(file)) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, path: issue.path, message: issue.message });
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: issue.path, ...messageIssue(issue.message) });
   }
 
   for (const issue of gotoIssues(file)) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, path: issue.path, message: issue.message });
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: issue.path, ...messageIssue(issue.message) });
   }
 
   checkWorkerDefaults(file, ctx, registry);
@@ -115,7 +121,14 @@ export interface WorkflowFileParseSuccess {
 
 export interface WorkflowFileParseFailure {
   success: false;
+  /** One English line per issue, for the CLI and logs. */
   errors: string[];
+  /** The same issues as `Message`s, for a client to render in its Locale. */
+  issues: Message[];
+}
+
+function formatFailure(message: Message): WorkflowFileParseFailure {
+  return { success: false, errors: [englishText(message)], issues: [message] };
 }
 
 // A file carrying a superseded `format` string gets a targeted error naming the codemod, not a
@@ -127,23 +140,19 @@ export function supersededFormatError(json: unknown): WorkflowFileParseFailure |
   if (typeof format !== "string") return null;
   const version = formatVersionNumber(format);
   if (version !== null && version > (formatVersionNumber(FORMAT_VERSION) ?? 0)) {
-    return {
-      success: false,
-      errors: [
-        `${format} is newer than this engine reads (${FORMAT_VERSION}) — upgrade PATH to read it`,
-      ],
-    };
+    return formatFailure(codedMessage("schema.format.newer", { format, current: FORMAT_VERSION }));
   }
   if (!(format in SUPERSEDED_FORMAT_VERSIONS)) return null;
   // Named per workflow-format-v2.md §1: the whole codemod chain in run order, since one codemod
   // migrates one step only and would not move a file that is two or three versions behind.
   const codemods = SUPERSEDED_FORMAT_VERSIONS[format as keyof typeof SUPERSEDED_FORMAT_VERSIONS];
-  return {
-    success: false,
-    errors: [
-      `${format} is no longer read — run ${codemods.join(" then ")} to migrate this file to ${FORMAT_VERSION}`,
-    ],
-  };
+  return formatFailure(
+    codedMessage("schema.format.superseded", {
+      format,
+      codemods: codemods.join(" then "),
+      current: FORMAT_VERSION,
+    }),
+  );
 }
 
 // `path/workflow@<n>` → n; null for anything malformed (digits only, no leading zeros).
@@ -164,7 +173,11 @@ export function safeParseWorkflowFileWith(
   if (result.success) {
     return { success: true, data: result.data };
   }
-  return { success: false, errors: formatIssues(result.error) };
+  return {
+    success: false,
+    errors: formatIssues(result.error),
+    issues: issueMessages(result.error),
+  };
 }
 
 // The single-file convenience door: build the open schema for `registry` and parse `json` against

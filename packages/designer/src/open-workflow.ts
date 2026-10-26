@@ -297,7 +297,7 @@ export function openWorkflowFile(rawText: string, plugins: WireStepPlugin[]): Op
     return {
       status: "invalid",
       message: { key: "designer.openWorkflow.notValid" },
-      details: parsed.errors.map(verbatim),
+      details: parsed.issues,
     };
   }
   // `idsStamped` drives the open badge's wording, not the buffer's dirtiness: dirtiness is

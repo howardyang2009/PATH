@@ -38,6 +38,7 @@ export function KeyedRowField({
   onRemove: () => void;
 }): JSX.Element {
   const check = checkInterpolationSyntax(row.value, roots);
+  const renderMessage = useMessage();
   return (
     <div className="pane-publish-row">
       <input
@@ -67,7 +68,7 @@ export function KeyedRowField({
       </div>
       {!check.ok ? (
         <p className="pane-error" role="alert">
-          {check.error}
+          {renderMessage(check.error)}
         </p>
       ) : null}
     </div>

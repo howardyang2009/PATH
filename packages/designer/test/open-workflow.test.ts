@@ -210,8 +210,11 @@ describe("openWorkflowFile", () => {
     if (result.status !== "invalid") return;
     expect(result.message).toEqual({ key: "designer.openWorkflow.notValid" });
     expect(result.details).toContainEqual({
-      key: "shared.verbatim",
-      params: { text: expect.stringContaining("scripts/archive/migrate-workflow-format-v3.ts") },
+      key: "errors.schema.format.superseded",
+      params: expect.objectContaining({
+        format: "path/workflow@2",
+        codemods: expect.stringContaining("scripts/archive/migrate-workflow-format-v3.ts"),
+      }),
     });
   });
 });

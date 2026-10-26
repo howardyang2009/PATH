@@ -12,6 +12,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@path/i18n": "workspace:*",
     "zod": "^4.6.5",
     "ajv": "^8.20.0"
   },

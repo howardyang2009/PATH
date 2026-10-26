@@ -1,3 +1,5 @@
+import type { Message } from "@path/i18n";
+import { codedMessage } from "./coded-issue.js";
 import type { JsonValue } from "./json-value.js";
 
 /** Shared dot-path grammar for `${}` interpolation (docs/format/workflow-format.md §6) and the
@@ -6,14 +8,11 @@ import type { JsonValue } from "./json-value.js";
  * grammar. */
 const SEGMENT_PATTERN = /^(?:[A-Za-z_][A-Za-z0-9_-]*|\d+)$/;
 
-export interface DotPathCheckResult {
-  ok: boolean;
-  error?: string;
-}
+export type DotPathCheckResult = { ok: true } | { ok: false; error: Message };
 
 export function checkDotPath(path: string, allowedRoots: readonly string[]): DotPathCheckResult {
   if (path.length === 0) {
-    return { ok: false, error: "empty path" };
+    return { ok: false, error: codedMessage("schema.dot-path.empty") };
   }
 
   const segments = path.split(".");
@@ -22,13 +21,20 @@ export function checkDotPath(path: string, allowedRoots: readonly string[]): Dot
   if (!root || !allowedRoots.includes(root)) {
     return {
       ok: false,
-      error: `invalid root "${root}" in "${path}" — must be one of ${allowedRoots.join(", ")}`,
+      error: codedMessage("schema.dot-path.invalid-root", {
+        root: root ?? "",
+        path,
+        roots: allowedRoots.join(", "),
+      }),
     };
   }
 
   for (const segment of segments.slice(1)) {
     if (!SEGMENT_PATTERN.test(segment)) {
-      return { ok: false, error: `malformed dot-path segment "${segment}" in "${path}"` };
+      return {
+        ok: false,
+        error: codedMessage("schema.dot-path.malformed-segment", { segment, path }),
+      };
     }
   }
 
@@ -38,7 +44,9 @@ export function checkDotPath(path: string, allowedRoots: readonly string[]): Dot
 /** The walk's outcome. `found: false` is not necessarily an error — the `exists` condition treats
  * an unresolvable path as a plain `false` (mvp spec §5.2) — so the caller decides; `error` says
  * why. */
-export type DotPathResolution = { found: true; value: JsonValue } | { found: false; error: string };
+export type DotPathResolution =
+  | { found: true; value: JsonValue }
+  | { found: false; error: Message };
 
 /** Walks a validated path against `roots`: array segments must be in-bounds integer indices, object
  * segments own properties, so an inherited key never resolves. `error` names the segment that
@@ -52,24 +60,27 @@ export function resolveDotPath(
   const root = segments[0];
 
   if (root === undefined || !Object.hasOwn(roots, root)) {
-    return { found: false, error: `unknown root "${root ?? ""}"` };
+    return {
+      found: false,
+      error: codedMessage("schema.dot-path.unknown-root", { root: root ?? "" }),
+    };
   }
 
   let current: JsonValue = roots[root] as JsonValue;
   for (const segment of segments.slice(1)) {
     if (current === null || typeof current !== "object") {
-      return { found: false, error: `"${segment}" reaches into a non-object value` };
+      return { found: false, error: codedMessage("schema.dot-path.non-object", { segment }) };
     }
     if (Array.isArray(current)) {
       const index = Number(segment);
       if (!Number.isInteger(index) || index < 0 || index >= current.length) {
-        return { found: false, error: `index "${segment}" is out of bounds` };
+        return { found: false, error: codedMessage("schema.dot-path.out-of-bounds", { segment }) };
       }
       current = current[index] as JsonValue;
     } else if (Object.hasOwn(current, segment)) {
       current = (current as { [key: string]: JsonValue })[segment] as JsonValue;
     } else {
-      return { found: false, error: `key "${segment}" not found` };
+      return { found: false, error: codedMessage("schema.dot-path.missing-key", { segment }) };
     }
   }
   return { found: true, value: current };
