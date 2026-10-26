@@ -1,5 +1,6 @@
 import type { PathApiClient } from "@path/client-core";
 import { useEffect, useRef, useState } from "react";
+import { useTranslations } from "use-intl";
 import { errorMessage } from "./load-state.js";
 
 /** How long an armed "Confirm cancel?" waits before disarming itself. */
@@ -23,6 +24,7 @@ type Phase = "idle" | "armed" | "sending";
  * mounts it only while the root run is pending/running, so there is no terminal phase to model.
  */
 export function CancelButton({ client, rootRunId }: CancelButtonProps) {
+  const t = useTranslations("viewer.cancelButton");
   const [phase, setPhase] = useState<Phase>("idle");
   const [error, setError] = useState<string | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -71,7 +73,7 @@ export function CancelButton({ client, rootRunId }: CancelButtonProps) {
         onClick={phase === "armed" ? send : arm}
         onBlur={phase === "armed" ? disarm : undefined}
       >
-        {phase === "sending" ? "Cancelling…" : phase === "armed" ? "Confirm cancel?" : "Cancel run"}
+        {phase === "sending" ? t("sending") : phase === "armed" ? t("confirm") : t("cancel")}
       </button>
       {error !== null && (
         <p className="pane-note pane-error cancel-error" role="alert">

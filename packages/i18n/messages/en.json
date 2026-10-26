@@ -1,7 +1,215 @@
 {
   "viewer": {
     "app": {
-      "title": "PATH by RheinWeg · viewer"
+      "title": "PATH by RheinWeg · viewer",
+      "subConsole": "viewer · read-only",
+      "subSecrets": "viewer · secrets",
+      "backToRuns": "Back to runs",
+      "selectRun": "Select a run.",
+      "selectTreeRun": "Select a run in the tree."
+    },
+    "appShell": {
+      "runDetail": "Run detail",
+      "nodeIo": "Node I/O/C/E",
+      "workflows": "Workflows",
+      "runs": "Runs",
+      "resizeWorkflows": "Resize workflows panel",
+      "resizeRuns": "Resize runs pane",
+      "resizeNodeIo": "Resize node I/O/C/E pane"
+    },
+    "authGate": {
+      "prompt": "Sign in to continue.",
+      "signIn": "Sign in"
+    },
+    "assigneeChip": {
+      "title": "Assigned to {assignee}"
+    },
+    "awaitingActions": {
+      "label": "Complete awaiting step",
+      "unresolved": "This step's form could not be read from the workflow file. Submitting sends an empty output.",
+      "outputSchema": "Output schema",
+      "noOutputSchema": "No output schema on this step — any JSON output is accepted."
+    },
+    "cancelButton": {
+      "cancel": "Cancel run",
+      "confirm": "Confirm cancel?",
+      "sending": "Cancelling…"
+    },
+    "completeForm": {
+      "submit": "Complete this activity",
+      "sending": "Submitting…",
+      "output": "Output",
+      "rawHelp": "Enter any text, or JSON for a structured value. Leave blank to submit an empty output.",
+      "secretsNote": "These launch secrets are stored masked and must be supplied again to continue the run.",
+      "select": "— select —"
+    },
+    "deleteButton": {
+      "arm": "Delete run…",
+      "warning": "Permanently delete this run's data from the database and blobs? This cannot be undone."
+    },
+    "deleteConfirm": {
+      "keep": "Keep",
+      "confirm": "Confirm delete",
+      "sending": "Deleting…"
+    },
+    "jsonField": {
+      "empty": "empty — field omitted",
+      "valid": "valid JSON"
+    },
+    "launchForm": {
+      "workerDefaults": "Launch worker defaults (optional)",
+      "workerDefaultsHint": "The worker each type's un-pinned steps use across this run. A per-type selection, not config: a step's own worker still wins, and this outranks the file's own default.",
+      "sending": "Launching…",
+      "warning": "{count, plural, one {# unresolved warning} other {# unresolved warnings}} — the run may fail at start."
+    },
+    "launchPanel": {
+      "kind": "Kind",
+      "kinds": {
+        "all": "all",
+        "root": "root",
+        "nested": "nested",
+        "invalid": "invalid"
+      },
+      "noWorkflows": "No workflows found.",
+      "noFiltered": "No {filter} workflows.",
+      "launch": "Launch {name}",
+      "launchWorkflow": "Launch workflow",
+      "loadFailed": "This workflow could not be loaded.",
+      "shippedReadOnly": "Shipped workflows are read-only. Copy it to your folder to launch it.",
+      "copy": "Copy to mine",
+      "copying": "Copying…",
+      "readOnly": "read-only",
+      "readOnlyTitle": "Read-only: shared by another user"
+    },
+    "narrative": {
+      "title": "Narrative",
+      "follow": "Jump to newest",
+      "empty": "Nothing logged yet.",
+      "noEvents": "0 events",
+      "count": "{count, plural, one {# events} other {# events}} · seq {first}–{last}",
+      "stream": {
+        "connecting": "connecting…",
+        "live": "live · SSE",
+        "waiting": "waiting for completion",
+        "reconnecting": "reconnecting…",
+        "closed": "complete",
+        "failed": "stream lost"
+      }
+    },
+    "nodeIo": {
+      "refresh": "Refresh",
+      "reused": "Reused from an earlier run — the input and output below are that run's.",
+      "reusedRootRun": "reused root run",
+      "reusedRun": "reused run",
+      "deleted": "(deleted)",
+      "resumed": "Resumed from an earlier run — the input below is that run's root input.",
+      "resumedFromRootRun": "resumed-from root run",
+      "input": "Input",
+      "output": "Output",
+      "context": "Context",
+      "noInput": "No input object recorded for this run.",
+      "resumedNoInput": "The resumed-from run recorded no input object.",
+      "noOutput": "No output object recorded for this run.",
+      "noOutputYet": "No output object yet — a run writes its output when it finishes.",
+      "noContext": "No context recorded for this run.",
+      "overrideInput": "Override Input",
+      "overrideConfig": "Override Config",
+      "launchWorkerDefaults": "Launch Worker Defaults",
+      "error": "Error",
+      "errorSource": "from the run's step-finished event (event log)"
+    },
+    "overrides": {
+      "overrideInput": "Override input (optional)",
+      "overrideConfig": "Override config (optional)",
+      "configLabel": "config override · JSON",
+      "secretsLabel": "Launch secrets (config override) · JSON",
+      "set": "set"
+    },
+    "paneNote": {
+      "loading": {
+        "workflows": "Loading workflows…",
+        "runs": "Loading runs…",
+        "run": "Loading run…",
+        "input": "Loading input…",
+        "output": "Loading output…",
+        "context": "Loading context…",
+        "secrets": "Loading secrets…"
+      },
+      "failed": {
+        "workflows": "Failed to load workflows: {message}",
+        "runs": "Failed to load runs: {message}",
+        "run": "Failed to load run: {message}",
+        "input": "Failed to load input: {message}",
+        "output": "Failed to load output: {message}",
+        "context": "Failed to load context: {message}",
+        "secrets": "Failed to load secrets: {message}"
+      }
+    },
+    "resumeActions": {
+      "secretsNote": "These launch secrets are stored masked and must be supplied again to resume.",
+      "resume": "Resume run",
+      "sending": "Resuming…",
+      "succeededReason": "Succeeded — rerun from a chosen boundary below.",
+      "resumeFromTitle": "Resume from {nodeName} ({runId})",
+      "resumeFrom": "Resume from {nodeName}({shortRunId})",
+      "resumeFromIdle": "Resume from …"
+    },
+    "runDetail": {
+      "runTree": "Run tree",
+      "awaitingCount": "{count} awaiting",
+      "runCount": "{count, plural, one {# runs} other {# runs}}",
+      "resizeTree": "Resize run tree"
+    },
+    "runFacts": {
+      "rootRunId": "root run id",
+      "workflowName": "workflow name",
+      "workflowId": "workflow id",
+      "workflowFile": "workflow file",
+      "nodeId": "node id",
+      "runId": "run id"
+    },
+    "runTree": {
+      "empty": "No runs recorded for this root run.",
+      "pass": "Pass {pass}",
+      "passOpenedBy": "Pass {pass} · opened by {nodeName}",
+      "iteration": "{name} · iteration {iteration}",
+      "expand": "Expand {label}",
+      "collapse": "Collapse {label}"
+    },
+    "runsList": {
+      "openWorkflow": "Open a workflow to see its runs.",
+      "status": "Status",
+      "all": "all",
+      "noRuns": "No runs yet.",
+      "noFiltered": "No {statusFilter} runs.",
+      "inFlight": "This run is still in flight. Resume and delete become available once it finishes."
+    },
+    "secretsPage": {
+      "title": "Secrets",
+      "intro": "A run you launch reads these through <code>$env</code>. A value cannot be read back.",
+      "empty": "No secrets yet.",
+      "name": "Name",
+      "value": "Value",
+      "set": "Set",
+      "hint": "Setting a name that exists replaces its value.",
+      "notice": "Set {name}.",
+      "delete": "Delete…",
+      "warning": "Delete {name}? A run that reads it fails until it is set again."
+    },
+    "status": {
+      "running": "running",
+      "awaiting": "awaiting",
+      "succeeded": "succeeded",
+      "failed": "failed",
+      "cancelled": "cancelled",
+      "pending": "pending"
+    },
+    "workerDefaults": {
+      "type": "type",
+      "worker": "worker",
+      "defaultOption": "{option} (default)",
+      "remove": "Remove this worker default",
+      "add": "+ add worker default"
     }
   },
   "designer": {

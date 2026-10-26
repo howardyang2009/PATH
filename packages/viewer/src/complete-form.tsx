@@ -13,6 +13,7 @@ import {
   validateCompleteDraft,
 } from "@path/client-core";
 import { useMemo, useState } from "react";
+import { useTranslations } from "use-intl";
 import { errorMessage } from "./load-state.js";
 
 export interface CompleteFormProps {
@@ -53,9 +54,10 @@ export function CompleteForm({
   stepRunId,
   outputSchema,
   launchSecretKeys,
-  submitLabel = "Complete this activity",
+  submitLabel,
   onCompleted,
 }: CompleteFormProps) {
+  const t = useTranslations("viewer.completeForm");
   const fields = useMemo(() => buildCompleteFields(outputSchema), [outputSchema]);
   // A schema with no drawable fields (none authored) falls back to the free-text control.
   const raw = fields.length === 0;
@@ -189,7 +191,7 @@ export function CompleteForm({
           data-testid="complete-submit"
           disabled={phase === "sending" || blankSecrets.length > 0}
         >
-          {phase === "sending" ? "Submitting…" : submitLabel}
+          {phase === "sending" ? t("sending") : (submitLabel ?? t("submit"))}
         </button>
       </div>
     </form>
@@ -207,16 +209,15 @@ interface RawOutputControlProps {
  * string, JSON as its value, blank as an empty output.
  */
 function RawOutputControl({ value, onChange }: RawOutputControlProps) {
+  const t = useTranslations("viewer.completeForm");
   const id = "complete-fld-__raw";
 
   return (
     <div className="complete-field" data-testid="complete-field-__raw">
       <label className="field-label complete-label" htmlFor={id}>
-        Output
+        {t("output")}
       </label>
-      <p className="complete-help">
-        Enter any text, or JSON for a structured value. Leave blank to submit an empty output.
-      </p>
+      <p className="complete-help">{t("rawHelp")}</p>
       <textarea
         id={id}
         className="launch-textarea complete-input"
@@ -240,15 +241,16 @@ interface LaunchSecretsControlProps {
  * and the engine refuses to continue with a token.
  */
 function LaunchSecretsControl({ value, onChange }: LaunchSecretsControlProps) {
+  const t = useTranslations("viewer");
   const id = "complete-fld-__config";
 
   return (
     <div className="complete-field" data-testid="complete-field-__config">
       <label className="field-label complete-label" htmlFor={id}>
-        Launch secrets (config override) · JSON
+        {t("overrides.secretsLabel")}
       </label>
       <p className="complete-help" data-testid="complete-config-note">
-        These launch secrets are stored masked and must be supplied again to continue the run.
+        {t("completeForm.secretsNote")}
       </p>
       <textarea
         id={id}
@@ -273,6 +275,7 @@ interface CompleteControlProps {
 /** One schema-driven control: a checkbox, a select, or a text/number input, with its help and
  * error. */
 function CompleteControl({ field, value, error, onChange }: CompleteControlProps) {
+  const t = useTranslations("viewer.completeForm");
   const id = `complete-fld-${field.key}`;
   const errId = `${id}-err`;
   const invalid = error !== undefined;
@@ -323,7 +326,7 @@ function CompleteControl({ field, value, error, onChange }: CompleteControlProps
               aria-describedby={describedBy}
               onChange={(event) => onChange(event.target.value)}
             >
-              <option value="">— select —</option>
+              <option value="">{t("select")}</option>
               {field.enum?.map((option) => (
                 <option key={option} value={option}>
                   {option}

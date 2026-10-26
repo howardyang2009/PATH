@@ -1,7 +1,215 @@
 {
   "viewer": {
     "app": {
-      "title": "PATH by RheinWeg · viewer"
+      "title": "PATH by RheinWeg · viewer",
+      "subConsole": "viewer · nur lesen",
+      "subSecrets": "viewer · Secrets",
+      "backToRuns": "Zurück zu den Läufen",
+      "selectRun": "Wählen Sie einen Lauf.",
+      "selectTreeRun": "Wählen Sie einen Lauf im Laufbaum."
+    },
+    "appShell": {
+      "runDetail": "Laufdetails",
+      "nodeIo": "Knoten-E/A/K/F",
+      "workflows": "Workflows",
+      "runs": "Läufe",
+      "resizeWorkflows": "Größe des Workflow-Bereichs ändern",
+      "resizeRuns": "Größe des Lauf-Bereichs ändern",
+      "resizeNodeIo": "Größe des Knoten-E/A/K/F-Bereichs ändern"
+    },
+    "authGate": {
+      "prompt": "Melden Sie sich an, um fortzufahren.",
+      "signIn": "Anmelden"
+    },
+    "assigneeChip": {
+      "title": "Zugewiesen an {assignee}"
+    },
+    "awaitingActions": {
+      "label": "Wartenden Schritt abschließen",
+      "unresolved": "Das Formular dieses Schritts konnte nicht aus der Workflow-Datei gelesen werden. Beim Absenden wird eine leere Ausgabe gesendet.",
+      "outputSchema": "Ausgabeschema",
+      "noOutputSchema": "Dieser Schritt hat kein Ausgabeschema – jede JSON-Ausgabe wird akzeptiert."
+    },
+    "cancelButton": {
+      "cancel": "Lauf abbrechen",
+      "confirm": "Abbruch bestätigen?",
+      "sending": "Wird abgebrochen…"
+    },
+    "completeForm": {
+      "submit": "Diese Aktivität abschließen",
+      "sending": "Wird gesendet…",
+      "output": "Ausgabe",
+      "rawHelp": "Geben Sie beliebigen Text ein oder JSON für einen strukturierten Wert. Lassen Sie das Feld leer, um eine leere Ausgabe zu senden.",
+      "secretsNote": "Diese Start-Secrets sind maskiert gespeichert und müssen erneut angegeben werden, um den Lauf fortzuführen.",
+      "select": "– auswählen –"
+    },
+    "deleteButton": {
+      "arm": "Lauf löschen…",
+      "warning": "Die Daten dieses Laufs endgültig aus der Datenbank und den Blobs löschen? Dies kann nicht rückgängig gemacht werden."
+    },
+    "deleteConfirm": {
+      "keep": "Behalten",
+      "confirm": "Löschen bestätigen",
+      "sending": "Wird gelöscht…"
+    },
+    "jsonField": {
+      "empty": "leer – Feld wird weggelassen",
+      "valid": "gültiges JSON"
+    },
+    "launchForm": {
+      "workerDefaults": "Start-Worker-Vorgaben (optional)",
+      "workerDefaultsHint": "Der Worker, den die Schritte ohne eigenen Worker je Schritttyp in diesem Lauf verwenden. Eine Auswahl je Schritttyp, keine Konfiguration: Der eigene Worker eines Schritts hat Vorrang, und diese Auswahl hat Vorrang vor der Vorgabe der Datei.",
+      "sending": "Wird gestartet…",
+      "warning": "{count, plural, one {# ungelöste Warnung} other {# ungelöste Warnungen}} – der Lauf kann beim Start fehlschlagen."
+    },
+    "launchPanel": {
+      "kind": "Art",
+      "kinds": {
+        "all": "alle",
+        "root": "Stamm",
+        "nested": "verschachtelt",
+        "invalid": "ungültig"
+      },
+      "noWorkflows": "Keine Workflows gefunden.",
+      "noFiltered": "Keine Workflows der Art „{filter}“.",
+      "launch": "{name} starten",
+      "launchWorkflow": "Workflow starten",
+      "loadFailed": "Dieser Workflow konnte nicht geladen werden.",
+      "shippedReadOnly": "Mitgelieferte Workflows sind schreibgeschützt. Kopieren Sie ihn in Ihren Ordner, um ihn zu starten.",
+      "copy": "In meinen Ordner kopieren",
+      "copying": "Wird kopiert…",
+      "readOnly": "schreibgeschützt",
+      "readOnlyTitle": "Schreibgeschützt: von einem anderen Benutzer geteilt"
+    },
+    "narrative": {
+      "title": "Ereignisverlauf",
+      "follow": "Zum neuesten springen",
+      "empty": "Noch nichts protokolliert.",
+      "noEvents": "0 Ereignisse",
+      "count": "{count, plural, one {# Ereignis} other {# Ereignisse}} · seq {first}–{last}",
+      "stream": {
+        "connecting": "wird verbunden…",
+        "live": "live · SSE",
+        "waiting": "wartet auf Abschluss",
+        "reconnecting": "wird neu verbunden…",
+        "closed": "abgeschlossen",
+        "failed": "Stream verloren"
+      }
+    },
+    "nodeIo": {
+      "refresh": "Aktualisieren",
+      "reused": "Aus einem früheren Lauf wiederverwendet – Eingabe und Ausgabe unten stammen aus diesem Lauf.",
+      "reusedRootRun": "wiederverwendeter Stammlauf",
+      "reusedRun": "wiederverwendeter Lauf",
+      "deleted": "(gelöscht)",
+      "resumed": "Von einem früheren Lauf fortgesetzt – die Eingabe unten ist dessen Stammeingabe.",
+      "resumedFromRootRun": "fortgesetzt von Stammlauf",
+      "input": "Eingabe",
+      "output": "Ausgabe",
+      "context": "Kontext",
+      "noInput": "Für diesen Lauf ist kein Eingabeobjekt gespeichert.",
+      "resumedNoInput": "Der Lauf, von dem fortgesetzt wurde, hat kein Eingabeobjekt gespeichert.",
+      "noOutput": "Für diesen Lauf ist kein Ausgabeobjekt gespeichert.",
+      "noOutputYet": "Noch kein Ausgabeobjekt – ein Lauf schreibt seine Ausgabe, wenn er endet.",
+      "noContext": "Für diesen Lauf ist kein Kontext gespeichert.",
+      "overrideInput": "Überschriebene Eingabe",
+      "overrideConfig": "Überschriebene Konfiguration",
+      "launchWorkerDefaults": "Start-Worker-Vorgaben",
+      "error": "Fehler",
+      "errorSource": "aus dem step-finished-Ereignis des Laufs (Ereignisprotokoll)"
+    },
+    "overrides": {
+      "overrideInput": "Eingabe überschreiben (optional)",
+      "overrideConfig": "Konfiguration überschreiben (optional)",
+      "configLabel": "Konfiguration überschreiben · JSON",
+      "secretsLabel": "Start-Secrets (Konfiguration überschreiben) · JSON",
+      "set": "gesetzt"
+    },
+    "paneNote": {
+      "loading": {
+        "workflows": "Workflows werden geladen…",
+        "runs": "Läufe werden geladen…",
+        "run": "Lauf wird geladen…",
+        "input": "Eingabe wird geladen…",
+        "output": "Ausgabe wird geladen…",
+        "context": "Kontext wird geladen…",
+        "secrets": "Secrets werden geladen…"
+      },
+      "failed": {
+        "workflows": "Workflows konnten nicht geladen werden: {message}",
+        "runs": "Läufe konnten nicht geladen werden: {message}",
+        "run": "Lauf konnte nicht geladen werden: {message}",
+        "input": "Eingabe konnte nicht geladen werden: {message}",
+        "output": "Ausgabe konnte nicht geladen werden: {message}",
+        "context": "Kontext konnte nicht geladen werden: {message}",
+        "secrets": "Secrets konnten nicht geladen werden: {message}"
+      }
+    },
+    "resumeActions": {
+      "secretsNote": "Diese Start-Secrets sind maskiert gespeichert und müssen zum Fortsetzen erneut angegeben werden.",
+      "resume": "Lauf fortsetzen",
+      "sending": "Wird fortgesetzt…",
+      "succeededReason": "Erfolgreich – unten ab einer gewählten Wiederholgrenze erneut ausführen.",
+      "resumeFromTitle": "Fortsetzen ab {nodeName} ({runId})",
+      "resumeFrom": "Fortsetzen ab {nodeName}({shortRunId})",
+      "resumeFromIdle": "Fortsetzen ab …"
+    },
+    "runDetail": {
+      "runTree": "Laufbaum",
+      "awaitingCount": "{count} wartend",
+      "runCount": "{count, plural, one {# Lauf} other {# Läufe}}",
+      "resizeTree": "Größe des Laufbaums ändern"
+    },
+    "runFacts": {
+      "rootRunId": "Stammlauf-ID",
+      "workflowName": "Workflow-Name",
+      "workflowId": "Workflow-ID",
+      "workflowFile": "Workflow-Datei",
+      "nodeId": "Knoten-ID",
+      "runId": "Lauf-ID"
+    },
+    "runTree": {
+      "empty": "Für diesen Stammlauf sind keine Läufe gespeichert.",
+      "pass": "Durchgang {pass}",
+      "passOpenedBy": "Durchgang {pass} · geöffnet von {nodeName}",
+      "iteration": "{name} · Iteration {iteration}",
+      "expand": "{label} aufklappen",
+      "collapse": "{label} zuklappen"
+    },
+    "runsList": {
+      "openWorkflow": "Öffnen Sie einen Workflow, um seine Läufe zu sehen.",
+      "status": "Status",
+      "all": "alle",
+      "noRuns": "Noch keine Läufe.",
+      "noFiltered": "Keine Läufe mit Status „{statusFilter}“.",
+      "inFlight": "Dieser Lauf ist noch aktiv. Fortsetzen und Löschen sind möglich, sobald er endet."
+    },
+    "secretsPage": {
+      "title": "Secrets",
+      "intro": "Ein Lauf, den Sie starten, liest diese über <code>$env</code>. Ein Wert kann nicht zurückgelesen werden.",
+      "empty": "Noch keine Secrets.",
+      "name": "Name",
+      "value": "Wert",
+      "set": "Setzen",
+      "hint": "Ein vorhandener Name erhält den neuen Wert.",
+      "notice": "{name} gesetzt.",
+      "delete": "Löschen…",
+      "warning": "{name} löschen? Ein Lauf, der es liest, schlägt fehl, bis es erneut gesetzt wird."
+    },
+    "status": {
+      "running": "läuft",
+      "awaiting": "wartet",
+      "succeeded": "erfolgreich",
+      "failed": "fehlgeschlagen",
+      "cancelled": "abgebrochen",
+      "pending": "ausstehend"
+    },
+    "workerDefaults": {
+      "type": "Schritttyp",
+      "worker": "Worker",
+      "defaultOption": "{option} (Standard)",
+      "remove": "Diese Worker-Vorgabe entfernen",
+      "add": "+ Worker-Vorgabe hinzufügen"
     }
   },
   "designer": {

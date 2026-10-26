@@ -1,4 +1,5 @@
 import { credentialHint, type WireStepPlugin } from "@path/client-core";
+import { useTranslations } from "use-intl";
 
 /**
  * The worker-default editor, shared by the Designer's file `worker_defaults` region and the
@@ -36,6 +37,7 @@ export function WorkerDefaultsEditor({
   onChange,
   hint,
 }: WorkerDefaultsEditorProps): JSX.Element | null {
+  const t = useTranslations("viewer.workerDefaults");
   const candidates = workerDefaultCandidates(plugins);
   // No multi-worker type in the registry → no selection to make. Hide the section entirely.
   if (candidates.length === 0) return null;
@@ -85,7 +87,7 @@ export function WorkerDefaultsEditor({
         return (
           <div key={type} className="worker-default-row">
             <label className="worker-default-field">
-              <span className="field-label">type</span>
+              <span className="field-label">{t("type")}</span>
               <select
                 className="field"
                 value={type}
@@ -99,7 +101,7 @@ export function WorkerDefaultsEditor({
               </select>
             </label>
             <label className="worker-default-field">
-              <span className="field-label">worker</span>
+              <span className="field-label">{t("worker")}</span>
               <select
                 className="field"
                 value={worker}
@@ -107,7 +109,9 @@ export function WorkerDefaultsEditor({
               >
                 {workerOptions.map((option) => (
                   <option key={option} value={option}>
-                    {plugin && option === plugin.default_worker ? `${option} (default)` : option}
+                    {plugin && option === plugin.default_worker
+                      ? t("defaultOption", { option })
+                      : option}
                   </option>
                 ))}
               </select>
@@ -117,8 +121,8 @@ export function WorkerDefaultsEditor({
               className="card-action worker-default-remove"
               data-testid={`worker-default-remove-${type}`}
               onClick={() => removeAt(type)}
-              aria-label="Remove this worker default"
-              title="Remove this worker default"
+              aria-label={t("remove")}
+              title={t("remove")}
             >
               ✕
             </button>
@@ -140,7 +144,7 @@ export function WorkerDefaultsEditor({
           data-testid="worker-default-add"
           onClick={addRow}
         >
-          + add worker default
+          {t("add")}
         </button>
       )}
     </div>

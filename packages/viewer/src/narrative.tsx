@@ -1,6 +1,6 @@
 import { eventMessage, eventOutcome, type LogEvent, type StreamPhase } from "@path/client-core";
 import { useEffect, useRef, useState } from "react";
-import { useLocale } from "use-intl";
+import { useLocale, useTranslations } from "use-intl";
 import { formatClockTime } from "./format-time.js";
 import { STATUS_GLYPH } from "./status-glyph.js";
 
@@ -17,6 +17,7 @@ export interface NarrativeProps {
  * all live in `@path/client-core`; this component formats and follows.
  */
 export function Narrative({ events, stream }: NarrativeProps) {
+  const t = useTranslations("viewer.narrative");
   const listRef = useRef<HTMLOListElement>(null);
   const [following, setFollowing] = useState(true);
 
@@ -47,10 +48,10 @@ export function Narrative({ events, stream }: NarrativeProps) {
     <section className="narrative" aria-labelledby="narrative-title">
       <header className="card-head">
         <h3 className="card-title" id="narrative-title">
-          Narrative
+          {t("title")}
         </h3>
         <StreamIndicator phase={stream} />
-        <span className="card-count">{countLabel(events)}</span>
+        <span className="card-count">{countLabel(t, events)}</span>
         {!following && (
           <button
             type="button"
@@ -58,14 +59,14 @@ export function Narrative({ events, stream }: NarrativeProps) {
             data-testid="narrative-follow"
             onClick={follow}
           >
-            Jump to newest
+            {t("follow")}
           </button>
         )}
       </header>
 
       {events.length === 0 ? (
         <p className="pane-note" data-testid="narrative-empty">
-          Nothing logged yet.
+          {t("empty")}
         </p>
       ) : (
         <ol className="event-list" data-testid="narrative-events" ref={listRef} onScroll={onScroll}>
@@ -117,6 +118,7 @@ function EventRow({ event }: { event: LogEvent }) {
  * failure. `role="status"` announces the change without stealing focus.
  */
 function StreamIndicator({ phase }: { phase: StreamPhase }) {
+  const t = useTranslations("viewer.narrative.stream");
   return (
     <span
       className="stream-indicator"
@@ -125,29 +127,23 @@ function StreamIndicator({ phase }: { phase: StreamPhase }) {
       role="status"
     >
       {phase !== "closed" && <span className="stream-dot" aria-hidden="true" />}
-      {STREAM_LABEL[phase]}
+      {/* `closed` reads "complete": to a watcher the run is over. `waiting` is a parked leaf, not a
+          lost stream (ADR 0038). */}
+      {t(phase)}
     </span>
   );
 }
 
-/** `closed` reads as "complete" because that is what it means to a watcher: the run is over. */
-const STREAM_LABEL: Record<StreamPhase, string> = {
-  connecting: "connecting…",
-  live: "live · SSE",
-  // A parked leaf, not a lost stream: the run pauses for a person to complete it (ADR 0038).
-  waiting: "waiting for completion",
-  reconnecting: "reconnecting…",
-  closed: "complete",
-  failed: "stream lost",
-};
-
 /** The seq range, not just a count: it says whether the narrative starts at the run's first
  * event. */
-function countLabel(events: readonly LogEvent[]): string {
+function countLabel(
+  t: ReturnType<typeof useTranslations<"viewer.narrative">>,
+  events: readonly LogEvent[],
+): string {
   const first = events[0];
   const last = events.at(-1);
-  if (!first || !last) return "0 events";
-  return `${events.length} events · seq ${first.seq}–${last.seq}`;
+  if (!first || !last) return t("noEvents");
+  return t("count", { count: events.length, first: first.seq, last: last.seq });
 }
 
 /** A few pixels of slack: a "bottom" that demands an exact match never registers as reached. */

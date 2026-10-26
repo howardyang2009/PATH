@@ -11,6 +11,7 @@ import {
   shortGuid,
 } from "@path/client-core";
 import { useState } from "react";
+import { useTranslations } from "use-intl";
 import { AssigneeChip } from "./assignee-chip.js";
 import { StatusPill } from "./status-pill.js";
 
@@ -42,10 +43,11 @@ export function RunTree({
   displayStatus,
   runFiles = EMPTY_RUN_FILE_SET,
 }: RunTreeProps) {
+  const t = useTranslations("viewer.runTree");
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set<string>());
 
   const root = buildRunTree(rootRunId, runs, displayStatus);
-  if (!root) return <p className="pane-note">No runs recorded for this root run.</p>;
+  if (!root) return <p className="pane-note">{t("empty")}</p>;
 
   const tree: TreeView = {
     collapsed,
@@ -77,6 +79,7 @@ interface TreeView {
 }
 
 function RunTreeRow({ node, tree }: { node: RunTreeNode; tree: TreeView }) {
+  const t = useTranslations("viewer.runTree");
   const { run, children } = node;
   const isCollapsed = tree.collapsed.has(run.runId);
   // The human step name is the headline; `nodeId` and `runId` trail it as the machine identities. A
@@ -85,10 +88,10 @@ function RunTreeRow({ node, tree }: { node: RunTreeNode; tree: TreeView }) {
   const name = run.nodeName ?? nodeLabel(run.nodeId);
   const label = isPassRun(run)
     ? run.nodeName === null
-      ? `Pass ${run.pass}`
-      : `Pass ${run.pass} · opened by ${run.nodeName}`
+      ? t("pass", { pass: run.pass })
+      : t("passOpenedBy", { pass: run.pass, nodeName: run.nodeName })
     : isIterationRun(run)
-      ? `${name} · iteration ${run.iteration}`
+      ? t("iteration", { name, iteration: run.iteration })
       : name;
   // An awaiting leaf shows its assignee as a chip; it lives on the node in the file, not the run
   // row, so it is read by id (CONTEXT.md § Person-activity).
@@ -107,7 +110,7 @@ function RunTreeRow({ node, tree }: { node: RunTreeNode; tree: TreeView }) {
             className="tree-toggle"
             data-testid={`tree-toggle-${run.runId}`}
             aria-expanded={!isCollapsed}
-            aria-label={`${isCollapsed ? "Expand" : "Collapse"} ${label}`}
+            aria-label={isCollapsed ? t("expand", { label }) : t("collapse", { label })}
             onClick={() => tree.onToggle(run.runId)}
           >
             {isCollapsed ? "▸" : "▾"}

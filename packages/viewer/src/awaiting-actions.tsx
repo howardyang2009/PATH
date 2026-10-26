@@ -1,4 +1,5 @@
 import type { AwaitingNode, PathApiClient, RunNodeState } from "@path/client-core";
+import { useTranslations } from "use-intl";
 import { AssigneeChip } from "./assignee-chip.js";
 import { CompleteForm } from "./complete-form.js";
 import { JsonView } from "./json-view.js";
@@ -33,14 +34,11 @@ export function AwaitingActions({
   awaitingNode,
   launchSecretKeys,
 }: AwaitingActionsProps) {
+  const t = useTranslations("viewer.awaitingActions");
   const node = awaitingNode ?? FALLBACK_NODE;
 
   return (
-    <section
-      className="awaiting-actions"
-      data-testid="awaiting-actions"
-      aria-label="Complete awaiting step"
-    >
+    <section className="awaiting-actions" data-testid="awaiting-actions" aria-label={t("label")}>
       {node.assignee !== null && <AssigneeChip assignee={node.assignee} />}
       {node.description !== null && (
         <p className="awaiting-callout" data-testid="awaiting-description">
@@ -49,8 +47,7 @@ export function AwaitingActions({
       )}
       {awaitingNode === null && (
         <p className="pane-note" data-testid="awaiting-unresolved">
-          This step's form could not be read from the workflow file. Submitting sends an empty
-          output.
+          {t("unresolved")}
         </p>
       )}
 
@@ -60,14 +57,14 @@ export function AwaitingActions({
         aria-labelledby="awaiting-output-schema-title"
       >
         <h3 className="io-title" id="awaiting-output-schema-title">
-          Output schema
+          {t("outputSchema")}
         </h3>
         {/* Shown even when empty: `{}` reads as "any JSON accepted" and keeps the block a fixed
           slot. */}
         <JsonView value={node.outputSchema ?? {}} />
         {node.outputSchema === null && (
           <p className="pane-note" data-testid="awaiting-output-schema-empty">
-            No output schema on this step — any JSON output is accepted.
+            {t("noOutputSchema")}
           </p>
         )}
       </section>

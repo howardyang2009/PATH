@@ -16,6 +16,7 @@ import {
   workflowTreePath,
 } from "@path/client-core";
 import { useMemo, useState } from "react";
+import { useTranslations } from "use-intl";
 import { LaunchForm } from "./launch-form.js";
 import { errorMessage } from "./load-state.js";
 import { PaneError, PaneLoading } from "./pane-note.js";
@@ -42,14 +43,9 @@ export interface LaunchPanelProps {
  * all. */
 type WorkflowFilter = "all" | "root" | "nested" | "invalid";
 
-/** The filter options in display order — value drives {@link matchesFilter}, label is the visible
- * text. */
-const WORKFLOW_FILTERS: readonly { value: WorkflowFilter; label: string }[] = [
-  { value: "all", label: "all" },
-  { value: "root", label: "root" },
-  { value: "nested", label: "nested" },
-  { value: "invalid", label: "invalid" },
-];
+/** The filter options in display order; each value drives {@link matchesFilter} and names its
+ * label. */
+const WORKFLOW_FILTERS: readonly WorkflowFilter[] = ["all", "root", "nested", "invalid"];
 
 /**
  * Client-side kind filter (the workflow list is a one-shot read, so there is nothing to re-query):
@@ -69,6 +65,7 @@ function matchesFilter(workflow: WorkflowSummary, filter: WorkflowFilter): boole
 }
 
 export function LaunchPanel({ client, onLaunched }: LaunchPanelProps) {
+  const t = useTranslations("viewer.launchPanel");
   const [expanded, setExpanded] = useState<string | null>(null);
   // The deepest open folder path; a folder is expanded when it is this path or a prefix of it, so
   // opening a sibling collapses the previous one automatically (one open folder per level).
@@ -115,7 +112,7 @@ export function LaunchPanel({ client, onLaunched }: LaunchPanelProps) {
       {state.phase === "ready" && (
         <div className="runs-toolbar">
           <label className="field-label" htmlFor="workflows-kind-filter">
-            Kind
+            {t("kind")}
           </label>
           <select
             id="workflows-kind-filter"
@@ -124,8 +121,8 @@ export function LaunchPanel({ client, onLaunched }: LaunchPanelProps) {
             onChange={(event) => setFilter(event.target.value as WorkflowFilter)}
           >
             {WORKFLOW_FILTERS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
+              <option key={option} value={option}>
+                {t(`kinds.${option}`)}
               </option>
             ))}
           </select>
@@ -138,9 +135,9 @@ export function LaunchPanel({ client, onLaunched }: LaunchPanelProps) {
       {state.phase === "ready" &&
         (state.value.length === 0 ? (
           // Two empty states, as in the runs list: "none at all" vs "none of this kind".
-          <p className="pane-note">No workflows found.</p>
+          <p className="pane-note">{t("noWorkflows")}</p>
         ) : visible.length === 0 ? (
-          <p className="pane-note">No {filter} workflows.</p>
+          <p className="pane-note">{t("noFiltered", { filter: t(`kinds.${filter}`) })}</p>
         ) : (
           <WorkflowTree
             nodes={tree}
@@ -193,6 +190,7 @@ function WorkflowTree({
   isFolderOpen: (path: string) => boolean;
   onToggleFolder: (path: string) => void;
 }) {
+  const t = useTranslations("viewer.launchPanel");
   return (
     <ul className="workflows">
       {nodes.map((node) =>
@@ -236,7 +234,11 @@ function WorkflowTree({
                   client={client}
                   plugins={plugins}
                   workflowPath={node.workflow.relative_path}
-                  submitLabel={`Launch ${node.workflow.name ?? "workflow"}`}
+                  submitLabel={
+                    node.workflow.name === null
+                      ? t("launchWorkflow")
+                      : t("launch", { name: node.workflow.name })
+                  }
                   idBase={`launch-${node.workflow.relative_path}`}
                   testIdPrefix="launch"
                   containerTestId={`launch-form-${node.workflow.relative_path}`}
@@ -252,7 +254,7 @@ function WorkflowTree({
                   className="workflow-error-detail"
                   data-testid={`workflow-error-${node.workflow.relative_path}`}
                 >
-                  {node.workflow.error?.message ?? "This workflow could not be loaded."}
+                  {node.workflow.error?.message ?? t("loadFailed")}
                 </p>
               ))}
           </li>
@@ -275,6 +277,7 @@ function CopyShipped({
   workflow: WorkflowSummary;
   onCopied: (copy: { relativePath: string; rootPath: string }) => void;
 }) {
+  const t = useTranslations("viewer.launchPanel");
   const [phase, setPhase] = useState<"idle" | "sending" | { error: string }>("idle");
   const copy = (): void => {
     setPhase("sending");
@@ -286,9 +289,7 @@ function CopyShipped({
 
   return (
     <div className="launch-form" data-testid={`${testId}-form`}>
-      <p className="pane-note">
-        Shipped workflows are read-only. Copy it to your folder to launch it.
-      </p>
+      <p className="pane-note">{t("shippedReadOnly")}</p>
       <div className="launch-actions">
         <button
           type="button"
@@ -297,7 +298,7 @@ function CopyShipped({
           disabled={phase === "sending"}
           onClick={copy}
         >
-          {phase === "sending" ? "Copying…" : "Copy to mine"}
+          {phase === "sending" ? t("copying") : t("copy")}
         </button>
       </div>
       {typeof phase === "object" && (
@@ -401,20 +402,25 @@ function WorkflowRow({
 /** The lock on a row the Server marks read-only but still opens: a shared workflow another user
  * created (ADR 0088). It runs in place; only its creator edits it. */
 function ReadOnlyTag({ workflow }: { workflow: WorkflowSummary }) {
+  const t = useTranslations("viewer.launchPanel");
   if (!workflow.read_only || workflow.action !== "open") return null;
   return (
-    <span className="workflow-tag" title="Read-only: shared by another user">
-      <span aria-hidden="true">🔒</span>read-only
+    <span className="workflow-tag" title={t("readOnlyTitle")}>
+      <span aria-hidden="true">🔒</span>
+      {t("readOnly")}
     </span>
   );
 }
 
 /** The root/nested/invalid flag from `is_root` (§6): a dedupe hint, not a launchability gate. */
 function RootTag({ workflow }: { workflow: WorkflowSummary }) {
-  if (!workflow.valid) return <span className="workflow-tag workflow-tag--invalid">invalid</span>;
+  const t = useTranslations("viewer.launchPanel.kinds");
+  if (!workflow.valid) {
+    return <span className="workflow-tag workflow-tag--invalid">{t("invalid")}</span>;
+  }
   return workflow.is_root ? (
-    <span className="workflow-tag workflow-tag--root">root</span>
+    <span className="workflow-tag workflow-tag--root">{t("root")}</span>
   ) : (
-    <span className="workflow-tag workflow-tag--nested">nested</span>
+    <span className="workflow-tag workflow-tag--nested">{t("nested")}</span>
   );
 }

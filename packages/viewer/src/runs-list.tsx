@@ -1,6 +1,6 @@
 import { isTerminal, type PathApiClient, type RunStatus, shortGuid } from "@path/client-core";
 import { useEffect, useRef, useState } from "react";
-import { useLocale } from "use-intl";
+import { useLocale, useTranslations } from "use-intl";
 import { DeleteButton } from "./delete-button.js";
 import { formatTimestamp } from "./format-time.js";
 import { PaneError, PaneLoading } from "./pane-note.js";
@@ -73,6 +73,7 @@ export function RunsList({
   reloadNonce,
   resumeFrom,
 }: RunsListProps) {
+  const t = useTranslations("viewer");
   const locale = useLocale();
   // `null` (nothing open) never reaches a query — the effects short-circuit and the render is idle.
   const scope = typeof workflowId === "string" ? workflowId : undefined;
@@ -111,7 +112,7 @@ export function RunsList({
   if (workflowId === null) {
     return (
       <div className="runs-list">
-        <p className="pane-note">Open a workflow to see its runs.</p>
+        <p className="pane-note">{t("runsList.openWorkflow")}</p>
       </div>
     );
   }
@@ -120,7 +121,7 @@ export function RunsList({
     <div className="runs-list">
       <div className="runs-toolbar">
         <label className="field-label" htmlFor="runs-status-filter">
-          Status
+          {t("runsList.status")}
         </label>
         <select
           id="runs-status-filter"
@@ -128,10 +129,10 @@ export function RunsList({
           value={statusFilter}
           onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}
         >
-          <option value="all">all</option>
+          <option value="all">{t("runsList.all")}</option>
           {FILTER_STATUSES.map((status) => (
             <option key={status} value={status}>
-              {status}
+              {t(`status.${status}`)}
             </option>
           ))}
         </select>
@@ -146,7 +147,11 @@ export function RunsList({
           // Two empty states: "No runs yet." is only true of an unfiltered list, and an operator
           // who narrowed the filter needs to know which of the two they hit.
           <p className="pane-note">
-            {statusFilter === "all" ? "No runs yet." : `No ${statusFilter} runs.`}
+            {statusFilter === "all"
+              ? t("runsList.noRuns")
+              : t("runsList.noFiltered", {
+                  statusFilter: t(`status.${statusFilter}`),
+                })}
           </p>
         ) : (
           <ul className="runs">
@@ -191,10 +196,7 @@ export function RunsList({
                   {open && (
                     <div className="run-actions" data-testid={`run-actions-${run.run_id}`}>
                       {inFlight ? (
-                        <p className="pane-note">
-                          This run is still in flight. Resume and delete become available once it
-                          finishes.
-                        </p>
+                        <p className="pane-note">{t("runsList.inFlight")}</p>
                       ) : (
                         <>
                           {(showResume || showResumeFrom) && (

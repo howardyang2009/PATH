@@ -1,4 +1,5 @@
 import type { parseJsonField } from "@path/client-core";
+import { useTranslations } from "use-intl";
 
 /**
  * One raw-JSON textarea with its live client-side lint line, shared by the launch form's `input`/
@@ -30,7 +31,8 @@ export function JsonField({
   rows: number;
   placeholder?: string;
 }) {
-  const hint = result.ok ? (result.empty ? "empty — field omitted" : "valid JSON") : result.message;
+  const t = useTranslations("viewer.jsonField");
+  const hint = result.ok ? (result.empty ? t("empty") : t("valid")) : result.message;
   return (
     <div className="launch-field">
       {label !== undefined && (

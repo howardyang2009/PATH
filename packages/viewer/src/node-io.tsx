@@ -11,9 +11,10 @@ import {
   runBlobSource,
 } from "@path/client-core";
 import { useState } from "react";
+import { useTranslations } from "use-intl";
 import { AwaitingActions } from "./awaiting-actions.js";
 import { JsonView } from "./json-view.js";
-import { PaneError, PaneLoading } from "./pane-note.js";
+import { PaneError, PaneLoading, type PaneSubject } from "./pane-note.js";
 import { StatusPill } from "./status-pill.js";
 import { type BlobLoad, useRunBlob } from "./use-run-blob.js";
 
@@ -47,6 +48,7 @@ export interface NodeIoProps {
  * Context has no ref column, so it is always fetched and its 404 read as "no context recorded".
  */
 export function NodeIo({ client, run, view, runFiles = EMPTY_RUN_FILE_SET }: NodeIoProps) {
+  const t = useTranslations("viewer");
   const [reloadToken, setReloadToken] = useState(0);
   const settled = isTerminal(run.status);
   // Head facts (display status, last error) come off the view's snapshot; everything else stays on
@@ -105,15 +107,15 @@ export function NodeIo({ client, run, view, runFiles = EMPTY_RUN_FILE_SET }: Nod
           data-testid="node-io-refresh"
           onClick={() => setReloadToken((token) => token + 1)}
         >
-          Refresh
+          {t("nodeIo.refresh")}
         </button>
         <span className="node-io-id-line">
-          <span className="node-id-label">node id</span>
+          <span className="node-id-label">{t("runFacts.nodeId")}</span>
           <span className="node-id">{run.nodeId ?? "—"}</span>
         </span>
       </header>
       <p className="node-io-run">
-        <span className="run-id-label">run id</span>
+        <span className="run-id-label">{t("runFacts.runId")}</span>
         <span className="run-id">{run.runId}</span>
       </p>
 
@@ -128,13 +130,13 @@ export function NodeIo({ client, run, view, runFiles = EMPTY_RUN_FILE_SET }: Nod
 
       {isReuseRow(run) && (
         <p className="node-io-reused" data-testid="node-io-reused">
-          Reused from an earlier run — the input and output below are that run's.
+          {t("nodeIo.reused")}
           <span className="reused-ref">
-            <span className="reused-label">reused root run</span>
-            <span className="run-id">{run.reusedFromRootRunId ?? "(deleted)"}</span>
+            <span className="reused-label">{t("nodeIo.reusedRootRun")}</span>
+            <span className="run-id">{run.reusedFromRootRunId ?? t("nodeIo.deleted")}</span>
           </span>
           <span className="reused-ref">
-            <span className="reused-label">reused run</span>
+            <span className="reused-label">{t("nodeIo.reusedRun")}</span>
             <span className="run-id">{run.reusedFromRunId}</span>
           </span>
         </p>
@@ -142,40 +144,32 @@ export function NodeIo({ client, run, view, runFiles = EMPTY_RUN_FILE_SET }: Nod
 
       {resumedFrom !== null && (
         <p className="node-io-reused" data-testid="node-io-resumed-input">
-          Resumed from an earlier run — the input below is that run's root input.
+          {t("nodeIo.resumed")}
           <span className="reused-ref">
-            <span className="reused-label">resumed-from root run</span>
+            <span className="reused-label">{t("nodeIo.resumedFromRootRun")}</span>
             <span className="run-id">{resumedFrom}</span>
           </span>
         </p>
       )}
 
       <BlobBlock
-        title="Input"
+        subject="input"
         load={input}
         blobRef={inputSource.ref}
         testId="node-io-input"
-        absentNote={
-          resumedFrom === null
-            ? "No input object recorded for this run."
-            : "The resumed-from run recorded no input object."
-        }
+        absentNote={resumedFrom === null ? t("nodeIo.noInput") : t("nodeIo.resumedNoInput")}
       />
       <BlobBlock
-        title="Output"
+        subject="output"
         load={output}
         blobRef={outputSource.ref}
         testId="node-io-output"
         // A run still going has not written its output, a finished one never did; "yet" would
         // promise something that is not coming.
-        absentNote={
-          settled
-            ? "No output object recorded for this run."
-            : "No output object yet — a run writes its output when it finishes."
-        }
+        absentNote={settled ? t("nodeIo.noOutput") : t("nodeIo.noOutputYet")}
       />
       <BlobBlock
-        title="Context"
+        subject="context"
         load={context}
         // Context's on-disk provenance is derived from a sibling blob's ref so the line reads like
         // Input's and Output's (`runs/<root>/<run>/context.json`).
@@ -183,7 +177,7 @@ export function NodeIo({ client, run, view, runFiles = EMPTY_RUN_FILE_SET }: Nod
         testId="node-io-context"
         // An absent context is a run still in flight or one that never reached a verdict — not a
         // failure.
-        absentNote="No context recorded for this run."
+        absentNote={t("nodeIo.noContext")}
       />
       {isRootRun(run) && launchFacts !== undefined && (
         <>
@@ -192,21 +186,21 @@ export function NodeIo({ client, run, view, runFiles = EMPTY_RUN_FILE_SET }: Nod
               stored. */}
           {launchFacts.input !== undefined && (
             <FactBlock
-              title="Override Input"
+              title={t("nodeIo.overrideInput")}
               testId="node-io-override-input"
               value={launchFacts.input}
             />
           )}
           {launchFacts.config !== undefined && (
             <FactBlock
-              title="Override Config"
+              title={t("nodeIo.overrideConfig")}
               testId="node-io-override-config"
               value={launchFacts.config}
             />
           )}
           {launchFacts.workerDefaults !== undefined && (
             <FactBlock
-              title="Launch Worker Defaults"
+              title={t("nodeIo.launchWorkerDefaults")}
               testId="node-io-launch-worker-defaults"
               value={launchFacts.workerDefaults}
             />
@@ -241,21 +235,22 @@ function FactBlock({ title, testId, value }: { title: string; testId: string; va
  * not as JSON.
  */
 function ErrorBlock({ message }: { message: string }) {
+  const t = useTranslations("viewer.nodeIo");
   return (
     <section className="io-block" data-testid="node-io-error" aria-labelledby="node-io-error-title">
       <h3 className="io-title" id="node-io-error-title">
-        Error
+        {t("error")}
       </h3>
       <pre className="node-io-error-message">{message}</pre>
       {/* The error rides the run's `step-finished` event, not a served blob file, so its provenance
           is that event rather than a filename. */}
-      <p className="blob-ref">from the run's step-finished event (event log)</p>
+      <p className="blob-ref">{t("errorSource")}</p>
     </section>
   );
 }
 
 interface BlobBlockProps {
-  title: string;
+  subject: Extract<PaneSubject, "input" | "output" | "context">;
   load: BlobLoad;
   /** The run record's ref, shown as the on-disk provenance of what is on screen. */
   blobRef: string | null;
@@ -264,17 +259,17 @@ interface BlobBlockProps {
   absentNote: string;
 }
 
-function BlobBlock({ title, load, blobRef, testId, absentNote }: BlobBlockProps) {
+function BlobBlock({ subject, load, blobRef, testId, absentNote }: BlobBlockProps) {
+  const t = useTranslations("viewer.nodeIo");
   const titleId = `${testId}-title`;
-  const label = title.toLowerCase();
 
   return (
     <section className="io-block" data-testid={testId} aria-labelledby={titleId}>
       <h3 className="io-title" id={titleId}>
-        {title}
+        {t(subject)}
       </h3>
-      {load.phase === "loading" && <PaneLoading what={label} />}
-      {load.phase === "error" && <PaneError what={label} message={load.message} />}
+      {load.phase === "loading" && <PaneLoading what={subject} />}
+      {load.phase === "error" && <PaneError what={subject} message={load.message} />}
       {load.phase === "ready" &&
         (load.value.present ? (
           <>

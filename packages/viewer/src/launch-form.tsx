@@ -5,6 +5,7 @@ import {
   type WireStepPlugin,
 } from "@path/client-core";
 import { useState } from "react";
+import { useTranslations } from "use-intl";
 import { JsonField } from "./json-field.js";
 import { errorMessage } from "./load-state.js";
 import { WorkerDefaultsEditor, workerDefaultCandidates } from "./worker-defaults.js";
@@ -63,6 +64,7 @@ export function LaunchForm({
   plugins = [],
   workers = [],
 }: LaunchFormProps): JSX.Element {
+  const t = useTranslations("viewer");
   const [input, setInput] = useState("{}");
   const [config, setConfig] = useState("");
   // The launch worker-default table: a `{ <type>: <worker-name> }` map, empty until the operator
@@ -134,8 +136,10 @@ export function LaunchForm({
         aria-expanded={inputOpen}
         onClick={() => setShowInput((shown) => !shown)}
       >
-        {inputOpen ? "▾" : "▸"} Override input (optional)
-        {inputOverride !== undefined && <span className="launch-disclosure-dot"> · set</span>}
+        {inputOpen ? "▾" : "▸"} {t("overrides.overrideInput")}
+        {inputOverride !== undefined && (
+          <span className="launch-disclosure-dot"> · {t("overrides.set")}</span>
+        )}
       </button>
       {inputOpen && (
         <JsonField
@@ -156,14 +160,16 @@ export function LaunchForm({
         aria-expanded={configOpen}
         onClick={() => setShowConfig((shown) => !shown)}
       >
-        {configOpen ? "▾" : "▸"} Override config (optional)
-        {config.trim() !== "" && <span className="launch-disclosure-dot"> · set</span>}
+        {configOpen ? "▾" : "▸"} {t("overrides.overrideConfig")}
+        {config.trim() !== "" && (
+          <span className="launch-disclosure-dot"> · {t("overrides.set")}</span>
+        )}
       </button>
       {configOpen && (
         <JsonField
           id={`${idBase}-config`}
           testId={`${testIdPrefix}-config`}
-          label="config override · JSON"
+          label={t("overrides.configLabel")}
           value={config}
           onChange={setConfig}
           result={configResult}
@@ -184,15 +190,17 @@ export function LaunchForm({
             aria-expanded={showWorkerDefaults}
             onClick={() => setShowWorkerDefaults((shown) => !shown)}
           >
-            {showWorkerDefaults ? "▾" : "▸"} Launch worker defaults (optional)
-            {workerDefaultCount > 0 && <span className="launch-disclosure-dot"> · set</span>}
+            {showWorkerDefaults ? "▾" : "▸"} {t("launchForm.workerDefaults")}
+            {workerDefaultCount > 0 && (
+              <span className="launch-disclosure-dot"> · {t("overrides.set")}</span>
+            )}
           </button>
           {showWorkerDefaults && (
             <WorkerDefaultsEditor
               plugins={plugins}
               value={workerDefaults}
               onChange={setWorkerDefaults}
-              hint="The worker each type's un-pinned steps use across this run. A per-type selection, not config: a step's own worker still wins, and this outranks the file's own default."
+              hint={t("launchForm.workerDefaultsHint")}
             />
           )}
         </>
@@ -206,7 +214,7 @@ export function LaunchForm({
           disabled={!canLaunch}
           onClick={launch}
         >
-          {submit.phase === "sending" ? "Launching…" : submitLabel}
+          {submit.phase === "sending" ? t("launchForm.sending") : submitLabel}
           {warningCount > 0 && (
             <span className="run-warning-badge" data-testid={`${testIdPrefix}-warning-badge`}>
               ⚠ {warningCount}
@@ -217,8 +225,7 @@ export function LaunchForm({
 
       {warningCount > 0 && gate === null && (
         <p className="run-warning" data-testid={`${testIdPrefix}-warning`} role="note">
-          {warningCount} unresolved {warningCount === 1 ? "warning" : "warnings"} — the run may fail
-          at start.
+          {t("launchForm.warning", { count: warningCount })}
         </p>
       )}
 

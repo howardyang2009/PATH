@@ -8,6 +8,7 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
+import { useTranslations } from "use-intl";
 
 const AuthContext = createContext<AuthSession | null>(null);
 
@@ -29,6 +30,7 @@ export function AuthGate({ auth, children }: AuthGateProps) {
 }
 
 function SignInScreen({ auth }: { auth: AuthSession }) {
+  const t = useTranslations("viewer.authGate");
   useEffect(() => {
     void auth.signIn();
   }, [auth]);
@@ -36,9 +38,9 @@ function SignInScreen({ auth }: { auth: AuthSession }) {
     <main className="sign-in-screen">
       <span className="brand">PATH</span>
       <span className="brand-by">by RheinWeg</span>
-      <p>Sign in to continue.</p>
+      <p>{t("prompt")}</p>
       <button type="button" onClick={() => void auth.signIn()}>
-        Sign in
+        {t("signIn")}
       </button>
     </main>
   );
