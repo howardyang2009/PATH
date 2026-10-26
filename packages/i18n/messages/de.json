@@ -206,6 +206,7 @@
       "cancelled": "abgebrochen",
       "pending": "ausstehend"
     },
+    "verbatim": "{text}",
     "workerDefaults": {
       "type": "Schritttyp",
       "worker": "Worker",
@@ -216,7 +217,138 @@
   },
   "designer": {
     "app": {
-      "title": "PATH by RheinWeg · designer"
+      "title": "PATH by RheinWeg · designer",
+      "discardUnsaved": "Ungespeicherte Änderungen verwerfen?",
+      "deleteTemplate": "Vorlage „{name}“ löschen? Sie wird von der Festplatte entfernt; dies kann nicht rückgängig gemacht werden.{unsaved, select, true { Ungespeicherte Änderungen gehen ebenfalls verloren.} other {}}",
+      "deleteWorkflow": "„{path}“ löschen? Die Datei wird von der Festplatte entfernt; dies kann nicht rückgängig gemacht werden.{unsaved, select, true { Ungespeicherte Änderungen gehen ebenfalls verloren.} other {}}",
+      "downloadDirty": "Ungespeicherte Änderungen sind nicht enthalten. Die gespeicherte Datei herunterladen?"
+    },
+    "document": {
+      "readOnly": "Schreibgeschützt: Nur der Ersteller kann speichern. Verwenden Sie „Speichern unter“.",
+      "gone": "Nicht mehr verfügbar"
+    },
+    "editingToolbar": {
+      "modes": {
+        "workflow": "Workflow",
+        "template": "Vorlage"
+      },
+      "editMode": "Bearbeitungsmodus",
+      "newWorkflow": "Neuer Workflow (nicht gespeichert)",
+      "workflowFileTitle": "Speichern schreibt in diese Datei zurück",
+      "newTemplate": "Neue Vorlage (nicht gespeichert)",
+      "templateFileTitle": "Speichern schreibt in diese Vorlage zurück",
+      "readOnlyTag": " ({readOnly, select, shipped {mitgeliefert} other {geteilt}}, schreibgeschützt)",
+      "conflictTitle": "Diese Datei hat sich auf der Festplatte geändert, seit Sie sie geöffnet haben. Ihr Speichern wurde abgelehnt, damit diese Änderung nicht überschrieben wird. Laden Sie die neueste Fassung neu und wenden Sie Ihre Änderungen dann erneut an.",
+      "conflict": "Speichern abgelehnt: Diese Datei hat sich auf der Festplatte geändert, seit Sie sie geöffnet haben",
+      "reload": "Datei neu laden",
+      "couldNotSave": "Speichern nicht möglich: {message}",
+      "couldNotDelete": "Löschen nicht möglich: {message}",
+      "savedAsTemplate": "Als Vorlage „{name}“ gespeichert",
+      "deleting": "Wird gelöscht…",
+      "deleted": "Gelöscht",
+      "unsavedEdits": "Ungespeicherte Änderungen",
+      "idsStamped": "IDs beim Import vergeben – nicht gespeichert (ADR 0015)",
+      "nonCanonical": "Nicht kanonische Datei: Speichern formatiert sie neu",
+      "saved": "Gespeichert",
+      "file": "Datei",
+      "new": "Neu",
+      "open": "Öffnen…",
+      "saveAs": "Speichern unter…",
+      "download": "Herunterladen",
+      "downloadTitle": "Die gespeicherte Datei herunterladen",
+      "saveFirst": "Zuerst speichern",
+      "delete": "Löschen",
+      "undo": "Rückgängig",
+      "undoTitle": "Rückgängig ({shortcut})",
+      "redo": "Wiederholen",
+      "redoTitle": "Wiederholen ({shortcut})",
+      "saveTitle": "Speichern ({shortcut})",
+      "heldByOther": "Eine andere Sitzung bearbeitet diese Datei.",
+      "heldByOtherExpiring": "Eine andere Sitzung bearbeitet diese Datei – ihre Bearbeitungssperre läuft ab in <countdown></countdown>.",
+      "takeOverQuestion": "Trotzdem übernehmen?",
+      "confirmTakeover": "Übernahme bestätigen",
+      "cancel": "Abbrechen",
+      "takeOver": "Übernehmen",
+      "leaseLost": "Bearbeitungssperre verloren. Eine andere Sitzung hat sie möglicherweise übernommen, oder Ihre Sperre ist abgelaufen.",
+      "reacquire": "Erneut anfordern",
+      "leaseError": "Bearbeitungssperre konnte nicht angefordert werden: {message}",
+      "countdown": "{seconds} s"
+    },
+    "newFileDialog": {
+      "title": "Neuen Workflow speichern",
+      "hint": "Wählen Sie, wo im Projekt dieser Workflow gespeichert wird.",
+      "saveTo": "Speichern in",
+      "mine": "Meine",
+      "shared": "Geteilt",
+      "directory": "Verzeichnis",
+      "projectRoot": "(Projektverzeichnis)",
+      "filename": "Dateiname",
+      "finding": "Ihr Workflow-Ordner wird gesucht…",
+      "savesToPending": "Speichert in …",
+      "savesTo": "Speichert in <code>{path}</code>",
+      "savesToNewFolder": "Speichert in <code>{path}</code> (neuer Ordner)",
+      "exists": "Unter diesem Pfad gibt es bereits einen Workflow. Wählen Sie einen anderen Namen.",
+      "backslash": "Trennen Sie Ordner mit /, nicht mit \\.",
+      "emptySegment": "Ordner- und Dateinamen dürfen nicht leer sein.",
+      "dotSegment": "Namen dürfen nicht mit einem Punkt beginnen."
+    },
+    "openWorkflow": {
+      "notJson": "Öffnen nicht möglich: Die Datei ist kein gültiges JSON ({error}).",
+      "unregisteredTypes": "Öffnen nicht möglich: Diese Datei nennt {count, plural, one {# Schritttyp, der im Plugin-Verzeichnis des Servers fehlt} other {# Schritttypen, die im Plugin-Verzeichnis des Servers fehlen}}.",
+      "unregisteredType": "  • „{type}“ – fügen Sie {folder} zu diesem PATH-Verzeichnisbaum hinzu",
+      "unregisteredRetry": "Hat der Server diese Plugins inzwischen geladen, aktualisieren Sie das Plugin-Verzeichnis und versuchen Sie es erneut.",
+      "invalidIds": "Öffnen nicht möglich: {count, plural, one {# Knoten-ID ist keine gültige UUIDv4} other {# Knoten-IDs sind keine gültigen UUIDv4s}}.",
+      "invalidId": "  • {node} hat eine ID, die keine UUIDv4 ist: {value}",
+      "duplicateIds": "Öffnen nicht möglich: {count, plural, one {# Knoten-ID wird} other {# Knoten-IDs werden}} mehrfach verwendet.",
+      "duplicateId": "  • ID {id} wird geteilt von {nodes}",
+      "nodeNamed": "„{name}“",
+      "nodeAt": "bei {path}",
+      "theWorkflow": "der Workflow",
+      "nodeList": "{first}, {rest}",
+      "notValid": "Öffnen nicht möglich: Die Datei ist ungültig."
+    },
+    "saveDialog": {
+      "placeholder": "Name oder Ordner/Name",
+      "subfolderHint": "Mit <code>/</code> speichern Sie in einem Unterordner. Fehlende Ordner werden angelegt.",
+      "cancel": "Abbrechen",
+      "saving": "Wird gespeichert…",
+      "create": "Erstellen"
+    },
+    "savePlan": {
+      "nothingOpen": "Nichts zum Speichern geöffnet.",
+      "noPath": "Der Entwurf hat noch keinen Pfad.",
+      "childExists": "Unter {path} gibt es bereits einen Workflow. Wählen Sie ein anderes Ziel für den Verweis.",
+      "noNewFile": "Kein Entwurf einer neuen Datei zum Speichern.",
+      "noWorkflow": "Kein Workflow zum Speichern.",
+      "noNewTemplate": "Keine neue Vorlage zum Speichern.",
+      "noTemplateSource": "Keine Quellvorlage zum Speichern."
+    },
+    "saveTemplateAsDialog": {
+      "titleFromWorkflow": "Workflow als Vorlage speichern",
+      "titleCopy": "Als neue Vorlage speichern",
+      "titleNew": "Neue Vorlage speichern",
+      "hintFromWorkflow": "Die Vorlage ist eine Kopie des Workflow-Inhalts mit neuer Identität und wird bei den Vorlagen dieses Projekts gespeichert. Der Workflow bleibt geöffnet. Wählen Sie den geteilten Ordner, um sie mit dem Team zu teilen.",
+      "hintCopy": "Die Kopie erhält eine neue Identität und wird bei den Vorlagen dieses Projekts gespeichert.",
+      "hintNew": "Die Vorlage wird bei den Vorlagen dieses Projekts gespeichert.",
+      "folder": "Ordner",
+      "myTemplates": "(meine Vorlagen)",
+      "sharedTemplates": "(geteilte Vorlagen)",
+      "name": "Name",
+      "nameLabel": "Name der Vorlage",
+      "description": "Beschreibung",
+      "descriptionLabel": "Beschreibung der Vorlage",
+      "descriptionPlaceholder": "Was diese Vorlage tut. Wird auf der Palettenkarte angezeigt.",
+      "badFolder": "Ordnernamen dürfen nicht leer sein, nicht mit einem Punkt beginnen und keinen Backslash enthalten.",
+      "badName": "Verwenden Sie Kleinbuchstaben, Ziffern und Bindestriche, beginnend mit einem Buchstaben.",
+      "needsDescription": "Eine Vorlage braucht eine Beschreibung.",
+      "keepsBody": "Eine Vorlage behält nur den Inhalt.",
+      "keepsBodyDropping": "Eine Vorlage behält nur den Inhalt. {droppedFields} werden verworfen.",
+      "exists": "Eine Vorlage mit diesem Namen gibt es bereits. Wählen Sie einen anderen Namen."
+    },
+    "useArmed": {
+      "readFailed": "„{name}“ konnte nicht gelesen werden: {error}",
+      "insertFailed": "„{name}“ kann nicht eingefügt werden: {error}",
+      "invalidTemplate": "ungültige Vorlage"
     }
   }
 }

@@ -1,3 +1,4 @@
+import type { Message } from "@path/i18n";
 import { FORMAT_VERSION, type WorkflowFile } from "@path/schema";
 import type { EditKey } from "../edit-key.js";
 import type { OpenResult } from "../open-workflow.js";
@@ -100,11 +101,11 @@ export type SaveState =
   | { phase: "idle" }
   | { phase: "saving" }
   | { phase: "saved" }
-  | { phase: "conflict"; message: string }
-  | { phase: "error"; message: string }
+  | { phase: "conflict"; message: Message }
+  | { phase: "error"; message: Message }
   | { phase: "deleting" }
   | { phase: "deleted" }
-  | { phase: "delete-error"; message: string }
+  | { phase: "delete-error"; message: Message }
   | { phase: "saved-as-template"; name: string };
 
 /** A frame's opened workflow result, or `null` when it is loading, failed to fetch, or is a

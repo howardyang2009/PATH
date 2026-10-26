@@ -1,5 +1,6 @@
 import type { PathApiClient, TemplateSummary, WireStepPlugin } from "@path/client-core";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useTranslations } from "use-intl";
 import { AppShell } from "./app-shell.js";
 import { Canvas } from "./canvas.js";
 import {
@@ -60,6 +61,7 @@ export function App({
   client: PathApiClient;
   initialPath?: string;
 }): JSX.Element {
+  const t = useTranslations("designer.app");
   const session = useOpenFile(client, initialPath);
   const arming = useArmed(client);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -124,7 +126,7 @@ export function App({
   // untouched New buffer has none, so it goes quietly.
   const confirmDiscard = (): boolean =>
     !session.frames.some((frame) => frameHasUnsavedWork(frame)) ||
-    window.confirm("Discard unsaved changes?");
+    window.confirm(t("discardUnsaved"));
   const inTemplateMode = session.mode === "template";
   const onNew = (): void => {
     if (!confirmDiscard()) return;
@@ -186,15 +188,12 @@ export function App({
   const deletePlan = planDelete(session);
   const onDelete = (): void => {
     if (!deletePlan) return;
-    const target =
-      deletePlan.kind === "template" ? `template "${deletePlan.name}"` : `"${deletePlan.path}"`;
-    const unsaved = session.frames.some((frame) => frameHasUnsavedWork(frame))
-      ? " Unsaved changes are lost too."
-      : "";
-    if (
-      window.confirm(`Delete ${target}? This removes it from disk and cannot be undone.${unsaved}`)
-    )
-      session.deleteActive(sessionId);
+    const unsaved = String(session.frames.some((frame) => frameHasUnsavedWork(frame)));
+    const question =
+      deletePlan.kind === "template"
+        ? t("deleteTemplate", { name: deletePlan.name, unsaved })
+        : t("deleteWorkflow", { path: deletePlan.path, unsaved });
+    if (window.confirm(question)) session.deleteActive(sessionId);
   };
   // Dirty is content-equality against the active frame's baseline, the same fact launch and Save
   // gate on — not a mutation flag. `active` is the frame the buffer and its baseline live on.
@@ -203,8 +202,7 @@ export function App({
   const downloadPlan = planDownload(session);
   const onDownload = (): void => {
     if (!downloadPlan) return;
-    if (dirty && !window.confirm("Unsaved edits are not included. Download the saved file?"))
-      return;
+    if (dirty && !window.confirm(t("downloadDirty"))) return;
     downloadFile(client, downloadPlan).catch((error: unknown) =>
       window.alert(`Could not download: ${downloadFailure(error)}`),
     );

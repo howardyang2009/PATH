@@ -1,3 +1,4 @@
+import { verbatim } from "@path/i18n";
 import type { WorkflowFile } from "@path/schema";
 import { describe, expect, it } from "vitest";
 import { type EditorChromeInput, editorChrome } from "../src/editor-chrome.js";
@@ -57,7 +58,8 @@ describe("editorChrome — the toolbar's one capability value", () => {
 
     expect(chrome(dirtyFrame(), {}, { saveState: { phase: "deleting" } }).busy).toBe(true);
     expect(
-      chrome(dirtyFrame(), {}, { saveState: { phase: "conflict", message: "changed" } }).save,
+      chrome(dirtyFrame(), {}, { saveState: { phase: "conflict", message: verbatim("changed") } })
+        .save,
     ).toBe(false);
   });
 

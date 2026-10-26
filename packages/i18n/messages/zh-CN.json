@@ -206,6 +206,7 @@
       "cancelled": "已取消",
       "pending": "待处理"
     },
+    "verbatim": "{text}",
     "workerDefaults": {
       "type": "步骤类型",
       "worker": "执行器",
@@ -216,7 +217,138 @@
   },
   "designer": {
     "app": {
-      "title": "PATH by RheinWeg · designer"
+      "title": "PATH by RheinWeg · designer",
+      "discardUnsaved": "放弃未保存的更改？",
+      "deleteTemplate": "删除模板“{name}”？此操作会将其从磁盘移除，且无法撤销。{unsaved, select, true {未保存的更改也将丢失。} other {}}",
+      "deleteWorkflow": "删除“{path}”？此操作会将其从磁盘移除，且无法撤销。{unsaved, select, true {未保存的更改也将丢失。} other {}}",
+      "downloadDirty": "未保存的更改不会包含在内。要下载已保存的文件吗？"
+    },
+    "document": {
+      "readOnly": "只读：只有创建者可以保存。请使用“另存为”。",
+      "gone": "已不可用"
+    },
+    "editingToolbar": {
+      "modes": {
+        "workflow": "工作流",
+        "template": "模板"
+      },
+      "editMode": "编辑模式",
+      "newWorkflow": "新工作流（未保存）",
+      "workflowFileTitle": "保存将写回此文件",
+      "newTemplate": "新模板（未保存）",
+      "templateFileTitle": "保存将写回此模板",
+      "readOnlyTag": "（{readOnly, select, shipped {内置} other {共享}}，只读）",
+      "conflictTitle": "此文件在打开后已在磁盘上被修改。为避免覆盖该修改，保存已被拒绝。请重新加载最新版本，然后重新应用修改。",
+      "conflict": "保存被拒绝：此文件在打开后已在磁盘上被修改",
+      "reload": "重新加载文件",
+      "couldNotSave": "无法保存：{message}",
+      "couldNotDelete": "无法删除：{message}",
+      "savedAsTemplate": "已另存为模板“{name}”",
+      "deleting": "正在删除…",
+      "deleted": "已删除",
+      "unsavedEdits": "未保存的更改",
+      "idsStamped": "导入时已生成 ID，尚未保存（ADR 0015）",
+      "nonCanonical": "非规范文件：保存时将重新格式化",
+      "saved": "已保存",
+      "file": "文件",
+      "new": "新建",
+      "open": "打开…",
+      "saveAs": "另存为…",
+      "download": "下载",
+      "downloadTitle": "下载已保存的文件",
+      "saveFirst": "请先保存",
+      "delete": "删除",
+      "undo": "撤销",
+      "undoTitle": "撤销（{shortcut}）",
+      "redo": "重做",
+      "redoTitle": "重做（{shortcut}）",
+      "saveTitle": "保存（{shortcut}）",
+      "heldByOther": "另一个会话正在编辑此文件。",
+      "heldByOtherExpiring": "另一个会话正在编辑此文件，其编辑锁将在 <countdown></countdown> 后过期。",
+      "takeOverQuestion": "仍要接管吗？",
+      "confirmTakeover": "确认接管",
+      "cancel": "取消",
+      "takeOver": "接管",
+      "leaseLost": "编辑锁已丢失。可能已被另一个会话接管，或编辑锁已过期。",
+      "reacquire": "重新获取",
+      "leaseError": "无法获取编辑锁：{message}",
+      "countdown": "{seconds} 秒"
+    },
+    "newFileDialog": {
+      "title": "保存新工作流",
+      "hint": "选择此工作流在项目中的保存位置。",
+      "saveTo": "保存到",
+      "mine": "我的",
+      "shared": "共享",
+      "directory": "目录",
+      "projectRoot": "（项目目录）",
+      "filename": "文件名",
+      "finding": "正在查找工作流文件夹…",
+      "savesToPending": "保存到…",
+      "savesTo": "保存到 <code>{path}</code>",
+      "savesToNewFolder": "保存到 <code>{path}</code>（新文件夹）",
+      "exists": "该路径下已存在工作流。请换一个名称。",
+      "backslash": "请使用 / 分隔文件夹，而不是 \\。",
+      "emptySegment": "文件夹名和文件名不能为空。",
+      "dotSegment": "名称不能以点开头。"
+    },
+    "openWorkflow": {
+      "notJson": "无法打开：文件不是有效的 JSON（{error}）。",
+      "unregisteredTypes": "无法打开：此文件使用了 {count, plural, other {# 个}}服务器插件注册表中没有的步骤类型。",
+      "unregisteredType": "  • “{type}”：请将 {folder} 添加到此 PATH 目录树",
+      "unregisteredRetry": "如果服务器之后已加载这些插件，请刷新插件注册表后重试。",
+      "invalidIds": "无法打开：{count, plural, other {# 个节点 ID}}不是有效的 UUIDv4。",
+      "invalidId": "  • {node} 的 ID 不是 UUIDv4：{value}",
+      "duplicateIds": "无法打开：{count, plural, other {# 个节点 ID}}被重复使用。",
+      "duplicateId": "  • ID {id} 被以下节点共用：{nodes}",
+      "nodeNamed": "“{name}”",
+      "nodeAt": "位于 {path}",
+      "theWorkflow": "工作流",
+      "nodeList": "{first}、{rest}",
+      "notValid": "无法打开：文件未通过校验。"
+    },
+    "saveDialog": {
+      "placeholder": "名称或文件夹/名称",
+      "subfolderHint": "使用 <code>/</code> 保存到子文件夹。缺少的文件夹会自动创建。",
+      "cancel": "取消",
+      "saving": "正在保存…",
+      "create": "创建"
+    },
+    "savePlan": {
+      "nothingOpen": "没有可保存的打开内容。",
+      "noPath": "草稿还没有路径。",
+      "childExists": "{path} 已存在工作流。请为该引用选择其他目标。",
+      "noNewFile": "没有可保存的新文件草稿。",
+      "noWorkflow": "没有可保存的工作流。",
+      "noNewTemplate": "没有可保存的新模板。",
+      "noTemplateSource": "没有可保存的模板源。"
+    },
+    "saveTemplateAsDialog": {
+      "titleFromWorkflow": "将工作流另存为模板",
+      "titleCopy": "另存为新模板",
+      "titleNew": "保存新模板",
+      "hintFromWorkflow": "模板是工作流主体的副本，拥有新的标识，保存在此项目的模板中。工作流保持打开。选择共享文件夹即可与团队共享。",
+      "hintCopy": "副本将获得新的标识，并保存在此项目的模板中。",
+      "hintNew": "模板将保存在此项目的模板中。",
+      "folder": "文件夹",
+      "myTemplates": "（我的模板）",
+      "sharedTemplates": "（共享模板）",
+      "name": "名称",
+      "nameLabel": "模板名称",
+      "description": "描述",
+      "descriptionLabel": "模板描述",
+      "descriptionPlaceholder": "此模板的用途，会显示在面板卡片上。",
+      "badFolder": "文件夹名不能为空、不能以点开头，也不能包含反斜杠。",
+      "badName": "请使用小写字母、数字和连字符，并以字母开头。",
+      "needsDescription": "模板需要描述。",
+      "keepsBody": "模板只保留主体。",
+      "keepsBodyDropping": "模板只保留主体。{droppedFields} 将被丢弃。",
+      "exists": "同名模板已存在。请换一个名称。"
+    },
+    "useArmed": {
+      "readFailed": "无法读取“{name}”：{error}",
+      "insertFailed": "无法插入“{name}”：{error}",
+      "invalidTemplate": "无效的模板"
     }
   }
 }

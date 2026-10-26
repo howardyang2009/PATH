@@ -4,6 +4,7 @@ import {
   PathApiError,
   type WireStepPlugin,
 } from "@path/client-core";
+import { verbatim } from "@path/i18n";
 import { FORMAT_VERSION, type WorkflowFile, type WorkflowNode } from "@path/schema";
 import { errorMessage } from "@path/viewer";
 import { openWorkflowFile } from "./open-workflow.js";
@@ -112,7 +113,7 @@ export async function writeDocument(
             });
     return { ok: true, ...(result satisfies WriteSuccess) };
   } catch (error) {
-    const message = errorMessage(error);
+    const message = verbatim(errorMessage(error));
     if (error instanceof PathApiError) {
       const creates =
         write.to === "new-template" || (write.to === "workflow" && write.ifMatch === undefined);
@@ -125,10 +126,10 @@ export async function writeDocument(
         return {
           ok: false,
           conflict: null,
-          message: "Read-only: only the creator can save. Use Save as.",
+          message: { key: "designer.document.readOnly" },
         };
       if (!creates && error.status === 404)
-        return { ok: false, conflict: null, message: "No longer available" };
+        return { ok: false, conflict: null, message: { key: "designer.document.gone" } };
     }
     return { ok: false, conflict: null, message };
   }

@@ -1,10 +1,12 @@
 import type { RunStatus, WireStepPlugin } from "@path/client-core";
+import { useMessage } from "@path/i18n/react";
 import type { WorkflowFile } from "@path/schema";
 import type { MouseEvent } from "react";
 import { BlockTree, type DescendHandler } from "./block-tree.js";
 import { ConflictProvider } from "./conflict-context.js";
 import { createEditor, type EditorApi } from "./editor-api.js";
 import { GotoProvider } from "./goto-context.js";
+import type { RefusalText } from "./open-workflow.js";
 import { defaultLeafKind } from "./palette-data.js";
 import { type Problem, problemMarks } from "./problems.js";
 import { ProblemsPanel } from "./problems-panel.js";
@@ -301,13 +303,13 @@ function FrameView({
       );
     }
     case "unregistered-types":
-      return <Refusal heading="Unregistered step types" message={result.message} />;
+      return <OpenRefusal heading="Unregistered step types" refusal={result} />;
     case "duplicate-ids":
-      return <Refusal heading="Duplicate node ids" message={result.message} />;
+      return <OpenRefusal heading="Duplicate node ids" refusal={result} />;
     case "invalid-ids":
-      return <Refusal heading="Invalid node ids" message={result.message} />;
+      return <OpenRefusal heading="Invalid node ids" refusal={result} />;
     case "invalid":
-      return <Refusal heading="Cannot open the file" message={result.message} />;
+      return <OpenRefusal heading="Cannot open the file" refusal={result} />;
   }
 }
 
@@ -330,6 +332,13 @@ function StartBody({ editor }: { editor: EditorApi }): JSX.Element {
       ) : null}
     </section>
   );
+}
+
+/** An open refusal: its headline, then one line per detail. */
+function OpenRefusal({ heading, refusal }: { heading: string; refusal: RefusalText }): JSX.Element {
+  const render = useMessage();
+  const lines = [refusal.message, ...refusal.details].map(render);
+  return <Refusal heading={heading} message={lines.join("\n")} />;
 }
 
 /** A legible refusal banner. The message keeps its line breaks (the aggregate lists one offender

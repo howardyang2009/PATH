@@ -1,4 +1,5 @@
 import type { TemplateSummary, WireStepPlugin } from "@path/client-core";
+import { useMessage } from "@path/i18n/react";
 import { must } from "@path/schema";
 import { useState } from "react";
 import { type PaletteEntry, type PaletteSubTab, paletteGroups } from "./palette-data.js";
@@ -202,6 +203,7 @@ function TemplatesTab({
   onEditTemplate: (template: TemplateSummary) => void;
   canEditTemplates: boolean;
 }) {
+  const renderMessage = useMessage();
   if (templateList.phase === "loading") return <p className="palette-note">Loading templates…</p>;
   if (templateList.phase === "error") {
     return (
@@ -215,7 +217,7 @@ function TemplatesTab({
     <>
       {arming.templateError !== null ? (
         <p className="palette-note palette-note-error" role="alert">
-          {arming.templateError}
+          {renderMessage(arming.templateError)}
         </p>
       ) : null}
       {/* One kind only (ADR 0063), so the tab lists the templates with no group heading, in server

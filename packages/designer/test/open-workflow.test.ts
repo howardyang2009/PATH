@@ -1,5 +1,7 @@
 import { DEFAULT_PLUGINS } from "@path/client-core/test-utils";
+import { loadMessages, renderMessage } from "@path/i18n";
 import { FORMAT_VERSION } from "@path/schema";
+import { createTranslator } from "use-intl/core";
 import { describe, expect, it } from "vitest";
 import { openWorkflowFile } from "../src/open-workflow.js";
 
@@ -88,9 +90,21 @@ describe("openWorkflowFile", () => {
       { type: "api-call", folder: "packages/engine/plugin/step-plugin/api-call/" },
       { type: "grpc", folder: "packages/engine/plugin/step-plugin/grpc/" },
     ]);
-    expect(result.message).toContain("packages/engine/plugin/step-plugin/api-call/");
-    expect(result.message).toContain("packages/engine/plugin/step-plugin/grpc/");
-    expect(result.message).toContain("refresh the registry");
+    expect(result.message).toEqual({
+      key: "designer.openWorkflow.unregisteredTypes",
+      params: { count: 2 },
+    });
+    expect(result.details).toEqual([
+      {
+        key: "designer.openWorkflow.unregisteredType",
+        params: { type: "api-call", folder: "packages/engine/plugin/step-plugin/api-call/" },
+      },
+      {
+        key: "designer.openWorkflow.unregisteredType",
+        params: { type: "grpc", folder: "packages/engine/plugin/step-plugin/grpc/" },
+      },
+      { key: "designer.openWorkflow.unregisteredRetry" },
+    ]);
   });
 
   it("names an absent type nested inside a block, not just top-level ones", () => {
@@ -127,9 +141,23 @@ describe("openWorkflowFile", () => {
 
     expect(result.status).toBe("duplicate-ids");
     if (result.status !== "duplicate-ids") return;
-    expect(result.message).toContain(uuid(2));
-    expect(result.message).toContain('"draft"');
-    expect(result.message).toContain('"fan"');
+    const named = (name: string) => ({ key: "designer.openWorkflow.nodeNamed", params: { name } });
+    expect(result.message).toEqual({
+      key: "designer.openWorkflow.duplicateIds",
+      params: { count: 1 },
+    });
+    expect(result.details).toEqual([
+      {
+        key: "designer.openWorkflow.duplicateId",
+        params: {
+          id: JSON.stringify(uuid(2)),
+          nodes: {
+            key: "designer.openWorkflow.nodeList",
+            params: { first: named("draft"), rest: named("fan") },
+          },
+        },
+      },
+    ]);
   });
 
   it("refuses a file with an invalid-format id, naming the node", () => {
@@ -139,8 +167,19 @@ describe("openWorkflowFile", () => {
 
     expect(result.status).toBe("invalid-ids");
     if (result.status !== "invalid-ids") return;
-    expect(result.message).toContain('"draft"');
-    expect(result.message).toContain("not-a-uuid");
+    expect(result.message).toEqual({
+      key: "designer.openWorkflow.invalidIds",
+      params: { count: 1 },
+    });
+    expect(result.details).toEqual([
+      {
+        key: "designer.openWorkflow.invalidId",
+        params: {
+          node: { key: "designer.openWorkflow.nodeNamed", params: { name: "draft" } },
+          value: '"not-a-uuid"',
+        },
+      },
+    ]);
   });
 
   it("checks portability before identity: an unregistered type wins over a duplicate id", () => {
@@ -155,6 +194,12 @@ describe("openWorkflowFile", () => {
   it("reports a non-JSON body as invalid, not a crash", () => {
     const result = openWorkflowFile("{ not json", DEFAULT_PLUGINS);
     expect(result.status).toBe("invalid");
+    if (result.status !== "invalid") return;
+    expect(result.message).toEqual({
+      key: "designer.openWorkflow.notJson",
+      params: { error: expect.any(String) },
+    });
+    expect(result.details).toEqual([]);
   });
 
   it("reports a superseded @2 format with the codemod remedy, via the schema parse", () => {
@@ -163,6 +208,39 @@ describe("openWorkflowFile", () => {
     const result = openWorkflowFile(JSON.stringify(file), DEFAULT_PLUGINS);
     expect(result.status).toBe("invalid");
     if (result.status !== "invalid") return;
-    expect(result.message).toContain("scripts/archive/migrate-workflow-format-v3.ts");
+    expect(result.message).toEqual({ key: "designer.openWorkflow.notValid" });
+    expect(result.details).toContainEqual({
+      key: "shared.verbatim",
+      params: { text: expect.stringContaining("scripts/archive/migrate-workflow-format-v3.ts") },
+    });
+  });
+});
+
+describe("openWorkflowFile refusals in en", () => {
+  async function english(result: ReturnType<typeof openWorkflowFile>): Promise<string> {
+    if (result.status === "opened") throw new Error("expected a refusal");
+    const t = createTranslator({ locale: "en", messages: await loadMessages("en") });
+    return [result.message, ...result.details].map((m) => renderMessage(t, m)).join("\n");
+  }
+
+  it("reads an absent type and a duplicate id as before", async () => {
+    const absent = validFile();
+    (absent.body as unknown[]).push({ type: "grpc", id: uuid(21), name: "call-b" });
+    expect(await english(openWorkflowFile(JSON.stringify(absent), DEFAULT_PLUGINS))).toBe(
+      [
+        "Cannot open: this file names 1 step type absent from the server's registry.",
+        '  • "grpc" — add packages/engine/plugin/step-plugin/grpc/ to this PATH tree',
+        "If the server has since loaded these plugins, refresh the registry and retry.",
+      ].join("\n"),
+    );
+
+    const duplicate = validFile();
+    (duplicate.body as Record<string, unknown>[])[1]!.id = uuid(2);
+    expect(await english(openWorkflowFile(JSON.stringify(duplicate), DEFAULT_PLUGINS))).toBe(
+      [
+        "Cannot open: 1 node id is used more than once.",
+        `  • id "${uuid(2)}" is shared by "draft", "fan"`,
+      ].join("\n"),
+    );
   });
 });

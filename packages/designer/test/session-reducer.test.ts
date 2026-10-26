@@ -1,3 +1,4 @@
+import { verbatim } from "@path/i18n";
 import { FORMAT_VERSION, type WorkflowFile, type WorkflowNode } from "@path/schema";
 import { describe, expect, it } from "vitest";
 import { canonicalSerialize } from "../src/serialize.js";
@@ -513,8 +514,12 @@ describe("session-reducer — the save doors (#390, #391, ADR 0016)", () => {
       ifMatch: undefined,
     });
     // A taken pre-assigned path is the author's to retarget, not a stale buffer to reload.
-    expect(created.refused({ ok: false, conflict: "exists", message: "taken" })).toMatchObject({
+    expect(created.refused({ ok: false, conflict: "exists", message: verbatim("taken") })).toEqual({
       phase: "error",
+      message: {
+        key: "designer.savePlan.childExists",
+        params: { path: "flows/child.workflow.json" },
+      },
     });
   });
 
@@ -588,6 +593,7 @@ describe("session-reducer — the save doors (#390, #391, ADR 0016)", () => {
     expect(planWrite(scratch, { kind: "save" })).toMatchObject({
       ok: false,
       reason: "needs-workflow-path",
+      message: { key: "designer.savePlan.noPath" },
     });
     // The first-save door itself carries the path the author chose.
     expect(
@@ -603,6 +609,7 @@ describe("session-reducer — the save doors (#390, #391, ADR 0016)", () => {
     ).toMatchObject({
       ok: false,
       reason: "needs-workflow-path",
+      message: { key: "designer.savePlan.noNewFile" },
     });
   });
 });
@@ -731,7 +738,11 @@ describe("session-reducer — author mode on a *.step-template.json (#580)", () 
         name: "copy",
         description: "",
       }),
-    ).toMatchObject({ ok: false, reason: "needs-template-name" });
+    ).toMatchObject({
+      ok: false,
+      reason: "needs-template-name",
+      message: { key: "designer.savePlan.noTemplateSource" },
+    });
   });
 
   it("after a Save-As the frame edits the new template, clean, with a fresh history", () => {
@@ -848,6 +859,7 @@ describe("edit mode (Workflow | Template)", () => {
     expect(planWrite(next, { kind: "new-template", name: "t", description: "" })).toMatchObject({
       ok: false,
       reason: "needs-template-name",
+      message: { key: "designer.savePlan.noNewTemplate" },
     });
     expect(plan(next, { kind: "save" }).write).toMatchObject({ to: "template", id: f.id });
   });

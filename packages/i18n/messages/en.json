@@ -206,6 +206,7 @@
       "cancelled": "cancelled",
       "pending": "pending"
     },
+    "verbatim": "{text}",
     "workerDefaults": {
       "type": "type",
       "worker": "worker",
@@ -216,7 +217,138 @@
   },
   "designer": {
     "app": {
-      "title": "PATH by RheinWeg · designer"
+      "title": "PATH by RheinWeg · designer",
+      "discardUnsaved": "Discard unsaved changes?",
+      "deleteTemplate": "Delete template \"{name}\"? This removes it from disk and cannot be undone.{unsaved, select, true { Unsaved changes are lost too.} other {}}",
+      "deleteWorkflow": "Delete \"{path}\"? This removes it from disk and cannot be undone.{unsaved, select, true { Unsaved changes are lost too.} other {}}",
+      "downloadDirty": "Unsaved edits are not included. Download the saved file?"
+    },
+    "document": {
+      "readOnly": "Read-only: only the creator can save. Use Save as.",
+      "gone": "No longer available"
+    },
+    "editingToolbar": {
+      "modes": {
+        "workflow": "Workflow",
+        "template": "Template"
+      },
+      "editMode": "Edit mode",
+      "newWorkflow": "New workflow (not saved)",
+      "workflowFileTitle": "Save writes back to this file",
+      "newTemplate": "New template (not saved)",
+      "templateFileTitle": "Save writes back to this template",
+      "readOnlyTag": " ({readOnly, select, shipped {shipped} other {shared}}, read-only)",
+      "conflictTitle": "This file changed on disk since you opened it. Your save was refused to avoid overwriting that change. Reload to get the latest, then re-apply your edits.",
+      "conflict": "Save refused: this file changed on disk since you opened it",
+      "reload": "Reload file",
+      "couldNotSave": "Could not save: {message}",
+      "couldNotDelete": "Could not delete: {message}",
+      "savedAsTemplate": "Saved as template \"{name}\"",
+      "deleting": "Deleting…",
+      "deleted": "Deleted",
+      "unsavedEdits": "Unsaved edits",
+      "idsStamped": "Ids stamped on import — unsaved (ADR 0015)",
+      "nonCanonical": "Non-canonical file: Save will reformat it",
+      "saved": "Saved",
+      "file": "File",
+      "new": "New",
+      "open": "Open…",
+      "saveAs": "Save as…",
+      "download": "Download",
+      "downloadTitle": "Download the saved file",
+      "saveFirst": "Save first",
+      "delete": "Delete",
+      "undo": "Undo",
+      "undoTitle": "Undo ({shortcut})",
+      "redo": "Redo",
+      "redoTitle": "Redo ({shortcut})",
+      "saveTitle": "Save ({shortcut})",
+      "heldByOther": "Another session is editing this file.",
+      "heldByOtherExpiring": "Another session is editing this file — its lease expires in <countdown></countdown>.",
+      "takeOverQuestion": "Take over anyway?",
+      "confirmTakeover": "Confirm takeover",
+      "cancel": "Cancel",
+      "takeOver": "Take over",
+      "leaseLost": "Editing lease lost. Another session may have taken over, or your lease expired.",
+      "reacquire": "Re-acquire",
+      "leaseError": "Could not acquire the editing lease: {message}",
+      "countdown": "{seconds}s"
+    },
+    "newFileDialog": {
+      "title": "Save new workflow",
+      "hint": "Choose where in the project this workflow is saved.",
+      "saveTo": "Save to",
+      "mine": "Mine",
+      "shared": "Shared",
+      "directory": "Directory",
+      "projectRoot": "(project root)",
+      "filename": "Filename",
+      "finding": "Finding your workflow folder…",
+      "savesToPending": "Saves to …",
+      "savesTo": "Saves to <code>{path}</code>",
+      "savesToNewFolder": "Saves to <code>{path}</code> (new folder)",
+      "exists": "A workflow already exists at that path. Choose another name.",
+      "backslash": "Use / to separate folders, not \\.",
+      "emptySegment": "Folder and file names cannot be empty.",
+      "dotSegment": "Names cannot start with a dot."
+    },
+    "openWorkflow": {
+      "notJson": "Cannot open: the file is not valid JSON ({error}).",
+      "unregisteredTypes": "Cannot open: this file names {count, plural, one {# step type} other {# step types}} absent from the server's registry.",
+      "unregisteredType": "  • \"{type}\" — add {folder} to this PATH tree",
+      "unregisteredRetry": "If the server has since loaded these plugins, refresh the registry and retry.",
+      "invalidIds": "Cannot open: {count, plural, one {# node id is} other {# node ids are}} not valid UUIDv4s.",
+      "invalidId": "  • {node} has an id that is not a UUIDv4: {value}",
+      "duplicateIds": "Cannot open: {count, plural, one {# node id is} other {# node ids are}} used more than once.",
+      "duplicateId": "  • id {id} is shared by {nodes}",
+      "nodeNamed": "\"{name}\"",
+      "nodeAt": "at {path}",
+      "theWorkflow": "the workflow",
+      "nodeList": "{first}, {rest}",
+      "notValid": "Cannot open: the file does not validate."
+    },
+    "saveDialog": {
+      "placeholder": "name or folder/name",
+      "subfolderHint": "Use <code>/</code> to save in a subfolder. Missing folders are created.",
+      "cancel": "Cancel",
+      "saving": "Saving…",
+      "create": "Create"
+    },
+    "savePlan": {
+      "nothingOpen": "Nothing is open to save.",
+      "noPath": "The buffer has no path yet.",
+      "childExists": "A workflow already exists at {path}. Choose a different target for the reference.",
+      "noNewFile": "No new-file buffer to save.",
+      "noWorkflow": "No workflow to save.",
+      "noNewTemplate": "No new template to save.",
+      "noTemplateSource": "No template source to save."
+    },
+    "saveTemplateAsDialog": {
+      "titleFromWorkflow": "Save workflow as template",
+      "titleCopy": "Save as new template",
+      "titleNew": "Save new template",
+      "hintFromWorkflow": "The template is a copy of the workflow's body with a new identity, saved with this project's templates. The workflow stays open. Pick the shared folder to share it with the team.",
+      "hintCopy": "The copy gets a new identity and is saved with this project's templates.",
+      "hintNew": "The template is saved with this project's templates.",
+      "folder": "Folder",
+      "myTemplates": "(my templates)",
+      "sharedTemplates": "(shared templates)",
+      "name": "Name",
+      "nameLabel": "Template name",
+      "description": "Description",
+      "descriptionLabel": "Template description",
+      "descriptionPlaceholder": "What this template does. It is shown on the palette card.",
+      "badFolder": "Folder names cannot be empty or start with a dot, and cannot contain a backslash.",
+      "badName": "Use lowercase letters, digits, and hyphens, starting with a letter.",
+      "needsDescription": "A template needs a description.",
+      "keepsBody": "A template keeps only the body.",
+      "keepsBodyDropping": "A template keeps only the body. {droppedFields} will be dropped.",
+      "exists": "A template with that name already exists. Choose another name."
+    },
+    "useArmed": {
+      "readFailed": "Could not read \"{name}\": {error}",
+      "insertFailed": "Cannot insert \"{name}\": {error}",
+      "invalidTemplate": "invalid template"
     }
   }
 }

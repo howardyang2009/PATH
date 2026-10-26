@@ -12,6 +12,11 @@ export interface Message {
   params?: Record<string, MessageParam>;
 }
 
+/** Text PATH does not own (a server refusal, a parser error), carried as a `Message` unchanged. */
+export function verbatim(text: string): Message {
+  return { key: "shared.verbatim", params: { text } };
+}
+
 export type Translate = (key: MessageKey, values?: Record<string, string | number>) => string;
 
 /** Render `message` with `t`; a `Message` inside `params` is rendered first. */

@@ -5,5 +5,6 @@ export {
   type MessageParam,
   renderMessage,
   type Translate,
+  verbatim,
 } from "./message.js";
 export { loadMessages, type Messages } from "./messages.js";

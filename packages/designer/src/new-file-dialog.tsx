@@ -1,4 +1,7 @@
+import type { Message } from "@path/i18n";
+import { useMessage } from "@path/i18n/react";
 import { useMemo, useState } from "react";
+import { useTranslations } from "use-intl";
 import {
   type DiscoveryLoad,
   discoveredRoots,
@@ -17,7 +20,7 @@ import type { SaveAsResult } from "./use-open-file.js";
 export function NewFileDialog({
   discovery,
   workflowName,
-  title = "Save new workflow",
+  title,
   initialDirectory,
   pickOrigin = false,
   create,
@@ -43,6 +46,9 @@ export function NewFileDialog({
   /** Dismiss without saving; the from-scratch buffer stays on the canvas untouched. */
   onCancel: () => void;
 }): JSX.Element {
+  const t = useTranslations("designer");
+  const renderMessage = useMessage();
+  const heading = title ?? t("newFileDialog.title");
   const roots = discoveredRoots(discovery);
   const sharedRoot = discoveredSharedRoot(discovery);
   const [origin, setOrigin] = useState<"user" | "shared">("user");
@@ -57,7 +63,7 @@ export function NewFileDialog({
     null;
   const [stem, setStem] = useState(workflowName);
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<Message | null>(null);
 
   // The picker's directories: the Server's writable roots plus the parent of every discovered
   // workflow (ADR 0085), and the preselected one.
@@ -88,7 +94,7 @@ export function NewFileDialog({
       if (result.status === "created") {
         onCreated(result.path ?? targetPath);
       } else if (result.status === "exists") {
-        setError("A workflow already exists at that path. Choose another name.");
+        setError({ key: "designer.newFileDialog.exists" });
       } else {
         setError(result.message);
       }
@@ -96,53 +102,53 @@ export function NewFileDialog({
   };
 
   return (
-    <div className="dialog-scrim" role="dialog" aria-modal="true" aria-label={title}>
+    <div className="dialog-scrim" role="dialog" aria-modal="true" aria-label={heading}>
       <div className="dialog new-file-dialog">
-        <h2 className="dialog-title">{title}</h2>
-        <p className="dialog-hint">Choose where in the project this workflow is saved.</p>
+        <h2 className="dialog-title">{heading}</h2>
+        <p className="dialog-hint">{t("newFileDialog.hint")}</p>
 
         {pickOrigin ? (
           <label className="dialog-field">
-            <span className="dialog-label">Save to</span>
+            <span className="dialog-label">{t("newFileDialog.saveTo")}</span>
             <select
               className="new-file-directory"
-              aria-label="Save to"
+              aria-label={t("newFileDialog.saveTo")}
               value={origin}
               onChange={(event) => {
                 setOrigin(event.target.value === "shared" ? "shared" : "user");
                 setDirectory(undefined);
               }}
             >
-              <option value="user">Mine</option>
-              <option value="shared">Shared</option>
+              <option value="user">{t("newFileDialog.mine")}</option>
+              <option value="shared">{t("newFileDialog.shared")}</option>
             </select>
           </label>
         ) : null}
 
         <label className="dialog-field">
-          <span className="dialog-label">Directory</span>
+          <span className="dialog-label">{t("newFileDialog.directory")}</span>
           <select
             className="new-file-directory"
-            aria-label="Directory"
+            aria-label={t("newFileDialog.directory")}
             value={directory ?? ""}
             disabled={directory === null}
             onChange={(event) => setDirectory(event.target.value)}
           >
             {shownDirectories.map((dir) => (
               <option key={dir} value={dir}>
-                {dir === "" ? "(project root)" : dir}
+                {dir === "" ? t("newFileDialog.projectRoot") : dir}
               </option>
             ))}
           </select>
         </label>
 
         <label className="dialog-field">
-          <span className="dialog-label">Filename</span>
+          <span className="dialog-label">{t("newFileDialog.filename")}</span>
           <span className="new-file-name">
             <input
               className="new-file-stem"
-              aria-label="Filename"
-              placeholder="name or folder/name"
+              aria-label={t("newFileDialog.filename")}
+              placeholder={t("saveDialog.placeholder")}
               value={stem}
               onChange={(event) => setStem(event.target.value)}
               onKeyDown={(event) => {
@@ -157,40 +163,38 @@ export function NewFileDialog({
         </label>
 
         <p className="dialog-hint">
-          Use <code>/</code> to save in a subfolder. Missing folders are created.
+          {t.rich("saveDialog.subfolderHint", { code: (chunks) => <code>{chunks}</code> })}
         </p>
 
         <p className="new-file-target" data-testid="new-file-target">
-          {directory === null ? (
-            "Finding your workflow folder…"
-          ) : targetPath === null ? (
-            "Saves to …"
-          ) : (
-            <>
-              Saves to <code>{targetPath}</code>
-              {isNewFolder && " (new folder)"}
-            </>
-          )}
+          {directory === null
+            ? t("newFileDialog.finding")
+            : targetPath === null
+              ? t("newFileDialog.savesToPending")
+              : t.rich(isNewFolder ? "newFileDialog.savesToNewFolder" : "newFileDialog.savesTo", {
+                  path: targetPath,
+                  code: (chunks) => <code>{chunks}</code>,
+                })}
         </p>
 
         {parsed.error !== null && (
           <p className="new-file-error" role="alert">
-            {parsed.error}
+            {t(`newFileDialog.${parsed.error}`)}
           </p>
         )}
 
         {error !== null && (
           <p className="new-file-error" role="alert">
-            {error}
+            {renderMessage(error)}
           </p>
         )}
 
         <div className="dialog-actions">
           <button type="button" onClick={onCancel} disabled={submitting}>
-            Cancel
+            {t("saveDialog.cancel")}
           </button>
           <button type="button" className="new-file-create" onClick={submit} disabled={!canSubmit}>
-            {submitting ? "Saving…" : "Create"}
+            {submitting ? t("saveDialog.saving") : t("saveDialog.create")}
           </button>
         </div>
       </div>
@@ -198,21 +202,22 @@ export function NewFileDialog({
   );
 }
 
+/** Why a filename is refused: the name of its message under `designer.newFileDialog`. */
+type StemError = "backslash" | "emptySegment" | "dotSegment";
+
 /**
  * The filename field as a path relative to the picked directory: a trailing `.workflow.json` is
  * stripped and `/` separates subfolders, which the Server creates on save. A backslash, an empty
  * segment, or a segment starting with `.` (so `..`) is refused, so the path cannot leave the picked
  * directory.
  */
-function parseStem(stem: string): { relative: string; error: string | null } {
+function parseStem(stem: string): { relative: string; error: StemError | null } {
   const relative = stem.trim().replace(/\.workflow\.json$/i, "");
   if (relative === "") return { relative, error: null };
-  if (relative.includes("\\")) return { relative, error: "Use / to separate folders, not \\." };
+  if (relative.includes("\\")) return { relative, error: "backslash" };
   const segments = relative.split("/");
-  if (segments.some((segment) => segment.trim() === ""))
-    return { relative, error: "Folder and file names cannot be empty." };
-  if (segments.some((segment) => segment.startsWith(".")))
-    return { relative, error: "Names cannot start with a dot." };
+  if (segments.some((segment) => segment.trim() === "")) return { relative, error: "emptySegment" };
+  if (segments.some((segment) => segment.startsWith("."))) return { relative, error: "dotSegment" };
   return { relative: segments.map((segment) => segment.trim()).join("/"), error: null };
 }
 

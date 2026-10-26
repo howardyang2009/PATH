@@ -1,6 +1,6 @@
 import { createTranslator } from "use-intl/core";
 import { describe, expect, it } from "vitest";
-import { type Message, renderMessage, type Translate } from "../src/message.js";
+import { type Message, renderMessage, type Translate, verbatim } from "../src/message.js";
 import { loadMessages } from "../src/messages.js";
 
 describe("renderMessage", () => {
@@ -21,6 +21,13 @@ describe("renderMessage", () => {
     };
     expect(renderMessage(t, message)).toBe("outer(inner)");
     expect(seen.at(-1)).toEqual(["viewer.app.title", { inner: "inner", count: 2 }]);
+  });
+
+  it("renders verbatim text unchanged in every Locale", async () => {
+    for (const locale of ["de", "en", "zh-CN"] as const) {
+      const t = createTranslator({ locale, messages: await loadMessages(locale) });
+      expect(renderMessage(t, verbatim("HTTP 500: {boom}"))).toBe("HTTP 500: {boom}");
+    }
   });
 
   it("rejects a key that is not in the catalogue at compile time", () => {
