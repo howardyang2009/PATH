@@ -1,3 +1,4 @@
+import type { Message } from "@path/i18n";
 import type { JsonValue } from "@path/schema";
 import type { ZodRawShape, z } from "zod";
 
@@ -39,6 +40,9 @@ export type StepResult =
   | {
       status: "failed";
       error: string;
+      /** The failure in PATH's catalogue, for a worker that words it there; `error` stays its
+       * English. Absent, the UI shows `error` as written. */
+      errorMessage?: Message;
       usage?: JsonValue;
       estimatedCostUsd?: number;
       stderr?: string;

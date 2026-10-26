@@ -1,7 +1,13 @@
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import type { StepRequest, StepResult } from "@path/engine/plugin";
-import { defineStepPlugin, resolveAgainstWorkflowDir, z } from "@path/engine/plugin";
+import {
+  defineStepPlugin,
+  failure,
+  resolveAgainstWorkflowDir,
+  verbatim,
+  z,
+} from "@path/engine/plugin";
 
 /**
  * PATH's built-in `binary` leaf step type, shipped as a plugin folder under `plugin/step-plugin/`
@@ -79,10 +85,10 @@ function runSpawn(request: StepRequest<typeof fields, typeof config>): Promise<S
         return;
       }
       // Node reports a missing `cwd` as the command's ENOENT, so name the real cause.
-      const reason = existsSync(resolvedCwd)
-        ? err.message
-        : `working directory "${resolvedCwd}" does not exist`;
-      settle({ status: "failed", error: `failed to start "${command}": ${reason}`, stderr });
+      const failed = existsSync(resolvedCwd)
+        ? failure("spawn.start-failed", { command, reason: verbatim(err.message) })
+        : failure("spawn.cwd-missing", { command, cwd: resolvedCwd });
+      settle({ status: "failed", ...failed, stderr });
     });
     child.on("close", (code) => {
       // A kill from `signal` closes the child with a null exit code — a cancellation, not a step
@@ -94,11 +100,10 @@ function runSpawn(request: StepRequest<typeof fields, typeof config>): Promise<S
       if (code !== 0) {
         // The message keeps only the tail; the audit blob keeps the whole stderr (format doc §4.2).
         const tail = stderr.trim().slice(-500);
-        settle({
-          status: "failed",
-          error: `exited with code ${code}${tail ? `: ${tail}` : ""}`,
-          stderr,
-        });
+        const failed = tail
+          ? failure("spawn.exited-with-tail", { code: String(code), tail: verbatim(tail) })
+          : failure("spawn.exited", { code: String(code) });
+        settle({ status: "failed", ...failed, stderr });
         return;
       }
       settle({ status: "succeeded", output: stdout, stderr });

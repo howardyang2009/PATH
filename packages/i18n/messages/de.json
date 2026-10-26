@@ -877,6 +877,12 @@
       "env-unset": "Lauf vor seinem ersten Schritt fehlgeschlagen: {count, plural, one {Umgebungsvariable {vars} ist nicht gesetzt} other {# Umgebungsvariablen sind nicht gesetzt: {vars}}}",
       "secrets-missing": "Lauf vor seinem ersten Schritt fehlgeschlagen: {count, plural, one {das Secret {paths} der Startkonfiguration wurde nicht erneut angegeben} other {# Secrets der Startkonfiguration wurden nicht erneut angegeben: {paths}}}",
       "config-invalid": "Lauf vor seinem ersten Schritt fehlgeschlagen: {count, plural, one {Konfigurationsprüfung fehlgeschlagen} other {# Fehler bei der Konfigurationsprüfung}}: {issues}"
+    },
+    "spawn": {
+      "exited": "mit Code {code} beendet",
+      "exited-with-tail": "mit Code {code} beendet: {tail}",
+      "start-failed": "„{command}“ konnte nicht gestartet werden: {reason}",
+      "cwd-missing": "„{command}“ konnte nicht gestartet werden: Arbeitsverzeichnis „{cwd}“ existiert nicht"
     }
   }
 }

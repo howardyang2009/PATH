@@ -877,6 +877,12 @@
       "env-unset": "run failed before its first step: {count, plural, one {environment variable {vars} is not set} other {# environment variables are not set: {vars}}}",
       "secrets-missing": "run failed before its first step: {count, plural, one {launch config secret {paths} was not supplied again} other {# launch config secrets were not supplied again: {paths}}}",
       "config-invalid": "run failed before its first step: {count, plural, one {config validation failed} other {# config validation errors}}: {issues}"
+    },
+    "spawn": {
+      "exited": "exited with code {code}",
+      "exited-with-tail": "exited with code {code}: {tail}",
+      "start-failed": "failed to start \"{command}\": {reason}",
+      "cwd-missing": "failed to start \"{command}\": working directory \"{cwd}\" does not exist"
     }
   }
 }

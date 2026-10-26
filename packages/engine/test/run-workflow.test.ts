@@ -1671,7 +1671,10 @@ describe("runWorkflow — RunObserver hooks (ticket #18 seam)", () => {
         status: "failed",
         error: expect.stringMatching(/exited with code 2/),
         error_code: "step.failed",
-        error_params: { name: "boom", error: expect.objectContaining({ key: "shared.verbatim" }) },
+        error_params: {
+          name: "boom",
+          error: { key: "errors.spawn.exited", params: { code: "2" } },
+        },
       },
     });
     expect(observer.runFinishes()[0]?.event).toEqual({
@@ -1683,7 +1686,7 @@ describe("runWorkflow — RunObserver hooks (ticket #18 seam)", () => {
       status: "failed",
       error: expect.stringMatching(/exited with code 2/),
       error_code: "step.failed",
-      error_params: { name: "boom", error: expect.objectContaining({ key: "shared.verbatim" }) },
+      error_params: { name: "boom", error: { key: "errors.spawn.exited", params: { code: "2" } } },
     });
   });
 

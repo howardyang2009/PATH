@@ -29,7 +29,7 @@ async function failedFinishes(file: WorkflowFile) {
 }
 
 describe("step-finished error codes (ADR 0107 point 4)", () => {
-  it("wraps a worker's error verbatim under the step label code", async () => {
+  it("codes the binary worker's exit, its stderr tail verbatim", async () => {
     const [step, root] = await failedFinishes(
       workflow([
         {
@@ -42,11 +42,14 @@ describe("step-finished error codes (ADR 0107 point 4)", () => {
       ]),
     );
     expect(step).toMatchObject({
-      error: expect.stringMatching(/^step "boom": .*exited with code 2.*disk on fire/s),
+      error: 'step "boom": exited with code 2: disk on fire',
       error_code: "step.failed",
       error_params: {
         name: "boom",
-        error: { key: "shared.verbatim", params: { text: expect.stringMatching(/disk on fire/) } },
+        error: {
+          key: "errors.spawn.exited-with-tail",
+          params: { code: "2", tail: { key: "shared.verbatim", params: { text: "disk on fire" } } },
+        },
       },
     });
     expect(root).toMatchObject({ error: step?.error, error_code: "step.failed" });

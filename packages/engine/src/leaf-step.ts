@@ -83,8 +83,11 @@ export async function settleStepResult(args: SettleStepResult): Promise<SeqOutco
   }
 
   if (result.status === "failed") {
-    // The worker's text (an exit code, a stderr tail) is not PATH's: only the label translates.
-    const failed = failure("step.failed", { name: node.name, error: verbatim(result.error) });
+    // An uncoded worker's text is not PATH's: only the label around it translates.
+    const failed = failure("step.failed", {
+      name: node.name,
+      error: result.errorMessage ?? verbatim(result.error),
+    });
     await step.finished({ status: "failed", ...failed });
     return { status: "failed", ...failed, causeRunId: step.runId };
   }
