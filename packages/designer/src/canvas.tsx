@@ -2,6 +2,7 @@ import type { RunStatus, WireStepPlugin } from "@path/client-core";
 import { useMessage } from "@path/i18n/react";
 import type { WorkflowFile } from "@path/schema";
 import type { MouseEvent } from "react";
+import { useTranslations } from "use-intl";
 import { BlockTree, type DescendHandler } from "./block-tree.js";
 import { ConflictProvider } from "./conflict-context.js";
 import { createEditor, type EditorApi } from "./editor-api.js";
@@ -59,6 +60,7 @@ export function Canvas({
   const goTo = (index: number): void => apply({ type: "goTo", index });
   const applyEdit = (next: WorkflowFile): void => apply({ type: "applyEdit", next });
   const selection = useSelection();
+  const t = useTranslations();
 
   // A double-click on a `workflow` block: a set ref descends across the boundary; an unset ref
   // opens the ref-target chooser instead, so a freshly swapped-in block is authorable rather than a
@@ -69,25 +71,30 @@ export function Canvas({
   };
 
   if (registry.phase === "loading") {
-    return <CanvasNote title="Loading…" hint="Fetching the step-plugin registry." />;
+    return (
+      <CanvasNote
+        title={t("designer.canvas.loading")}
+        hint={t("designer.canvas.fetchingRegistry")}
+      />
+    );
   }
   if (registry.phase === "error") {
-    return <CanvasNote title="Registry unavailable" hint={registry.message} />;
+    return <CanvasNote title={t("designer.canvas.registryUnavailable")} hint={registry.message} />;
   }
   const active = frames[activeIndex];
   if (!active) {
-    const noun = session.mode === "template" ? "template" : "workflow";
+    const mode = session.mode;
     return (
       <CanvasNote
-        title="Empty canvas"
-        hint={`No ${noun} open. Start a new one, or open an existing ${noun} to edit it.`}
+        title={t("designer.canvas.empty")}
+        hint={t("designer.canvas.emptyHint", { mode })}
         action={
           <div className="canvas-empty-actions">
             <button type="button" className="new-file-start" onClick={onNew}>
-              New {noun}
+              {t("designer.canvas.newFile", { mode })}
             </button>
             <button type="button" className="open-file-start" onClick={onOpenExisting}>
-              Open {noun}
+              {t("designer.canvas.openFile", { mode })}
             </button>
           </div>
         }
@@ -96,7 +103,7 @@ export function Canvas({
   }
 
   return (
-    <section className="canvas" aria-label="Workflow canvas">
+    <section className="canvas" aria-label={t("designer.canvas.label")}>
       <Breadcrumb
         frames={frames}
         activeIndex={activeIndex}
@@ -165,8 +172,9 @@ function Breadcrumb({
   // every level, e.g. `parent failed / child failed`, not only the root. Looked up once here; a
   // per-id hook cannot loop.
   const projection = useRunProjection();
+  const t = useTranslations();
   return (
-    <nav className="breadcrumb" aria-label="File breadcrumb">
+    <nav className="breadcrumb" aria-label={t("designer.canvas.breadcrumb")}>
       {frames.map((frame, index) => {
         const current = index === activeIndex;
         const label = frameLabel(frame);
@@ -221,12 +229,13 @@ function Breadcrumb({
  * on no canvas node; this is where its verdict shows. `data-run-status` tints it from the
  * stylesheet. */
 function WorkflowRunBadge({ status }: { status: RunStatus }): JSX.Element {
+  const t = useTranslations();
   return (
     <span className="node-run-badge" data-run-status={status} data-testid="workflow-run-badge">
       <span className="node-run-badge-glyph" aria-hidden="true">
         {RUN_STATUS_GLYPH[status]}
       </span>
-      {status}
+      {t(`shared.status.${status}`)}
     </span>
   );
 }
@@ -259,12 +268,15 @@ function FrameView({
   onArm: (armed: Armed | null) => void;
   problems: Problem[];
 }): JSX.Element {
+  const t = useTranslations();
   const { state } = frame;
   if (state.phase === "loading") {
-    return <p className="pane-note">Loading {frame.path}…</p>;
+    return (
+      <p className="pane-note">{t("designer.canvas.loadingFile", { path: frame.path ?? "" })}</p>
+    );
   }
   if (state.phase === "fetch-error") {
-    return <Refusal heading="Could not read the file" message={state.message} />;
+    return <Refusal heading={t("designer.canvas.couldNotRead")} message={state.message} />;
   }
 
   const { result } = state;
@@ -303,31 +315,30 @@ function FrameView({
       );
     }
     case "unregistered-types":
-      return <OpenRefusal heading="Unregistered step types" refusal={result} />;
+      return <OpenRefusal heading={t("designer.canvas.unregisteredTypes")} refusal={result} />;
     case "duplicate-ids":
-      return <OpenRefusal heading="Duplicate node ids" refusal={result} />;
+      return <OpenRefusal heading={t("designer.canvas.duplicateIds")} refusal={result} />;
     case "invalid-ids":
-      return <OpenRefusal heading="Invalid node ids" refusal={result} />;
+      return <OpenRefusal heading={t("designer.canvas.invalidIds")} refusal={result} />;
     case "invalid":
-      return <OpenRefusal heading="Cannot open the file" refusal={result} />;
+      return <OpenRefusal heading={t("designer.canvas.cannotOpen")} refusal={result} />;
   }
 }
 
 /** The empty-body affordance: a start-a-body prompt plus the file body's own open socket. Arm a
  * kind in the palette and the socket appears; click it to seed the body. */
 function StartBody({ editor }: { editor: EditorApi }): JSX.Element {
+  const t = useTranslations();
   return (
-    <section className="start-body" aria-label="Start a body">
-      <p className="start-body-hint">
-        Empty body. Pick a step or block from the palette to start it.
-      </p>
+    <section className="start-body" aria-label={t("designer.canvas.startBody")}>
+      <p className="start-body-hint">{t("designer.canvas.startBodyHint")}</p>
       {editor.socketOpen("sequence", null) ? (
         <button
           type="button"
           className="socket socket-tail"
           onClick={() => editor.placeIntoList(null)}
         >
-          + add {editor.armedLabel} here
+          {t("designer.blockTree.addHere", { kind: editor.armedLabel ?? "" })}
         </button>
       ) : null}
     </section>

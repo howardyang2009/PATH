@@ -1,3 +1,5 @@
+import { type Message, verbatim } from "@path/i18n";
+
 /**
  * Every Designer fact about one node kind, in one table: canvas hue, palette label and blurb, pane
  * explanation, leaf chip and glyph, the required field a new leaf is stubbed with, and whether a
@@ -7,12 +9,12 @@
 export interface NodeKind {
   /** Hue-token stem: the block tints from `--k-<hue>` / `--k-<hue>-bg`. */
   hue: string;
-  label: string;
+  label: Message;
   /** The palette card's short line. */
-  blurb: string;
+  blurb: Message;
   /** The pane's one-line explanation, shown above the divider. */
-  explanation: string;
-  /** The leaf chip text. */
+  explanation: Message;
+  /** The leaf chip text, English in every Locale: it is the `type` the author writes. */
   chip: string;
   /** The glyph drawn before the chip, or `""`. */
   glyph: string;
@@ -22,70 +24,74 @@ export interface NodeKind {
   firstClass: boolean;
 }
 
-type KindEntry = Pick<NodeKind, "hue" | "blurb" | "explanation"> & Partial<NodeKind>;
+/** The catalogue name under `designer.nodeKind` that holds a kind's label, blurb and explanation. */
+type KindName =
+  | "prompt"
+  | "binary"
+  | "personActivity"
+  | "workflow"
+  | "parallel"
+  | "branch"
+  | "whileDo"
+  | "sequence"
+  | "checkpoint"
+  | "goto";
+
+type KindEntry = { name: KindName; hue: string } & Partial<
+  Pick<NodeKind, "chip" | "glyph" | "stubField" | "firstClass">
+>;
 
 const KIND: Record<string, KindEntry> = {
   prompt: {
+    name: "prompt",
     hue: "step",
-    blurb: "LLM prompt against a model",
-    explanation: "An LLM prompt run against a model.",
     chip: "LLM",
     stubField: "prompt",
     firstClass: true,
   },
   binary: {
+    name: "binary",
     hue: "step",
-    blurb: "A command with args and cwd",
-    explanation: "A command run with arguments in a working directory.",
     chip: "COMMAND",
     stubField: "command",
   },
   "person-activity": {
+    name: "personActivity",
     hue: "person",
-    blurb: "An offline activity a person completes",
-    explanation: "An offline activity a person completes; the run awaits their Complete.",
     chip: "PERSON",
     glyph: "👤",
     stubField: "description",
     firstClass: true,
   },
   workflow: {
+    name: "workflow",
     hue: "workflow",
-    blurb: "A sub-workflow reference",
-    explanation: "A reference to another workflow file, run as a nested run.",
     stubField: "ref",
     firstClass: true,
   },
   parallel: {
+    name: "parallel",
     hue: "parallel",
-    blurb: "Branches with a join mode",
-    explanation: "Runs its branches together; the join mode decides how their outputs land.",
   },
   branch: {
+    name: "branch",
     hue: "branch",
-    blurb: "First-match arms with an else",
-    explanation: "First-match-wins arms, each guarded by a condition, with an optional else.",
   },
   "while-do": {
+    name: "whileDo",
     hue: "while",
-    label: "While-do",
-    blurb: "A bounded loop over one body",
-    explanation: "Repeats one body while a condition holds, up to a maximum count.",
   },
   sequence: {
+    name: "sequence",
     hue: "sequence",
-    blurb: "An ordered stack of nodes",
-    explanation: "An ordered stack of nodes, run one after another.",
   },
   checkpoint: {
+    name: "checkpoint",
     hue: "checkpoint",
-    blurb: "An assertion on the run",
-    explanation: "Asserts a condition on the run; a failed assertion fails the run.",
   },
   goto: {
+    name: "goto",
     hue: "goto",
-    blurb: "A bounded jump to a first-level node",
-    explanation: "Jumps back or ahead to a first-level node, at most max jumps times.",
   },
 };
 
@@ -93,14 +99,19 @@ function titleCase(name: string): string {
   return name.charAt(0).toUpperCase() + name.slice(1);
 }
 
-/** The facts for a node `type`, defaults filled in. */
+/** The facts for a node `type`, defaults filled in; an unlisted type's label is its own name. */
 export function nodeKind(type: string): NodeKind {
   const entry = KIND[type];
+  const name = entry?.name;
   return {
     hue: entry?.hue ?? "step",
-    label: entry?.label ?? titleCase(type),
-    blurb: entry?.blurb ?? `A ${type} step`,
-    explanation: entry?.explanation ?? `A ${type} step.`,
+    label: name ? { key: `designer.nodeKind.${name}.label` } : verbatim(titleCase(type)),
+    blurb: name
+      ? { key: `designer.nodeKind.${name}.blurb` }
+      : { key: "designer.nodeKind.step.blurb", params: { type } },
+    explanation: name
+      ? { key: `designer.nodeKind.${name}.explanation` }
+      : { key: "designer.nodeKind.step.explanation", params: { type } },
     chip: entry?.chip ?? type.toUpperCase(),
     glyph: entry?.glyph ?? "",
     stubField: entry?.stubField ?? null,

@@ -349,6 +349,122 @@
       "readFailed": "Could not read \"{name}\": {error}",
       "insertFailed": "Cannot insert \"{name}\": {error}",
       "invalidTemplate": "invalid template"
+    },
+    "appShell": {
+      "palette": "Palette",
+      "resizePalette": "Resize palette",
+      "resizeProperties": "Resize properties",
+      "properties": "Properties"
+    },
+    "blockTree": {
+      "addHere": "+ add {kind} here",
+      "moveUp": "Move {name} up",
+      "moveDown": "Move {name} down",
+      "duplicate": "Duplicate {name}",
+      "delete": "Delete {name}",
+      "openRef": "Double-click to open the referenced file",
+      "chooseRef": "Double-click to choose or create this reference's target",
+      "assert": "assert {condition}",
+      "jumpsSpent": "Jumps spent in the watched run",
+      "swapFor": "swap for {kind}",
+      "addBranch": "+ add {kind} branch",
+      "when": "when {condition}",
+      "else": "else",
+      "addArm": "+ add arm",
+      "addElse": "+ add else",
+      "whileMax": "while {condition} · max {max}"
+    },
+    "canvas": {
+      "loading": "Loading…",
+      "fetchingRegistry": "Fetching the step-plugin registry.",
+      "registryUnavailable": "Registry unavailable",
+      "empty": "Empty canvas",
+      "emptyHint": "{mode, select, template {No template open. Start a new one, or open an existing template to edit it.} other {No workflow open. Start a new one, or open an existing workflow to edit it.}}",
+      "newFile": "{mode, select, template {New template} other {New workflow}}",
+      "openFile": "{mode, select, template {Open template} other {Open workflow}}",
+      "label": "Workflow canvas",
+      "breadcrumb": "File breadcrumb",
+      "loadingFile": "Loading {path}…",
+      "couldNotRead": "Could not read the file",
+      "unregisteredTypes": "Unregistered step types",
+      "duplicateIds": "Duplicate node ids",
+      "invalidIds": "Invalid node ids",
+      "cannotOpen": "Cannot open the file",
+      "startBody": "Start a body",
+      "startBodyHint": "Empty body. Pick a step or block from the palette to start it."
+    },
+    "nodeKind": {
+      "prompt": {
+        "label": "Prompt",
+        "blurb": "LLM prompt against a model",
+        "explanation": "An LLM prompt run against a model."
+      },
+      "binary": {
+        "label": "Binary",
+        "blurb": "A command with args and cwd",
+        "explanation": "A command run with arguments in a working directory."
+      },
+      "personActivity": {
+        "label": "Person-activity",
+        "blurb": "An offline activity a person completes",
+        "explanation": "An offline activity a person completes; the run awaits their Complete."
+      },
+      "workflow": {
+        "label": "Workflow",
+        "blurb": "A sub-workflow reference",
+        "explanation": "A reference to another workflow file, run as a nested run."
+      },
+      "parallel": {
+        "label": "Parallel",
+        "blurb": "Branches with a join mode",
+        "explanation": "Runs its branches together; the join mode decides how their outputs land."
+      },
+      "branch": {
+        "label": "Branch",
+        "blurb": "First-match arms with an else",
+        "explanation": "First-match-wins arms, each guarded by a condition, with an optional else."
+      },
+      "whileDo": {
+        "label": "While-do",
+        "blurb": "A bounded loop over one body",
+        "explanation": "Repeats one body while a condition holds, up to a maximum count."
+      },
+      "sequence": {
+        "label": "Sequence",
+        "blurb": "An ordered stack of nodes",
+        "explanation": "An ordered stack of nodes, run one after another."
+      },
+      "checkpoint": {
+        "label": "Checkpoint",
+        "blurb": "An assertion on the run",
+        "explanation": "Asserts a condition on the run; a failed assertion fails the run."
+      },
+      "goto": {
+        "label": "Goto",
+        "blurb": "A bounded jump to a first-level node",
+        "explanation": "Jumps back or ahead to a first-level node, at most max jumps times."
+      },
+      "step": {
+        "blurb": "A {type} step",
+        "explanation": "A {type} step."
+      }
+    },
+    "palette": {
+      "nodes": "Nodes",
+      "templates": "Templates",
+      "sections": "Palette sections",
+      "groupSections": "{group} sections",
+      "step": "Step",
+      "controller": "Controller",
+      "structure": "Structure",
+      "graph": "Graph",
+      "loadingTemplates": "Loading templates…",
+      "listFailed": "Could not list templates: {message}",
+      "noTemplates": "No templates",
+      "editHint": "Double-click to edit the template.",
+      "switchToEdit": "Switch to Template mode to edit this template.",
+      "invalidTemplate": "invalid template",
+      "shipped": "shipped"
     }
   }
 }

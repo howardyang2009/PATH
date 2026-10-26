@@ -349,6 +349,122 @@
       "readFailed": "无法读取“{name}”：{error}",
       "insertFailed": "无法插入“{name}”：{error}",
       "invalidTemplate": "无效的模板"
+    },
+    "appShell": {
+      "palette": "组件面板",
+      "resizePalette": "调整组件面板宽度",
+      "resizeProperties": "调整属性面板宽度",
+      "properties": "属性"
+    },
+    "blockTree": {
+      "addHere": "+ 在此添加 {kind}",
+      "moveUp": "上移 {name}",
+      "moveDown": "下移 {name}",
+      "duplicate": "复制 {name}",
+      "delete": "删除 {name}",
+      "openRef": "双击打开引用的文件",
+      "chooseRef": "双击选择或创建此引用的目标",
+      "assert": "断言 {condition}",
+      "jumpsSpent": "所观察运行中已用的跳转次数",
+      "swapFor": "替换为 {kind}",
+      "addBranch": "+ 添加 {kind} 分支",
+      "when": "当 {condition}",
+      "else": "否则",
+      "addArm": "+ 添加条件分支",
+      "addElse": "+ 添加否则分支",
+      "whileMax": "当 {condition} 时循环 · 最多 {max} 次"
+    },
+    "canvas": {
+      "loading": "正在加载…",
+      "fetchingRegistry": "正在获取步骤类型插件注册表。",
+      "registryUnavailable": "插件注册表不可用",
+      "empty": "空画布",
+      "emptyHint": "{mode, select, template {没有打开的模板。新建一个，或打开已有模板进行编辑。} other {没有打开的工作流。新建一个，或打开已有工作流进行编辑。}}",
+      "newFile": "{mode, select, template {新建模板} other {新建工作流}}",
+      "openFile": "{mode, select, template {打开模板} other {打开工作流}}",
+      "label": "工作流画布",
+      "breadcrumb": "文件路径导航",
+      "loadingFile": "正在加载 {path}…",
+      "couldNotRead": "无法读取文件",
+      "unregisteredTypes": "未注册的步骤类型",
+      "duplicateIds": "重复的节点 ID",
+      "invalidIds": "无效的节点 ID",
+      "cannotOpen": "无法打开文件",
+      "startBody": "开始编写主体",
+      "startBodyHint": "主体为空。从组件面板选择一个步骤或块即可开始。"
+    },
+    "nodeKind": {
+      "prompt": {
+        "label": "提示词",
+        "blurb": "向模型发送 LLM 提示词",
+        "explanation": "针对某个模型运行的 LLM 提示词。"
+      },
+      "binary": {
+        "label": "命令",
+        "blurb": "带参数和工作目录的命令",
+        "explanation": "在工作目录中带参数运行的命令。"
+      },
+      "personActivity": {
+        "label": "人工活动",
+        "blurb": "由人完成的线下活动",
+        "explanation": "由人完成的线下活动；运行会等待其完成。"
+      },
+      "workflow": {
+        "label": "工作流",
+        "blurb": "子工作流引用",
+        "explanation": "对另一个工作流文件的引用，作为嵌套运行执行。"
+      },
+      "parallel": {
+        "label": "并行",
+        "blurb": "带汇合方式的多个分支",
+        "explanation": "同时运行其各分支；汇合方式决定各分支输出的去向。"
+      },
+      "branch": {
+        "label": "分支",
+        "blurb": "首个匹配的条件分支，另有否则分支",
+        "explanation": "首个匹配的条件分支胜出，每个分支由一个条件守卫，可选一个否则分支。"
+      },
+      "whileDo": {
+        "label": "While-do",
+        "blurb": "对一个主体的有界循环",
+        "explanation": "条件成立时重复执行一个主体，最多执行到上限次数。"
+      },
+      "sequence": {
+        "label": "顺序",
+        "blurb": "有序的节点堆叠",
+        "explanation": "有序的节点堆叠，依次运行。"
+      },
+      "checkpoint": {
+        "label": "检查点",
+        "blurb": "对运行的断言",
+        "explanation": "对运行断言一个条件；断言失败则运行失败。"
+      },
+      "goto": {
+        "label": "Goto",
+        "blurb": "跳转到第一层节点，次数有限",
+        "explanation": "向后或向前跳转到第一层节点，最多 max jumps 次。"
+      },
+      "step": {
+        "blurb": "{type} 步骤",
+        "explanation": "一个 {type} 步骤。"
+      }
+    },
+    "palette": {
+      "nodes": "节点",
+      "templates": "模板",
+      "sections": "组件面板分区",
+      "groupSections": "{group}分区",
+      "step": "步骤",
+      "controller": "控制器",
+      "structure": "结构",
+      "graph": "图",
+      "loadingTemplates": "正在加载模板…",
+      "listFailed": "无法列出模板：{message}",
+      "noTemplates": "没有模板",
+      "editHint": "双击编辑此模板。",
+      "switchToEdit": "切换到模板编辑模式以编辑此模板。",
+      "invalidTemplate": "无效模板",
+      "shipped": "内置"
     }
   }
 }

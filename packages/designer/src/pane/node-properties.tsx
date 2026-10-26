@@ -1,4 +1,5 @@
 import type { WireStepPlugin } from "@path/client-core";
+import { useMessage } from "@path/i18n/react";
 import {
   type Condition,
   type InterpolationRoot,
@@ -48,6 +49,7 @@ export function NodeProperties({
   const site = locate(file, node.id);
   const role = occupantRole(site, file);
   const condSuggest = referenceablePaths(file, ROOTS.condition);
+  const renderMessage = useMessage();
 
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: delegated Tab handling for wrapped inputs.
@@ -57,7 +59,7 @@ export function NodeProperties({
           {role}
         </p>
       ) : null}
-      <p className="pane-explain">{nodeKind(node.type).explanation}</p>
+      <p className="pane-explain">{renderMessage(nodeKind(node.type).explanation)}</p>
       <hr className="pane-divider" />
       {/* Identity is the pane's anchor — which node is this — so `name` and `id` never fold away.
           The kind's own fields are a section: they open expanded, and folding them is an option for

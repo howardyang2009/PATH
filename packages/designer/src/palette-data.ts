@@ -1,4 +1,5 @@
 import type { WireStepPlugin } from "@path/client-core";
+import type { Message, MessageKey } from "@path/i18n";
 import { nodeKind } from "./node-kind.js";
 
 /**
@@ -10,14 +11,15 @@ import { nodeKind } from "./node-kind.js";
 export interface PaletteEntry {
   readonly kind: string;
   /** The palette label shown to the author. */
-  readonly label: string;
-  readonly blurb: string;
+  readonly label: Message;
+  readonly blurb: Message;
   /** Hue token key when it differs from `kind` (a `while-do` block paints the `while` hue). */
   readonly hue: string;
 }
 
 export interface PaletteGroup {
-  readonly title: string;
+  readonly key: "step" | "controller";
+  readonly title: MessageKey;
   readonly entries: readonly PaletteEntry[];
   /** Sub-tabs that split `entries` for display (the Controller group: Structure | Graph). */
   readonly tabs?: readonly PaletteSubTab[];
@@ -25,7 +27,7 @@ export interface PaletteGroup {
 
 export interface PaletteSubTab {
   readonly key: string;
-  readonly label: string;
+  readonly label: MessageKey;
   readonly entries: readonly PaletteEntry[];
 }
 
@@ -37,7 +39,8 @@ function entry(kind: string): PaletteEntry {
 
 function stepGroup(plugins: WireStepPlugin[]): PaletteGroup {
   return {
-    title: "Step",
+    key: "step",
+    title: "designer.palette.step",
     entries: [...plugins.map((plugin) => entry(plugin.name)), entry("workflow")],
   };
 }
@@ -56,11 +59,12 @@ const GRAPH_CONTROLLERS: readonly PaletteEntry[] = ["goto"].map(entry);
 
 /** Controllers, split into a Structure tab and a Graph tab. */
 const CONTROLLERS: PaletteGroup = {
-  title: "Controller",
+  key: "controller",
+  title: "designer.palette.controller",
   entries: [...STRUCTURE_CONTROLLERS, ...GRAPH_CONTROLLERS],
   tabs: [
-    { key: "structure", label: "Structure", entries: STRUCTURE_CONTROLLERS },
-    { key: "graph", label: "Graph", entries: GRAPH_CONTROLLERS },
+    { key: "structure", label: "designer.palette.structure", entries: STRUCTURE_CONTROLLERS },
+    { key: "graph", label: "designer.palette.graph", entries: GRAPH_CONTROLLERS },
   ],
 };
 

@@ -1,3 +1,4 @@
+import { verbatim } from "@path/i18n";
 import { describe, expect, it } from "vitest";
 import { nodeKind } from "../src/node-kind.js";
 
@@ -24,7 +25,9 @@ describe("node-kind descriptor", () => {
     expect(nodeHue("person-activity")).toBe("person");
     expect(leafGlyph("person-activity")).toBe("👤");
     expect(leafChip("person-activity")).toBe("PERSON");
-    expect(kindExplanation("person-activity")).toMatch(/person completes/);
+    expect(kindExplanation("person-activity")).toEqual({
+      key: "designer.nodeKind.personActivity.explanation",
+    });
   });
 
   it("has no glyph for a kind that does not declare one", () => {
@@ -38,9 +41,14 @@ describe("node-kind descriptor", () => {
   });
 
   it("explains each kind and derives an explanation for an unlisted type", () => {
-    expect(kindExplanation("while-do")).toMatch(/Repeats one body/);
-    expect(kindExplanation("checkpoint")).toMatch(/Asserts a condition/);
-    expect(kindExplanation("api-call")).toBe("A api-call step.");
+    expect(kindExplanation("while-do")).toEqual({ key: "designer.nodeKind.whileDo.explanation" });
+    expect(kindExplanation("checkpoint")).toEqual({
+      key: "designer.nodeKind.checkpoint.explanation",
+    });
+    expect(kindExplanation("api-call")).toEqual({
+      key: "designer.nodeKind.step.explanation",
+      params: { type: "api-call" },
+    });
   });
 
   it("labels a leaf chip by kind, upper-casing an unlisted type", () => {
@@ -50,8 +58,14 @@ describe("node-kind descriptor", () => {
   });
 
   it("labels and blurbs a palette card, title-casing an unlisted type", () => {
-    expect(nodeKind("while-do")).toMatchObject({ label: "While-do", blurb: /bounded loop/ });
-    expect(nodeKind("api-call")).toMatchObject({ label: "Api-call", blurb: "A api-call step" });
+    expect(nodeKind("while-do")).toMatchObject({
+      label: { key: "designer.nodeKind.whileDo.label" },
+      blurb: { key: "designer.nodeKind.whileDo.blurb" },
+    });
+    expect(nodeKind("api-call")).toMatchObject({
+      label: verbatim("Api-call"),
+      blurb: { key: "designer.nodeKind.step.blurb", params: { type: "api-call" } },
+    });
   });
 
   it("names the field a fresh leaf is stubbed with, and which kinds have a hand-built editor", () => {

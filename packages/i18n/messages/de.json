@@ -349,6 +349,122 @@
       "readFailed": "„{name}“ konnte nicht gelesen werden: {error}",
       "insertFailed": "„{name}“ kann nicht eingefügt werden: {error}",
       "invalidTemplate": "ungültige Vorlage"
+    },
+    "appShell": {
+      "palette": "Palette",
+      "resizePalette": "Palettenbreite ändern",
+      "resizeProperties": "Eigenschaftenbreite ändern",
+      "properties": "Eigenschaften"
+    },
+    "blockTree": {
+      "addHere": "+ {kind} hier hinzufügen",
+      "moveUp": "{name} nach oben verschieben",
+      "moveDown": "{name} nach unten verschieben",
+      "duplicate": "{name} duplizieren",
+      "delete": "{name} löschen",
+      "openRef": "Doppelklick öffnet die referenzierte Datei",
+      "chooseRef": "Doppelklick wählt das Ziel dieser Referenz oder legt es an",
+      "assert": "prüft {condition}",
+      "jumpsSpent": "Verbrauchte Sprünge im beobachteten Lauf",
+      "swapFor": "durch {kind} ersetzen",
+      "addBranch": "+ Zweig {kind} hinzufügen",
+      "when": "wenn {condition}",
+      "else": "sonst",
+      "addArm": "+ Fall hinzufügen",
+      "addElse": "+ Sonst-Zweig hinzufügen",
+      "whileMax": "solange {condition} · max. {max}"
+    },
+    "canvas": {
+      "loading": "Wird geladen…",
+      "fetchingRegistry": "Das Plugin-Verzeichnis wird abgerufen.",
+      "registryUnavailable": "Plugin-Verzeichnis nicht verfügbar",
+      "empty": "Leere Arbeitsfläche",
+      "emptyHint": "{mode, select, template {Keine Vorlage geöffnet. Legen Sie eine neue an oder öffnen Sie eine vorhandene Vorlage zum Bearbeiten.} other {Kein Workflow geöffnet. Legen Sie einen neuen an oder öffnen Sie einen vorhandenen Workflow zum Bearbeiten.}}",
+      "newFile": "{mode, select, template {Neue Vorlage} other {Neuer Workflow}}",
+      "openFile": "{mode, select, template {Vorlage öffnen} other {Workflow öffnen}}",
+      "label": "Workflow-Arbeitsfläche",
+      "breadcrumb": "Dateipfad",
+      "loadingFile": "{path} wird geladen…",
+      "couldNotRead": "Die Datei konnte nicht gelesen werden",
+      "unregisteredTypes": "Nicht registrierte Schritttypen",
+      "duplicateIds": "Doppelte Knoten-IDs",
+      "invalidIds": "Ungültige Knoten-IDs",
+      "cannotOpen": "Die Datei kann nicht geöffnet werden",
+      "startBody": "Rumpf beginnen",
+      "startBodyHint": "Leerer Rumpf. Wählen Sie einen Schritt oder Block aus der Palette, um ihn zu beginnen."
+    },
+    "nodeKind": {
+      "prompt": {
+        "label": "Prompt",
+        "blurb": "LLM-Prompt an ein Modell",
+        "explanation": "Ein LLM-Prompt, der gegen ein Modell ausgeführt wird."
+      },
+      "binary": {
+        "label": "Befehl",
+        "blurb": "Ein Befehl mit Argumenten und Arbeitsverzeichnis",
+        "explanation": "Ein Befehl, der mit Argumenten in einem Arbeitsverzeichnis ausgeführt wird."
+      },
+      "personActivity": {
+        "label": "Personenaktivität",
+        "blurb": "Eine Offline-Aktivität, die eine Person erledigt",
+        "explanation": "Eine Offline-Aktivität, die eine Person erledigt; der Lauf wartet auf ihr Abschließen."
+      },
+      "workflow": {
+        "label": "Workflow",
+        "blurb": "Eine Referenz auf einen Unter-Workflow",
+        "explanation": "Eine Referenz auf eine andere Workflow-Datei, ausgeführt als verschachtelter Lauf."
+      },
+      "parallel": {
+        "label": "Parallel",
+        "blurb": "Zweige mit einer Zusammenführung",
+        "explanation": "Führt seine Zweige gleichzeitig aus; die Zusammenführung bestimmt, wie ihre Ausgaben landen."
+      },
+      "branch": {
+        "label": "Verzweigung",
+        "blurb": "Fälle nach erstem Treffer, mit Sonst-Zweig",
+        "explanation": "Der erste zutreffende Fall gewinnt; jeder Fall hat eine Bedingung, dazu ein optionaler Sonst-Zweig."
+      },
+      "whileDo": {
+        "label": "While-do",
+        "blurb": "Eine begrenzte Schleife über einen Rumpf",
+        "explanation": "Wiederholt einen Rumpf, solange eine Bedingung gilt, bis zu einer Höchstzahl."
+      },
+      "sequence": {
+        "label": "Sequenz",
+        "blurb": "Ein geordneter Stapel von Knoten",
+        "explanation": "Ein geordneter Stapel von Knoten, die nacheinander ausgeführt werden."
+      },
+      "checkpoint": {
+        "label": "Checkpoint",
+        "blurb": "Eine Prüfung des Laufs",
+        "explanation": "Prüft eine Bedingung des Laufs; eine fehlgeschlagene Prüfung lässt den Lauf fehlschlagen."
+      },
+      "goto": {
+        "label": "Goto",
+        "blurb": "Ein begrenzter Sprung zu einem Knoten der ersten Ebene",
+        "explanation": "Springt zurück oder vor zu einem Knoten der ersten Ebene, höchstens max jumps Mal."
+      },
+      "step": {
+        "blurb": "Ein Schritt vom Typ {type}",
+        "explanation": "Ein Schritt vom Typ {type}."
+      }
+    },
+    "palette": {
+      "nodes": "Knoten",
+      "templates": "Vorlagen",
+      "sections": "Palettenbereiche",
+      "groupSections": "Bereiche: {group}",
+      "step": "Schritt",
+      "controller": "Controller",
+      "structure": "Struktur",
+      "graph": "Graph",
+      "loadingTemplates": "Vorlagen werden geladen…",
+      "listFailed": "Vorlagen konnten nicht aufgelistet werden: {message}",
+      "noTemplates": "Keine Vorlagen",
+      "editHint": "Doppelklick bearbeitet die Vorlage.",
+      "switchToEdit": "Wechseln Sie in den Vorlagenmodus, um diese Vorlage zu bearbeiten.",
+      "invalidTemplate": "ungültige Vorlage",
+      "shipped": "mitgeliefert"
     }
   }
 }
