@@ -119,11 +119,39 @@ function maskTrace(masker: SecretMasker, trace: Trace): Trace {
   };
 }
 
+type ErrorParams = NonNullable<
+  Extract<UnsequencedLogEvent, { type: "step-finished" }>["error_params"]
+>;
+
+/** Scrubs a failure's params, a nested message's included; a message `key` is a catalogue name,
+ * never data, so a short secret cannot corrupt it. */
+function maskParams(masker: SecretMasker, params: ErrorParams): ErrorParams {
+  const masked: ErrorParams = {};
+  for (const [name, value] of Object.entries(params)) {
+    const nested = value as { key?: unknown; params?: ErrorParams } | null;
+    masked[name] =
+      typeof nested === "object" && nested !== null && typeof nested.key === "string"
+        ? {
+            key: nested.key,
+            ...(nested.params ? { params: maskParams(masker, nested.params) } : {}),
+          }
+        : masker.maskValue(value);
+  }
+  return masked;
+}
+
 /** Scrubs one log event; total over `LogEvent` by construction via the `never` guard. */
 function maskEvent(masker: SecretMasker, e: UnsequencedLogEvent): UnsequencedLogEvent {
   switch (e.type) {
     case "step-finished":
-      return e.error === undefined ? e : { ...e, error: masker.maskString(e.error) };
+      // A param can carry the same text as `error` (a worker's stderr tail), so scrub both.
+      return {
+        ...e,
+        ...(e.error !== undefined ? { error: masker.maskString(e.error) } : {}),
+        ...(e.error_params !== undefined
+          ? { error_params: maskParams(masker, e.error_params) }
+          : {}),
+      };
     case "checkpoint-passed":
     case "checkpoint-failed":
     case "iteration-started":

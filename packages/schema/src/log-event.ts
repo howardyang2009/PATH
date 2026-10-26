@@ -38,6 +38,10 @@ const StepFinishedSchema = z
     // Present only on a non-success outcome; a binary step's carries the exit code and a stderr
     // tail (§8.1).
     error: z.string().optional(),
+    // ADR 0107 point 4: the error's code and params, which the client renders from its catalogue;
+    // absent on an event written before codes and on text PATH does not own.
+    error_code: z.string().optional(),
+    error_params: z.record(z.string(), z.json()).optional(),
   })
   .strict();
 

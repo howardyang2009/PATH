@@ -1,3 +1,4 @@
+import type { Message } from "@path/i18n";
 import {
   blankRunRecord,
   fromWireLaunchFacts,
@@ -10,6 +11,7 @@ import {
   type RunStatus,
   type RunTreeResponse,
 } from "@path/schema";
+import { stepFinishedError } from "./event-message.js";
 import { runStatusAfter } from "./event-outcome.js";
 
 /** Framework-agnostic view-model for one root run: `hydrate` seeds the run tree from
@@ -48,7 +50,7 @@ export interface RunViewState {
   displayStatus: ReadonlyMap<string, RunStatus>;
   /** The last failure message each run reached, keyed by run id. The error text rides the
    * `step-finished` event, not the run record (mvp spec §8.1), so it is folded here. */
-  lastError: ReadonlyMap<string, string>;
+  lastError: ReadonlyMap<string, Message>;
   /** The runs parked `awaiting` in this tree, for a surface that counts or badges them (ADR
    * 0042). */
   awaitingRunIds: ReadonlySet<string>;
@@ -63,7 +65,7 @@ export class RunViewModel {
   private runs = new Map<string, RunNodeState>();
   private narrative: LogEvent[] = [];
   private seenSeqs = new Set<number>();
-  private lastErrorById = new Map<string, string>();
+  private lastErrorById = new Map<string, Message>();
   /** The server's display status per run, and each run's own status when it was read. */
   private serverDisplay = new Map<string, RunStatus>();
   private readStatus = new Map<string, RunStatus>();
@@ -190,7 +192,8 @@ export class RunViewModel {
       node.finishedAt = event.ts;
       // The error text rides the event, not the run row (mvp spec §8.1); the last one for a run
       // wins.
-      if (event.error !== undefined) this.lastErrorById.set(event.run_id, event.error);
+      const error = stepFinishedError(event);
+      if (error !== undefined) this.lastErrorById.set(event.run_id, error);
     }
 
     this.runs.set(node.runId, node);

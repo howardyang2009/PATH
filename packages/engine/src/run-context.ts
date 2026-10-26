@@ -1,5 +1,7 @@
+import type { Message } from "@path/i18n";
 import { type ConfigObject, type JsonValue, type WorkflowFile, walkNodes } from "@path/schema";
 import type { Continuation } from "./continuation.js";
+import { failure } from "./failure.js";
 import type { LoadedStepPluginRegistry } from "./plugin-seam/scan.js";
 import type { ProcessorSemaphore } from "./processor-semaphore.js";
 import type { EnvSource } from "./resolve-env.js";
@@ -35,7 +37,7 @@ export interface StepRuntime {
 // tree.
 export type SeqOutcome =
   | { status: "succeeded"; output: JsonValue }
-  | { status: "failed"; error: string; causeRunId?: string }
+  | { status: "failed"; error: string; errorMessage: Message; causeRunId?: string }
   | { status: "cancelled" }
   | { status: "awaiting" }
   // A goto jump (ADR 0053, goto.md §3.2): `goto`/`target` are node GUIDs, `output` the unchanged
@@ -100,7 +102,7 @@ export async function walkContainerBody(
   const jumped = [...walkNodes(nodes)].find((node) => node.id === outcome.goto);
   return {
     status: "failed",
-    error: `goto "${jumped?.name ?? outcome.goto}": a jump may not leave a while-do or parallel body`,
+    ...failure("goto.leaves-body", { name: jumped?.name ?? outcome.goto }),
   };
 }
 

@@ -81,8 +81,7 @@ describe("analyzeRunStart — the run-start gate", () => {
 
   it("fails naming the config-fragment mismatch when a prompt step has no model", () => {
     const { runStartFailure } = analyzeRunStart(promptFile(), "/tmp", {}, {}, registry);
-    expect(runStartFailure).toBeDefined();
-    expect(runStartFailure).toMatch(/model/i);
+    expect(runStartFailure?.error).toMatch(/model/i);
   });
 
   it("names every unset $env variable", () => {
@@ -93,8 +92,7 @@ describe("analyzeRunStart — the run-start gate", () => {
       {}, // empty env snapshot: the variable is unset
       registry,
     );
-    expect(runStartFailure).toBeDefined();
-    expect(runStartFailure).toContain("PATH_MISSING_VAR_XYZ");
+    expect(runStartFailure?.error).toContain("PATH_MISSING_VAR_XYZ");
   });
 
   it("lets an unset $env pre-empt the config-fragment check — env fails first (staging is load-bearing)", () => {
@@ -102,7 +100,7 @@ describe("analyzeRunStart — the run-start gate", () => {
     // failure must win: config cannot be validated against a value it could not resolve.
     const file = promptFile({ pin: { $env: "PATH_MISSING_VAR_XYZ" } });
     const { runStartFailure } = analyzeRunStart(file, "/tmp", {}, {}, registry);
-    expect(runStartFailure).toContain("PATH_MISSING_VAR_XYZ");
-    expect(runStartFailure).not.toMatch(/model/i);
+    expect(runStartFailure?.error).toContain("PATH_MISSING_VAR_XYZ");
+    expect(runStartFailure?.error).not.toMatch(/model/i);
   });
 });

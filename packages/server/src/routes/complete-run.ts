@@ -91,15 +91,9 @@ export async function handleCompleteRun({
   if (!result.ok) {
     // `not-found` → 404; `output-invalid` → 400 with issues; the rest are 409 state conflicts.
     if (result.reason === "output-invalid") {
-      return replyError(400, "run.refused", { message: result.message }, result.details);
+      return replyRefusal(400, result, result.details);
     }
-    if (result.reason === "lease-held") {
-      return replyError(409, "run.complete.lease-held", { rootRunId });
-    }
-    // The engine's own words until its refusals carry codes.
-    return replyError(result.reason === "not-found" ? 404 : 409, "run.refused", {
-      message: result.message,
-    });
+    return replyRefusal(result.reason === "not-found" ? 404 : 409, result);
   }
 
   return { status: 202, body: { step_run_id: stepRunId, root_run_id: result.rootRunId } };

@@ -1,6 +1,7 @@
 import { findRootRun, isTerminal, type JsonValue, type WorkflowFile } from "@path/schema";
 import { checkCompletedOutput } from "./complete-output.js";
 import { continuationRunOptions } from "./continuation.js";
+import { type CodedRefusal, refusal } from "./failure.js";
 import { acquireCompleteLease } from "./persistence/complete-lease.js";
 import {
   cancelNonTerminalRuns,
@@ -17,12 +18,11 @@ import type { ContinuationInput } from "./run-options.js";
  * held" are ordinary states the route maps to a status code.
  */
 export type CompleteResult =
-  | {
+  | ({
       ok: false;
       reason: "not-found" | "not-awaiting" | "lease-held" | "node-gone";
-      message: string;
-    }
-  | { ok: false; reason: "output-invalid"; message: string; details?: unknown[] }
+    } & CodedRefusal)
+  | ({ ok: false; reason: "output-invalid"; details?: unknown[] } & CodedRefusal)
   | {
       ok: true;
       rootRunId: string;
@@ -49,14 +49,14 @@ function completeGate(
     return {
       ok: false,
       reason: "not-found",
-      message: `no step run found with id "${stepRunId}"`,
+      ...refusal("run.step-not-found", { stepRunId }),
     };
   }
   if (leaf.status !== "awaiting") {
     return {
       ok: false,
       reason: "not-awaiting",
-      message: `step run "${stepRunId}" is ${leaf.status}, not awaiting`,
+      ...refusal("run.complete.not-awaiting", { stepRunId, status: leaf.status }),
     };
   }
   const rootRunId = leaf.rootRunId;
@@ -67,7 +67,7 @@ function completeGate(
     return {
       ok: false,
       reason: "not-awaiting",
-      message: `run "${rootRunId}" already finished with status "${rootRow.status}"`,
+      ...refusal("run.complete.finished", { rootRunId, status: rootRow.status }),
     };
   }
 
@@ -122,7 +122,7 @@ export async function completeProjectStep(
     return {
       ok: false,
       reason: "lease-held",
-      message: `run "${rootRunId}" is being completed in another invocation`,
+      ...refusal("run.complete.lease-held", { rootRunId }),
     };
   }
   try {
@@ -132,7 +132,9 @@ export async function completeProjectStep(
       return {
         ok: false,
         reason: "not-awaiting",
-        message: `step run "${stepRunId}" is ${fresh?.status ?? "gone"}, not awaiting`,
+        ...(fresh === undefined
+          ? refusal("run.complete.step-gone", { stepRunId })
+          : refusal("run.complete.not-awaiting", { stepRunId, status: fresh.status })),
       };
     }
 

@@ -120,6 +120,13 @@ describe("settleStepResult — failure", () => {
     expect(outcome).toEqual({
       status: "failed",
       error: 'step "do-thing": exited with code 2',
+      errorMessage: {
+        key: "errors.step.failed",
+        params: {
+          name: "do-thing",
+          error: { key: "shared.verbatim", params: { text: "exited with code 2" } },
+        },
+      },
       causeRunId: step.runId,
     });
     expect(seen).toEqual([
@@ -131,6 +138,11 @@ describe("settleStepResult — failure", () => {
         node_name: "do-thing",
         status: "failed",
         error: 'step "do-thing": exited with code 2',
+        error_code: "step.failed",
+        error_params: {
+          name: "do-thing",
+          error: { key: "shared.verbatim", params: { text: "exited with code 2" } },
+        },
       },
     ]);
   });

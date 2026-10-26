@@ -2,6 +2,7 @@ import { type GotoNode, type JsonValue, must, walkNodes } from "@path/schema";
 import { childIdentity, openContainerRun } from "./child-run.js";
 import type { PassDivergence } from "./continuation.js";
 import { resolveBound } from "./controllers.js";
+import { failure } from "./failure.js";
 import type { NodeExecContext, RunContext, SeqOutcome } from "./run-context.js";
 
 /**
@@ -73,7 +74,7 @@ export async function runTopLevelWalk(
       });
       const exhausted: SeqOutcome = {
         status: "failed",
-        error: `goto "${goto.name}": max_jumps (${maxJumps}) exhausted`,
+        ...failure("goto.exhausted", { name: goto.name, maxJumps: String(maxJumps) }),
       };
       await container.finish(exhausted);
       return exhausted;
@@ -109,7 +110,7 @@ async function failDivergedPass(run: RunContext, divergence: PassDivergence): Pr
       .finished({ status: "succeeded", output: commit.output });
   }
   const passRow = divergence.diverged;
-  const failed: SeqOutcome = { status: "failed", error: divergence.error };
+  const failed: SeqOutcome = { status: "failed", ...divergence.failure };
   const owner =
     passRow.nodeId === null
       ? null

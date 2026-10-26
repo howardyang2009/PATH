@@ -6,6 +6,7 @@ import {
   type LogEvent,
   type RerunFromNodePathEntry,
 } from "@path/schema";
+import { errorEventFields } from "./failure.js";
 import type { Emit, RunIdentity } from "./run-context.js";
 import {
   type DistributiveOmit,
@@ -141,8 +142,8 @@ export function createEmitter(identity: RunIdentity, emit: Emit): Emitter {
     return send(run, node, {
       type: "step-finished",
       status: o.status,
-      ...(o.status === "failed" && o.error !== undefined ? { error: o.error } : {}),
-    });
+      ...(o.status === "failed" ? errorEventFields(o) : {}),
+    } as LifecycleBody);
   }
 
   const self = { id: nodeId, name: nodeName };

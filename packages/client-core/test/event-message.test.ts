@@ -67,6 +67,42 @@ describe("eventMessage", () => {
     });
   });
 
+  it("renders a coded failure from the catalogue, its params nested (ADR 0107 point 4)", () => {
+    // As read back from the store: plain JSON, the nested `Message` included.
+    const params = {
+      name: "step-a",
+      error: { key: "shared.verbatim", params: { text: "exit 1: boom" } },
+    };
+    expect(
+      eventMessage({
+        ...ENVELOPE,
+        type: "step-finished",
+        status: "failed",
+        error: 'step "step-a": exit 1: boom',
+        error_code: "step.failed",
+        error_params: params,
+      }),
+    ).toEqual({
+      key: "events.narrative.stepFinishedError",
+      params: {
+        label: "step-a (n1)",
+        status: { key: "shared.status.failed" },
+        error: { key: "errors.step.failed", params },
+      },
+    });
+  });
+
+  it("shows the stored text for a code this client does not know", () => {
+    const message = eventMessage({
+      ...ENVELOPE,
+      type: "step-finished",
+      status: "failed",
+      error: "from a newer engine",
+      error_code: "step.not-yet-a-code",
+    });
+    expect(message.params?.error).toEqual(verbatim("from a newer engine"));
+  });
+
   it("says only the outcome when a step finished without an error", () => {
     expect(eventMessage({ ...ENVELOPE, type: "step-finished", status: "succeeded" })).toEqual({
       key: "events.narrative.stepFinished",

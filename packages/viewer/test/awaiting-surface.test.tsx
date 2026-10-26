@@ -5,6 +5,7 @@ import {
   type WorkflowFile,
 } from "@path/client-core";
 import { stubClient } from "@path/client-core/test-utils";
+import type { Message } from "@path/i18n";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { NodeIo } from "../src/node-io.js";
@@ -250,7 +251,7 @@ describe("awaiting detail panel — inline Complete (NodeIo)", () => {
     // this leaf.
     const view = {
       displayStatus: new Map(),
-      lastError: new Map<string, string>(),
+      lastError: new Map<string, Message>(),
       launchFacts: { secretKeys: ["github.token"] },
     };
     render(
@@ -356,7 +357,7 @@ describe("awaiting detail panel — inline Complete (NodeIo)", () => {
     // The view publishes the server's display status; the pane only renders what it is given.
     const view = {
       displayStatus: new Map([["run_root", "awaiting" as const]]),
-      lastError: new Map<string, string>(),
+      lastError: new Map<string, Message>(),
     };
     render(
       <NodeIo

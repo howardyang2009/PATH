@@ -277,6 +277,9 @@ importers:
       '@anthropic-ai/claude-agent-sdk':
         specifier: 0.3.274
         version: 0.3.274(@anthropic-ai/sdk@0.127.0(zod@4.6.5))(@modelcontextprotocol/sdk@1.30.0(zod@4.6.5))(zod@4.6.5)
+      '@path/i18n':
+        specifier: workspace:*
+        version: link:../i18n
       '@path/schema':
         specifier: workspace:*
         version: link:../schema

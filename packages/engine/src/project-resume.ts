@@ -8,6 +8,7 @@ import {
   type WorkflowFile,
 } from "@path/schema";
 import { continuationRunOptions, successorCapture } from "./continuation.js";
+import { type CodedRefusal, refusal } from "./failure.js";
 import { getLaunchFacts, getRunsForRoot } from "./persistence/run-store.js";
 import type { ProjectCore, ProjectResumeOptions } from "./project.js";
 import { type LegalKContainer, type LegalKReasonCode, resolveLegalK } from "./resume-legal-k.js";
@@ -35,9 +36,8 @@ export type ResumeResult =
  * A Resume-from-K refusal: the legal-K authority rejected `rerunFromRunId` before any successor
  * started. `status` follows the §5 taxonomy (400 unsupported, 409 conflict).
  */
-export interface ResumeRefusal {
+export interface ResumeRefusal extends CodedRefusal {
   status: number;
-  message: string;
 }
 
 /**
@@ -74,7 +74,7 @@ export type ListEligibleResult =
  */
 type ResumeSourceProblem =
   | { kind: "not-found"; message: string }
-  | { kind: "refused"; message: string };
+  | ({ kind: "refused" } & CodedRefusal);
 
 function checkResumeSource(
   rows: RunRecord[],
@@ -88,14 +88,11 @@ function checkResumeSource(
   if (!isTerminal(root.status)) {
     return {
       kind: "refused",
-      message: `run "${rootRunId}" is still ${root.status}; only a finished run can be resumed`,
+      ...refusal("run.resume.not-finished", { rootRunId, status: root.status }),
     };
   }
   if (!fromBoundary && rows.every((row) => row.status === "succeeded")) {
-    return {
-      kind: "refused",
-      message: `run "${rootRunId}" already succeeded; there is nothing to resume`,
-    };
+    return { kind: "refused", ...refusal("run.resume.succeeded", { rootRunId }) };
   }
   return undefined;
 }
@@ -134,9 +131,9 @@ function resumeGate(
   const problem = checkResumeSource(directRuns, rootRunId, opts.rerunFromRunId !== undefined);
   if (problem !== undefined) {
     // Unknown root stays `error`; a refused source is a 409 refusal. Both exit 1 on the CLI.
-    return problem.kind === "not-found"
-      ? { found: false, error: problem.message }
-      : { found: false, refusal: { status: 409, message: problem.message } };
+    if (problem.kind === "not-found") return { found: false, error: problem.message };
+    const { kind: _, ...coded } = problem;
+    return { found: false, refusal: { status: 409, ...coded } };
   }
   if (opts.rerunFromRunId === undefined) return { directRuns };
 

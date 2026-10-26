@@ -130,7 +130,8 @@ describe("validate-before-lease: invalid output → 400 with ajv issues, leaf un
 
     const res = await complete(leafId, { output: { approved: "yes" } });
     expect(res.status).toBe(400);
-    const body = (await res.json()) as { error: { message: string; details?: unknown } };
+    const body = (await res.json()) as { error: { code: string; details?: unknown } };
+    expect(body.error.code).toBe("run.complete.output-invalid");
     expect(body.error.details).toBeDefined();
     expect(Array.isArray(body.error.details)).toBe(true);
 
@@ -229,8 +230,12 @@ describe("error taxonomy", () => {
 
     const res = await complete(leafId, { output: { approved: true } });
     expect(res.status).toBe(409);
-    const body = (await res.json()) as { error: { message: string } };
-    expect(body.error.message).toContain("succeeded");
+    const body = (await res.json()) as { error: unknown };
+    expect(body.error).toMatchObject({
+      code: "run.complete.not-awaiting",
+      params: { stepRunId: leafId, status: "succeeded" },
+      message: expect.stringContaining("succeeded"),
+    });
   });
 
   it("404 when the recorded workflow file is gone", async () => {
@@ -262,6 +267,10 @@ describe("error taxonomy", () => {
     writeFileSync(join(projectDir, "awaiting-complete.workflow.json"), JSON.stringify(retyped));
     const res = await complete(leafId, { output: { approved: true } });
     expect(res.status).toBe(409);
+    expect(((await res.json()) as { error: unknown }).error).toMatchObject({
+      code: "run.complete.node-gone",
+      params: { stepRunId: leafId },
+    });
   });
 
   it("409 when the file at the recorded path is now a different workflow (id changed)", async () => {

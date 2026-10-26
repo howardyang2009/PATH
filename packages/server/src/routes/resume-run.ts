@@ -80,7 +80,7 @@ export async function handleResumeRun({
     // A refusal from the engine's one Resume gate (a live or fully succeeded tree, or an illegal
     // K), before any successor started. The route only translates.
     if (err instanceof ResumeRefused) {
-      return replyError(err.status, "run.refused", { message: err.message });
+      return replyRefusal(err.refusal.status, err.refusal);
     }
     return replyError(500, "run.resume.start-failed", {
       message: err instanceof Error ? err.message : String(err),

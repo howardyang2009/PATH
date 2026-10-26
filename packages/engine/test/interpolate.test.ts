@@ -101,6 +101,9 @@ describe("interpolateString", () => {
   it("throws when splicing a non-scalar (object/array) value", () => {
     const objScope = { config: {}, context: { obj: { a: 1 } } };
     expect(() => interpolateString("value: ${context.obj}", objScope)).toThrow(InterpolationError);
+    expect(() => interpolateString("value: ${context.obj}", objScope)).toThrow(
+      'cannot splice a non-scalar value at "${context.obj}" into "value: ${context.obj}"',
+    );
   });
 
   it("allows a whole-string placeholder to resolve to a non-scalar (object/array)", () => {

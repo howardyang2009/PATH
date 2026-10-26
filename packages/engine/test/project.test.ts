@@ -593,6 +593,8 @@ describe("Project.resume — Resume-from-K (#444)", () => {
       if (result.found || !("refusal" in result)) throw new Error("expected a refusal");
       expect(result.refusal).toEqual({
         status: 409,
+        code: "run.resume.succeeded",
+        params: { rootRunId: originalRootId },
         message: `run "${originalRootId}" already succeeded; there is nothing to resume`,
       });
       expect(project.archive.listRoots().length).toBe(before);

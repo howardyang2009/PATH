@@ -398,8 +398,8 @@ Responses:
   the run's, ADR 0006). The path is recovered from the row, not re-confirmed by the operator, so a
   swapped file is refused rather than run against the predecessor's restored context. A Resume-from-K
   selection that resolves to a since-deleted node, an unsucceeded K, or a broken prefix also lands here
-  (spec §5 reasons 2, 4, 5). Every Resume-from-K refusal's `error.message` is the engine's verbatim
-  wording — one authority across route, CLI, and listing.
+  (spec §5 reasons 2, 4, 5). Every Resume-from-K refusal carries the code `run.resume.k.<reason>`
+  (ADR 0107); its `error.message` is that code's English wording, the one the CLI prints too.
 
 ### 4.4 `POST /v0/runs/:step_run_id/complete` — complete an awaiting step
 
@@ -510,6 +510,12 @@ may complete any awaiting leaf (#461).
 discriminated union in `logging/log-event.ts`), JSON-encoded verbatim. It is already snake_case at the
 envelope level (`run_id`, `node_id`, `seq`, `ts`), so no field translation is needed here, unlike the
 other endpoints.
+
+A failed `step-finished` carries `error` in English and, for a failure PATH words itself,
+`error_code` and `error_params` (ADR 0107 point 4). The client renders `errors.<error_code>` with those
+params, where a param may itself be a `{ key, params }` message (a worker's stderr tail rides as
+`shared.verbatim`). An event without `error_code`, or with a code the client does not know, shows
+`error` as stored.
 
 ```
 data: {"type":"step-started","seq":1,"ts":"...","run_id":"...","node_id":null,"node_name":null,"step_type":"workflow","worker_name":"workflow","parent_run_id":null}

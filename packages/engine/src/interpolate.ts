@@ -1,3 +1,4 @@
+import { type ErrorCode, englishText, type Message, type MessageParam, verbatim } from "@path/i18n";
 import {
   type JsonValue,
   mapSecrets,
@@ -6,13 +7,21 @@ import {
   type ScopeFor,
   tokenizeInterpolation,
 } from "@path/schema";
+import { type Failure, failure } from "./failure.js";
 
 /** The root values a `${dot.path}` resolves against (format doc §6). */
 export type InterpolationScope = { [root: string]: JsonValue };
 
 // Thrown rather than returned as a Result: callers catch it and translate it into their own
 // outcome.
-export class InterpolationError extends Error {}
+export class InterpolationError extends Error {
+  readonly reason: Message;
+  constructor(code: ErrorCode, params: Record<string, MessageParam>) {
+    const reason: Message = { key: `errors.${code}`, params };
+    super(englishText(reason));
+    this.reason = reason;
+  }
+}
 
 /**
  * The scope for one position, typed from `ROOTS`: a caller must pass exactly the roots the load let
@@ -30,15 +39,22 @@ export function scopeFor<P extends RootPosition>(
  * An interpolation failure as a node's failed-outcome message. Any other error is a bug, not a
  * data-flow failure, so it is re-thrown rather than swallowed.
  */
-export function describeInterpolationError(nodeName: string, err: unknown): string {
-  if (err instanceof InterpolationError) return `node "${nodeName}": ${err.message}`;
+export function describeInterpolationError(nodeName: string, err: unknown): Failure {
+  if (err instanceof InterpolationError) {
+    return failure("node.interpolation", { name: nodeName, reason: err.reason });
+  }
   throw err;
 }
 
 /** Resolves a `${}` dot-path, throwing where the condition evaluator records a trace leaf. */
 export function resolveDotPath(scope: InterpolationScope, path: string): JsonValue {
   const resolved = resolvePath(scope, path);
-  if (!resolved.found) throw new InterpolationError(`cannot resolve "${path}": ${resolved.error}`);
+  if (!resolved.found) {
+    throw new InterpolationError("interpolation.unresolved", {
+      path,
+      reason: verbatim(resolved.error),
+    });
+  }
   // Secrets are unwrapped on the way out (format §7.3): masking is a persistence-boundary concern,
   // not a dataflow restriction, so a worker must see real values.
   return mapSecrets(resolved.value, (secret) => secret);
@@ -74,17 +90,19 @@ export function interpolateString(value: string, scope: InterpolationScope): Jso
       case "placeholder": {
         const resolved = resolveDotPath(scope, token.path);
         if (resolved !== null && typeof resolved === "object") {
-          throw new InterpolationError(
-            `cannot splice a non-scalar value at "\${${token.path}}" into "${value}"`,
-          );
+          throw new InterpolationError("interpolation.non-scalar-splice", {
+            path: token.path,
+            value,
+          });
         }
         result += resolved === null ? "null" : String(resolved);
         break;
       }
       case "unclosed":
-        throw new InterpolationError(
-          `unclosed placeholder starting at index ${token.index} in "${value}"`,
-        );
+        throw new InterpolationError("interpolation.unclosed", {
+          index: String(token.index),
+          value,
+        });
     }
   }
   return result;
@@ -97,9 +115,10 @@ export function interpolateToString(value: string, scope: InterpolationScope): s
   const resolved = interpolateString(value, scope);
   if (typeof resolved === "string") return resolved;
   if (resolved === null || typeof resolved === "object") {
-    throw new InterpolationError(
-      `expected a string value at "${value}", got ${resolved === null ? "null" : "a non-scalar"}`,
-    );
+    throw new InterpolationError("interpolation.not-string", {
+      value,
+      got: resolved === null ? "null" : "non-scalar",
+    });
   }
   return String(resolved);
 }

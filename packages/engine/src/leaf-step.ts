@@ -1,5 +1,7 @@
+import { verbatim } from "@path/i18n";
 import type { ConfigObject, JsonValue } from "@path/schema";
 import { stopCause } from "./cancellation.js";
+import { failure } from "./failure.js";
 import { describeInterpolationError, interpolateValue, scopeFor } from "./interpolate.js";
 import { OutputParseError, parseStepOutput } from "./parse-output.js";
 import type { StepRequest, StepResult } from "./plugin-seam/seam.js";
@@ -81,9 +83,10 @@ export async function settleStepResult(args: SettleStepResult): Promise<SeqOutco
   }
 
   if (result.status === "failed") {
-    const error = `step "${node.name}": ${result.error}`;
-    await step.finished({ status: "failed", error });
-    return { status: "failed", error, causeRunId: step.runId };
+    // The worker's text (an exit code, a stderr tail) is not PATH's: only the label translates.
+    const failed = failure("step.failed", { name: node.name, error: verbatim(result.error) });
+    await step.finished({ status: "failed", ...failed });
+    return { status: "failed", ...failed, causeRunId: step.runId };
   }
 
   return finishSucceeded(step, node, result.output);
@@ -102,9 +105,12 @@ export async function finishSucceeded(
       output = parseStepOutput(rawOutput);
     } catch (err) {
       if (!(err instanceof OutputParseError)) throw err;
-      const parseError = `step "${node.name}": ${err.message}`;
-      await step.finished({ status: "failed", error: parseError });
-      return { status: "failed", error: parseError, causeRunId: step.runId };
+      const failed = failure("step.output-not-json", {
+        name: node.name,
+        reason: verbatim(err.reason),
+      });
+      await step.finished({ status: "failed", ...failed });
+      return { status: "failed", ...failed, causeRunId: step.runId };
     }
   }
   await step.finished({ status: "succeeded", output });
@@ -132,7 +138,7 @@ export async function runLeafStep(
   if (!plugin) {
     return {
       status: "failed",
-      error: `step "${node.name}": unknown step type "${node.type}" — no plugin contributes it`,
+      ...failure("step.unknown-type", { name: node.name, type: node.type }),
     };
   }
   // Four-tier dispatch resolution (ADR 0044), first hit wins: a step's `worker` pin; the operator's
@@ -148,7 +154,7 @@ export async function runLeafStep(
   if (!descriptor) {
     return {
       status: "failed",
-      error: `step "${node.name}": step type "${node.type}" has no worker "${workerName}"`,
+      ...failure("step.no-worker", { name: node.name, type: node.type, worker: workerName }),
     };
   }
 
@@ -162,7 +168,7 @@ export async function runLeafStep(
     }
     fields = interpolateValue(raw, scope);
   } catch (err) {
-    return { status: "failed", error: describeInterpolationError(node.name, err) };
+    return { status: "failed", ...describeInterpolationError(node.name, err) };
   }
 
   const release = descriptor.needsProcessorSlot

@@ -21,6 +21,7 @@ import {
 } from "@path/engine";
 import { type JsonValue, type LogEvent, LogEventSchema, type RunStatus } from "@path/schema";
 import { z } from "zod";
+import { refusalText } from "../http-json.js";
 import {
   type LiveRuns,
   liveRunsOver,
@@ -250,7 +251,7 @@ export function vmExecutor(store: Project, sandbox: SandboxOptions, owner: RunOw
       const refusal = store.checkResume(rootFile, resumeRootRunId, workflowDir, options);
       if (refusal !== undefined) {
         throw "refusal" in refusal
-          ? new ResumeRefused(refusal.refusal.status, refusal.refusal.message)
+          ? new ResumeRefused(refusal.refusal)
           : new ResumeNotFound(refusal.error);
       }
       const job = vmJob(store, randomUUID(), rootFile, workflowDir, options, {
@@ -271,7 +272,9 @@ export function vmExecutor(store: Project, sandbox: SandboxOptions, owner: RunOw
         return {
           ok: false,
           reason: "lease-held",
-          message: `run "${rootRunId}" is being completed in another invocation`,
+          code: "run.complete.lease-held",
+          params: { rootRunId },
+          message: refusalText({ code: "run.complete.lease-held", params: { rootRunId } }),
         };
       }
       const job = vmJob(store, rootRunId, rootFile, workflowDir, options, {

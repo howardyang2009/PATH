@@ -1,5 +1,6 @@
 import type { JsonValue, WorkflowFile } from "@path/schema";
 import { blockCancellation } from "./cancellation.js";
+import { failure } from "./failure.js";
 import {
   type BodyOutcome,
   type NodeExecContext,
@@ -193,7 +194,7 @@ export async function runParallelNode(
     if (branchResults.some((r) => r.outcome.status === "awaiting")) return { status: "awaiting" };
     return {
       status: "failed",
-      error: `parallel "${node.name}": all ${node.branches.length} wait-one branches failed`,
+      ...failure("parallel.all-failed", { name: node.name, count: node.branches.length }),
     };
   }
 
@@ -202,7 +203,11 @@ export async function runParallelNode(
     if (outcome.status === "failed") {
       return {
         status: "failed",
-        error: `parallel "${node.name}", branch "${branch.name}": ${outcome.error}`,
+        ...failure("parallel.branch-failed", {
+          name: node.name,
+          branch: branch.name,
+          error: outcome.errorMessage,
+        }),
       };
     }
   }

@@ -1,7 +1,14 @@
 import type { JsonValue } from "@path/schema";
 
 // Thrown rather than returned as a Result: its caller translates it into its own failed outcome.
-export class OutputParseError extends Error {}
+export class OutputParseError extends Error {
+  /** The JSON parser's own text, which PATH does not own. */
+  readonly reason: string;
+  constructor(reason: string) {
+    super(`failed to parse output as JSON: ${reason}`);
+    this.reason = reason;
+  }
+}
 
 // A surrounding ```json ... ``` (or bare ``` ... ```) fence is stripped before parsing (format doc
 // §6.5).
@@ -16,8 +23,6 @@ export function parseStepOutput(raw: string): JsonValue {
   try {
     return JSON.parse(jsonText) as JsonValue;
   } catch (err) {
-    throw new OutputParseError(
-      `failed to parse output as JSON: ${err instanceof Error ? err.message : String(err)}`,
-    );
+    throw new OutputParseError(err instanceof Error ? err.message : String(err));
   }
 }

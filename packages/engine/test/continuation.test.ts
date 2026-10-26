@@ -338,7 +338,7 @@ describe("completeContinuation — Complete adapter", () => {
       .passWalk(new Map([["check", goto as GotoNode]]), {});
 
     // Pass 2 starts at the child's own `review` sequence, matching the row it recorded first.
-    if ("diverged" in walk) throw new Error(walk.error);
+    if ("diverged" in walk) throw new Error(walk.failure.error);
     expect(walk).toMatchObject({ pass: 2, opener: goto, start: 1 });
   });
 });
@@ -419,7 +419,7 @@ describe("the pass walk's start", () => {
       gotoMap,
       {},
     );
-    if ("diverged" in walk) throw new Error(walk.error);
+    if ("diverged" in walk) throw new Error(walk.failure.error);
     expect(walk).toMatchObject({
       pass: 3,
       opener: gotoCheck,
@@ -450,7 +450,7 @@ describe("the pass walk's start", () => {
       {},
     );
     expect(walk).toMatchObject({ diverged: rows[1] });
-    expect("error" in walk && walk.error).toContain('recorded "intake"');
+    expect("failure" in walk && walk.failure.error).toContain('recorded "intake"');
   });
 });
 

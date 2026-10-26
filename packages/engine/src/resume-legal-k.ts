@@ -8,6 +8,7 @@ import {
   type WorkflowFile,
 } from "@path/schema";
 import { descendNodePath } from "./descend-node-path.js";
+import { type CodedRefusal, refusal } from "./failure.js";
 
 /**
  * The legal-K authority for Resume-from-chosen-K (spec §5, ADR 0032/0036): resolves the source run
@@ -15,12 +16,12 @@ import { descendNodePath } from "./descend-node-path.js";
  * `--from` and `--list-eligible` can never disagree. The law itself — the selection facts, the
  * per-level order and the two ways a nested `ref` stops the descent — is `@path/schema`'s
  * `legalKBoundary`; this module supplies the one thing the engine has and a surface may not: the
- * loaded file tree the descent reads, and the wording and status each reason takes at the CLI and
+ * loaded file tree the descent reads, and the code and status each reason takes at the CLI and
  * the HTTP door.
  *
  * Refusals, first failure wins: run in no run of the tree (400), deleted node or unsucceeded
- * K/prefix (409), illegal locus in a loop/parallel/branch body (400). The message is the one wording
- * authority a surface prints verbatim.
+ * K/prefix (409), illegal locus in a loop/parallel/branch body (400). Each reason's code is
+ * `run.resume.k.<reason>`, whose catalogue message is the one wording every surface shows.
  */
 
 /**
@@ -35,10 +36,10 @@ export type LegalKReasonCode = LegalKBoundaryReason;
  */
 export type LegalKContainer = ControlBlockKind;
 
-/** A legal-K refusal: the HTTP status, the verbatim message and the §5 taxonomy reason code. */
-export interface LegalKRefusal {
+/** A legal-K refusal: the HTTP status, its error code and English message, and the §5 taxonomy
+ * reason code. */
+export interface LegalKRefusal extends CodedRefusal {
   status: number;
-  message: string;
   reason: LegalKReasonCode;
   /** Only on `reason: "in-body"`: the innermost enclosing controller, so the listing can name
    * it. */
@@ -120,43 +121,15 @@ export function resolveLegalK(
     ok: false,
     refusal: {
       status: statusFor(reason),
-      message: refusalMessage(runId, reason, { nodeName, container, pass, ref }),
+      ...refusal(`run.resume.k.${reason}`, {
+        runId,
+        label: nodeName ?? runId,
+        pass: String(pass),
+        ref: ref ?? "",
+        container: container ?? "",
+      }),
       reason,
       ...(container ? { container } : {}),
     },
   };
-}
-
-/** The wording a reason takes at this door — the message a surface prints verbatim. */
-function refusalMessage(
-  runId: string,
-  reason: LegalKReasonCode,
-  facts: {
-    nodeName?: string;
-    container?: LegalKContainer;
-    pass?: number;
-    ref?: string;
-  },
-): string {
-  const label = facts.nodeName ?? runId;
-  switch (reason) {
-    case "not-in-tree":
-      return `run id "${runId}" is not in the run tree being resumed`;
-    case "pass-run":
-      return `run "${runId}" is pass ${facts.pass}, a goto pass container, which is never a rerun boundary; choose a node inside it`;
-    case "root-run":
-      return `run "${runId}" is the root run, which is never a rerun boundary`;
-    case "not-in-file":
-      return `run "${runId}" resolves to node "${label}", which is no longer in the workflow`;
-    case "in-body":
-      return `run "${runId}" resolves to node "${label}", which is inside a ${facts.container ?? "loop, parallel, or branch"} body and cannot be a rerun boundary`;
-    case "not-succeeded":
-      return `run "${runId}" (node "${label}") did not succeed; a rerun boundary must be a succeeded node`;
-    case "prefix-unsucceeded":
-      return `run "${runId}" (node "${label}") has an unsucceeded node before it; the whole prefix must succeed to reuse it`;
-    case "not-workflow":
-      return `run "${runId}" resolves through node "${label}", which is no longer a nested workflow and cannot be descended`;
-    case "ref-unresolved":
-      return `run "${runId}" resolves through node "${label}", whose referenced file "${facts.ref ?? ""}" is no longer in the workflow`;
-  }
 }

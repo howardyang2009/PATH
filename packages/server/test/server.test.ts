@@ -1119,7 +1119,11 @@ describe("POST /v0/runs/:root_run_id/resume — resume a finished-but-unsuccessf
 
     const res = await resumeRun(root_run_id);
     expect(res.status).toBe(409);
-    expect(((await res.json()) as { error: { message: string } }).error.message).toContain("still");
+    expect(((await res.json()) as { error: unknown }).error).toMatchObject({
+      code: "run.resume.not-finished",
+      params: { rootRunId: root_run_id, status: "running" },
+      message: expect.stringContaining("still"),
+    });
 
     await cancelRun(root_run_id);
     await pollUntilTerminal(root_run_id);
@@ -1135,9 +1139,11 @@ describe("POST /v0/runs/:root_run_id/resume — resume a finished-but-unsuccessf
 
     const res = await resumeRun(root_run_id);
     expect(res.status).toBe(409);
-    expect(((await res.json()) as { error: { message: string } }).error.message).toContain(
-      "succeeded",
-    );
+    expect(((await res.json()) as { error: unknown }).error).toMatchObject({
+      code: "run.resume.succeeded",
+      params: { rootRunId: root_run_id },
+      message: expect.stringContaining("succeeded"),
+    });
   });
 
   // Resume-from-K (#444): the already-succeeded gate is relaxed when `rerun_from_run_id` is
@@ -1173,7 +1179,7 @@ describe("POST /v0/runs/:root_run_id/resume — resume a finished-but-unsuccessf
     expect(successorBody.runs.find((r) => r.node_name === "shout")!.reused_from_run_id).toBeNull();
   });
 
-  it("forwards an engine Resume-from-K refusal verbatim, with its taxonomy status", async () => {
+  it("forwards an engine Resume-from-K refusal as its code, with its taxonomy status", async () => {
     const { root_run_id } = (await (
       await postRun({ workflow_path: "two-binary-steps.workflow.json" })
     ).json()) as {
@@ -1184,9 +1190,11 @@ describe("POST /v0/runs/:root_run_id/resume — resume a finished-but-unsuccessf
     // An unresolvable selection — reason #1, status 400 (spec §5), message forwarded verbatim.
     const res = await resumeRun(root_run_id, { rerun_from_run_id: "not-a-run" });
     expect(res.status).toBe(400);
-    expect(((await res.json()) as { error: { message: string } }).error.message).toContain(
-      "not in the run tree being resumed",
-    );
+    expect(((await res.json()) as { error: unknown }).error).toMatchObject({
+      code: "run.resume.k.not-in-tree",
+      params: { runId: "not-a-run" },
+      message: 'run id "not-a-run" is not in the run tree being resumed',
+    });
   });
 
   it("404s for an unknown root_run_id", async () => {

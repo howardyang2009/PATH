@@ -168,8 +168,14 @@ describe("evaluateCondition — trace shape and helpers (ticket #21)", () => {
 
   it("describeConditionFailure surfaces the first error message, else the first false", () => {
     const errTrace = evalCond({ type: "range", path: "context.name", min: 0 }).trace;
-    expect(describeConditionFailure(errTrace)).toMatch(/requires a number/);
+    expect(describeConditionFailure(errTrace)).toEqual({
+      key: "errors.condition.wants-number",
+      params: { got: "string" },
+    });
     const falseTrace = evalCond({ type: "equals", path: "context.count", value: 6 }).trace;
-    expect(describeConditionFailure(falseTrace)).toMatch(/was false|context.count/);
+    expect(describeConditionFailure(falseTrace)).toEqual({
+      key: "errors.condition.was-false",
+      params: { predicate: "equals", path: "context.count" },
+    });
   });
 });

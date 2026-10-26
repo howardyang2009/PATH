@@ -1,5 +1,6 @@
 import type { RunNodeState } from "@path/client-core";
 import { stubClient } from "@path/client-core/test-utils";
+import { type Message, verbatim } from "@path/i18n";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { NodeIo } from "../src/node-io.js";
@@ -306,7 +307,7 @@ describe("NodeIo", () => {
     // view-model test).
     const view = {
       displayStatus: new Map(),
-      lastError: new Map([[RUN, "worker exited with code 1: boom"]]),
+      lastError: new Map([[RUN, verbatim("worker exited with code 1: boom")]]),
     };
     render(<NodeIo client={client} run={runState({ status: "failed" })} view={view} />);
 
@@ -321,7 +322,7 @@ describe("NodeIo", () => {
     const client = stubClient({ blobs: {} });
     const view = {
       displayStatus: new Map(),
-      lastError: new Map<string, string>(),
+      lastError: new Map<string, Message>(),
       launchFacts: {
         input: { since_tag: "1.3.0" },
         config: { github_token: "[secret:github_token]" },
@@ -353,7 +354,7 @@ describe("NodeIo", () => {
     const client = stubClient({ blobs: {} });
     const view = {
       displayStatus: new Map(),
-      lastError: new Map<string, string>(),
+      lastError: new Map<string, Message>(),
       launchFacts: { input: { seed: 1 } },
     };
     render(
@@ -373,7 +374,7 @@ describe("NodeIo", () => {
     const client = stubClient({ blobs: {} });
     const view = {
       displayStatus: new Map(),
-      lastError: new Map<string, string>(),
+      lastError: new Map<string, Message>(),
       launchFacts: { input: { seed: 1 } },
     };
     render(<NodeIo client={client} run={runState()} view={view} />);
