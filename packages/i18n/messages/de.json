@@ -482,6 +482,101 @@
         "ref": "Referenz",
         "goto": "goto"
       }
+    },
+    "draft": {
+      "notJson": "Kein gültiges JSON: {error}",
+      "invalidInterpolation": "ungültige Interpolation",
+      "payloadNotObject": "Die Nutzdaten müssen ein JSON-Objekt sein.",
+      "fileInputNotObject": "Die Workflow-Eingabe muss ein JSON-Objekt sein.",
+      "outputSchemaNotObject": "Das Ausgabeschema muss ein JSON-Objekt sein.",
+      "maxIterationsRequired": "Erforderlich – eine positive ganze Zahl oder eine Referenz $'{'config.…'}' / $'{'context.…'}'.",
+      "positiveWholeNumber": "Muss eine positive ganze Zahl sein.",
+      "maxIterationsInvalid": "Ungültige Interpolation.",
+      "invalidCondition": "ungültige Bedingung"
+    },
+    "pane": {
+      "fileExplain": "Die Workflow-Datei – ihre Identität und der auf der Arbeitsfläche erstellte Rumpf.",
+      "reference": "Referenzen",
+      "role": {
+        "else": "Sonst-Zweig der Verzweigung",
+        "parallelBranch": "paralleler Zweig",
+        "arm": "Fall der Verzweigung ({position} von {total})"
+      },
+      "branchHint": "Fälle und Sonst-Zweig werden auf der Arbeitsfläche bearbeitet; eine Verzweigung hat keine eigenen Felder.",
+      "sequenceHint": "Die Reihenfolge ist Struktur – ordnen Sie den Rumpf auf der Arbeitsfläche neu.",
+      "missingTarget": "fehlt: {name}",
+      "maxIterationsPlaceholder": "10 oder $'{'config.max_revisions'}'",
+      "config": {
+        "emptyStep": "Keine Konfiguration. Fügen Sie einen Schlüssel hinzu oder übernehmen Sie einen aus dem Workflow.",
+        "emptyFile": "Keine Konfiguration. Fügen Sie einen Schlüssel hinzu, um eine Workflow-Vorgabe zu setzen, die jeder Schritt übernimmt.",
+        "newKeyLabel": "Neuer Konfigurationsschlüssel",
+        "newKeyPlaceholder": "neuer Schlüssel",
+        "addKey": "+ Konfigurationsschlüssel hinzufügen",
+        "override": "Überschreiben",
+        "remove": "{key} entfernen"
+      },
+      "revert": "Zurücksetzen",
+      "stepInputLabel": "input (beliebiger JSON-Wert, $'{'…'}' interpolierbar)",
+      "fileInputLabel": "input (JSON-Objekt, der Startwert des Workflows)",
+      "contextWrites": "Kontext-Schreibzugriffe",
+      "publish": {
+        "key": "Veröffentlichungsschlüssel",
+        "value": "Veröffentlichungswert",
+        "remove": "Veröffentlichung entfernen",
+        "keyPlaceholder": "Kontextschlüssel",
+        "add": "+ Veröffentlichung hinzufügen"
+      },
+      "none": "(keine)",
+      "workerDefaults": "Worker-Vorgaben",
+      "workerDefaultsHint": "Der Worker, den nicht festgelegte Schritte jedes Typs in dieser Datei verwenden. Eine Auswahl je Typ, keine Konfiguration: Der eigene Worker eines Schritts hat Vorrang, und dies gilt nie über eine Workflow-Referenz hinweg.",
+      "output": {
+        "hint": "Das Ausgabeobjekt des Workflows, ausgewertet bei Erfolg – das, was die Veröffentlichung eines übergeordneten Workflows über eine Workflow-Referenz zurückliest.",
+        "key": "Ausgabeschlüssel",
+        "value": "Ausgabewert",
+        "remove": "Ausgabe entfernen",
+        "keyPlaceholder": "Ausgabeschlüssel",
+        "add": "+ Ausgabeschlüssel hinzufügen"
+      },
+      "model": {
+        "placeholder": "Modell-ID",
+        "inherited": "Übernommen aus der Workflow-Konfiguration: {inherited}",
+        "revertTitle": "Auf das übernommene Modell zurücksetzen: {inherited}"
+      },
+      "ref": {
+        "label": "referenzierte Datei",
+        "noTarget": "Diese Referenz hat noch kein Ziel.",
+        "chooseTarget": "Referenzziel wählen…"
+      },
+      "outputSchemaLabel": "outputSchema (JSON Schema, optional)",
+      "payloadLabel": "Nutzdaten (JSON)",
+      "workerDefault": "(Standard: {worker} – {tier, select, file {Datei} other {Typ}})",
+      "onePerLine": "(einer pro Zeile)"
+    },
+    "condition": {
+      "operator": "Operator",
+      "removeCondition": "Bedingung entfernen",
+      "addCondition": "+ Bedingung hinzufügen",
+      "valueType": "Werttyp",
+      "booleanValue": "Boolescher Wert",
+      "numberValue": "Zahlenwert",
+      "stringValue": "Zeichenkettenwert",
+      "removeValue": "Wert entfernen",
+      "addValue": "+ Wert hinzufügen"
+    },
+    "configValue": {
+      "mode": "{label}: Modus",
+      "literal": "Literal",
+      "envVariable": "{label}: $env-Variable",
+      "secretSource": "{label}: $secret-Quelle",
+      "literalSecret": "Literales Secret",
+      "fromEnv": "Aus $env",
+      "secretEnvVariable": "{label}: $secret-$env-Variable",
+      "secretValue": "{label}: $secret-Wert",
+      "secretPlaceholder": "Secret"
+    },
+    "goto": {
+      "targetedBy": "Ziel von goto {sources}",
+      "noTarget": "(kein Ziel)"
     }
   }
 }

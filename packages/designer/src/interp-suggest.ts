@@ -1,3 +1,4 @@
+import { type Message, verbatim } from "@path/i18n";
 import {
   checkInterpolationSyntax,
   type InterpolationRoot,
@@ -36,15 +37,28 @@ export function referenceablePaths(
 
 /** The outcome of parsing an input draft: the parsed object, or the first reason it is not
  * acceptable. */
-export type InputParse = { ok: true; value: JsonValue } | { ok: false; error: string };
+export type InputParse = { ok: true; value: JsonValue } | { ok: false; error: Message };
+
+/** A JSON parse failure, the parser's own words carried verbatim. */
+export function notJson(e: unknown): Message {
+  return {
+    key: "designer.draft.notJson",
+    params: { error: e instanceof Error ? e.message : String(e) },
+  };
+}
+
+/** The schema's interpolation-syntax verdict as a `Message`, or `null` when the text is valid. */
+function interpolationError(result: ReturnType<typeof checkInterpolationSyntax>): Message | null {
+  if (result.ok) return null;
+  return result.error === undefined
+    ? { key: "designer.draft.invalidInterpolation" }
+    : verbatim(result.error);
+}
 
 /** Recursively check every string leaf of a parsed JSON value through the interpolation syntax
  * check. */
-function checkInterpolation(value: JsonValue, roots: readonly InterpolationRoot[]): string | null {
-  if (typeof value === "string") {
-    const result = checkInterpolationSyntax(value, roots);
-    return result.ok ? null : (result.error ?? "invalid interpolation");
-  }
+function checkInterpolation(value: JsonValue, roots: readonly InterpolationRoot[]): Message | null {
+  if (typeof value === "string") return interpolationError(checkInterpolationSyntax(value, roots));
   if (Array.isArray(value)) {
     for (const item of value) {
       const error = checkInterpolation(item, roots);
@@ -80,13 +94,13 @@ export function parseInputDraft(text: string, roots: readonly InterpolationRoot[
     try {
       parsed = JSON.parse(text);
     } catch (e) {
-      return { ok: false, error: `Not valid JSON: ${e instanceof Error ? e.message : String(e)}` };
+      return { ok: false, error: notJson(e) };
     }
     const error = checkInterpolation(parsed as JsonValue, roots);
     if (error) return { ok: false, error };
     return { ok: true, value: parsed as JsonValue };
   }
-  const check = checkInterpolationSyntax(text, roots);
-  if (!check.ok) return { ok: false, error: check.error ?? "invalid interpolation" };
+  const error = interpolationError(checkInterpolationSyntax(text, roots));
+  if (error) return { ok: false, error };
   return { ok: true, value: text };
 }

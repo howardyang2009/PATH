@@ -1,5 +1,8 @@
+import type { Message } from "@path/i18n";
+import { useMessage } from "@path/i18n/react";
 import { checkInterpolationSyntax, type InterpolationRoot } from "@path/schema";
 import { type ReactNode, useId, useState } from "react";
+import { useTranslations } from "use-intl";
 import type { EditKey } from "../edit-key.js";
 import {
   type DraftResult,
@@ -89,6 +92,7 @@ export function MaxIterationsField({
   value: number | string;
   onChange: (v: number | string) => void;
 }): JSX.Element {
+  const t = useTranslations();
   const id = useId();
   const { draft, error, onEdit } = useValidatedDraft(
     () => String(value),
@@ -107,7 +111,7 @@ export function MaxIterationsField({
         className="pane-input"
         type="text"
         value={draft}
-        placeholder="10 or ${config.max_revisions}"
+        placeholder={t("designer.pane.maxIterationsPlaceholder")}
         onChange={(e) => onEdit(e.target.value)}
         aria-invalid={error !== null}
       />
@@ -159,10 +163,11 @@ export function JsonDraftField<T>({
 }
 
 /** A field's validation error, announced to assistive tech; nothing when the draft is valid. */
-export function FieldError({ error }: { error: string | null }): JSX.Element | null {
+export function FieldError({ error }: { error: Message | null }): JSX.Element | null {
+  const renderMessage = useMessage();
   return error ? (
     <p className="pane-error" role="alert">
-      {error}
+      {renderMessage(error)}
     </p>
   ) : null;
 }

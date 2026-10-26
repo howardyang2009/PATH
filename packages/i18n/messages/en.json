@@ -482,6 +482,101 @@
         "ref": "ref",
         "goto": "goto"
       }
+    },
+    "draft": {
+      "notJson": "Not valid JSON: {error}",
+      "invalidInterpolation": "invalid interpolation",
+      "payloadNotObject": "The payload must be a JSON object.",
+      "fileInputNotObject": "The workflow input must be a JSON object.",
+      "outputSchemaNotObject": "The output schema must be a JSON object.",
+      "maxIterationsRequired": "Required — a positive whole number, or a $'{'config.…'}' / $'{'context.…'}' reference.",
+      "positiveWholeNumber": "Must be a positive whole number.",
+      "maxIterationsInvalid": "Invalid interpolation.",
+      "invalidCondition": "invalid condition"
+    },
+    "pane": {
+      "fileExplain": "The workflow file — its identity and the body authored on the canvas.",
+      "reference": "reference",
+      "role": {
+        "else": "branch else fallback",
+        "parallelBranch": "parallel branch",
+        "arm": "branch arm ({position} of {total})"
+      },
+      "branchHint": "Arms and else are edited on the canvas; a Branch has no fields of its own.",
+      "sequenceHint": "Order is structure — reorder the body on the canvas.",
+      "missingTarget": "missing: {name}",
+      "maxIterationsPlaceholder": "10 or $'{'config.max_revisions'}'",
+      "config": {
+        "emptyStep": "No config. Add a key, or inherit one from the workflow.",
+        "emptyFile": "No config. Add a key to set a workflow default that every step inherits.",
+        "newKeyLabel": "New config key",
+        "newKeyPlaceholder": "new key",
+        "addKey": "+ add config key",
+        "override": "Override",
+        "remove": "Remove {key}"
+      },
+      "revert": "Revert",
+      "stepInputLabel": "input (any JSON value, $'{'…'}' interpolable)",
+      "fileInputLabel": "input (JSON object, the workflow's launch seed)",
+      "contextWrites": "context writes",
+      "publish": {
+        "key": "Publish key",
+        "value": "Publish value",
+        "remove": "Remove publish",
+        "keyPlaceholder": "context key",
+        "add": "+ add publish"
+      },
+      "none": "(none)",
+      "workerDefaults": "worker defaults",
+      "workerDefaultsHint": "The worker each type's un-pinned steps use in this file. A per-type selection, not config: a step's own worker still wins, and this never crosses a workflow reference.",
+      "output": {
+        "hint": "The workflow's output object, evaluated at success — what a parent's publish reads back from a workflow reference.",
+        "key": "Output key",
+        "value": "Output value",
+        "remove": "Remove output",
+        "keyPlaceholder": "output key",
+        "add": "+ add output key"
+      },
+      "model": {
+        "placeholder": "model id",
+        "inherited": "Inherited from the workflow config: {inherited}",
+        "revertTitle": "Revert to the inherited model: {inherited}"
+      },
+      "ref": {
+        "label": "referenced file",
+        "noTarget": "This reference has no target yet.",
+        "chooseTarget": "Choose a reference target…"
+      },
+      "outputSchemaLabel": "outputSchema (JSON Schema, optional)",
+      "payloadLabel": "payload (JSON)",
+      "workerDefault": "(default: {worker} — {tier, select, file {file} other {type}})",
+      "onePerLine": "(one per line)"
+    },
+    "condition": {
+      "operator": "Operator",
+      "removeCondition": "Remove condition",
+      "addCondition": "+ add condition",
+      "valueType": "Value type",
+      "booleanValue": "Boolean value",
+      "numberValue": "Number value",
+      "stringValue": "String value",
+      "removeValue": "Remove value",
+      "addValue": "+ add value"
+    },
+    "configValue": {
+      "mode": "{label} mode",
+      "literal": "Literal",
+      "envVariable": "{label} $env variable",
+      "secretSource": "{label} $secret source",
+      "literalSecret": "Literal secret",
+      "fromEnv": "From $env",
+      "secretEnvVariable": "{label} $secret $env variable",
+      "secretValue": "{label} $secret value",
+      "secretPlaceholder": "secret"
+    },
+    "goto": {
+      "targetedBy": "Targeted by goto {sources}",
+      "noTarget": "(no target)"
     }
   }
 }

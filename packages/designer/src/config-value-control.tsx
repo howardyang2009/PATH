@@ -1,4 +1,5 @@
 import { type ConfigValue, type EnvWrapper, isEnvWrapper, isSecretWrapper } from "@path/schema";
+import { useTranslations } from "use-intl";
 import {
   type ConfigMode,
   configModeOf,
@@ -31,6 +32,7 @@ interface ConfigControlProps {
  * of this affordance's scope.
  */
 export function ConfigValueControl({ value, onChange, label }: ConfigControlProps): JSX.Element {
+  const t = useTranslations();
   if (!isEditableScalar(value) && referenceLabel(value) === null) {
     return <code className="pane-config-value">{renderConfigValue(value)}</code>;
   }
@@ -43,11 +45,11 @@ export function ConfigValueControl({ value, onChange, label }: ConfigControlProp
     <div className="pane-config-control">
       <select
         className="pane-input pane-config-mode"
-        aria-label={`${label} mode`}
+        aria-label={t("designer.configValue.mode", { label })}
         value={mode}
         onChange={(e) => setMode(e.target.value as ConfigMode)}
       >
-        <option value="literal">Literal</option>
+        <option value="literal">{t("designer.configValue.literal")}</option>
         <option value="env">$env</option>
         <option value="secret">$secret</option>
       </select>
@@ -97,13 +99,14 @@ function LiteralControl({ value, onChange, label }: ConfigControlProps): JSX.Ele
 
 /** The `$env`-mode control: an env-var-name input plus the reference-only chip (`$env · NAME`). */
 function EnvControl({ value, onChange, label }: ConfigControlProps): JSX.Element {
+  const t = useTranslations();
   const name = isEnvWrapper(value) ? value.$env : "";
   return (
     <div className="pane-ref-control">
       <input
         className="pane-input"
         type="text"
-        aria-label={`${label} $env variable`}
+        aria-label={t("designer.configValue.envVariable", { label })}
         placeholder="ENV_VAR_NAME"
         value={name}
         onChange={(e) => onChange({ $env: e.target.value })}
@@ -122,24 +125,25 @@ function EnvControl({ value, onChange, label }: ConfigControlProps): JSX.Element
  * env-sourced source.
  */
 function SecretControl({ value, onChange, label }: ConfigControlProps): JSX.Element {
+  const t = useTranslations();
   const inner: string | EnvWrapper = isSecretWrapper(value) ? value.$secret : "";
   const setSource = (source: "literal" | "env"): void => onChange(setSecretSource(value, source));
   return (
     <div className="pane-ref-control">
       <select
         className="pane-input pane-secret-source"
-        aria-label={`${label} $secret source`}
+        aria-label={t("designer.configValue.secretSource", { label })}
         value={isEnvWrapper(inner) ? "env" : "literal"}
         onChange={(e) => setSource(e.target.value as "literal" | "env")}
       >
-        <option value="literal">Literal secret</option>
-        <option value="env">From $env</option>
+        <option value="literal">{t("designer.configValue.literalSecret")}</option>
+        <option value="env">{t("designer.configValue.fromEnv")}</option>
       </select>
       {isEnvWrapper(inner) ? (
         <input
           className="pane-input"
           type="text"
-          aria-label={`${label} $secret $env variable`}
+          aria-label={t("designer.configValue.secretEnvVariable", { label })}
           placeholder="ENV_VAR_NAME"
           value={inner.$env}
           onChange={(e) => onChange({ $secret: { $env: e.target.value } })}
@@ -148,8 +152,8 @@ function SecretControl({ value, onChange, label }: ConfigControlProps): JSX.Elem
         <input
           className="pane-input"
           type="password"
-          aria-label={`${label} $secret value`}
-          placeholder="secret"
+          aria-label={t("designer.configValue.secretValue", { label })}
+          placeholder={t("designer.configValue.secretPlaceholder")}
           value={inner}
           onChange={(e) => onChange({ $secret: e.target.value })}
         />

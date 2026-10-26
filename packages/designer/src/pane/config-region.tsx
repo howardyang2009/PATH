@@ -1,5 +1,6 @@
 import { type ConfigObject, ROOTS, type WorkflowFile, type WorkflowNode } from "@path/schema";
 import { useState } from "react";
+import { useTranslations } from "use-intl";
 import { type ConfigRow, configRows, dropConfigKey, setConfigKey } from "../config-inheritance.js";
 import { renderConfigValue } from "../config-value.js";
 import { ConfigValueControl } from "../config-value-control.js";
@@ -62,6 +63,7 @@ export function ConfigRegion({
   node: WorkflowNode;
   commit: EditCommit<WorkflowNode>;
 }): JSX.Element {
+  const t = useTranslations();
   const config = nodeConfigOf(node);
   // A value edit passes its identity so a keystroke run folds to one undo entry; a discrete write
   // (Override/Revert/×/add-key) passes none, so it is its own entry.
@@ -74,7 +76,7 @@ export function ConfigRegion({
       hide={firstClassConfigKeys(node.type)}
       scopeId={node.id}
       write={write}
-      emptyHint="No config. Add a key, or inherit one from the workflow."
+      emptyHint={t("designer.pane.config.emptyStep")}
     />
   );
 }
@@ -99,6 +101,7 @@ export function ConfigEditor({
   write: EditCommit<ConfigObject | undefined>;
   emptyHint: string;
 }): JSX.Element {
+  const t = useTranslations();
   const [newKey, setNewKey] = useState("");
   const rows = configRows(parentConfig, config, hide);
   const addKey = (): void => {
@@ -128,13 +131,13 @@ export function ConfigEditor({
         <input
           className="pane-input"
           type="text"
-          aria-label="New config key"
-          placeholder="new key"
+          aria-label={t("designer.pane.config.newKeyLabel")}
+          placeholder={t("designer.pane.config.newKeyPlaceholder")}
           value={newKey}
           onChange={(e) => setNewKey(e.target.value)}
         />
         <button type="button" className="pane-btn" onClick={addKey} disabled={newKey.trim() === ""}>
-          + add config key
+          {t("designer.pane.config.addKey")}
         </button>
       </div>
     </PaneSection>
@@ -156,6 +159,7 @@ export function ConfigRowField({
   nodeId: string;
   write: EditCommit<ConfigObject | undefined>;
 }): JSX.Element {
+  const t = useTranslations();
   if (row.origin === "inherited") {
     return (
       <div className="pane-field pane-config-row" data-origin="inherited">
@@ -170,7 +174,7 @@ export function ConfigRowField({
             className="pane-btn"
             onClick={() => write(setConfigKey(config, row.key, row.value))}
           >
-            Override
+            {t("designer.pane.config.override")}
           </button>
         </div>
       </div>
@@ -196,13 +200,13 @@ export function ConfigRowField({
             className="pane-btn"
             onClick={() => write(dropConfigKey(config, row.key))}
           >
-            Revert
+            {t("designer.pane.revert")}
           </button>
         ) : (
           <button
             type="button"
             className="pane-btn"
-            aria-label={`Remove ${row.key}`}
+            aria-label={t("designer.pane.config.remove", { key: row.key })}
             onClick={() => write(dropConfigKey(config, row.key))}
           >
             ×
@@ -226,11 +230,12 @@ export function InputEditor({
   node: WorkflowNode;
   commit: EditCommit<WorkflowNode>;
 }): JSX.Element {
+  const t = useTranslations();
   return (
     <PaneSection key={node.id} title="input">
       <JsonDraftField
         id={`input-${node.id}`}
-        label="input (any JSON value, ${…} interpolable)"
+        label={t("designer.pane.stepInputLabel")}
         rows={5}
         initial={() => {
           const input = rec(node).input;
@@ -256,6 +261,7 @@ export function PublishParseFields({
   node: WorkflowNode;
   commit: EditCommit<WorkflowNode>;
 }): JSX.Element {
+  const t = useTranslations();
   const parse = nodeString(node, "parse");
 
   // Keyed rows: it commits only when every value's interpolation is valid, an empty map drops the
@@ -274,7 +280,7 @@ export function PublishParseFields({
   );
 
   return (
-    <PaneSection key={node.id} title="context writes">
+    <PaneSection key={node.id} title={t("designer.pane.contextWrites")}>
       {rows.length > 0 ? (
         // One shared grid so every row's `=` sits in the same column, aligned down the list (§
         // Config).
@@ -285,10 +291,10 @@ export function PublishParseFields({
               key={index}
               row={row}
               roots={ROOTS.publish}
-              keyLabel="Publish key"
-              valueLabel="Publish value"
-              removeLabel="Remove publish"
-              keyPlaceholder="context key"
+              keyLabel={t("designer.pane.publish.key")}
+              valueLabel={t("designer.pane.publish.value")}
+              removeLabel={t("designer.pane.publish.remove")}
+              keyPlaceholder={t("designer.pane.publish.keyPlaceholder")}
               valuePlaceholder={() => "${output.x}"}
               onChange={(r) => setRow(index, r)}
               onRemove={() => removeRow(index)}
@@ -297,12 +303,13 @@ export function PublishParseFields({
         </div>
       ) : null}
       <button type="button" className="pane-btn" onClick={addRow}>
-        + add publish
+        {t("designer.pane.publish.add")}
       </button>
       <SelectField
         label="parse"
         value={parse === "" ? "(none)" : parse}
         options={["(none)", "text", "json"]}
+        optionLabel={(v) => (v === "(none)" ? t("designer.pane.none") : v)}
         onChange={(v) =>
           commit(v === "(none)" ? dropNodeKey(node, "parse") : setNodeField(node, "parse", v))
         }

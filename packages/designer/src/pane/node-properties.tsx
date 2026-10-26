@@ -1,4 +1,5 @@
 import type { WireStepPlugin } from "@path/client-core";
+import type { Message } from "@path/i18n";
 import { useMessage } from "@path/i18n/react";
 import {
   type Condition,
@@ -8,6 +9,7 @@ import {
   type WorkflowFile,
   type WorkflowNode,
 } from "@path/schema";
+import { useTranslations } from "use-intl";
 import { ConditionField } from "../condition-builder.js";
 import { defaultCondition } from "../condition-edit.js";
 import { type EditCommit, type EditKey, editKey } from "../edit-key.js";
@@ -56,7 +58,7 @@ export function NodeProperties({
     <div className="pane" onKeyDown={fillPlaceholderOnTab}>
       {role ? (
         <p className="pane-role" role="note">
-          {role}
+          {renderMessage(role)}
         </p>
       ) : null}
       <p className="pane-explain">{renderMessage(nodeKind(node.type).explanation)}</p>
@@ -135,12 +137,13 @@ export function ReferenceList({
   ownerId: string;
   paths: readonly string[];
 }): JSX.Element | null {
+  const t = useTranslations();
   if (paths.length === 0) return null;
   return (
     <>
       <hr className="pane-divider" />
       {/* Keyed by the owner: a new selection opens the section collapsed again. */}
-      <PaneSection key={ownerId} title="reference" className="pane-reference">
+      <PaneSection key={ownerId} title={t("designer.pane.reference")} className="pane-reference">
         <p className="pane-hint pane-suggest">{paths.join(" · ")}</p>
       </PaneSection>
     </>
@@ -159,14 +162,16 @@ export function armWhen(file: WorkflowFile, branchId: string, armIndex: number):
  * container that distinguishes its occupants supplies one: a branch arm (its 1-based position), a
  * branch `else`, or a parallel branch.
  */
-export function occupantRole(site: ReturnType<typeof locate>, file: WorkflowFile): string | null {
+export function occupantRole(site: ReturnType<typeof locate>, file: WorkflowFile): Message | null {
   if (!site) return null;
-  if (site.where === "else") return "branch else fallback";
-  if (site.where === "list" && site.listKind === "branches") return "parallel branch";
+  if (site.where === "else") return { key: "designer.pane.role.else" };
+  if (site.where === "list" && site.listKind === "branches") {
+    return { key: "designer.pane.role.parallelBranch" };
+  }
   if (site.where === "arm") {
     const owner = findById(file.body, site.ownerId);
     const total = owner?.type === "branch" ? owner.arms.length : 0;
-    return `branch arm (${site.armIndex + 1} of ${total})`;
+    return { key: "designer.pane.role.arm", params: { position: site.armIndex + 1, total } };
   }
   return null;
 }
@@ -188,6 +193,7 @@ export function KindFields({
   condSuggest: string[];
   onAddRefTarget?: (nodeId: string) => void;
 }): JSX.Element {
+  const t = useTranslations();
   // `person-activity` is a plugin leaf outside the core node union, so it is dispatched by string
   // type.
   if ((node.type as string) === "person-activity") {
@@ -229,13 +235,9 @@ export function KindFields({
     case "goto":
       return <GotoEditor file={file} node={node} commit={commit} />;
     case "branch":
-      return (
-        <p className="pane-hint">
-          Arms and else are edited on the canvas; a Branch has no fields of its own.
-        </p>
-      );
+      return <p className="pane-hint">{t("designer.pane.branchHint")}</p>;
     case "sequence":
-      return <p className="pane-hint">Order is structure — reorder the body on the canvas.</p>;
+      return <p className="pane-hint">{t("designer.pane.sequenceHint")}</p>;
     case "checkpoint":
       return (
         <ConditionField
@@ -265,6 +267,7 @@ export function GotoEditor({
   node: Extract<WorkflowNode, { type: "goto" }>;
   commit: EditCommit<WorkflowNode>;
 }): JSX.Element {
+  const t = useTranslations();
   const options = gotoTargetOptions(file, node.id);
   const eligible = options.some((option) => option.name === node.target);
   const glyphs = new Map(options.map((option) => [option.name, directionGlyph(option.direction)]));
@@ -279,7 +282,9 @@ export function GotoEditor({
             : [node.target, ...options.map((option) => option.name)]
         }
         optionLabel={(name) =>
-          glyphs.has(name) ? `${glyphs.get(name)} ${name}` : `missing: ${name === "" ? '""' : name}`
+          glyphs.has(name)
+            ? `${glyphs.get(name)} ${name}`
+            : t("designer.pane.missingTarget", { name: name === "" ? '""' : name })
         }
         onChange={(target) => commit({ ...node, target })}
       />

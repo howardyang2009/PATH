@@ -1,4 +1,5 @@
 import { type KeyboardEvent as ReactKeyboardEvent, useState } from "react";
+import { useTranslations } from "use-intl";
 
 /**
  * The properties pane's generic, schema-blind field vocabulary: the label/input/select/textarea
@@ -122,6 +123,7 @@ export function StringListField({
   // the keystroke. The parent only sees non-empty lines, and the draft resyncs when the parent's
   // canonical value diverges — not on the round-trip of our own emit, which would strip those
   // lines.
+  const t = useTranslations();
   const joined = values.join("\n");
   const [text, setText] = useState(joined);
   const [prevJoined, setPrevJoined] = useState(joined);
@@ -133,7 +135,7 @@ export function StringListField({
     <label className="pane-field pane-field-row pane-field-multiline">
       <span className="pane-label">
         {label}
-        <span className="pane-label-note">(one per line)</span>
+        <span className="pane-label-note">{t("designer.pane.onePerLine")}</span>
       </span>
       <textarea
         className="pane-input"

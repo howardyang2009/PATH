@@ -482,6 +482,101 @@
         "ref": "引用",
         "goto": "goto"
       }
+    },
+    "draft": {
+      "notJson": "不是有效的 JSON：{error}",
+      "invalidInterpolation": "插值无效",
+      "payloadNotObject": "负载必须是 JSON 对象。",
+      "fileInputNotObject": "工作流输入必须是 JSON 对象。",
+      "outputSchemaNotObject": "输出 schema 必须是 JSON 对象。",
+      "maxIterationsRequired": "必填：一个正整数，或 $'{'config.…'}' / $'{'context.…'}' 引用。",
+      "positiveWholeNumber": "必须是正整数。",
+      "maxIterationsInvalid": "插值无效。",
+      "invalidCondition": "条件无效"
+    },
+    "pane": {
+      "fileExplain": "工作流文件：它的标识，以及在画布上编写的主体。",
+      "reference": "可引用路径",
+      "role": {
+        "else": "分支的否则兜底",
+        "parallelBranch": "并行分支",
+        "arm": "条件分支（第 {position} 个，共 {total} 个）"
+      },
+      "branchHint": "条件分支和否则分支在画布上编辑；分支节点没有自己的字段。",
+      "sequenceHint": "顺序即结构，请在画布上重新排列主体。",
+      "missingTarget": "缺失：{name}",
+      "maxIterationsPlaceholder": "10 或 $'{'config.max_revisions'}'",
+      "config": {
+        "emptyStep": "没有配置。添加一个键，或从工作流继承。",
+        "emptyFile": "没有配置。添加一个键，作为每个步骤都会继承的工作流默认值。",
+        "newKeyLabel": "新配置键",
+        "newKeyPlaceholder": "新键",
+        "addKey": "+ 添加配置键",
+        "override": "覆盖",
+        "remove": "移除 {key}"
+      },
+      "revert": "还原",
+      "stepInputLabel": "input（任意 JSON 值，可使用 $'{'…'}' 插值）",
+      "fileInputLabel": "input（JSON 对象，工作流的启动初始值）",
+      "contextWrites": "上下文写入",
+      "publish": {
+        "key": "发布键",
+        "value": "发布值",
+        "remove": "移除发布",
+        "keyPlaceholder": "上下文键",
+        "add": "+ 添加发布"
+      },
+      "none": "（无）",
+      "workerDefaults": "执行器预设",
+      "workerDefaultsHint": "此文件中各类型未指定执行器的步骤所用的执行器。按类型选择，不是配置：步骤自身的执行器仍然优先，且此设置不会跨越工作流引用。",
+      "output": {
+        "hint": "工作流的输出对象，在成功时求值；父工作流的发布通过工作流引用读回的就是它。",
+        "key": "输出键",
+        "value": "输出值",
+        "remove": "移除输出",
+        "keyPlaceholder": "输出键",
+        "add": "+ 添加输出键"
+      },
+      "model": {
+        "placeholder": "模型 ID",
+        "inherited": "继承自工作流配置：{inherited}",
+        "revertTitle": "还原为继承的模型：{inherited}"
+      },
+      "ref": {
+        "label": "引用的文件",
+        "noTarget": "此引用还没有目标。",
+        "chooseTarget": "选择引用目标…"
+      },
+      "outputSchemaLabel": "outputSchema（JSON Schema，可选）",
+      "payloadLabel": "负载（JSON）",
+      "workerDefault": "（默认：{worker}，来自{tier, select, file {文件} other {类型}}）",
+      "onePerLine": "（每行一个）"
+    },
+    "condition": {
+      "operator": "运算符",
+      "removeCondition": "移除条件",
+      "addCondition": "+ 添加条件",
+      "valueType": "值类型",
+      "booleanValue": "布尔值",
+      "numberValue": "数值",
+      "stringValue": "字符串值",
+      "removeValue": "移除值",
+      "addValue": "+ 添加值"
+    },
+    "configValue": {
+      "mode": "{label} 模式",
+      "literal": "字面量",
+      "envVariable": "{label} $env 变量",
+      "secretSource": "{label} $secret 来源",
+      "literalSecret": "字面量密钥",
+      "fromEnv": "来自 $env",
+      "secretEnvVariable": "{label} $secret $env 变量",
+      "secretValue": "{label} $secret 值",
+      "secretPlaceholder": "密钥"
+    },
+    "goto": {
+      "targetedBy": "被 goto {sources} 指向",
+      "noTarget": "（无目标）"
     }
   }
 }

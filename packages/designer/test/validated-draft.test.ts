@@ -1,7 +1,8 @@
 import type { WireStepPlugin } from "@path/client-core";
-import { ROOTS, type WorkflowNode } from "@path/schema";
+import { FORMAT_VERSION, ROOTS, type WorkflowFile, type WorkflowNode } from "@path/schema";
 import { describe, expect, it } from "vitest";
 import {
+  validateFileInputDraft,
   validateInputDraft,
   validateJsonPayload,
   validateMaxIterations,
@@ -42,12 +43,12 @@ describe("validateJsonPayload", () => {
   it("rejects unparseable JSON without committing", () => {
     const r = validateJsonPayload(apiNode(), "{ not json", plugins);
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.error).toMatch(/Not valid JSON/);
+    if (!r.ok) expect(r.error).toMatchObject({ key: "designer.draft.notJson" });
   });
 
   it("rejects a non-object payload", () => {
     const r = validateJsonPayload(apiNode(), "[1, 2]", plugins);
-    expect(r).toEqual({ ok: false, error: "The payload must be a JSON object." });
+    expect(r).toEqual({ ok: false, error: { key: "designer.draft.payloadNotObject" } });
   });
 
   it("commits a valid payload, merged onto the node's envelope", () => {
@@ -100,8 +101,14 @@ describe("validateMaxIterations", () => {
   });
 
   it("rejects an empty draft, a zero, and an ill-typed reference", () => {
-    expect(validateMaxIterations("").ok).toBe(false);
-    expect(validateMaxIterations("0").ok).toBe(false);
+    expect(validateMaxIterations("")).toEqual({
+      ok: false,
+      error: { key: "designer.draft.maxIterationsRequired" },
+    });
+    expect(validateMaxIterations("0")).toEqual({
+      ok: false,
+      error: { key: "designer.draft.positiveWholeNumber" },
+    });
     expect(validateMaxIterations("${config.x").ok).toBe(false);
   });
 });
@@ -134,7 +141,7 @@ describe("validateOutputSchema", () => {
     expect(validateOutputSchema(personNode(), "{ not json").ok).toBe(false);
     expect(validateOutputSchema(personNode(), "[1,2]")).toEqual({
       ok: false,
-      error: "The output schema must be a JSON object.",
+      error: { key: "designer.draft.outputSchemaNotObject" },
     });
     expect(validateOutputSchema(personNode(), "42").ok).toBe(false);
   });
@@ -174,3 +181,13 @@ function pickValue(result: ReturnType<typeof validateInputDraft>): WorkflowNode 
   if (!result.ok) throw new Error(`expected ok, got error: ${result.error}`);
   return result.value;
 }
+
+describe("validateFileInputDraft", () => {
+  it("rejects a seed that is not a JSON object", () => {
+    const file = { format: FORMAT_VERSION, id: UUID, name: "f", body: [] } as WorkflowFile;
+    expect(validateFileInputDraft(file, "[1, 2]")).toEqual({
+      ok: false,
+      error: { key: "designer.draft.fileInputNotObject" },
+    });
+  });
+});

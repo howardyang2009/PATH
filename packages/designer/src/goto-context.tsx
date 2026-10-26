@@ -1,5 +1,6 @@
 import type { WorkflowFile, WorkflowNode } from "@path/schema";
 import { createContext, type ReactNode, useContext, useMemo, useState } from "react";
+import { useTranslations } from "use-intl";
 import { findById } from "./edit-tree.js";
 import { directionGlyph, gotoDirection, incomingGotos } from "./goto-view.js";
 import { useSelection } from "./selection-context.js";
@@ -59,12 +60,16 @@ export function useIsGotoTarget(node: WorkflowNode): boolean {
 
 /** The `← N` badge on a first-level node that gotos target; its title lists them. */
 export function IncomingBadge({ node }: { node: WorkflowNode }): JSX.Element | null {
+  const t = useTranslations();
   const view = useContext(GotoContext);
   if (!view?.firstLevel.has(node.id)) return null;
   const sources = view.incoming.get(node.name);
   if (!sources) return null;
   return (
-    <span className="goto-incoming" title={`Targeted by goto ${sources.join(", ")}`}>
+    <span
+      className="goto-incoming"
+      title={t("designer.goto.targetedBy", { sources: sources.join(", ") })}
+    >
       ← {sources.length}
     </span>
   );
@@ -76,12 +81,13 @@ export function useGotoChip(node: Extract<WorkflowNode, { type: "goto" }>): {
   chip: JSX.Element;
   hover: { onMouseEnter?: () => void; onMouseLeave?: () => void };
 } {
+  const t = useTranslations();
   const view = useContext(GotoContext);
   const direction = view ? gotoDirection(view.file, node.id) : null;
   const chip = (
     <span className="goto-chip">
       <span className="goto-target">
-        {node.target === "" ? "→ (no target)" : `→ ${node.target}`}
+        {node.target === "" ? `→ ${t("designer.goto.noTarget")}` : `→ ${node.target}`}
       </span>
       {direction ? (
         <span className="goto-direction" aria-hidden="true">
