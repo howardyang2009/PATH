@@ -1,7 +1,7 @@
 import type { Message } from "@path/i18n";
 import { useMessage } from "@path/i18n/react";
 import { useMemo, useState } from "react";
-import { useTranslations } from "use-intl";
+import { useFormatter, useTranslations } from "use-intl";
 import { TEMPLATE_SUFFIX } from "./session-reducer.js";
 import type { TemplateListLoad } from "./template-list.js";
 import type { SaveAsResult, TemplateSource } from "./use-open-file.js";
@@ -53,6 +53,7 @@ export function SaveTemplateAsDialog({
   onCancel: () => void;
 }): JSX.Element {
   const t = useTranslations("designer");
+  const format = useFormatter();
   const renderMessage = useMessage();
   const fromWorkflow = workflowName !== undefined;
   // A template source's name is taken, so its copy is prefilled `<name>-copy`; a workflow's name is
@@ -184,7 +185,7 @@ export function SaveTemplateAsDialog({
           <p className="dialog-hint" role="note">
             {droppedFields.length > 0
               ? t("saveTemplateAsDialog.keepsBodyDropping", {
-                  droppedFields: formatList(droppedFields),
+                  droppedFields: format.list(droppedFields, { type: "conjunction" }),
                 })
               : t("saveTemplateAsDialog.keepsBody")}
           </p>
@@ -236,11 +237,4 @@ function writableFolders(
       label: dir === "" ? top : `${prefix}${dir}`,
     }));
   });
-}
-
-/** `a`, `a and b`, `a, b and c`. */
-function formatList(items: readonly string[]): string {
-  return items.length <= 1
-    ? (items[0] ?? "")
-    : `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
 }
