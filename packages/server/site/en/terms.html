@@ -66,13 +66,37 @@
       footer a {
         color: inherit;
       }
+      .langs {
+        margin: 0 0 16px;
+        color: var(--muted);
+        font-size: 14px;
+      }
+      .langs [aria-current] {
+        color: var(--fg);
+        font-weight: 600;
+      }
+      .courtesy {
+        margin: 0 0 16px;
+        padding: 12px 16px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+      }
     </style>
   </head>
   <body>
     <main>
+      <nav class="langs" aria-label="Language">
+        <a href="/de/terms" lang="de" hreflang="de">Deutsch</a> ·
+        <span aria-current="page">English</span> ·
+        <a href="/zh/terms" lang="zh-CN" hreflang="zh-CN">中文</a>
+      </nav>
       <p><a href="/">&larr; PATH</a></p>
       <h1>Terms of Service</h1>
-      <p class="stand">Last updated: 24 October 2026</p>
+      <p class="courtesy">
+        This is a courtesy translation. Only the <a href="/de/terms">German version</a> is legally
+        binding.
+      </p>
+      <p class="stand">Last updated: <time datetime="2026-10-24">24 October 2026</time></p>
 
       <p>
         These terms apply to the hosted PATH application at
@@ -166,7 +190,7 @@
         You can stop using the service and delete your account at any time. We can close an
         account with 30 days' notice, or at once for a serious breach of these terms. After an
         account ends, we delete its data as described in the
-        <a href="/privacy">Privacy Policy</a>.
+        <a href="/en/privacy">Privacy Policy</a>.
       </p>
 
       <h2>9. Liability</h2>
@@ -200,7 +224,7 @@
       </p>
 
       <footer>
-        <a href="/">PATH</a> · <a href="/privacy">Privacy Policy</a> ·
+        <a href="/">PATH</a> · <a href="/en/privacy">Privacy Policy</a> ·
         <a href="https://rheinwegde.de/de/impressum/">Impressum</a>
       </footer>
     </main>

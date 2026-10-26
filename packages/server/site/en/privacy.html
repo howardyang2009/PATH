@@ -66,13 +66,37 @@
       footer a {
         color: inherit;
       }
+      .langs {
+        margin: 0 0 16px;
+        color: var(--muted);
+        font-size: 14px;
+      }
+      .langs [aria-current] {
+        color: var(--fg);
+        font-weight: 600;
+      }
+      .courtesy {
+        margin: 0 0 16px;
+        padding: 12px 16px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+      }
     </style>
   </head>
   <body>
     <main>
+      <nav class="langs" aria-label="Language">
+        <a href="/de/privacy" lang="de" hreflang="de">Deutsch</a> ·
+        <span aria-current="page">English</span> ·
+        <a href="/zh/privacy" lang="zh-CN" hreflang="zh-CN">中文</a>
+      </nav>
       <p><a href="/">&larr; PATH</a></p>
       <h1>Privacy Policy</h1>
-      <p class="stand">Last updated: 24 October 2026</p>
+      <p class="courtesy">
+        This is a courtesy translation. Only the <a href="/de/privacy">German version</a> is legally
+        binding.
+      </p>
+      <p class="stand">Last updated: <time datetime="2026-10-26">26 October 2026</time></p>
 
       <p>
         This policy explains what personal data the hosted PATH application at
@@ -170,17 +194,28 @@
 
       <h2>7. Cookies and tracking</h2>
       <p>
-        PATH uses only the cookies and browser storage that sign-in needs: Clerk's session cookies
-        (for example <code>__session</code> and <code>__client_uat</code>), and browser storage for
-        small interface settings. They are strictly necessary for the service you asked for (§ 25(2)
-        no. 2 TDDDG). We use no analytics, advertising or tracking tools.
+        PATH uses only cookies and browser storage that are strictly necessary for the service you
+        asked for (§ 25(2) no. 2 TDDDG):
       </p>
+      <ul>
+        <li>
+          Clerk's session cookies (for example <code>__session</code> and
+          <code>__client_uat</code>), which keep you signed in.
+        </li>
+        <li>
+          <code>RHEINWEG_LOCALE</code>, which stores the language you choose yourself in a language
+          menu. It is set on <code>.rheinwegde.de</code>, so the choice also applies on the other
+          RheinWeg pages, and it is kept for 1 year.
+        </li>
+        <li>Browser storage for small interface settings.</li>
+      </ul>
+      <p>We use no analytics, advertising or tracking tools.</p>
 
       <h2>8. How long we keep data</h2>
       <ul>
         <li>Your workflows, templates, runs and secrets: until you delete them or your account.</li>
         <li>
-          Shared items that we remove for breaking the <a href="/terms">Terms</a>: up to 30 days in
+          Shared items that we remove for breaking the <a href="/en/terms">Terms</a>: up to 30 days in
           quarantine, then deleted.
         </li>
         <li>Backups: up to 6 months, after which deleted data is gone from every copy.</li>
@@ -216,7 +251,7 @@
       </p>
 
       <footer>
-        <a href="/">PATH</a> · <a href="/terms">Terms of Service</a> ·
+        <a href="/">PATH</a> · <a href="/en/terms">Terms of Service</a> ·
         <a href="https://rheinwegde.de/de/impressum/">Impressum</a>
       </footer>
     </main>

@@ -51,13 +51,32 @@ describe("@path/server named mounts + per-mount SPA fallback", () => {
   });
 
   it.each([
-    ["/privacy", "Privacy Policy"],
-    ["/terms", "Terms of Service"],
-  ])("GET %s serves the %s page", async (path, title) => {
+    ["/privacy", {}, "/en/privacy"],
+    ["/terms", { "Accept-Language": "de-DE,de;q=0.9,en;q=0.8" }, "/de/terms"],
+    ["/privacy", { "Accept-Language": "de", Cookie: "RHEINWEG_LOCALE=zh-CN" }, "/zh/privacy"],
+    ["/terms", { "Accept-Language": "zh-TW, en;q=0.5" }, "/zh/terms"],
+    ["/privacy", { "Accept-Language": "fr", Cookie: "other=1; RHEINWEG_LOCALE=de" }, "/de/privacy"],
+  ])("GET %s with %o redirects to %s", async (path, headers, location) => {
+    const res = await fetch(`${handle.url}${path}`, { headers, redirect: "manual" });
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe(location);
+    expect(res.headers.get("cache-control")).toBe("no-store");
+  });
+
+  it.each([
+    ["/de/privacy", "de", "Datenschutzerklärung"],
+    ["/de/terms", "de", "Nutzungsbedingungen"],
+    ["/en/privacy", "en", "Privacy Policy"],
+    ["/en/terms", "en", "Terms of Service"],
+    ["/zh/privacy", "zh-CN", "隐私政策"],
+    ["/zh/terms", "zh-CN", "服务条款"],
+  ])("GET %s serves the %s page %s", async (path, lang, title) => {
     const res = await fetch(`${handle.url}${path}`);
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toMatch(/text\/html/);
-    expect(await res.text()).toContain(`<title>PATH ${title}</title>`);
+    const html = await res.text();
+    expect(html).toContain(`<html lang="${lang}">`);
+    expect(html).toContain(`<title>PATH ${title}</title>`);
   });
 
   it("serves the Viewer index.html at the mount root /viewer/", async () => {

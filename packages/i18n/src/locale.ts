@@ -23,3 +23,12 @@ export function pickLocale(
   }
   return "en";
 }
+
+/** The `RHEINWEG_LOCALE` value in a `Cookie` header, or `undefined` when it is absent. */
+export function localeCookie(cookieHeader: string): string | undefined {
+  for (const pair of cookieHeader.split(";")) {
+    const [key, ...value] = pair.trim().split("=");
+    if (key === "RHEINWEG_LOCALE") return value.join("=");
+  }
+  return undefined;
+}

@@ -23,6 +23,7 @@ import { reapSandboxes } from "./sandbox/reaper.js";
 import { SANDBOX_LIMITS } from "./sandbox/sandboxed-runs.js";
 import { serveStatic } from "./serve-static.js";
 import { markServerRunning } from "./server-pid.js";
+import { LOCALE_PATH_SEGMENTS, requestLocale } from "./site-locale.js";
 import { hostedTenancy, localTenancy, type Tenancy } from "./tenancy.js";
 
 /** Built `@path/viewer` bundle (`packages/viewer/dist`); `serveStatic` 404s when it is absent or
@@ -36,11 +37,15 @@ const DEFAULT_DESIGNER_STATIC_DIR = fileURLToPath(new URL("../../designer/dist",
 /** The static site pages: the landing page at `/` (links to both mounts) and the legal pages. */
 const SITE_DIR = fileURLToPath(new URL("../site", import.meta.url));
 
+/** The legal pages, one file per language under `SITE_DIR/<lang>/`. */
+const LEGAL_PAGES = ["privacy", "terms"];
+
 /** Exact site paths, mapped to their file in `SITE_DIR`. */
 const SITE_PAGES = new Map([
   ["/", "/"],
-  ["/privacy", "/privacy.html"],
-  ["/terms", "/terms.html"],
+  ...Object.values(LOCALE_PATH_SEGMENTS).flatMap((lang) =>
+    LEGAL_PAGES.map((page): [string, string] => [`/${lang}/${page}`, `/${lang}/${page}.html`]),
+  ),
 ]);
 
 /** The two hardcoded mounts (ADR 0027) — not an open table. Prefix has no trailing slash. */
@@ -83,6 +88,14 @@ async function handleRequest(
     if (req.method !== "GET" && req.method !== "HEAD" && !enforceSameOrigin(req, res)) return;
 
     if (await dispatchApi(req, res, server, url)) return;
+
+    // A bare legal path picks its language per request, so the redirect is never cached.
+    if (req.method === "GET" && LEGAL_PAGES.includes(pathname.slice(1))) {
+      const lang = LOCALE_PATH_SEGMENTS[requestLocale(req)];
+      res.writeHead(302, { Location: `/${lang}${pathname}`, "Cache-Control": "no-store" });
+      res.end();
+      return;
+    }
 
     // Bare `/` is the landing page that links to both mounts (amends ADR 0027's redirect).
     const sitePage = SITE_PAGES.get(pathname);

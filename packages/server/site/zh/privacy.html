@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link
+      rel="icon"
+      type="image/svg+xml"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%231d6a9e'/%3E%3Cpath d='M6 20c4-6 8 2 12-4s6-4 8-2' fill='none' stroke='%23fff' stroke-width='2.5' stroke-linecap='round'/%3E%3C/svg%3E"
+    />
+    <title>PATH 隐私政策</title>
+    <style>
+      :root {
+        --bg: #f7f7f5;
+        --fg: #1c1c1a;
+        --muted: #5c5c57;
+        --border: #dcdcd6;
+        --accent: #1d6a9e;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #161615;
+          --fg: #ececea;
+          --muted: #a3a39d;
+          --border: #353532;
+          --accent: #3b86bf;
+        }
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--fg);
+        font: 16px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif;
+      }
+      main {
+        max-width: 720px;
+        margin: 0 auto;
+        padding: 48px 16px 64px;
+      }
+      h1 {
+        margin: 0 0 4px;
+        font-size: 32px;
+      }
+      h2 {
+        margin: 36px 0 8px;
+        font-size: 20px;
+      }
+      .stand {
+        margin: 0 0 24px;
+        color: var(--muted);
+      }
+      a {
+        color: var(--accent);
+      }
+      code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 14px;
+      }
+      footer {
+        margin-top: 48px;
+        padding-top: 16px;
+        border-top: 1px solid var(--border);
+        color: var(--muted);
+        font-size: 14px;
+      }
+      footer a {
+        color: inherit;
+      }
+      .langs {
+        margin: 0 0 16px;
+        color: var(--muted);
+        font-size: 14px;
+      }
+      .langs [aria-current] {
+        color: var(--fg);
+        font-weight: 600;
+      }
+      .courtesy {
+        margin: 0 0 16px;
+        padding: 12px 16px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <nav class="langs" aria-label="语言">
+        <a href="/de/privacy" lang="de" hreflang="de">Deutsch</a> ·
+        <a href="/en/privacy" lang="en" hreflang="en">English</a> ·
+        <span aria-current="page">中文</span>
+      </nav>
+      <p><a href="/">&larr; PATH</a></p>
+      <h1>隐私政策</h1>
+      <p class="courtesy">
+        本文为参考译文，仅<a href="/de/privacy">德文版本</a>具有法律约束力。
+      </p>
+      <p class="stand">最后更新：<time datetime="2026-10-26">2026 年 10 月 26 日</time></p>
+
+      <p>
+        本政策说明托管于 <a href="https://path.rheinwegde.de/">path.rheinwegde.de</a> 的 PATH
+        应用（PATH Viewer、PATH Designer 及其 API）处理哪些个人数据、处理目的，以及用户享有哪些权利。用户依据开源代码自行运行的
+        PATH 副本不在本政策范围内；该副本不会向我们发送任何数据。
+      </p>
+
+      <h2>1. 数据控制者</h2>
+      <p>
+        《通用数据保护条例》（GDPR）所称的数据控制者为：<br />
+        Liying Zhu, RheinWeg<br />
+        Im Rosengärtchen 70, 61440 Oberursel (Taunus), Germany<br />
+        电话：+49 160 1168307<br />
+        电子邮件：<a href="mailto:rheinwegde@gmail.com">rheinwegde@gmail.com</a>
+      </p>
+
+      <h2>2. 账户与登录</h2>
+      <p>
+        用户通过 Clerk（Clerk, Inc., 660 King Street, Unit 345, San Francisco, CA 94107,
+        USA）登录。Clerk 存储账户数据：电子邮件地址、用户提供的姓名和头像、所用的登录方式，以及 IP
+        地址、浏览器类型等会话与安全数据。PATH 本身不保存用户表。PATH 在每次请求中只接收一个签名令牌，并使用其中的用户 ID（例如
+        <code>user_2abc…</code>）将每位用户的文件和运行与其他用户分开。
+      </p>
+      <p>
+        如果用户选择“使用 Google 登录”，Google（Google Ireland Limited, Gordon House, Barrow
+        Street, Dublin 4, Ireland）会确认用户身份，并将姓名、电子邮件地址和头像提供给 Clerk。PATH
+        不向 Google 请求其他数据，也无法访问用户的 Google 账户、Gmail、Drive 或联系人。
+      </p>
+      <p>
+        法律依据：GDPR 第 6 条第 1 款 b 项，因为提供用户所请求的服务需要该账户。Clerk
+        根据数据处理协议代表我们处理这些数据。
+      </p>
+
+      <h2>3. 用户在 PATH 中输入的内容</h2>
+      <p>为使应用正常运作，我们存储用户在 PATH 中创建和执行的内容：</p>
+      <ul>
+        <li>
+          用户保存的工作流和步骤模板：仅本人可见，或在选择“共享”时对所有用户共享。其他已登录用户可以读取共享项目，只有创建者可以修改或删除。
+        </li>
+        <li>用户启动的运行：其输入、输出、日志、文件和状态。运行仅本人可见。</li>
+        <li>
+          用户在“密钥”页面设置的密钥，例如 API 密钥。密钥加密存储（AES-256-GCM）。任何页面或 API
+          都不会返回密钥的值，运行日志会将其遮盖。
+        </li>
+        <li>用于执行合理使用限制的用量计数，例如每日运行时长。</li>
+      </ul>
+      <p>
+        法律依据：GDPR 第 6 条第 1 款 b 项。除非获得许可，请勿在 PATH
+        中输入特殊类别的个人数据（健康、宗教等）或他人的个人数据。
+      </p>
+
+      <h2>4. 数据存储位置</h2>
+      <p>
+        PATH 运行在我们位于德国的自有服务器上。每次运行都在该服务器上各自隔离的虚拟机中执行。流量经由
+        Cloudflare（Cloudflare, Inc., 101 Townsend St, San Francisco, CA 94107, USA）到达服务器，Cloudflare
+        同时管理 rheinwegde.de 的 DNS。Cloudflare 处理包括 IP 地址在内的连接数据，以交付和保护网站。
+      </p>
+      <p>
+        每晚的备份在上传前于我们的服务器上加密，并存储在 Backblaze（Backblaze, Inc., 201 Baldwin
+        Ave, San Mateo, CA 94401, USA）。Backblaze 无法读取这些备份。
+      </p>
+      <p>
+        托管、安全和备份的法律依据：GDPR 第 6 条第 1 款 f 项。我们的正当利益在于提供安全、可靠的服务。
+      </p>
+
+      <h2>5. 工作流调用的第三方服务</h2>
+      <p>
+        工作流中的步骤可以调用外部服务，例如 Anthropic 或 DeepSeek 等 AI 模型提供商，或步骤指定的任何网址。运行此类工作流时，PATH
+        会使用用户提供的凭据，将该步骤所用的数据发送给该服务。该服务随后按其自身的条款和隐私政策处理数据。调用哪些服务、发送哪些数据，由用户决定。
+      </p>
+
+      <h2>6. 向欧盟以外传输</h2>
+      <p>
+        Clerk、Google、Cloudflare 和 Backblaze 可能在美国处理数据。它们均已通过欧盟-美国数据隐私框架（EU-US
+        Data Privacy Framework）认证，其数据处理协议包含欧盟标准合同条款。
+      </p>
+
+      <h2>7. Cookie 与跟踪</h2>
+      <p>
+        PATH 只使用为提供用户所请求的服务而绝对必要的 Cookie 和浏览器存储（TDDDG 第 25 条第 2 款第 2 项）：
+      </p>
+      <ul>
+        <li>
+          Clerk 的会话 Cookie（例如 <code>__session</code> 和 <code>__client_uat</code>），用于保持登录状态；
+        </li>
+        <li>
+          <code>RHEINWEG_LOCALE</code>，保存用户在语言菜单中亲自选择的语言。它设置在
+          <code>.rheinwegde.de</code> 上，使该选择同样适用于 RheinWeg 的其他页面，保存期为 1 年；
+        </li>
+        <li>用于少量界面设置的浏览器存储。</li>
+      </ul>
+      <p>我们不使用任何分析、广告或跟踪工具。</p>
+
+      <h2>8. 数据保存期限</h2>
+      <ul>
+        <li>工作流、模板、运行和密钥：保存至用户将其删除或删除账户为止。</li>
+        <li>
+          因违反<a href="/zh/terms">服务条款</a>而被我们移除的共享项目：最多隔离 30 天，然后删除。
+        </li>
+        <li>备份：最多保存 6 个月，此后已删除的数据将从所有副本中消失。</li>
+        <li>
+          Clerk 中的账户数据：保存至用户删除账户为止。用户可以在账户菜单中删除账户，也可以通过电子邮件请我们删除；届时我们也会删除该用户的文件、运行和密钥。
+        </li>
+      </ul>
+
+      <h2>9. 用户的权利</h2>
+      <p>在法律允许的范围内，用户有权：</p>
+      <ul>
+        <li>查阅我们持有的其个人数据（GDPR 第 15 条）</li>
+        <li>更正错误数据（GDPR 第 16 条）</li>
+        <li>删除其数据（GDPR 第 17 条）</li>
+        <li>限制处理（GDPR 第 18 条）</li>
+        <li>以可移植的格式获取其数据（GDPR 第 20 条）</li>
+        <li>反对基于 GDPR 第 6 条第 1 款 f 项的处理（GDPR 第 21 条）</li>
+      </ul>
+      <p>
+        如需行使上述权利，请发送电子邮件至上方地址。用户也可以向数据保护监管机构投诉。我们的主管机构是
+        Der Hessische Beauftragte für Datenschutz und Informationsfreiheit, Gustav-Stresemann-Ring
+        1, 65189 Wiesbaden, Germany。
+      </p>
+
+      <h2>10. 儿童</h2>
+      <p>PATH 不面向 16 岁以下人士。我们不会在知情的情况下收集其数据。</p>
+
+      <h2>11. 变更</h2>
+      <p>
+        本政策变更时，我们会更新顶部的日期。如果变更影响我们使用用户已提供数据的方式，我们会在变更生效前通知用户。
+      </p>
+
+      <footer>
+        <a href="/">PATH</a> · <a href="/zh/terms">服务条款</a> ·
+        <a href="https://rheinwegde.de/de/impressum/">Impressum</a>
+      </footer>
+    </main>
+  </body>
+</html>
