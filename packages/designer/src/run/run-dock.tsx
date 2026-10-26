@@ -15,6 +15,7 @@ import {
   useResource,
 } from "@path/viewer";
 import { useRef, useState } from "react";
+import { useTranslations } from "use-intl";
 import { RunLaunch } from "./run-launch.js";
 
 /** Persisted open-dock height, in px; the panes inside scroll. */
@@ -71,6 +72,7 @@ export interface RunDockProps {
  * with expansion remembered only within the session.
  */
 export function RunDock(props: RunDockProps): JSX.Element {
+  const t = useTranslations();
   const [expanded, setOpen] = useState(false);
   const { client, workflowPath } = props;
   // The files a run's node ids resolve against, read from the store by the open file's path: the
@@ -120,14 +122,14 @@ export function RunDock(props: RunDockProps): JSX.Element {
     <section
       className="run-dock"
       data-open={open ? "true" : "false"}
-      aria-label="Runs"
+      aria-label={t("designer.runDock.runs")}
       // The open dock's height is drag-set; closed, it collapses to just its toggle bar.
       style={open ? { height: `${dock.size}px` } : undefined}
     >
       {open && (
         <hr
           className="run-dock-resizer"
-          aria-label="Resize runs panel"
+          aria-label={t("designer.runDock.resizePanel")}
           data-testid="run-dock-resizer"
           {...dock.handleProps}
         />
@@ -144,7 +146,7 @@ export function RunDock(props: RunDockProps): JSX.Element {
           <span className="run-dock-caret" aria-hidden="true">
             {open ? "▾" : "▸"}
           </span>{" "}
-          Runs
+          {t("designer.runDock.runs")}
         </button>
         {props.disabledReason !== undefined ? (
           <span className="run-dock-note">{props.disabledReason}</span>
@@ -165,7 +167,7 @@ export function RunDock(props: RunDockProps): JSX.Element {
               />
             </div>
             <hr className="run-dock-sep" />
-            <h3 className="run-dock-heading">Runs</h3>
+            <h3 className="run-dock-heading">{t("designer.runDock.runs")}</h3>
             <RunsList
               client={props.client}
               workflowId={props.workflowId}
@@ -191,14 +193,14 @@ export function RunDock(props: RunDockProps): JSX.Element {
           </div>
           <hr
             className="run-dock-vresizer"
-            aria-label="Resize runs list"
+            aria-label={t("designer.runDock.resizeList")}
             data-testid="run-dock-vresizer-0"
             {...cols.handleProps(0)}
           />
           <div className="run-dock-col run-dock-detail" style={{ width: `${cols.widths[1]}px` }}>
-            <h3 className="run-dock-heading">Run detail</h3>
+            <h3 className="run-dock-heading">{t("designer.runDock.runDetail")}</h3>
             {props.rootRunId === null ? (
-              <p className="pane-note">Select a run.</p>
+              <p className="pane-note">{t("designer.runDock.selectRun")}</p>
             ) : (
               // The run tree here drives K for the `Resume from …` action in the runs rail.
               <RunDetail
@@ -215,14 +217,14 @@ export function RunDock(props: RunDockProps): JSX.Element {
           </div>
           <hr
             className="run-dock-vresizer"
-            aria-label="Resize run detail"
+            aria-label={t("designer.runDock.resizeDetail")}
             data-testid="run-dock-vresizer-1"
             {...cols.handleProps(1)}
           />
           <div className="run-dock-col run-dock-io">
-            <h3 className="run-dock-heading">Node I/O/C/E</h3>
+            <h3 className="run-dock-heading">{t("designer.runDock.nodeIo")}</h3>
             {selectedRun === undefined ? (
-              <p className="pane-note">Select a run in the tree.</p>
+              <p className="pane-note">{t("designer.runDock.selectTreeRun")}</p>
             ) : (
               // The reachable set lets an awaiting leaf's Complete form build from the node's
               // `outputSchema` (ADR 0031, ADR 0040).

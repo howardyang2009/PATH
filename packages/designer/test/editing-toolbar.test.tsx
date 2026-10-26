@@ -15,7 +15,7 @@ function status(saveState: SaveState): HTMLElement {
 function toolbar(lease: EditorChrome["lease"]): void {
   const chrome: EditorChrome = {
     save: true,
-    saveLabel: "Save",
+    saveLabel: { key: "designer.editingToolbar.save" },
     busy: false,
     saveAs: true,
     undo: true,

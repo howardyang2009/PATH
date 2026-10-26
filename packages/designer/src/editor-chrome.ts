@@ -1,3 +1,4 @@
+import type { Message } from "@path/i18n";
 import type { DocumentPolicy } from "./document.js";
 import type { LeaseState } from "./lease-client.js";
 import {
@@ -15,7 +16,7 @@ export interface EditorChrome {
   /** Save is live: not mid-write, not a `412` conflict, unsaved work, and a writable document. */
   save: boolean;
   /** The Save button's label while a write is in flight. */
-  saveLabel: "Save" | "Saving…";
+  saveLabel: Message;
   /** A save or delete is in flight; the File menu's whole-file items wait for it. */
   busy: boolean;
   saveAs: boolean;
@@ -61,7 +62,12 @@ export function editorChrome({
       session.saveState.phase !== "conflict" &&
       frameDirty(active) &&
       readOnlyTitle === undefined,
-    saveLabel: session.saveState.phase === "saving" ? "Saving…" : "Save",
+    saveLabel: {
+      key:
+        session.saveState.phase === "saving"
+          ? "designer.editingToolbar.saving"
+          : "designer.editingToolbar.save",
+    },
     busy,
     saveAs: policy.canSaveAs,
     undo: frameCanUndo(active),

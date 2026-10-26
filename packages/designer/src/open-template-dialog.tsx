@@ -5,6 +5,7 @@ import {
   type TemplateSummary,
 } from "@path/client-core";
 import { useMemo, useState } from "react";
+import { useTranslations } from "use-intl";
 import { FolderRow, indent } from "./open-existing-dialog.js";
 import { READ_ONLY_TITLE } from "./read-only.js";
 import { TEMPLATE_SUFFIX } from "./session-reducer.js";
@@ -36,30 +37,36 @@ export function OpenTemplateDialog({
   onOpen: (template: TemplateSummary) => void;
   onCancel: () => void;
 }): JSX.Element {
+  const t = useTranslations();
   // The user's own templates start open.
   const [openFolder, setOpenFolder] = useState<string | null>(ORIGIN_FOLDER.user);
   const templates = templateList.phase === "ready" ? templateList.templates : null;
   const tree = useMemo(() => (templates ? buildTemplateTree(templates) : []), [templates]);
 
   return (
-    <div className="dialog-scrim" role="dialog" aria-modal="true" aria-label="Open a template">
+    <div
+      className="dialog-scrim"
+      role="dialog"
+      aria-modal="true"
+      aria-label={t("designer.openTemplateDialog.title")}
+    >
       <div className="dialog open-workflow-dialog">
-        <h2 className="dialog-title">Open a template</h2>
-        <p className="dialog-hint">Choose a template from this project to open and edit.</p>
+        <h2 className="dialog-title">{t("designer.openTemplateDialog.title")}</h2>
+        <p className="dialog-hint">{t("designer.openTemplateDialog.hint")}</p>
         {templateList.phase === "loading" ? (
-          <p className="pane-note">Loading templates…</p>
+          <p className="pane-note">{t("designer.palette.loadingTemplates")}</p>
         ) : templateList.phase === "error" ? (
           <p className="new-file-error" role="alert">
-            Could not list templates: {templateList.message}
+            {t("designer.palette.listFailed", { message: templateList.message })}
           </p>
         ) : tree.length === 0 ? (
-          <p className="ref-existing-empty">No templates</p>
+          <p className="ref-existing-empty">{t("designer.palette.noTemplates")}</p>
         ) : (
           <div className="open-workflow-tree">
             <TemplateTree
               nodes={tree}
               depth={0}
-              label="Templates"
+              label={t("designer.palette.templates")}
               openFolder={openFolder}
               onToggleFolder={(path) => setOpenFolder((prev) => nextOpenFolder(prev, path))}
               onOpen={onOpen}
@@ -68,7 +75,7 @@ export function OpenTemplateDialog({
         )}
         <div className="dialog-actions">
           <button type="button" onClick={onCancel}>
-            Cancel
+            {t("designer.cancel")}
           </button>
         </div>
       </div>
@@ -136,6 +143,7 @@ function TemplateTree({
   onToggleFolder: (path: string) => void;
   onOpen: (template: TemplateSummary) => void;
 }): JSX.Element {
+  const t = useTranslations();
   return (
     <ul className="workflows" aria-label={label}>
       {nodes.map((node) =>
@@ -171,8 +179,9 @@ function TemplateTree({
                 {TEMPLATE_SUFFIX}
               </span>
               {node.template.read_only && node.template.origin === "shared" ? (
-                <span className="workflow-tag" title={READ_ONLY_TITLE.shared}>
-                  <span aria-hidden="true">🔒</span>read-only
+                <span className="workflow-tag" title={t(READ_ONLY_TITLE.shared)}>
+                  <span aria-hidden="true">🔒</span>
+                  {t("designer.readOnly.tag")}
                 </span>
               ) : null}
             </button>

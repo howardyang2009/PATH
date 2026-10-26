@@ -1,3 +1,4 @@
+import type { MessageKey } from "@path/i18n";
 import type { DiscoveryLoad } from "./discovery.js";
 import { discoveredWorkflows } from "./discovery.js";
 
@@ -6,9 +7,9 @@ import { discoveredWorkflows } from "./discovery.js";
 export type ReadOnlyReason = "shipped" | "shared";
 
 /** The hint a disabled Save or Delete shows. */
-export const READ_ONLY_TITLE: Record<ReadOnlyReason, string> = {
-  shipped: "Read-only: shipped",
-  shared: "Read-only: shared by another user",
+export const READ_ONLY_TITLE: Record<ReadOnlyReason, MessageKey> = {
+  shipped: "designer.readOnly.shipped",
+  shared: "designer.readOnly.shared",
 };
 
 /** The reason the workflow at `path` is read-only, from its discovery row; `false` while it is

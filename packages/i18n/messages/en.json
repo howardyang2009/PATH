@@ -221,7 +221,10 @@
       "discardUnsaved": "Discard unsaved changes?",
       "deleteTemplate": "Delete template \"{name}\"? This removes it from disk and cannot be undone.{unsaved, select, true { Unsaved changes are lost too.} other {}}",
       "deleteWorkflow": "Delete \"{path}\"? This removes it from disk and cannot be undone.{unsaved, select, true { Unsaved changes are lost too.} other {}}",
-      "downloadDirty": "Unsaved edits are not included. Download the saved file?"
+      "downloadDirty": "Unsaved edits are not included. Download the saved file?",
+      "couldNotDownload": "Could not download: {message}",
+      "templatesDoNotRun": "Templates do not run. Switch to Workflow mode to run a workflow.",
+      "saveWorkflowAs": "Save workflow as"
     },
     "document": {
       "readOnly": "Read-only: only the creator can save. Use Save as.",
@@ -272,7 +275,9 @@
       "leaseLost": "Editing lease lost. Another session may have taken over, or your lease expired.",
       "reacquire": "Re-acquire",
       "leaseError": "Could not acquire the editing lease: {message}",
-      "countdown": "{seconds}s"
+      "countdown": "{seconds}s",
+      "save": "Save",
+      "saving": "Saving…"
     },
     "newFileDialog": {
       "title": "Save new workflow",
@@ -577,6 +582,60 @@
     "goto": {
       "targetedBy": "Targeted by goto {sources}",
       "noTarget": "(no target)"
+    },
+    "readOnly": {
+      "shipped": "Read-only: shipped",
+      "shared": "Read-only: shared by another user",
+      "tag": "read-only"
+    },
+    "download": {
+      "unbundledRef": "{ref} (in {from}): {reason}"
+    },
+    "cancel": "Cancel",
+    "back": "Back",
+    "discovering": "Discovering workflows…",
+    "noWorkflows": "No workflows discovered in this project yet.",
+    "discoveredWorkflows": "Discovered workflows",
+    "openWorkflowDialog": {
+      "title": "Open a workflow",
+      "hint": "Choose a workflow from this project to open and edit.",
+      "notLoaded": "This workflow could not be loaded.",
+      "copyNamed": "Copy {name} to mine",
+      "copy": "Copy to mine"
+    },
+    "openTemplateDialog": {
+      "title": "Open a template",
+      "hint": "Choose a template from this project to open and edit."
+    },
+    "refTargetDialog": {
+      "title": "Add a workflow reference",
+      "hint": "Point this reference at an existing workflow, or create a new one to author now.",
+      "existing": "Reference an existing workflow",
+      "createNew": "Create a new workflow",
+      "existingHint": "Choose the workflow this reference runs as a nested run."
+    },
+    "saveAsChoiceDialog": {
+      "title": "Save as",
+      "hint": "Save a copy of this workflow. The open workflow is not changed on disk.",
+      "workflow": "Workflow…",
+      "workflowHint": "A new *.workflow.json file. The editor then edits the copy.",
+      "template": "Template…",
+      "templateHint": "A new template of the workflow's body. The workflow stays open."
+    },
+    "runLaunch": {
+      "saveNew": "Save this new workflow before you can run it.",
+      "saveEdits": "Save your edits before you can run — a run uses the file on disk.",
+      "submit": "Run workflow"
+    },
+    "runDock": {
+      "runs": "Runs",
+      "resizePanel": "Resize runs panel",
+      "resizeList": "Resize runs list",
+      "runDetail": "Run detail",
+      "selectRun": "Select a run.",
+      "resizeDetail": "Resize run detail",
+      "nodeIo": "Node I/O/C/E",
+      "selectTreeRun": "Select a run in the tree."
     }
   }
 }

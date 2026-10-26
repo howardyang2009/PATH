@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslations } from "use-intl";
 import { type DiscoveryLoad, discoveredWorkflows } from "./discovery.js";
 
 /**
@@ -26,6 +27,7 @@ export function RefTargetDialog({
   /** Dismiss without setting the ref; the empty `workflow` node stays as it was. */
   onCancel: () => void;
 }): JSX.Element {
+  const t = useTranslations();
   const [mode, setMode] = useState<"choose" | "existing">("choose");
 
   if (mode === "existing") {
@@ -45,24 +47,22 @@ export function RefTargetDialog({
       className="dialog-scrim"
       role="dialog"
       aria-modal="true"
-      aria-label="Add a workflow reference"
+      aria-label={t("designer.refTargetDialog.title")}
     >
       <div className="dialog ref-target-dialog">
-        <h2 className="dialog-title">Add a workflow reference</h2>
-        <p className="dialog-hint">
-          Point this reference at an existing workflow, or create a new one to author now.
-        </p>
+        <h2 className="dialog-title">{t("designer.refTargetDialog.title")}</h2>
+        <p className="dialog-hint">{t("designer.refTargetDialog.hint")}</p>
         <div className="ref-target-choices">
           <button type="button" className="ref-target-existing" onClick={() => setMode("existing")}>
-            Reference an existing workflow
+            {t("designer.refTargetDialog.existing")}
           </button>
           <button type="button" className="ref-target-new" onClick={onCreateNew}>
-            Create a new workflow
+            {t("designer.refTargetDialog.createNew")}
           </button>
         </div>
         <div className="dialog-actions">
           <button type="button" onClick={onCancel}>
-            Cancel
+            {t("designer.cancel")}
           </button>
         </div>
       </div>
@@ -87,6 +87,7 @@ function ExistingPicker({
 }): JSX.Element {
   // `null` until a scan lands: still discovering. A failed scan with nothing behind it reads as
   // empty, so the picker shows its "no workflows" note rather than an indefinite spinner.
+  const t = useTranslations();
   const discovered = discoveredWorkflows(discovery);
   const paths =
     discovered === null
@@ -101,17 +102,17 @@ function ExistingPicker({
       className="dialog-scrim"
       role="dialog"
       aria-modal="true"
-      aria-label="Reference an existing workflow"
+      aria-label={t("designer.refTargetDialog.existing")}
     >
       <div className="dialog ref-existing-dialog">
-        <h2 className="dialog-title">Reference an existing workflow</h2>
-        <p className="dialog-hint">Choose the workflow this reference runs as a nested run.</p>
+        <h2 className="dialog-title">{t("designer.refTargetDialog.existing")}</h2>
+        <p className="dialog-hint">{t("designer.refTargetDialog.existingHint")}</p>
         {paths === null ? (
-          <p className="pane-note">Discovering workflows…</p>
+          <p className="pane-note">{t("designer.discovering")}</p>
         ) : paths.length === 0 ? (
-          <p className="ref-existing-empty">No workflows discovered in this project yet.</p>
+          <p className="ref-existing-empty">{t("designer.noWorkflows")}</p>
         ) : (
-          <ul className="ref-existing-list" aria-label="Discovered workflows">
+          <ul className="ref-existing-list" aria-label={t("designer.discoveredWorkflows")}>
             {paths.map((path) => (
               <li key={path}>
                 <button type="button" className="ref-existing-item" onClick={() => onPick(path)}>
@@ -123,10 +124,10 @@ function ExistingPicker({
         )}
         <div className="dialog-actions">
           <button type="button" onClick={onBack}>
-            Back
+            {t("designer.back")}
           </button>
           <button type="button" onClick={onCancel}>
-            Cancel
+            {t("designer.cancel")}
           </button>
         </div>
       </div>

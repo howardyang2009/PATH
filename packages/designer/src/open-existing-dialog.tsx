@@ -8,6 +8,7 @@ import {
   workflowBaseName,
 } from "@path/client-core";
 import { useMemo, useState } from "react";
+import { useTranslations } from "use-intl";
 import { type DiscoveryLoad, discoveredWorkflows } from "./discovery.js";
 import { READ_ONLY_TITLE } from "./read-only.js";
 
@@ -43,6 +44,7 @@ export function OpenWorkflowDialog({
 }): JSX.Element {
   // The deepest open folder path (accordion, one open folder per level; see `workflow-tree`).
   // The user's own workflows start open.
+  const t = useTranslations();
   const [openFolder, setOpenFolder] = useState<string | null>(ORIGIN_FOLDER.user);
   // `null` until a scan lands, which reads as "still discovering". A failed scan with nothing
   // behind it reads as an empty list here, so the dialog still opens with its "no workflows" note.
@@ -58,20 +60,25 @@ export function OpenWorkflowDialog({
   const tree = useMemo(() => (workflows ? buildWorkflowTree(workflows) : []), [workflows]);
 
   return (
-    <div className="dialog-scrim" role="dialog" aria-modal="true" aria-label="Open a workflow">
+    <div
+      className="dialog-scrim"
+      role="dialog"
+      aria-modal="true"
+      aria-label={t("designer.openWorkflowDialog.title")}
+    >
       <div className="dialog open-workflow-dialog">
-        <h2 className="dialog-title">Open a workflow</h2>
-        <p className="dialog-hint">Choose a workflow from this project to open and edit.</p>
+        <h2 className="dialog-title">{t("designer.openWorkflowDialog.title")}</h2>
+        <p className="dialog-hint">{t("designer.openWorkflowDialog.hint")}</p>
         {workflows === null ? (
-          <p className="pane-note">Discovering workflows…</p>
+          <p className="pane-note">{t("designer.discovering")}</p>
         ) : workflows.length === 0 ? (
-          <p className="ref-existing-empty">No workflows discovered in this project yet.</p>
+          <p className="ref-existing-empty">{t("designer.noWorkflows")}</p>
         ) : (
           <div className="open-workflow-tree">
             <WorkflowTree
               nodes={tree}
               depth={0}
-              label="Discovered workflows"
+              label={t("designer.discoveredWorkflows")}
               openFolder={openFolder}
               onToggleFolder={(path) => setOpenFolder((prev) => nextOpenFolder(prev, path))}
               onOpen={onOpen}
@@ -86,7 +93,7 @@ export function OpenWorkflowDialog({
         ) : null}
         <div className="dialog-actions">
           <button type="button" onClick={onCancel}>
-            Cancel
+            {t("designer.cancel")}
           </button>
         </div>
       </div>
@@ -123,6 +130,7 @@ function WorkflowTree({
   onOpen: (path: string) => void;
   onCopy: (shippedPath: string) => void;
 }): JSX.Element {
+  const t = useTranslations();
   return (
     <ul className="workflows" aria-label={label}>
       {nodes.map((node) =>
@@ -153,7 +161,7 @@ function WorkflowTree({
                 {workflowBaseName(node.workflow.relative_path)}
               </span>
               <span className="pane-note pane-error">
-                {node.workflow.error?.message ?? "This workflow could not be loaded."}
+                {node.workflow.error?.message ?? t("designer.openWorkflowDialog.notLoaded")}
               </span>
             </div>
           </li>
@@ -165,10 +173,12 @@ function WorkflowTree({
               </span>
               <button
                 type="button"
-                aria-label={`Copy ${workflowBaseName(node.workflow.relative_path)} to mine`}
+                aria-label={t("designer.openWorkflowDialog.copyNamed", {
+                  name: workflowBaseName(node.workflow.relative_path),
+                })}
                 onClick={() => onCopy(node.workflow.relative_path)}
               >
-                Copy to mine
+                {t("designer.openWorkflowDialog.copy")}
               </button>
             </div>
           </li>
@@ -184,8 +194,9 @@ function WorkflowTree({
                 {workflowBaseName(node.workflow.relative_path)}
               </span>
               {node.workflow.read_only ? (
-                <span className="workflow-tag" title={READ_ONLY_TITLE.shared}>
-                  <span aria-hidden="true">🔒</span>read-only
+                <span className="workflow-tag" title={t(READ_ONLY_TITLE.shared)}>
+                  <span aria-hidden="true">🔒</span>
+                  {t("designer.readOnly.tag")}
                 </span>
               ) : null}
             </button>

@@ -48,13 +48,21 @@ function chrome(
 
 describe("editorChrome — the toolbar's one capability value", () => {
   it("enables Save only for a dirty, writable document at rest", () => {
-    expect(chrome(dirtyFrame())).toMatchObject({ save: true, saveLabel: "Save", busy: false });
+    expect(chrome(dirtyFrame())).toMatchObject({
+      save: true,
+      saveLabel: { key: "designer.editingToolbar.save" },
+      busy: false,
+    });
     expect(chrome(cleanFrame()).save).toBe(false);
   });
 
   it("blocks Save while a write is in flight or a conflict stands, and says so on the label", () => {
     const saving = chrome(dirtyFrame(), {}, { saveState: { phase: "saving" } });
-    expect(saving).toMatchObject({ save: false, busy: true, saveLabel: "Saving…" });
+    expect(saving).toMatchObject({
+      save: false,
+      busy: true,
+      saveLabel: { key: "designer.editingToolbar.saving" },
+    });
 
     expect(chrome(dirtyFrame(), {}, { saveState: { phase: "deleting" } }).busy).toBe(true);
     expect(

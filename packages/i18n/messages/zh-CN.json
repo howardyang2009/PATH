@@ -221,7 +221,10 @@
       "discardUnsaved": "放弃未保存的更改？",
       "deleteTemplate": "删除模板“{name}”？此操作会将其从磁盘移除，且无法撤销。{unsaved, select, true {未保存的更改也将丢失。} other {}}",
       "deleteWorkflow": "删除“{path}”？此操作会将其从磁盘移除，且无法撤销。{unsaved, select, true {未保存的更改也将丢失。} other {}}",
-      "downloadDirty": "未保存的更改不会包含在内。要下载已保存的文件吗？"
+      "downloadDirty": "未保存的更改不会包含在内。要下载已保存的文件吗？",
+      "couldNotDownload": "无法下载：{message}",
+      "templatesDoNotRun": "模板不能运行。切换到工作流模式以运行工作流。",
+      "saveWorkflowAs": "工作流另存为"
     },
     "document": {
       "readOnly": "只读：只有创建者可以保存。请使用“另存为”。",
@@ -272,7 +275,9 @@
       "leaseLost": "编辑锁已丢失。可能已被另一个会话接管，或编辑锁已过期。",
       "reacquire": "重新获取",
       "leaseError": "无法获取编辑锁：{message}",
-      "countdown": "{seconds} 秒"
+      "countdown": "{seconds} 秒",
+      "save": "保存",
+      "saving": "正在保存…"
     },
     "newFileDialog": {
       "title": "保存新工作流",
@@ -577,6 +582,60 @@
     "goto": {
       "targetedBy": "被 goto {sources} 指向",
       "noTarget": "（无目标）"
+    },
+    "readOnly": {
+      "shipped": "只读：内置",
+      "shared": "只读：由其他用户共享",
+      "tag": "只读"
+    },
+    "download": {
+      "unbundledRef": "{ref}（位于 {from}）：{reason}"
+    },
+    "cancel": "取消",
+    "back": "返回",
+    "discovering": "正在查找工作流…",
+    "noWorkflows": "此项目中尚未发现工作流。",
+    "discoveredWorkflows": "已发现的工作流",
+    "openWorkflowDialog": {
+      "title": "打开工作流",
+      "hint": "从此项目中选择一个工作流进行打开和编辑。",
+      "notLoaded": "无法加载此工作流。",
+      "copyNamed": "将 {name} 复制到我的工作流",
+      "copy": "复制到我的"
+    },
+    "openTemplateDialog": {
+      "title": "打开模板",
+      "hint": "从此项目中选择一个模板进行打开和编辑。"
+    },
+    "refTargetDialog": {
+      "title": "添加工作流引用",
+      "hint": "将此引用指向已有工作流，或新建一个工作流并立即编写。",
+      "existing": "引用已有工作流",
+      "createNew": "新建工作流",
+      "existingHint": "选择此引用作为嵌套运行执行的工作流。"
+    },
+    "saveAsChoiceDialog": {
+      "title": "另存为",
+      "hint": "保存此工作流的副本。磁盘上已打开的工作流不会改变。",
+      "workflow": "工作流…",
+      "workflowHint": "一个新的 *.workflow.json 文件。编辑器随后编辑该副本。",
+      "template": "模板…",
+      "templateHint": "由工作流主体生成的新模板。工作流保持打开。"
+    },
+    "runLaunch": {
+      "saveNew": "运行前请先保存这个新工作流。",
+      "saveEdits": "运行前请先保存修改：运行使用的是磁盘上的文件。",
+      "submit": "运行工作流"
+    },
+    "runDock": {
+      "runs": "运行",
+      "resizePanel": "调整运行面板高度",
+      "resizeList": "调整运行列表宽度",
+      "runDetail": "运行详情",
+      "selectRun": "请选择一个运行。",
+      "resizeDetail": "调整运行详情宽度",
+      "nodeIo": "节点输入/输出/上下文/错误",
+      "selectTreeRun": "请在运行树中选择一个运行。"
     }
   }
 }

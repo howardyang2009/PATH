@@ -221,7 +221,10 @@
       "discardUnsaved": "Ungespeicherte Änderungen verwerfen?",
       "deleteTemplate": "Vorlage „{name}“ löschen? Sie wird von der Festplatte entfernt; dies kann nicht rückgängig gemacht werden.{unsaved, select, true { Ungespeicherte Änderungen gehen ebenfalls verloren.} other {}}",
       "deleteWorkflow": "„{path}“ löschen? Die Datei wird von der Festplatte entfernt; dies kann nicht rückgängig gemacht werden.{unsaved, select, true { Ungespeicherte Änderungen gehen ebenfalls verloren.} other {}}",
-      "downloadDirty": "Ungespeicherte Änderungen sind nicht enthalten. Die gespeicherte Datei herunterladen?"
+      "downloadDirty": "Ungespeicherte Änderungen sind nicht enthalten. Die gespeicherte Datei herunterladen?",
+      "couldNotDownload": "Herunterladen nicht möglich: {message}",
+      "templatesDoNotRun": "Vorlagen werden nicht ausgeführt. Wechseln Sie in den Workflow-Modus, um einen Workflow auszuführen.",
+      "saveWorkflowAs": "Workflow speichern unter"
     },
     "document": {
       "readOnly": "Schreibgeschützt: Nur der Ersteller kann speichern. Verwenden Sie „Speichern unter“.",
@@ -272,7 +275,9 @@
       "leaseLost": "Bearbeitungssperre verloren. Eine andere Sitzung hat sie möglicherweise übernommen, oder Ihre Sperre ist abgelaufen.",
       "reacquire": "Erneut anfordern",
       "leaseError": "Bearbeitungssperre konnte nicht angefordert werden: {message}",
-      "countdown": "{seconds} s"
+      "countdown": "{seconds} s",
+      "save": "Speichern",
+      "saving": "Wird gespeichert…"
     },
     "newFileDialog": {
       "title": "Neuen Workflow speichern",
@@ -577,6 +582,60 @@
     "goto": {
       "targetedBy": "Ziel von goto {sources}",
       "noTarget": "(kein Ziel)"
+    },
+    "readOnly": {
+      "shipped": "Schreibgeschützt: mitgeliefert",
+      "shared": "Schreibgeschützt: von einem anderen Benutzer geteilt",
+      "tag": "schreibgeschützt"
+    },
+    "download": {
+      "unbundledRef": "{ref} (in {from}): {reason}"
+    },
+    "cancel": "Abbrechen",
+    "back": "Zurück",
+    "discovering": "Workflows werden gesucht…",
+    "noWorkflows": "In diesem Projekt wurden noch keine Workflows gefunden.",
+    "discoveredWorkflows": "Gefundene Workflows",
+    "openWorkflowDialog": {
+      "title": "Workflow öffnen",
+      "hint": "Wählen Sie einen Workflow aus diesem Projekt zum Öffnen und Bearbeiten.",
+      "notLoaded": "Dieser Workflow konnte nicht geladen werden.",
+      "copyNamed": "{name} in meine Workflows kopieren",
+      "copy": "In meine kopieren"
+    },
+    "openTemplateDialog": {
+      "title": "Vorlage öffnen",
+      "hint": "Wählen Sie eine Vorlage aus diesem Projekt zum Öffnen und Bearbeiten."
+    },
+    "refTargetDialog": {
+      "title": "Workflow-Referenz hinzufügen",
+      "hint": "Richten Sie diese Referenz auf einen vorhandenen Workflow oder legen Sie einen neuen an, den Sie jetzt erstellen.",
+      "existing": "Auf einen vorhandenen Workflow verweisen",
+      "createNew": "Neuen Workflow anlegen",
+      "existingHint": "Wählen Sie den Workflow, den diese Referenz als verschachtelten Lauf ausführt."
+    },
+    "saveAsChoiceDialog": {
+      "title": "Speichern unter",
+      "hint": "Speichern Sie eine Kopie dieses Workflows. Der geöffnete Workflow wird auf der Festplatte nicht geändert.",
+      "workflow": "Workflow…",
+      "workflowHint": "Eine neue *.workflow.json-Datei. Der Editor bearbeitet danach die Kopie.",
+      "template": "Vorlage…",
+      "templateHint": "Eine neue Vorlage aus dem Rumpf des Workflows. Der Workflow bleibt geöffnet."
+    },
+    "runLaunch": {
+      "saveNew": "Speichern Sie diesen neuen Workflow, bevor Sie ihn ausführen können.",
+      "saveEdits": "Speichern Sie Ihre Änderungen, bevor Sie ausführen können – ein Lauf verwendet die Datei auf der Festplatte.",
+      "submit": "Workflow ausführen"
+    },
+    "runDock": {
+      "runs": "Läufe",
+      "resizePanel": "Höhe des Laufbereichs ändern",
+      "resizeList": "Breite der Laufliste ändern",
+      "runDetail": "Laufdetails",
+      "selectRun": "Wählen Sie einen Lauf.",
+      "resizeDetail": "Breite der Laufdetails ändern",
+      "nodeIo": "Knoten-E/A/K/F",
+      "selectTreeRun": "Wählen Sie einen Lauf im Laufbaum."
     }
   }
 }

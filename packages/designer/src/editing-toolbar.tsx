@@ -229,6 +229,7 @@ export function EditingToolbar({
   onReacquire: () => void;
 }): JSX.Element {
   const t = useTranslations("designer.editingToolbar");
+  const renderMessage = useMessage();
   return (
     <div className="editing-toolbar">
       {/* The rare whole-file actions sit behind File: New and Open… discard the current stack, and
@@ -291,7 +292,7 @@ export function EditingToolbar({
         disabled={!chrome.save}
         title={chrome.readOnlyTitle ?? t("saveTitle", { shortcut: SAVE_SHORTCUT })}
       >
-        {chrome.saveLabel}
+        {renderMessage(chrome.saveLabel)}
       </button>
       <LeaseBanner lease={chrome.lease} onTakeover={onTakeover} onReacquire={onReacquire} />
     </div>
