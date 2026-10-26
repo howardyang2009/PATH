@@ -71,7 +71,7 @@ export function ResumeActions({
   launchSecretKeys,
   onResumed,
 }: ResumeActionsProps): JSX.Element {
-  const t = useTranslations("viewer");
+  const t = useTranslations("shared");
   const [phase, setPhase] = useState<Phase>("idle");
   const secrets = launchSecretKeys ?? [];
   const resupply = launchSecretResupply(secrets);

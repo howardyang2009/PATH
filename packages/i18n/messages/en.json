@@ -56,12 +56,6 @@
       "empty": "empty — field omitted",
       "valid": "valid JSON"
     },
-    "launchForm": {
-      "workerDefaults": "Launch worker defaults (optional)",
-      "workerDefaultsHint": "The worker each type's un-pinned steps use across this run. A per-type selection, not config: a step's own worker still wins, and this outranks the file's own default.",
-      "sending": "Launching…",
-      "warning": "{count, plural, one {# unresolved warning} other {# unresolved warnings}} — the run may fail at start."
-    },
     "launchPanel": {
       "kind": "Kind",
       "kinds": {
@@ -96,35 +90,6 @@
         "failed": "stream lost"
       }
     },
-    "nodeIo": {
-      "refresh": "Refresh",
-      "reused": "Reused from an earlier run — the input and output below are that run's.",
-      "reusedRootRun": "reused root run",
-      "reusedRun": "reused run",
-      "deleted": "(deleted)",
-      "resumed": "Resumed from an earlier run — the input below is that run's root input.",
-      "resumedFromRootRun": "resumed-from root run",
-      "input": "Input",
-      "output": "Output",
-      "context": "Context",
-      "noInput": "No input object recorded for this run.",
-      "resumedNoInput": "The resumed-from run recorded no input object.",
-      "noOutput": "No output object recorded for this run.",
-      "noOutputYet": "No output object yet — a run writes its output when it finishes.",
-      "noContext": "No context recorded for this run.",
-      "overrideInput": "Override Input",
-      "overrideConfig": "Override Config",
-      "launchWorkerDefaults": "Launch Worker Defaults",
-      "error": "Error",
-      "errorSource": "from the run's step-finished event (event log)"
-    },
-    "overrides": {
-      "overrideInput": "Override input (optional)",
-      "overrideConfig": "Override config (optional)",
-      "configLabel": "config override · JSON",
-      "secretsLabel": "Launch secrets (config override) · JSON",
-      "set": "set"
-    },
     "paneNote": {
       "loading": {
         "workflows": "Loading workflows…",
@@ -144,21 +109,6 @@
         "context": "Failed to load context: {message}",
         "secrets": "Failed to load secrets: {message}"
       }
-    },
-    "resumeActions": {
-      "secretsNote": "These launch secrets are stored masked and must be supplied again to resume.",
-      "resume": "Resume run",
-      "sending": "Resuming…",
-      "succeededReason": "Succeeded — rerun from a chosen boundary below.",
-      "resumeFromTitle": "Resume from {nodeName} ({runId})",
-      "resumeFrom": "Resume from {nodeName}({shortRunId})",
-      "resumeFromIdle": "Resume from …"
-    },
-    "runDetail": {
-      "runTree": "Run tree",
-      "awaitingCount": "{count} awaiting",
-      "runCount": "{count, plural, one {# run} other {# runs}}",
-      "resizeTree": "Resize run tree"
     },
     "runFacts": {
       "rootRunId": "root run id",
@@ -203,6 +153,58 @@
       "failed": "failed",
       "cancelled": "cancelled",
       "pending": "pending"
+    }
+  },
+  "shared": {
+    "launchForm": {
+      "workerDefaults": "Launch worker defaults (optional)",
+      "workerDefaultsHint": "The worker each type's un-pinned steps use across this run. A per-type selection, not config: a step's own worker still wins, and this outranks the file's own default.",
+      "sending": "Launching…",
+      "warning": "{count, plural, one {# unresolved warning} other {# unresolved warnings}} — the run may fail at start."
+    },
+    "nodeIo": {
+      "refresh": "Refresh",
+      "reused": "Reused from an earlier run — the input and output below are that run's.",
+      "reusedRootRun": "reused root run",
+      "reusedRun": "reused run",
+      "deleted": "(deleted)",
+      "resumed": "Resumed from an earlier run — the input below is that run's root input.",
+      "resumedFromRootRun": "resumed-from root run",
+      "input": "Input",
+      "output": "Output",
+      "context": "Context",
+      "noInput": "No input object recorded for this run.",
+      "resumedNoInput": "The resumed-from run recorded no input object.",
+      "noOutput": "No output object recorded for this run.",
+      "noOutputYet": "No output object yet — a run writes its output when it finishes.",
+      "noContext": "No context recorded for this run.",
+      "overrideInput": "Override Input",
+      "overrideConfig": "Override Config",
+      "launchWorkerDefaults": "Launch Worker Defaults",
+      "error": "Error",
+      "errorSource": "from the run's step-finished event (event log)"
+    },
+    "overrides": {
+      "overrideInput": "Override input (optional)",
+      "overrideConfig": "Override config (optional)",
+      "configLabel": "config override · JSON",
+      "secretsLabel": "Launch secrets (config override) · JSON",
+      "set": "set"
+    },
+    "resumeActions": {
+      "secretsNote": "These launch secrets are stored masked and must be supplied again to resume.",
+      "resume": "Resume run",
+      "sending": "Resuming…",
+      "succeededReason": "Succeeded — rerun from a chosen boundary below.",
+      "resumeFromTitle": "Resume from {nodeName} ({runId})",
+      "resumeFrom": "Resume from {nodeName}({shortRunId})",
+      "resumeFromIdle": "Resume from …"
+    },
+    "runDetail": {
+      "runTree": "Run tree",
+      "awaitingCount": "{count} awaiting",
+      "runCount": "{count, plural, one {# run} other {# runs}}",
+      "resizeTree": "Resize run tree"
     },
     "workerDefaults": {
       "type": "type",

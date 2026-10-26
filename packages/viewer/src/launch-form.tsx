@@ -64,7 +64,7 @@ export function LaunchForm({
   plugins = [],
   workers = [],
 }: LaunchFormProps): JSX.Element {
-  const t = useTranslations("viewer");
+  const t = useTranslations("shared");
   const [input, setInput] = useState("{}");
   const [config, setConfig] = useState("");
   // The launch worker-default table: a `{ <type>: <worker-name> }` map, empty until the operator

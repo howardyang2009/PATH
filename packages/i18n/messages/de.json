@@ -56,12 +56,6 @@
       "empty": "leer – Feld wird weggelassen",
       "valid": "gültiges JSON"
     },
-    "launchForm": {
-      "workerDefaults": "Start-Worker-Vorgaben (optional)",
-      "workerDefaultsHint": "Der Worker, den die Schritte ohne eigenen Worker je Schritttyp in diesem Lauf verwenden. Eine Auswahl je Schritttyp, keine Konfiguration: Der eigene Worker eines Schritts hat Vorrang, und diese Auswahl hat Vorrang vor der Vorgabe der Datei.",
-      "sending": "Wird gestartet…",
-      "warning": "{count, plural, one {# ungelöste Warnung} other {# ungelöste Warnungen}} – der Lauf kann beim Start fehlschlagen."
-    },
     "launchPanel": {
       "kind": "Art",
       "kinds": {
@@ -96,35 +90,6 @@
         "failed": "Stream verloren"
       }
     },
-    "nodeIo": {
-      "refresh": "Aktualisieren",
-      "reused": "Aus einem früheren Lauf wiederverwendet – Eingabe und Ausgabe unten stammen aus diesem Lauf.",
-      "reusedRootRun": "wiederverwendeter Stammlauf",
-      "reusedRun": "wiederverwendeter Lauf",
-      "deleted": "(gelöscht)",
-      "resumed": "Von einem früheren Lauf fortgesetzt – die Eingabe unten ist dessen Stammeingabe.",
-      "resumedFromRootRun": "fortgesetzt von Stammlauf",
-      "input": "Eingabe",
-      "output": "Ausgabe",
-      "context": "Kontext",
-      "noInput": "Für diesen Lauf ist kein Eingabeobjekt gespeichert.",
-      "resumedNoInput": "Der Lauf, von dem fortgesetzt wurde, hat kein Eingabeobjekt gespeichert.",
-      "noOutput": "Für diesen Lauf ist kein Ausgabeobjekt gespeichert.",
-      "noOutputYet": "Noch kein Ausgabeobjekt – ein Lauf schreibt seine Ausgabe, wenn er endet.",
-      "noContext": "Für diesen Lauf ist kein Kontext gespeichert.",
-      "overrideInput": "Überschriebene Eingabe",
-      "overrideConfig": "Überschriebene Konfiguration",
-      "launchWorkerDefaults": "Start-Worker-Vorgaben",
-      "error": "Fehler",
-      "errorSource": "aus dem step-finished-Ereignis des Laufs (Ereignisprotokoll)"
-    },
-    "overrides": {
-      "overrideInput": "Eingabe überschreiben (optional)",
-      "overrideConfig": "Konfiguration überschreiben (optional)",
-      "configLabel": "Konfiguration überschreiben · JSON",
-      "secretsLabel": "Start-Secrets (Konfiguration überschreiben) · JSON",
-      "set": "gesetzt"
-    },
     "paneNote": {
       "loading": {
         "workflows": "Workflows werden geladen…",
@@ -144,21 +109,6 @@
         "context": "Kontext konnte nicht geladen werden: {message}",
         "secrets": "Secrets konnten nicht geladen werden: {message}"
       }
-    },
-    "resumeActions": {
-      "secretsNote": "Diese Start-Secrets sind maskiert gespeichert und müssen zum Fortsetzen erneut angegeben werden.",
-      "resume": "Lauf fortsetzen",
-      "sending": "Wird fortgesetzt…",
-      "succeededReason": "Erfolgreich – unten ab einer gewählten Wiederholgrenze erneut ausführen.",
-      "resumeFromTitle": "Fortsetzen ab {nodeName} ({runId})",
-      "resumeFrom": "Fortsetzen ab {nodeName}({shortRunId})",
-      "resumeFromIdle": "Fortsetzen ab …"
-    },
-    "runDetail": {
-      "runTree": "Laufbaum",
-      "awaitingCount": "{count} wartend",
-      "runCount": "{count, plural, one {# Lauf} other {# Läufe}}",
-      "resizeTree": "Größe des Laufbaums ändern"
     },
     "runFacts": {
       "rootRunId": "Stammlauf-ID",
@@ -203,6 +153,58 @@
       "failed": "fehlgeschlagen",
       "cancelled": "abgebrochen",
       "pending": "ausstehend"
+    }
+  },
+  "shared": {
+    "launchForm": {
+      "workerDefaults": "Start-Worker-Vorgaben (optional)",
+      "workerDefaultsHint": "Der Worker, den die Schritte ohne eigenen Worker je Schritttyp in diesem Lauf verwenden. Eine Auswahl je Schritttyp, keine Konfiguration: Der eigene Worker eines Schritts hat Vorrang, und diese Auswahl hat Vorrang vor der Vorgabe der Datei.",
+      "sending": "Wird gestartet…",
+      "warning": "{count, plural, one {# ungelöste Warnung} other {# ungelöste Warnungen}} – der Lauf kann beim Start fehlschlagen."
+    },
+    "nodeIo": {
+      "refresh": "Aktualisieren",
+      "reused": "Aus einem früheren Lauf wiederverwendet – Eingabe und Ausgabe unten stammen aus diesem Lauf.",
+      "reusedRootRun": "wiederverwendeter Stammlauf",
+      "reusedRun": "wiederverwendeter Lauf",
+      "deleted": "(gelöscht)",
+      "resumed": "Von einem früheren Lauf fortgesetzt – die Eingabe unten ist dessen Stammeingabe.",
+      "resumedFromRootRun": "fortgesetzt von Stammlauf",
+      "input": "Eingabe",
+      "output": "Ausgabe",
+      "context": "Kontext",
+      "noInput": "Für diesen Lauf ist kein Eingabeobjekt gespeichert.",
+      "resumedNoInput": "Der Lauf, von dem fortgesetzt wurde, hat kein Eingabeobjekt gespeichert.",
+      "noOutput": "Für diesen Lauf ist kein Ausgabeobjekt gespeichert.",
+      "noOutputYet": "Noch kein Ausgabeobjekt – ein Lauf schreibt seine Ausgabe, wenn er endet.",
+      "noContext": "Für diesen Lauf ist kein Kontext gespeichert.",
+      "overrideInput": "Überschriebene Eingabe",
+      "overrideConfig": "Überschriebene Konfiguration",
+      "launchWorkerDefaults": "Start-Worker-Vorgaben",
+      "error": "Fehler",
+      "errorSource": "aus dem step-finished-Ereignis des Laufs (Ereignisprotokoll)"
+    },
+    "overrides": {
+      "overrideInput": "Eingabe überschreiben (optional)",
+      "overrideConfig": "Konfiguration überschreiben (optional)",
+      "configLabel": "Konfiguration überschreiben · JSON",
+      "secretsLabel": "Start-Secrets (Konfiguration überschreiben) · JSON",
+      "set": "gesetzt"
+    },
+    "resumeActions": {
+      "secretsNote": "Diese Start-Secrets sind maskiert gespeichert und müssen zum Fortsetzen erneut angegeben werden.",
+      "resume": "Lauf fortsetzen",
+      "sending": "Wird fortgesetzt…",
+      "succeededReason": "Erfolgreich – unten ab einer gewählten Wiederholgrenze erneut ausführen.",
+      "resumeFromTitle": "Fortsetzen ab {nodeName} ({runId})",
+      "resumeFrom": "Fortsetzen ab {nodeName}({shortRunId})",
+      "resumeFromIdle": "Fortsetzen ab …"
+    },
+    "runDetail": {
+      "runTree": "Laufbaum",
+      "awaitingCount": "{count} wartend",
+      "runCount": "{count, plural, one {# Lauf} other {# Läufe}}",
+      "resizeTree": "Größe des Laufbaums ändern"
     },
     "workerDefaults": {
       "type": "Schritttyp",

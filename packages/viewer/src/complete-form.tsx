@@ -241,16 +241,16 @@ interface LaunchSecretsControlProps {
  * and the engine refuses to continue with a token.
  */
 function LaunchSecretsControl({ value, onChange }: LaunchSecretsControlProps) {
-  const t = useTranslations("viewer");
+  const t = useTranslations();
   const id = "complete-fld-__config";
 
   return (
     <div className="complete-field" data-testid="complete-field-__config">
       <label className="field-label complete-label" htmlFor={id}>
-        {t("overrides.secretsLabel")}
+        {t("shared.overrides.secretsLabel")}
       </label>
       <p className="complete-help" data-testid="complete-config-note">
-        {t("completeForm.secretsNote")}
+        {t("viewer.completeForm.secretsNote")}
       </p>
       <textarea
         id={id}

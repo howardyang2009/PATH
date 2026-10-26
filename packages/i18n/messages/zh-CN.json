@@ -56,12 +56,6 @@
       "empty": "空，省略此字段",
       "valid": "有效的 JSON"
     },
-    "launchForm": {
-      "workerDefaults": "启动执行器预设（可选）",
-      "workerDefaultsHint": "此运行中各步骤类型未指定执行器的步骤所用的执行器。按步骤类型选择，不属于配置：步骤自身的执行器优先，而此处设置优先于文件自身的预设。",
-      "sending": "正在启动…",
-      "warning": "{count, plural, other {# 个未解决的警告}}，运行可能在启动时失败。"
-    },
     "launchPanel": {
       "kind": "类型",
       "kinds": {
@@ -96,35 +90,6 @@
         "failed": "连接已断开"
       }
     },
-    "nodeIo": {
-      "refresh": "刷新",
-      "reused": "复用自之前的运行，下方的输入和输出来自该运行。",
-      "reusedRootRun": "复用的根运行",
-      "reusedRun": "复用的运行",
-      "deleted": "（已删除）",
-      "resumed": "恢复自之前的运行，下方的输入是该运行的根输入。",
-      "resumedFromRootRun": "恢复自根运行",
-      "input": "输入",
-      "output": "输出",
-      "context": "上下文",
-      "noInput": "此运行没有记录输入对象。",
-      "resumedNoInput": "被恢复的运行没有记录输入对象。",
-      "noOutput": "此运行没有记录输出对象。",
-      "noOutputYet": "尚无输出对象，运行结束时才会写入输出。",
-      "noContext": "此运行没有记录上下文。",
-      "overrideInput": "覆盖的输入",
-      "overrideConfig": "覆盖的配置",
-      "launchWorkerDefaults": "启动执行器预设",
-      "error": "错误",
-      "errorSource": "来自运行的 step-finished 事件（事件日志）"
-    },
-    "overrides": {
-      "overrideInput": "覆盖输入（可选）",
-      "overrideConfig": "覆盖配置（可选）",
-      "configLabel": "覆盖配置 · JSON",
-      "secretsLabel": "启动密钥（覆盖配置） · JSON",
-      "set": "已设置"
-    },
     "paneNote": {
       "loading": {
         "workflows": "正在加载工作流…",
@@ -144,21 +109,6 @@
         "context": "无法加载上下文：{message}",
         "secrets": "无法加载密钥：{message}"
       }
-    },
-    "resumeActions": {
-      "secretsNote": "这些启动密钥以掩码形式存储，恢复时须重新提供。",
-      "resume": "恢复运行",
-      "sending": "正在恢复…",
-      "succeededReason": "已成功，可在下方从选定的重跑起点重新运行。",
-      "resumeFromTitle": "从 {nodeName}（{runId}）恢复",
-      "resumeFrom": "从 {nodeName}（{shortRunId}）恢复",
-      "resumeFromIdle": "从…恢复"
-    },
-    "runDetail": {
-      "runTree": "运行树",
-      "awaitingCount": "{count} 个等待中",
-      "runCount": "{count, plural, other {# 个运行}}",
-      "resizeTree": "调整运行树大小"
     },
     "runFacts": {
       "rootRunId": "根运行 ID",
@@ -203,6 +153,58 @@
       "failed": "失败",
       "cancelled": "已取消",
       "pending": "待处理"
+    }
+  },
+  "shared": {
+    "launchForm": {
+      "workerDefaults": "启动执行器预设（可选）",
+      "workerDefaultsHint": "此运行中各步骤类型未指定执行器的步骤所用的执行器。按步骤类型选择，不属于配置：步骤自身的执行器优先，而此处设置优先于文件自身的预设。",
+      "sending": "正在启动…",
+      "warning": "{count, plural, other {# 个未解决的警告}}，运行可能在启动时失败。"
+    },
+    "nodeIo": {
+      "refresh": "刷新",
+      "reused": "复用自之前的运行，下方的输入和输出来自该运行。",
+      "reusedRootRun": "复用的根运行",
+      "reusedRun": "复用的运行",
+      "deleted": "（已删除）",
+      "resumed": "恢复自之前的运行，下方的输入是该运行的根输入。",
+      "resumedFromRootRun": "恢复自根运行",
+      "input": "输入",
+      "output": "输出",
+      "context": "上下文",
+      "noInput": "此运行没有记录输入对象。",
+      "resumedNoInput": "被恢复的运行没有记录输入对象。",
+      "noOutput": "此运行没有记录输出对象。",
+      "noOutputYet": "尚无输出对象，运行结束时才会写入输出。",
+      "noContext": "此运行没有记录上下文。",
+      "overrideInput": "覆盖的输入",
+      "overrideConfig": "覆盖的配置",
+      "launchWorkerDefaults": "启动执行器预设",
+      "error": "错误",
+      "errorSource": "来自运行的 step-finished 事件（事件日志）"
+    },
+    "overrides": {
+      "overrideInput": "覆盖输入（可选）",
+      "overrideConfig": "覆盖配置（可选）",
+      "configLabel": "覆盖配置 · JSON",
+      "secretsLabel": "启动密钥（覆盖配置） · JSON",
+      "set": "已设置"
+    },
+    "resumeActions": {
+      "secretsNote": "这些启动密钥以掩码形式存储，恢复时须重新提供。",
+      "resume": "恢复运行",
+      "sending": "正在恢复…",
+      "succeededReason": "已成功，可在下方从选定的重跑起点重新运行。",
+      "resumeFromTitle": "从 {nodeName}（{runId}）恢复",
+      "resumeFrom": "从 {nodeName}（{shortRunId}）恢复",
+      "resumeFromIdle": "从…恢复"
+    },
+    "runDetail": {
+      "runTree": "运行树",
+      "awaitingCount": "{count} 个等待中",
+      "runCount": "{count, plural, other {# 个运行}}",
+      "resizeTree": "调整运行树大小"
     },
     "workerDefaults": {
       "type": "步骤类型",

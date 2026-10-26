@@ -48,7 +48,7 @@ export interface NodeIoProps {
  * Context has no ref column, so it is always fetched and its 404 read as "no context recorded".
  */
 export function NodeIo({ client, run, view, runFiles = EMPTY_RUN_FILE_SET }: NodeIoProps) {
-  const t = useTranslations("viewer");
+  const t = useTranslations();
   const [reloadToken, setReloadToken] = useState(0);
   const settled = isTerminal(run.status);
   // Head facts (display status, last error) come off the view's snapshot; everything else stays on
@@ -107,15 +107,15 @@ export function NodeIo({ client, run, view, runFiles = EMPTY_RUN_FILE_SET }: Nod
           data-testid="node-io-refresh"
           onClick={() => setReloadToken((token) => token + 1)}
         >
-          {t("nodeIo.refresh")}
+          {t("shared.nodeIo.refresh")}
         </button>
         <span className="node-io-id-line">
-          <span className="node-id-label">{t("runFacts.nodeId")}</span>
+          <span className="node-id-label">{t("viewer.runFacts.nodeId")}</span>
           <span className="node-id">{run.nodeId ?? "—"}</span>
         </span>
       </header>
       <p className="node-io-run">
-        <span className="run-id-label">{t("runFacts.runId")}</span>
+        <span className="run-id-label">{t("viewer.runFacts.runId")}</span>
         <span className="run-id">{run.runId}</span>
       </p>
 
@@ -130,13 +130,13 @@ export function NodeIo({ client, run, view, runFiles = EMPTY_RUN_FILE_SET }: Nod
 
       {isReuseRow(run) && (
         <p className="node-io-reused" data-testid="node-io-reused">
-          {t("nodeIo.reused")}
+          {t("shared.nodeIo.reused")}
           <span className="reused-ref">
-            <span className="reused-label">{t("nodeIo.reusedRootRun")}</span>
-            <span className="run-id">{run.reusedFromRootRunId ?? t("nodeIo.deleted")}</span>
+            <span className="reused-label">{t("shared.nodeIo.reusedRootRun")}</span>
+            <span className="run-id">{run.reusedFromRootRunId ?? t("shared.nodeIo.deleted")}</span>
           </span>
           <span className="reused-ref">
-            <span className="reused-label">{t("nodeIo.reusedRun")}</span>
+            <span className="reused-label">{t("shared.nodeIo.reusedRun")}</span>
             <span className="run-id">{run.reusedFromRunId}</span>
           </span>
         </p>
@@ -144,9 +144,9 @@ export function NodeIo({ client, run, view, runFiles = EMPTY_RUN_FILE_SET }: Nod
 
       {resumedFrom !== null && (
         <p className="node-io-reused" data-testid="node-io-resumed-input">
-          {t("nodeIo.resumed")}
+          {t("shared.nodeIo.resumed")}
           <span className="reused-ref">
-            <span className="reused-label">{t("nodeIo.resumedFromRootRun")}</span>
+            <span className="reused-label">{t("shared.nodeIo.resumedFromRootRun")}</span>
             <span className="run-id">{resumedFrom}</span>
           </span>
         </p>
@@ -157,7 +157,9 @@ export function NodeIo({ client, run, view, runFiles = EMPTY_RUN_FILE_SET }: Nod
         load={input}
         blobRef={inputSource.ref}
         testId="node-io-input"
-        absentNote={resumedFrom === null ? t("nodeIo.noInput") : t("nodeIo.resumedNoInput")}
+        absentNote={
+          resumedFrom === null ? t("shared.nodeIo.noInput") : t("shared.nodeIo.resumedNoInput")
+        }
       />
       <BlobBlock
         subject="output"
@@ -166,7 +168,7 @@ export function NodeIo({ client, run, view, runFiles = EMPTY_RUN_FILE_SET }: Nod
         testId="node-io-output"
         // A run still going has not written its output, a finished one never did; "yet" would
         // promise something that is not coming.
-        absentNote={settled ? t("nodeIo.noOutput") : t("nodeIo.noOutputYet")}
+        absentNote={settled ? t("shared.nodeIo.noOutput") : t("shared.nodeIo.noOutputYet")}
       />
       <BlobBlock
         subject="context"
@@ -177,7 +179,7 @@ export function NodeIo({ client, run, view, runFiles = EMPTY_RUN_FILE_SET }: Nod
         testId="node-io-context"
         // An absent context is a run still in flight or one that never reached a verdict — not a
         // failure.
-        absentNote={t("nodeIo.noContext")}
+        absentNote={t("shared.nodeIo.noContext")}
       />
       {isRootRun(run) && launchFacts !== undefined && (
         <>
@@ -186,21 +188,21 @@ export function NodeIo({ client, run, view, runFiles = EMPTY_RUN_FILE_SET }: Nod
               stored. */}
           {launchFacts.input !== undefined && (
             <FactBlock
-              title={t("nodeIo.overrideInput")}
+              title={t("shared.nodeIo.overrideInput")}
               testId="node-io-override-input"
               value={launchFacts.input}
             />
           )}
           {launchFacts.config !== undefined && (
             <FactBlock
-              title={t("nodeIo.overrideConfig")}
+              title={t("shared.nodeIo.overrideConfig")}
               testId="node-io-override-config"
               value={launchFacts.config}
             />
           )}
           {launchFacts.workerDefaults !== undefined && (
             <FactBlock
-              title={t("nodeIo.launchWorkerDefaults")}
+              title={t("shared.nodeIo.launchWorkerDefaults")}
               testId="node-io-launch-worker-defaults"
               value={launchFacts.workerDefaults}
             />
@@ -235,7 +237,7 @@ function FactBlock({ title, testId, value }: { title: string; testId: string; va
  * not as JSON.
  */
 function ErrorBlock({ message }: { message: string }) {
-  const t = useTranslations("viewer.nodeIo");
+  const t = useTranslations("shared.nodeIo");
   return (
     <section className="io-block" data-testid="node-io-error" aria-labelledby="node-io-error-title">
       <h3 className="io-title" id="node-io-error-title">
@@ -260,7 +262,7 @@ interface BlobBlockProps {
 }
 
 function BlobBlock({ subject, load, blobRef, testId, absentNote }: BlobBlockProps) {
-  const t = useTranslations("viewer.nodeIo");
+  const t = useTranslations("shared.nodeIo");
   const titleId = `${testId}-title`;
 
   return (

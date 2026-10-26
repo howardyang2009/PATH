@@ -37,7 +37,7 @@ export function WorkerDefaultsEditor({
   onChange,
   hint,
 }: WorkerDefaultsEditorProps): JSX.Element | null {
-  const t = useTranslations("viewer.workerDefaults");
+  const t = useTranslations("shared.workerDefaults");
   const candidates = workerDefaultCandidates(plugins);
   // No multi-worker type in the registry → no selection to make. Hide the section entirely.
   if (candidates.length === 0) return null;

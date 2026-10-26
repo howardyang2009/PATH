@@ -53,7 +53,7 @@ export function RunDetail({
   onSelectRun,
   runFiles = EMPTY_RUN_FILE_SET,
 }: RunDetailProps) {
-  const t = useTranslations("viewer");
+  const t = useTranslations();
   const detailRef = useRef<HTMLDivElement>(null);
   // The tree/narrative split: the handle sits below the tree, so dragging down (+1) grows it, and
   // the narrative keeps its floor.
@@ -93,9 +93,9 @@ export function RunDetail({
         <StatusPill status={displayStatus} />
         {cancellable && <CancelButton client={client} rootRunId={rootRunId} />}
         <dl className="run-meta-grid">
-          <dt>{t("runFacts.workflowId")}</dt>
+          <dt>{t("viewer.runFacts.workflowId")}</dt>
           <dd className="run-workflow-id">{root?.workflowId ?? "—"}</dd>
-          <dt>{t("runFacts.workflowFile")}</dt>
+          <dt>{t("viewer.runFacts.workflowFile")}</dt>
           <dd className="run-workflow-path">{root?.workflowPath ?? "—"}</dd>
         </dl>
       </header>
@@ -107,14 +107,16 @@ export function RunDetail({
       >
         <header className="card-head">
           <h3 className="card-title" id="run-tree-title">
-            {t("runDetail.runTree")}
+            {t("shared.runDetail.runTree")}
           </h3>
           {awaitingCount >= 2 && (
             <span className="awaiting-count-badge" data-testid="awaiting-count-badge">
-              {t("runDetail.awaitingCount", { count: awaitingCount })}
+              {t("shared.runDetail.awaitingCount", { count: awaitingCount })}
             </span>
           )}
-          <span className="card-count">{t("runDetail.runCount", { count: state.runs.size })}</span>
+          <span className="card-count">
+            {t("shared.runDetail.runCount", { count: state.runs.size })}
+          </span>
         </header>
         <RunTree
           rootRunId={rootRunId}
@@ -126,7 +128,11 @@ export function RunDetail({
         />
       </section>
 
-      <hr className="row-resizer" aria-label={t("runDetail.resizeTree")} {...treeHandleProps} />
+      <hr
+        className="row-resizer"
+        aria-label={t("shared.runDetail.resizeTree")}
+        {...treeHandleProps}
+      />
 
       <Narrative events={narrativeRows(state.narrative, state.runs)} stream={state.stream} />
     </div>
