@@ -1,4 +1,5 @@
 import type { ServerResponse } from "node:http";
+import { type ErrorCode, englishText } from "@path/i18n";
 import { formatIssues } from "@path/schema";
 import type { z } from "zod";
 import type { RequestBody } from "./request-body.js";
@@ -12,12 +13,34 @@ export interface RouteReply {
   headers?: Record<string, string>;
 }
 
-/** A refusal in the shared error envelope (server-api-v0.md §1). */
-export function replyError(status: number, message: string, details?: unknown): RouteReply {
-  return {
-    status,
-    body: details === undefined ? { error: { message } } : { error: { message, details } },
-  };
+export type ErrorParams = Record<string, string | number>;
+
+/** A refusal PATH owns (ADR 0107): its code, the client's catalogue key, and the code's params. */
+export interface Refusal {
+  code: ErrorCode;
+  params?: ErrorParams;
+}
+
+/** A refusal's English text, from the `en` catalogue: the wire's fallback, logs and the CLI. */
+export function refusalText({ code, params }: Refusal): string {
+  return englishText({ key: `errors.${code}`, params });
+}
+
+/** A refusal in the shared error envelope (server-api-v0.md §1, ADR 0107): the code and params
+ * the client renders, plus `message` in English for `curl`, an old client and an unknown code. */
+export function replyError(
+  status: number,
+  code: ErrorCode,
+  params: ErrorParams = {},
+  details?: unknown,
+): RouteReply {
+  const error = { code, params, message: refusalText({ code, params }) };
+  return { status, body: { error: details === undefined ? error : { ...error, details } } };
+}
+
+/** {@link replyError} for a refusal a helper module decided. */
+export function replyRefusal(status: number, refusal: Refusal, details?: unknown): RouteReply {
+  return replyError(status, refusal.code, refusal.params, details);
 }
 
 /** Write one `reply` route's answer. */
@@ -35,10 +58,11 @@ export function sendReply(res: ServerResponse, reply: RouteReply): void {
 export function sendError(
   res: ServerResponse,
   status: number,
-  message: string,
+  code: ErrorCode,
+  params?: ErrorParams,
   details?: unknown,
 ): void {
-  sendReply(res, replyError(status, message, details));
+  sendReply(res, replyError(status, code, params, details));
 }
 
 /**
@@ -55,7 +79,7 @@ export function readRequestBody<T>(
   if (!parsed.success) {
     return {
       ok: false,
-      reply: replyError(400, "invalid request body", formatIssues(parsed.error)),
+      reply: replyError(400, "request.invalid-body", {}, formatIssues(parsed.error)),
     };
   }
   return { ok: true, data: parsed.data, raw: body.raw };

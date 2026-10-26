@@ -1,6 +1,6 @@
 import type { WirePutWorkflowResponse } from "@path/schema";
 import { z } from "zod";
-import { type RouteReply, readRequestBody, replyError } from "../http-json.js";
+import { type RouteReply, readRequestBody, replyRefusal } from "../http-json.js";
 import { firstHeader } from "../origin-gate.js";
 import { workflowsOf } from "../workflow-store.js";
 import type { ApiRequest } from "./route-context.js";
@@ -33,7 +33,7 @@ export async function handlePutWorkflow({ req, body, ctx }: ApiRequest): Promise
     rawWorkflow,
     firstHeader(req.headers["if-match"]),
   );
-  if (!written.ok) return replyError(written.status, written.message, written.details);
+  if (!written.ok) return replyRefusal(written.status, written, written.details);
 
   // The reply is the shared wire shape the client decodes, so a renamed field is a compile error
   // here.

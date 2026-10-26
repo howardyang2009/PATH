@@ -1,3 +1,4 @@
+import { verbatim } from "@path/i18n";
 import { renderHook, waitFor } from "@testing-library/react";
 import { type ReactNode, StrictMode } from "react";
 import { describe, expect, it, vi } from "vitest";
@@ -51,7 +52,11 @@ describe("useScanOnSave", () => {
     fail = true;
     rerender({ phase: "saved" });
     await waitFor(() =>
-      expect(result.current).toEqual({ phase: "error", message: "offline", lastGood: ["kept"] }),
+      expect(result.current).toEqual({
+        phase: "error",
+        message: verbatim("offline"),
+        lastGood: ["kept"],
+      }),
     );
   });
 });

@@ -688,5 +688,116 @@
       "notWorkflow": "“{label}” is no longer a nested workflow.",
       "refUnresolved": "“{label}” references a file that is no longer in the workflow."
     }
+  },
+  "errors": {
+    "request": {
+      "not-found": "not found",
+      "invalid-body": "invalid request body",
+      "body-too-large": "request body too large: at most {limit}",
+      "body-not-json": "request body must be valid JSON",
+      "bad-path-encoding": "malformed percent-encoding in the request path",
+      "cross-origin": "cross-origin request rejected",
+      "too-many": "too many requests: try again later",
+      "funnel-guard": "funnel guard: local mode answers only localhost and tailscale serve requests, and this one came through a public ingress (Tailscale Funnel, Cloudflare Tunnel or another proxy). Reach PATH over the tailnet (tailscale serve), run the Server in hosted mode, or set PATH_FUNNEL_GUARD=off to allow it"
+    },
+    "auth": {
+      "sign-in-required": "sign-in required: missing, invalid or expired bearer token"
+    },
+    "server": {
+      "internal": "{message}"
+    },
+    "limits": {
+      "storage-full": "storage full, delete runs",
+      "host-disk-low": "the host is low on disk: launches are paused, try later",
+      "launches-off": "launches are off for this user",
+      "no-vm-time": "budget used: this user has no VM time",
+      "budget-used": "budget used, try at {retryAt}"
+    },
+    "run": {
+      "not-found": "no run found with id \"{rootRunId}\"",
+      "step-not-found": "no step run found with id \"{stepRunId}\"",
+      "config-env": "operator config may not source from the server environment: $env at {paths}",
+      "workflow-missing": "workflow file for run \"{rootRunId}\" not found at \"{workflowPath}\"",
+      "invalid-worker-defaults": "invalid worker_defaults",
+      "start-failed": "run failed to start: {message}",
+      "refused": "{message}",
+      "resume": {
+        "no-path": "run \"{rootRunId}\" has no recorded workflow path and cannot be resumed",
+        "swapped": "the workflow at \"{workflowPath}\" is no longer the one run \"{rootRunId}\" ran (its id changed); cannot resume",
+        "start-failed": "resume failed to start: {message}"
+      },
+      "complete": {
+        "missing-output": "missing required field \"output\"",
+        "not-awaiting": "step run \"{stepRunId}\" is {status}, not awaiting",
+        "no-path": "run \"{rootRunId}\" has no recorded workflow path and cannot be completed",
+        "swapped": "the workflow at \"{workflowPath}\" is no longer the one run \"{rootRunId}\" ran (its id changed); cannot complete"
+      },
+      "cancel": {
+        "finished": "run \"{rootRunId}\" already finished with status \"{status}\"",
+        "not-here": "run \"{rootRunId}\" is not executing in this server process and cannot be cancelled"
+      },
+      "delete": {
+        "running": "run \"{rootRunId}\" is still {status}; cancel it before deleting",
+        "reused": "refusing to delete {rootRunId}: live successor run(s) reuse its data: {blockers} — retry with ?force=true to delete it anyway"
+      },
+      "blob": {
+        "unknown-name": "unknown blob name \"{name}\" (expected \"input\", \"output\" or \"context\")",
+        "no-run": "no run \"{runId}\" under root \"{rootRunId}\"",
+        "missing": "no {name} blob for run \"{runId}\""
+      }
+    },
+    "runs": {
+      "invalid-limit": "invalid limit \"{limit}\": must be a positive integer",
+      "invalid-status": "invalid status \"{status}\": must be one of {statuses}"
+    },
+    "workflow": {
+      "not-found": "workflow file not found: \"{workflowPath}\"",
+      "escapes-root": "workflow_path \"{workflowPath}\" resolves outside the project root",
+      "invalid": "workflow validation failed",
+      "template-path": "workflow path must not be a template path",
+      "shipped-read-only": "a shipped workflow is read-only",
+      "shipped-copy-first": "a shipped workflow must be copied before it runs",
+      "not-shipped": "not a shipped workflow",
+      "copy-failed": "shipped workflow cannot be copied: {message}",
+      "bundle-failed": "workflow refs could not be bundled",
+      "download-origin": "origin must be \"shipped\" when present"
+    },
+    "lease": {
+      "held": "workflow is being edited in another session",
+      "just-locked": "workflow was just locked in another session",
+      "not-held": "editing lease not held by this session"
+    },
+    "authored": {
+      "shared-read-only": "only the creator edits a shared item",
+      "shared-limit": "shared item limit reached ({max}): delete a shared item first",
+      "file-too-large": "file too large: an authored file may be at most {limit}"
+    },
+    "file": {
+      "precondition": {
+        "missing": "precondition failed: the file no longer exists",
+        "changed": "precondition failed: the file changed since it was read",
+        "exists": "precondition failed: the file already exists (send If-Match to overwrite)",
+        "required": "precondition failed: send If-Match with the ETag you last read"
+      }
+    },
+    "template": {
+      "duplicate-id": "duplicate id \"{id}\": already used by {origin} template \"{name}\"",
+      "read-only": "template is read-only",
+      "invalid": "template validation failed",
+      "id-taken": "template id \"{id}\" is already used by {origin} template \"{name}\"",
+      "name-taken": "a {kind} template named \"{name}\" already exists",
+      "id-mismatch": "template id in body must match the URL id"
+    },
+    "secret": {
+      "not-found": "no User secret named \"{name}\"",
+      "bad-name": "User secret name \"{name}\" must match ^[A-Z_][A-Z0-9_]*$ and be at most {max} characters",
+      "reserved": "User secret name \"{name}\" is reserved",
+      "too-large": "User secret \"{name}\" is larger than {kib} KiB",
+      "too-many": "at most {max} User secrets per user"
+    },
+    "client": {
+      "bad-reply": "the server's reply was not valid JSON (status {status})",
+      "request-failed": "request failed with status {status}"
+    }
   }
 }

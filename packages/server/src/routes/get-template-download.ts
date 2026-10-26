@@ -14,7 +14,7 @@ export function handleGetTemplateDownload({
 }: StreamRequest<[string]>): void {
   const file = templatesOf(ctx).download(id);
   if (file === undefined) {
-    sendError(res, 404, "not found");
+    sendError(res, 404, "request.not-found");
     return;
   }
   sendDownload(res, { contentType: "application/json", ...file });

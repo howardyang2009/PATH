@@ -137,7 +137,7 @@ export function ResumeActions({
       (res) => onResumed(res.root_run_id),
       (thrown: unknown) => {
         setPhase("idle");
-        setError({ source: "resume", message: errorMessage(thrown) });
+        setError({ source: "resume", message: renderMessage(errorMessage(thrown)) });
       },
     );
   };
@@ -151,7 +151,7 @@ export function ResumeActions({
       (res) => onResumed(res.root_run_id),
       (thrown: unknown) => {
         setPhase("idle");
-        setError({ source: "resume-from", message: errorMessage(thrown) });
+        setError({ source: "resume-from", message: renderMessage(errorMessage(thrown)) });
       },
     );
   };

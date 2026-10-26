@@ -237,7 +237,11 @@ describe("GET /v0/workflows", () => {
     });
     expect(put.status).toBe(403);
     expect(await put.json()).toEqual({
-      error: { message: "only the creator edits a shared item" },
+      error: {
+        code: "authored.shared-read-only",
+        params: {},
+        message: "only the creator edits a shared item",
+      },
     });
   });
 

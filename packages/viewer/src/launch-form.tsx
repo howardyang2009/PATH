@@ -4,6 +4,7 @@ import {
   parseJsonField,
   type WireStepPlugin,
 } from "@path/client-core";
+import { useMessage } from "@path/i18n/react";
 import { useState } from "react";
 import { useTranslations } from "use-intl";
 import { JsonField } from "./json-field.js";
@@ -65,6 +66,7 @@ export function LaunchForm({
   workers = [],
 }: LaunchFormProps): JSX.Element {
   const t = useTranslations("shared");
+  const renderMessage = useMessage();
   const [input, setInput] = useState("{}");
   const [config, setConfig] = useState("");
   // The launch worker-default table: a `{ <type>: <worker-name> }` map, empty until the operator
@@ -121,7 +123,9 @@ export function LaunchForm({
         setSubmit({ phase: "idle" });
         onLaunched(res.root_run_id);
       })
-      .catch((error: unknown) => setSubmit({ phase: "error", message: errorMessage(error) }));
+      .catch((error: unknown) =>
+        setSubmit({ phase: "error", message: renderMessage(errorMessage(error)) }),
+      );
   };
 
   return (

@@ -688,5 +688,116 @@
       "notWorkflow": "„{label}“ ist kein verschachtelter Workflow mehr.",
       "refUnresolved": "„{label}“ verweist auf eine Datei, die nicht mehr im Workflow ist."
     }
+  },
+  "errors": {
+    "request": {
+      "not-found": "nicht gefunden",
+      "invalid-body": "ungültiger Anfrageinhalt",
+      "body-too-large": "Anfrageinhalt zu groß: höchstens {limit}",
+      "body-not-json": "Der Anfrageinhalt muss gültiges JSON sein",
+      "bad-path-encoding": "fehlerhafte Prozentkodierung im Anfragepfad",
+      "cross-origin": "ursprungsübergreifende Anfrage abgelehnt",
+      "too-many": "zu viele Anfragen: versuchen Sie es später erneut",
+      "funnel-guard": "Funnel-Schutz: Der lokale Modus beantwortet nur Anfragen von localhost und tailscale serve, und diese kam über einen öffentlichen Zugang (Tailscale Funnel, Cloudflare Tunnel oder ein anderer Proxy). Erreichen Sie PATH über das Tailnet (tailscale serve), betreiben Sie den Server im gehosteten Modus oder setzen Sie PATH_FUNNEL_GUARD=off, um dies zu erlauben"
+    },
+    "auth": {
+      "sign-in-required": "Anmeldung erforderlich: Bearer-Token fehlt, ist ungültig oder abgelaufen"
+    },
+    "server": {
+      "internal": "{message}"
+    },
+    "client": {
+      "bad-reply": "Die Antwort des Servers war kein gültiges JSON (Status {status})",
+      "request-failed": "Anfrage mit Status {status} fehlgeschlagen"
+    },
+    "limits": {
+      "storage-full": "Speicher voll, löschen Sie Läufe",
+      "host-disk-low": "Auf dem Host ist wenig Speicherplatz frei: Starts sind pausiert, versuchen Sie es später",
+      "launches-off": "Starts sind für diesen Benutzer deaktiviert",
+      "no-vm-time": "Budget aufgebraucht: Dieser Benutzer hat keine VM-Zeit",
+      "budget-used": "Budget aufgebraucht, versuchen Sie es um {retryAt}"
+    },
+    "run": {
+      "not-found": "Kein Lauf mit der ID „{rootRunId}“ gefunden",
+      "step-not-found": "Kein Schrittlauf mit der ID „{stepRunId}“ gefunden",
+      "config-env": "Die Betreiberkonfiguration darf nicht aus der Serverumgebung stammen: $env bei {paths}",
+      "workflow-missing": "Workflow-Datei für Lauf „{rootRunId}“ nicht gefunden unter „{workflowPath}“",
+      "invalid-worker-defaults": "ungültige worker_defaults",
+      "start-failed": "Lauf konnte nicht gestartet werden: {message}",
+      "refused": "{message}",
+      "resume": {
+        "no-path": "Lauf „{rootRunId}“ hat keinen gespeicherten Workflow-Pfad und kann nicht fortgesetzt werden",
+        "swapped": "Der Workflow unter „{workflowPath}“ ist nicht mehr der, den Lauf „{rootRunId}“ ausgeführt hat (seine ID hat sich geändert); Fortsetzen nicht möglich",
+        "start-failed": "Fortsetzen konnte nicht gestartet werden: {message}"
+      },
+      "complete": {
+        "missing-output": "Pflichtfeld „output“ fehlt",
+        "not-awaiting": "Schrittlauf „{stepRunId}“ ist {status}, nicht wartend",
+        "no-path": "Lauf „{rootRunId}“ hat keinen gespeicherten Workflow-Pfad und kann nicht abgeschlossen werden",
+        "swapped": "Der Workflow unter „{workflowPath}“ ist nicht mehr der, den Lauf „{rootRunId}“ ausgeführt hat (seine ID hat sich geändert); Abschließen nicht möglich"
+      },
+      "cancel": {
+        "finished": "Lauf „{rootRunId}“ ist bereits mit Status „{status}“ beendet",
+        "not-here": "Lauf „{rootRunId}“ wird nicht in diesem Serverprozess ausgeführt und kann nicht abgebrochen werden"
+      },
+      "delete": {
+        "running": "Lauf „{rootRunId}“ ist noch {status}; brechen Sie ihn vor dem Löschen ab",
+        "reused": "Löschen von {rootRunId} abgelehnt: aktive Folgeläufe verwenden seine Daten wieder: {blockers} – mit ?force=true erneut versuchen, um ihn trotzdem zu löschen"
+      },
+      "blob": {
+        "unknown-name": "unbekannter Blob-Name „{name}“ (erwartet „input“, „output“ oder „context“)",
+        "no-run": "kein Lauf „{runId}“ unter Wurzel „{rootRunId}“",
+        "missing": "kein {name}-Blob für Lauf „{runId}“"
+      }
+    },
+    "runs": {
+      "invalid-limit": "ungültiges Limit „{limit}“: muss eine positive ganze Zahl sein",
+      "invalid-status": "ungültiger Status „{status}“: muss einer von {statuses} sein"
+    },
+    "workflow": {
+      "not-found": "Workflow-Datei nicht gefunden: „{workflowPath}“",
+      "escapes-root": "workflow_path „{workflowPath}“ liegt außerhalb des Projektverzeichnisses",
+      "invalid": "Workflow-Validierung fehlgeschlagen",
+      "template-path": "Der Workflow-Pfad darf kein Vorlagenpfad sein",
+      "shipped-read-only": "Ein mitgelieferter Workflow ist schreibgeschützt",
+      "shipped-copy-first": "Ein mitgelieferter Workflow muss vor dem Ausführen kopiert werden",
+      "not-shipped": "kein mitgelieferter Workflow",
+      "copy-failed": "Mitgelieferter Workflow kann nicht kopiert werden: {message}",
+      "bundle-failed": "Workflow-Referenzen konnten nicht gebündelt werden",
+      "download-origin": "origin muss „shipped“ sein, wenn angegeben"
+    },
+    "lease": {
+      "held": "Der Workflow wird in einer anderen Sitzung bearbeitet",
+      "just-locked": "Der Workflow wurde gerade in einer anderen Sitzung gesperrt",
+      "not-held": "Diese Sitzung hält keine Bearbeitungssperre"
+    },
+    "authored": {
+      "shared-read-only": "Nur der Ersteller bearbeitet ein geteiltes Element",
+      "shared-limit": "Limit für geteilte Elemente erreicht ({max}): löschen Sie zuerst ein geteiltes Element",
+      "file-too-large": "Datei zu groß: Eine erstellte Datei darf höchstens {limit} groß sein"
+    },
+    "file": {
+      "precondition": {
+        "missing": "Vorbedingung fehlgeschlagen: Die Datei existiert nicht mehr",
+        "changed": "Vorbedingung fehlgeschlagen: Die Datei hat sich seit dem Lesen geändert",
+        "exists": "Vorbedingung fehlgeschlagen: Die Datei existiert bereits (senden Sie If-Match zum Überschreiben)",
+        "required": "Vorbedingung fehlgeschlagen: Senden Sie If-Match mit dem zuletzt gelesenen ETag"
+      }
+    },
+    "template": {
+      "duplicate-id": "doppelte ID „{id}“: bereits verwendet von {origin}-Vorlage „{name}“",
+      "read-only": "Die Vorlage ist schreibgeschützt",
+      "invalid": "Vorlagen-Validierung fehlgeschlagen",
+      "id-taken": "Vorlagen-ID „{id}“ wird bereits von {origin}-Vorlage „{name}“ verwendet",
+      "name-taken": "Eine {kind}-Vorlage namens „{name}“ existiert bereits",
+      "id-mismatch": "Die Vorlagen-ID im Inhalt muss der ID in der URL entsprechen"
+    },
+    "secret": {
+      "not-found": "Kein Benutzer-Secret namens „{name}“",
+      "bad-name": "Der Name des Benutzer-Secrets „{name}“ muss ^[A-Z_][A-Z0-9_]*$ entsprechen und darf höchstens {max} Zeichen lang sein",
+      "reserved": "Der Name des Benutzer-Secrets „{name}“ ist reserviert",
+      "too-large": "Benutzer-Secret „{name}“ ist größer als {kib} KiB",
+      "too-many": "höchstens {max} Benutzer-Secrets pro Benutzer"
+    }
   }
 }

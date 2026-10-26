@@ -1,5 +1,5 @@
 import type { PathApiClient, WireStepPlugin } from "@path/client-core";
-import { type Message, verbatim } from "@path/i18n";
+import type { Message } from "@path/i18n";
 import { errorMessage } from "@path/viewer";
 import { type Load, useResource } from "@path/viewer/use-resource";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -188,7 +188,7 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
         .catch((error: unknown) =>
           apply({
             type: "setSaveState",
-            saveState: { phase: "delete-error", message: verbatim(errorMessage(error)) },
+            saveState: { phase: "delete-error", message: errorMessage(error) },
           }),
         );
     },

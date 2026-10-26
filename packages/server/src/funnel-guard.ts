@@ -50,14 +50,7 @@ export function enforceFunnelGuard(
   enabled: boolean,
 ): boolean {
   if (enabled && isPublicRequest(req)) {
-    sendError(
-      res,
-      403,
-      "funnel guard: local mode answers only localhost and tailscale serve requests, and this one " +
-        "came through a public ingress (Tailscale Funnel, Cloudflare Tunnel or another proxy). " +
-        "Reach PATH over the tailnet (tailscale serve), run the Server in hosted mode, or set " +
-        "PATH_FUNNEL_GUARD=off to allow it",
-    );
+    sendError(res, 403, "request.funnel-guard");
     return false;
   }
   return true;

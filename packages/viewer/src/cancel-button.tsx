@@ -1,4 +1,5 @@
 import type { PathApiClient } from "@path/client-core";
+import { useMessage } from "@path/i18n/react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslations } from "use-intl";
 import { errorMessage } from "./load-state.js";
@@ -25,6 +26,7 @@ type Phase = "idle" | "armed" | "sending";
  */
 export function CancelButton({ client, rootRunId }: CancelButtonProps) {
   const t = useTranslations("shared.cancelButton");
+  const renderMessage = useMessage();
   const [phase, setPhase] = useState<Phase>("idle");
   const [error, setError] = useState<string | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -58,7 +60,7 @@ export function CancelButton({ client, rootRunId }: CancelButtonProps) {
     setPhase("sending");
     client.cancelRun(rootRunId).catch((thrown: unknown) => {
       setPhase("idle");
-      setError(errorMessage(thrown));
+      setError(renderMessage(errorMessage(thrown)));
     });
   };
 

@@ -7,6 +7,8 @@ import {
   ORIGIN_FOLDER,
   workflowBaseName,
 } from "@path/client-core";
+import { useMessage } from "@path/i18n/react";
+import { errorMessage } from "@path/viewer";
 import { useMemo, useState } from "react";
 import { useTranslations } from "use-intl";
 import { type DiscoveryLoad, discoveredWorkflows } from "./discovery.js";
@@ -45,6 +47,7 @@ export function OpenWorkflowDialog({
   // The deepest open folder path (accordion, one open folder per level; see `workflow-tree`).
   // The user's own workflows start open.
   const t = useTranslations();
+  const renderMessage = useMessage();
   const [openFolder, setOpenFolder] = useState<string | null>(ORIGIN_FOLDER.user);
   // `null` until a scan lands, which reads as "still discovering". A failed scan with nothing
   // behind it reads as an empty list here, so the dialog still opens with its "no workflows" note.
@@ -52,9 +55,7 @@ export function OpenWorkflowDialog({
   const [copyError, setCopyError] = useState<string | null>(null);
   const copy = (shippedPath: string): void => {
     setCopyError(null);
-    onCopy(shippedPath).catch((error: unknown) =>
-      setCopyError(error instanceof Error ? error.message : String(error)),
-    );
+    onCopy(shippedPath).catch((error: unknown) => setCopyError(renderMessage(errorMessage(error))));
   };
 
   const tree = useMemo(() => (workflows ? buildWorkflowTree(workflows) : []), [workflows]);

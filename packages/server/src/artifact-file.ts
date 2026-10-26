@@ -1,5 +1,6 @@
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
+import type { ErrorCode } from "@path/i18n";
 import { strongEtag } from "./etag.js";
 
 /**
@@ -15,11 +16,11 @@ import { strongEtag } from "./etag.js";
 
 /** The `412` wording per precondition conflict, at every artifact door; `required` arises only
  * under `overwrite`. */
-export const PRECONDITION_FAILED: Record<ArtifactConflict, string> = {
-  missing: "precondition failed: the file no longer exists",
-  changed: "precondition failed: the file changed since it was read",
-  exists: "precondition failed: the file already exists (send If-Match to overwrite)",
-  required: "precondition failed: send If-Match with the ETag you last read",
+export const PRECONDITION_FAILED: Record<ArtifactConflict, ErrorCode> = {
+  missing: "file.precondition.missing",
+  changed: "file.precondition.changed",
+  exists: "file.precondition.exists",
+  required: "file.precondition.required",
 };
 
 /** Why a precondition or a create failed. */

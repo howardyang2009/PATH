@@ -220,7 +220,11 @@ describe("the requester's view in hosted mode", () => {
     );
     expect(resumed.status).toBe(404);
     expect(await resumed.json()).toEqual({
-      error: { message: `no run found with id "${failed.root_run_id}"` },
+      error: {
+        code: "run.not-found",
+        params: { rootRunId: failed.root_run_id },
+        message: `no run found with id "${failed.root_run_id}"`,
+      },
     });
 
     const parked = (await (await launch(url, BOB, awaiting)).json()) as { root_run_id: string };
@@ -234,7 +238,11 @@ describe("the requester's view in hosted mode", () => {
     );
     expect(completed.status).toBe(404);
     expect(await completed.json()).toEqual({
-      error: { message: `no step run found with id "${leaf?.run_id}"` },
+      error: {
+        code: "run.step-not-found",
+        params: { stepRunId: leaf?.run_id },
+        message: `no step run found with id "${leaf?.run_id}"`,
+      },
     });
   });
 

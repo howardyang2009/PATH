@@ -1,4 +1,5 @@
 import type { PathApiClient, WireSecretSummary } from "@path/client-core";
+import { useMessage } from "@path/i18n/react";
 import { type FormEvent, useState } from "react";
 import { useLocale, useTranslations } from "use-intl";
 import { formatTimestamp } from "./format-time.js";
@@ -42,6 +43,7 @@ export function SecretsPage({ client }: { client: PathApiClient }) {
 /** Set or replace one User secret. A refused set keeps both fields, so the user can fix the name. */
 function SetSecretForm({ client, onSet }: { client: PathApiClient; onSet: () => void }) {
   const t = useTranslations("viewer.secretsPage");
+  const renderMessage = useMessage();
   const [name, setName] = useState("");
   const [value, setValue] = useState("");
   const [sending, setSending] = useState(false);
@@ -63,7 +65,7 @@ function SetSecretForm({ client, onSet }: { client: PathApiClient; onSet: () => 
       },
       (thrown: unknown) => {
         setSending(false);
-        setError(errorMessage(thrown));
+        setError(renderMessage(errorMessage(thrown)));
       },
     );
   };
@@ -120,6 +122,7 @@ function SecretRow({
   onDeleted: () => void;
 }) {
   const t = useTranslations();
+  const renderMessage = useMessage();
   const locale = useLocale();
   const [phase, setPhase] = useState<DeletePhase>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -129,7 +132,7 @@ function SecretRow({
     setPhase("sending");
     client.deleteSecret(secret.name).then(onDeleted, (thrown: unknown) => {
       setPhase("confirming");
-      setError(errorMessage(thrown));
+      setError(renderMessage(errorMessage(thrown)));
     });
   };
 

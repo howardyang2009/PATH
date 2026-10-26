@@ -19,22 +19,24 @@ describe("operatorConfigEnvError (ADR 0012)", () => {
   });
 
   it("rejects a bare $env, naming the config key", async () => {
-    const message = operatorConfigEnvError({ repo_path: { $env: "SECRET_X" } });
-    expect(message).toContain("$env");
-    expect(message).toContain("repo_path");
+    expect(operatorConfigEnvError({ repo_path: { $env: "SECRET_X" } })).toEqual({
+      code: "run.config-env",
+      params: { paths: '"repo_path"' },
+    });
   });
 
   it("rejects the composed $secret-over-$env form at the config key, not key.$secret", async () => {
-    const message = operatorConfigEnvError({ token: { $secret: { $env: "SECRET_X" } } });
-    expect(message).toContain("$env");
-    expect(message).toContain("token");
-    expect(message).not.toContain("$secret");
+    expect(operatorConfigEnvError({ token: { $secret: { $env: "SECRET_X" } } })).toEqual({
+      code: "run.config-env",
+      params: { paths: '"token"' },
+    });
   });
 });
 
 describe("prepareWorkflow", () => {
   const layout = authoredLayout({ projectDir: fixturesDir });
-  const notFound = (p: string) => `not found: ${p}`;
+  const notFound = (p: string) =>
+    ({ code: "workflow.not-found", params: { workflowPath: p } }) as const;
 
   it("403s a shipped workflow, which never runs in place", async () => {
     const shipped = authoredLayout({
@@ -44,7 +46,7 @@ describe("prepareWorkflow", () => {
     const prepared = await prepareWorkflow(shipped, "two-binary-steps.workflow.json", { notFound });
     expect(prepared).toEqual({
       ok: false,
-      refusal: { status: 403, message: "a shipped workflow must be copied before it runs" },
+      refusal: { status: 403, code: "workflow.shipped-copy-first" },
     });
   });
 
@@ -64,19 +66,25 @@ describe("prepareWorkflow", () => {
     // Fresh-launch shape: escape and not-found are distinct messages.
     const distinct = await prepareWorkflow(layout, "../../etc/passwd", {
       notFound,
-      escapesRoot: (p) => `escaped: ${p}`,
+      escapesRoot: (p) => ({ code: "workflow.escapes-root", params: { workflowPath: p } }),
     });
     expect(distinct.ok).toBe(false);
     if (distinct.ok) return;
     expect(distinct.refusal.status).toBe(404);
-    expect(distinct.refusal.message).toBe("escaped: ../../etc/passwd");
+    expect(distinct.refusal).toMatchObject({
+      code: "workflow.escapes-root",
+      params: { workflowPath: "../../etc/passwd" },
+    });
 
     // Resume shape: no escapesRoot, so an escape reuses the notFound wording (one 404 for both).
     const folded = await prepareWorkflow(layout, "../../etc/passwd", { notFound });
     expect(folded.ok).toBe(false);
     if (folded.ok) return;
     expect(folded.refusal.status).toBe(404);
-    expect(folded.refusal.message).toBe("not found: ../../etc/passwd");
+    expect(folded.refusal).toMatchObject({
+      code: "workflow.not-found",
+      params: { workflowPath: "../../etc/passwd" },
+    });
   });
 
   it("404s a missing file with the caller's notFound message", async () => {
@@ -86,7 +94,10 @@ describe("prepareWorkflow", () => {
     expect(prepared.ok).toBe(false);
     if (prepared.ok) return;
     expect(prepared.refusal.status).toBe(404);
-    expect(prepared.refusal.message).toBe("not found: does-not-exist.workflow.json");
+    expect(prepared.refusal).toMatchObject({
+      code: "workflow.not-found",
+      params: { workflowPath: "does-not-exist.workflow.json" },
+    });
   });
 
   it("400s an invalid file, carrying the loader's per-file errors as details", async () => {
@@ -96,7 +107,7 @@ describe("prepareWorkflow", () => {
     expect(prepared.ok).toBe(false);
     if (prepared.ok) return;
     expect(prepared.refusal.status).toBe(400);
-    expect(prepared.refusal.message).toBe("workflow validation failed");
+    expect(prepared.refusal.code).toBe("workflow.invalid");
     expect(prepared.refusal.details?.length).toBeGreaterThan(0);
   });
 });

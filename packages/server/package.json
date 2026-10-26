@@ -18,6 +18,7 @@
   "dependencies": {
     "@clerk/backend": "^3.22.0",
     "@path/engine": "workspace:*",
+    "@path/i18n": "workspace:*",
     "@path/schema": "workspace:*",
     "better-sqlite3": "^13.0.3",
     "fflate": "0.8.3",

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { type EditLease, editLease } from "../edit-lease.js";
-import { type RouteReply, readRequestBody, replyError } from "../http-json.js";
+import { type RouteReply, readRequestBody, replyError, replyRefusal } from "../http-json.js";
 import type { RequestBody } from "../request-body.js";
 import type { ApiRequest, RouteContext } from "./route-context.js";
 
@@ -35,9 +35,9 @@ function leaseRequest<T extends { workflow_path: string }>(
   const parsed = readRequestBody(body, schema);
   if (!parsed.ok) return parsed;
   const target = ctx.access.workflow(parsed.data.workflow_path);
-  if (!target.ok) return { ok: false, reply: replyError(target.status, target.message) };
+  if (!target.ok) return { ok: false, reply: replyRefusal(target.status, target) };
   const lease = editLease(ctx.layout.projectDir, parsed.data.workflow_path);
-  if (lease === undefined) return { ok: false, reply: replyError(404, "not found") };
+  if (lease === undefined) return { ok: false, reply: replyError(404, "request.not-found") };
   return { ok: true, body: parsed.data, lease };
 }
 
@@ -55,9 +55,7 @@ export async function handleWorkflowLockHeartbeat({ body, ctx }: ApiRequest): Pr
   const request = leaseRequest(body, ctx, LeaseOpBodySchema);
   if (!request.ok) return request.reply;
   const renewed = request.lease.renew(request.body.session_id);
-  return renewed
-    ? { status: 200, body: renewed }
-    : replyError(409, "editing lease not held by this session");
+  return renewed ? { status: 200, body: renewed } : replyError(409, "lease.not-held");
 }
 
 /**

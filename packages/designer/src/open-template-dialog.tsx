@@ -4,6 +4,7 @@ import {
   ORIGIN_FOLDER,
   type TemplateSummary,
 } from "@path/client-core";
+import { useMessage } from "@path/i18n/react";
 import { useMemo, useState } from "react";
 import { useTranslations } from "use-intl";
 import { FolderRow, indent } from "./open-existing-dialog.js";
@@ -38,6 +39,7 @@ export function OpenTemplateDialog({
   onCancel: () => void;
 }): JSX.Element {
   const t = useTranslations();
+  const renderMessage = useMessage();
   // The user's own templates start open.
   const [openFolder, setOpenFolder] = useState<string | null>(ORIGIN_FOLDER.user);
   const templates = templateList.phase === "ready" ? templateList.templates : null;
@@ -57,7 +59,7 @@ export function OpenTemplateDialog({
           <p className="pane-note">{t("designer.palette.loadingTemplates")}</p>
         ) : templateList.phase === "error" ? (
           <p className="new-file-error" role="alert">
-            {t("designer.palette.listFailed", { message: templateList.message })}
+            {t("designer.palette.listFailed", { message: renderMessage(templateList.message) })}
           </p>
         ) : tree.length === 0 ? (
           <p className="ref-existing-empty">{t("designer.palette.noTemplates")}</p>

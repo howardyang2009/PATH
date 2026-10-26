@@ -8,9 +8,9 @@ tag="${1:-path-run:$(git -C "$root" describe --tags --always --dirty)}"
 context="$(mktemp -d)"
 trap 'rm -rf "$context"' EXIT
 
-# Only what the VM runs: the workspace manifests and the schema, engine and server packages.
+# Only what the VM runs: the workspace manifests and the schema, i18n, engine and server packages.
 cp "$root"/{package.json,pnpm-lock.yaml,pnpm-workspace.yaml,tsconfig.base.json} "$context/"
-for pkg in schema engine server; do
+for pkg in schema i18n engine server; do
   mkdir -p "$context/packages/$pkg"
   rsync -a --exclude node_modules --exclude dist --exclude test --exclude .vitest \
     "$root/packages/$pkg/" "$context/packages/$pkg/"

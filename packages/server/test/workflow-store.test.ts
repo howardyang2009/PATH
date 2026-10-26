@@ -86,7 +86,7 @@ describe("workflow store", () => {
     expect(written).toMatchObject({
       ok: false,
       status: 400,
-      message: "workflow validation failed",
+      code: "workflow.invalid",
     });
   });
 
@@ -112,7 +112,7 @@ describe("workflow store — shared items", () => {
     expect(bob.write(SHARED, workflow(), etag)).toMatchObject({
       ok: false,
       status: 403,
-      message: "only the creator edits a shared item",
+      code: "authored.shared-read-only",
     });
     expect(bob.remove(SHARED, etag, null)).toMatchObject({ ok: false, status: 403 });
 

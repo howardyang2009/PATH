@@ -61,6 +61,7 @@ export function Canvas({
   const applyEdit = (next: WorkflowFile): void => apply({ type: "applyEdit", next });
   const selection = useSelection();
   const t = useTranslations();
+  const renderMessage = useMessage();
 
   // A double-click on a `workflow` block: a set ref descends across the boundary; an unset ref
   // opens the ref-target chooser instead, so a freshly swapped-in block is authorable rather than a
@@ -79,7 +80,12 @@ export function Canvas({
     );
   }
   if (registry.phase === "error") {
-    return <CanvasNote title={t("designer.canvas.registryUnavailable")} hint={registry.message} />;
+    return (
+      <CanvasNote
+        title={t("designer.canvas.registryUnavailable")}
+        hint={renderMessage(registry.message)}
+      />
+    );
   }
   const active = frames[activeIndex];
   if (!active) {
@@ -269,6 +275,7 @@ function FrameView({
   problems: Problem[];
 }): JSX.Element {
   const t = useTranslations();
+  const renderMessage = useMessage();
   const { state } = frame;
   if (state.phase === "loading") {
     return (
@@ -276,7 +283,9 @@ function FrameView({
     );
   }
   if (state.phase === "fetch-error") {
-    return <Refusal heading={t("designer.canvas.couldNotRead")} message={state.message} />;
+    return (
+      <Refusal heading={t("designer.canvas.couldNotRead")} message={renderMessage(state.message)} />
+    );
   }
 
   const { result } = state;

@@ -1,6 +1,6 @@
 import { type ConfigObject, ConfigObjectSchema, type JsonValue } from "@path/schema";
 import { z } from "zod";
-import { type RouteReply, readRequestBody, replyError } from "../http-json.js";
+import { type RouteReply, readRequestBody, replyError, replyRefusal } from "../http-json.js";
 import { operatorConfigEnvError, prepareRunWorkflow } from "../launch.js";
 import { resolveLeaf } from "./resolve-run.js";
 import type { ApiRequest } from "./route-context.js";
@@ -28,43 +28,45 @@ export async function handleCompleteRun({
   const parsed = readRequestBody(body, CompleteBodySchema);
   if (!parsed.ok) return parsed.reply;
   const output = parsed.data.output as JsonValue;
-  if (output === undefined) return replyError(400, 'missing required field "output"');
+  if (output === undefined) return replyError(400, "run.complete.missing-output");
   const config = parsed.data.config as ConfigObject | undefined;
   if (config !== undefined) {
     const envError = operatorConfigEnvError(config);
-    if (envError) return replyError(400, envError);
+    if (envError) return replyRefusal(400, envError);
   }
 
   // Resolve the leaf's tree from one read; unknown id is a 404 before any file work.
   const address = resolveLeaf(ctx, stepRunId);
-  if (!address.ok) return replyError(address.status, address.message);
+  if (!address.ok) return replyRefusal(address.status, address);
   const { rootRunId, leaf } = address;
 
   // The compare half of the leaf CAS, checked before reload/lease so an ordinary double-submit
   // never contends. The engine repeats it under the lease to close the concurrent-submit race.
   if (leaf.status !== "awaiting") {
-    return replyError(409, `step run "${stepRunId}" is ${leaf.status}, not awaiting`);
+    return replyError(409, "run.complete.not-awaiting", { stepRunId, status: leaf.status });
   }
 
   const { root } = address;
   if (!root) {
-    return replyError(
-      409,
-      `run "${rootRunId}" has no recorded workflow path and cannot be completed`,
-    );
+    return replyError(409, "run.complete.no-path", { rootRunId });
   }
 
   // Recover and re-validate the workflow as it stands now: the node lookup below must be a lookup
   // in *this run's* file (matching id, ADR 0006), not merely one sharing the node's id.
   const prepared = await prepareRunWorkflow(ctx.layout, root, {
-    notFound: () => `workflow file for run "${rootRunId}" not found at "${root.workflowPath}"`,
-    noRun: () => `no step run found with id "${stepRunId}"`,
-    noPath: () => `run "${rootRunId}" has no recorded workflow path and cannot be completed`,
-    swapped: (workflowPath) =>
-      `the workflow at "${workflowPath}" is no longer the one run "${rootRunId}" ran (its id changed); cannot complete`,
+    notFound: () => ({
+      code: "run.workflow-missing",
+      params: { rootRunId, workflowPath: root.workflowPath ?? "" },
+    }),
+    noRun: () => ({ code: "run.step-not-found", params: { stepRunId } }),
+    noPath: () => ({ code: "run.complete.no-path", params: { rootRunId } }),
+    swapped: (workflowPath) => ({
+      code: "run.complete.swapped",
+      params: { workflowPath, rootRunId },
+    }),
   });
   if (!prepared.ok) {
-    return replyError(prepared.refusal.status, prepared.refusal.message, prepared.refusal.details);
+    return replyRefusal(prepared.refusal.status, prepared.refusal, prepared.refusal.details);
   }
   const { workflow } = prepared;
 
@@ -89,9 +91,12 @@ export async function handleCompleteRun({
   if (!result.ok) {
     // `not-found` → 404; `output-invalid` → 400 with issues; the rest are 409 state conflicts.
     if (result.reason === "output-invalid") {
-      return replyError(400, result.message, result.details);
+      return replyError(400, "run.refused", { message: result.message }, result.details);
     }
-    return replyError(result.reason === "not-found" ? 404 : 409, result.message);
+    // The engine's own words until its refusals carry codes.
+    return replyError(result.reason === "not-found" ? 404 : 409, "run.refused", {
+      message: result.message,
+    });
   }
 
   return { status: 202, body: { step_run_id: stepRunId, root_run_id: result.rootRunId } };

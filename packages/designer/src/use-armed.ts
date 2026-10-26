@@ -58,7 +58,7 @@ export function useArmed(client: PathApiClient): ArmedState {
           if (request !== latest.current) return;
           setTemplateError({
             key: "designer.useArmed.readFailed",
-            params: { name: template.name, error: verbatim(errorMessage(error)) },
+            params: { name: template.name, error: errorMessage(error) },
           });
         });
     },

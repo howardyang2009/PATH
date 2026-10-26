@@ -2,6 +2,7 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:
 import type { UserSecrets } from "@path/engine";
 import type { WireSecretSummary } from "@path/schema";
 import Database from "better-sqlite3";
+import type { Refusal } from "./http-json.js";
 
 // One user's Secret store (ADR 0089): User secrets as rows in their own `path.db`, each value
 // encrypted with AES-256-GCM under the host master key. No method returns a value except `values`,
@@ -29,7 +30,7 @@ export interface SecretStore {
   set(
     name: string,
     value: string,
-  ): { ok: true; summary: WireSecretSummary } | { ok: false; message: string };
+  ): { ok: true; summary: WireSecretSummary } | ({ ok: false } & Refusal);
   list(): WireSecretSummary[];
   /** `false` when no User secret has that name. */
   remove(name: string): boolean;
@@ -52,12 +53,12 @@ export function parseSecretsKey(raw: string, variable = "PATH_SECRETS_KEY"): Sec
 }
 
 /** Why `name` may not be stored, or `undefined` when it may. */
-export function secretNameRefusal(name: string): string | undefined {
+export function secretNameRefusal(name: string): Refusal | undefined {
   if (!SECRET_NAME.test(name) || name.length > MAX_SECRET_NAME_LENGTH) {
-    return `User secret name "${name}" must match ^[A-Z_][A-Z0-9_]*$ and be at most ${MAX_SECRET_NAME_LENGTH} characters`;
+    return { code: "secret.bad-name", params: { name, max: MAX_SECRET_NAME_LENGTH } };
   }
   if (RESERVED_NAMES.has(name) || RESERVED_PREFIXES.some((prefix) => name.startsWith(prefix))) {
-    return `User secret name "${name}" is reserved`;
+    return { code: "secret.reserved", params: { name } };
   }
   return undefined;
 }
@@ -135,14 +136,17 @@ export function openSecretStore(
   return {
     set(name, value) {
       const refusal = secretNameRefusal(name);
-      if (refusal !== undefined) return { ok: false, message: refusal };
+      if (refusal !== undefined) return { ok: false, ...refusal };
       if (Buffer.byteLength(value, "utf8") > MAX_SECRET_VALUE_BYTES) {
-        const message = `User secret "${name}" is larger than ${MAX_SECRET_VALUE_BYTES / 1024} KiB`;
-        return { ok: false, message };
+        return {
+          ok: false,
+          code: "secret.too-large",
+          params: { name, kib: MAX_SECRET_VALUE_BYTES / 1024 },
+        };
       }
       const isNew = exists.get(name) === undefined;
       if (isNew && (count.get()?.n ?? 0) >= MAX_SECRETS_PER_USER) {
-        return { ok: false, message: `at most ${MAX_SECRETS_PER_USER} User secrets per user` };
+        return { ok: false, code: "secret.too-many", params: { max: MAX_SECRETS_PER_USER } };
       }
       const { nonce, ciphertext } = encrypt(name, value);
       const summary = { name, updated_at: new Date().toISOString() };

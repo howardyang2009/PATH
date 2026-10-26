@@ -1,12 +1,15 @@
+import { apiErrorMessage } from "@path/client-core";
+import type { Message } from "@path/i18n";
+
 export type Load<T> =
   | { phase: "loading" }
   /** A read that failed. `lastGood` carries the last value that landed, for a host that asked for
    * it (`useResource`'s `keepLastGood`); it is absent otherwise. */
-  | { phase: "error"; message: string; lastGood?: T }
+  | { phase: "error"; message: Message; lastGood?: T }
   | { phase: "ready"; value: T };
 
-/** `PathApiError.message` carries the server's `{ error: { message } }` envelope; anything else is
- * stringified. */
-export function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+/** A failure as the UI shows it: the server's error code from the catalogue, else its English
+ * text (see `apiErrorMessage`). */
+export function errorMessage(error: unknown): Message {
+  return apiErrorMessage(error);
 }

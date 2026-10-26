@@ -1,3 +1,5 @@
+import type { Message } from "@path/i18n";
+import { useMessage } from "@path/i18n/react";
 import { useTranslations } from "use-intl";
 
 /** What a pane note says is being read. */
@@ -9,11 +11,12 @@ export function PaneLoading({ what }: { what: PaneSubject }) {
   return <p className="pane-note">{t(`loading.${what}`)}</p>;
 }
 
-export function PaneError({ what, message }: { what: PaneSubject; message: string }) {
+export function PaneError({ what, message }: { what: PaneSubject; message: Message }) {
   const t = useTranslations("shared.paneNote");
+  const renderMessage = useMessage();
   return (
     <p className="pane-note pane-error" role="alert">
-      {t(`failed.${what}`, { message })}
+      {t(`failed.${what}`, { message: renderMessage(message) })}
     </p>
   );
 }

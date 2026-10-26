@@ -15,6 +15,7 @@ import {
   workflowBaseName,
   workflowTreePath,
 } from "@path/client-core";
+import { useMessage } from "@path/i18n/react";
 import { useMemo, useState } from "react";
 import { useTranslations } from "use-intl";
 import { LaunchForm } from "./launch-form.js";
@@ -278,12 +279,13 @@ function CopyShipped({
   onCopied: (copy: { relativePath: string; rootPath: string }) => void;
 }) {
   const t = useTranslations("viewer.launchPanel");
+  const renderMessage = useMessage();
   const [phase, setPhase] = useState<"idle" | "sending" | { error: string }>("idle");
   const copy = (): void => {
     setPhase("sending");
     client
       .copyShippedWorkflow(workflow.relative_path)
-      .then(onCopied, (error: unknown) => setPhase({ error: errorMessage(error) }));
+      .then(onCopied, (error: unknown) => setPhase({ error: renderMessage(errorMessage(error)) }));
   };
   const testId = `copy-${workflow.relative_path}`;
 

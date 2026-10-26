@@ -9,8 +9,10 @@ import {
   removeMarkerLease,
   renewMarkerLease,
 } from "@path/engine";
+import type { ErrorCode } from "@path/i18n";
 import type { WireLockHeldBody, WireWorkflowLease } from "@path/schema";
 import { confineToProjectRoot } from "./confine.js";
+import { refusalText } from "./http-json.js";
 
 /**
  * The Designer **edit lease** (ADR 0017), over the marker-lease primitive: an expiring marker
@@ -109,10 +111,10 @@ export function editLease(
   if (markerPath === undefined) return undefined;
 
   /** The refusal the Designer reads: the live holder's expiry, so it can offer a takeover. */
-  const held = (message: string, expiresAt: string | null): AcquireResult => ({
+  const held = (code: ErrorCode, expiresAt: string | null): AcquireResult => ({
     ok: false,
     held: {
-      error: { message },
+      error: { code, params: {}, message: refusalText({ code }) },
       held_by_other: true,
       expires_at: expiresAt as string,
     },
@@ -131,12 +133,7 @@ export function editLease(
       if (result.ok) return { ok: true, lease: toWire(sessionId, result.grant) };
       // A marker that raced in between the read and the create could not be read back; say so
       // rather than reporting a holder the caller never saw.
-      return held(
-        result.holder === null
-          ? "workflow was just locked in another session"
-          : "workflow is being edited in another session",
-        result.expiresAt,
-      );
+      return held(result.holder === null ? "lease.just-locked" : "lease.held", result.expiresAt);
     },
 
     renew(sessionId) {

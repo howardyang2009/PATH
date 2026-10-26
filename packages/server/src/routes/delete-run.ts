@@ -1,5 +1,5 @@
 import { isTerminal } from "@path/schema";
-import { type RouteReply, replyError } from "../http-json.js";
+import { type RouteReply, replyError, replyRefusal } from "../http-json.js";
 import { resolveRun } from "./resolve-run.js";
 import type { ApiRequest } from "./route-context.js";
 
@@ -17,26 +17,19 @@ export function handleDeleteRun({
 
   // The root row specifically: a child can read terminal while the tree still runs.
   const address = resolveRun(ctx, rootRunId);
-  if (!address.ok) return replyError(address.status, address.message);
+  if (!address.ok) return replyRefusal(address.status, address);
 
   if (!isTerminal(address.root.status)) {
-    return replyError(
-      409,
-      `run "${rootRunId}" is still ${address.root.status}; cancel it before deleting`,
-    );
+    return replyError(409, "run.delete.running", { rootRunId, status: address.root.status });
   }
 
   const blockers = ctx.store.archive.blockingSuccessors(rootRunId);
   if (blockers.length > 0 && !force) {
-    return replyError(
-      409,
-      `refusing to delete ${rootRunId}: live successor run(s) reuse its data: ${blockers.join(", ")}` +
-        ` — retry with ?force=true to delete it anyway`,
-    );
+    return replyError(409, "run.delete.reused", { rootRunId, blockers: blockers.join(", ") });
   }
 
   if (!ctx.store.archive.remove(rootRunId)) {
-    return replyError(404, `no run found with id "${rootRunId}"`);
+    return replyError(404, "run.not-found", { rootRunId });
   }
 
   return { status: 200, body: { root_run_id: rootRunId } };

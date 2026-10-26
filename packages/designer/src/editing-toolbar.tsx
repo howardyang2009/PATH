@@ -435,6 +435,7 @@ function LeaseBanner({
   onReacquire: () => void;
 }): JSX.Element | null {
   const t = useTranslations("designer.editingToolbar");
+  const renderMessage = useMessage();
   const [confirming, setConfirming] = useState(false);
 
   if (lease?.phase === "held-by-other") {
@@ -481,7 +482,7 @@ function LeaseBanner({
   if (lease?.phase === "error") {
     return (
       <div className="lease-banner lease-error" role="alert">
-        {t("leaseError", { message: lease.message })}
+        {t("leaseError", { message: renderMessage(lease.message) })}
       </div>
     );
   }

@@ -110,7 +110,8 @@ describe("openSecretStore", () => {
   ])("refuses a name with %s", (_why, name) => {
     expect(store.set(name, VALUE)).toMatchObject({
       ok: false,
-      message: expect.stringMatching(/name/),
+      code: "secret.bad-name",
+      params: { name },
     });
   });
 
@@ -128,7 +129,8 @@ describe("openSecretStore", () => {
   ])("refuses the reserved name %s", (name) => {
     expect(store.set(name, VALUE)).toMatchObject({
       ok: false,
-      message: expect.stringMatching(/reserved/),
+      code: "secret.reserved",
+      params: { name },
     });
   });
 
@@ -141,7 +143,8 @@ describe("openSecretStore", () => {
     for (let i = 0; i < MAX_SECRETS_PER_USER; i += 1) store.set(`KEY_${i}`, `value-${i}`);
     expect(store.set("ONE_MORE", VALUE)).toMatchObject({
       ok: false,
-      message: expect.stringMatching(/100/),
+      code: "secret.too-many",
+      params: { max: 100 },
     });
     expect(store.set("KEY_0", VALUE)).toMatchObject({ ok: true });
   });

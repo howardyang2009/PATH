@@ -1,4 +1,5 @@
 import type { PathApiClient, RootRunSummary } from "@path/client-core";
+import { useMessage } from "@path/i18n/react";
 import { useState } from "react";
 import { useTranslations } from "use-intl";
 import { errorMessage } from "./load-state.js";
@@ -26,6 +27,7 @@ type Phase = "idle" | "confirming" | "sending";
  */
 export function DeleteButton({ client, run, onDeleted }: DeleteButtonProps) {
   const t = useTranslations("shared");
+  const renderMessage = useMessage();
   const [phase, setPhase] = useState<Phase>("idle");
   const [error, setError] = useState<string | null>(null);
 
@@ -36,7 +38,7 @@ export function DeleteButton({ client, run, onDeleted }: DeleteButtonProps) {
       () => onDeleted(run.run_id),
       (thrown: unknown) => {
         setPhase("confirming");
-        setError(errorMessage(thrown));
+        setError(renderMessage(errorMessage(thrown)));
       },
     );
   };

@@ -1,3 +1,4 @@
+import { isMessageKey, type Message, verbatim } from "@path/i18n";
 import type { JsonValue, WireError } from "@path/schema";
 
 /** A minimal `fetch` shape — injectable so browser/React Native/tests can supply their own. */
@@ -61,14 +62,28 @@ function untilAborted(
  * envelope (server-api-v0.md §1).
  */
 export class PathApiError extends Error {
+  /** `message` is English: the server's fallback text, or the client's own for a reply it could
+   * not read. `code` and `params` (ADR 0107) are what the UI renders, see {@link apiErrorMessage}. */
   constructor(
     readonly status: number,
     message: string,
     readonly details?: JsonValue,
+    readonly code?: string,
+    readonly params?: { [name: string]: string | number },
   ) {
     super(message);
     this.name = "PathApiError";
   }
+}
+
+/** A failure as the UI shows it: a known code from the catalogue, else the English text as is. */
+export function apiErrorMessage(error: unknown): Message {
+  if (error instanceof PathApiError && error.code !== undefined) {
+    const key = `errors.${error.code}`;
+    if (isMessageKey(key))
+      return error.params === undefined ? { key } : { key, params: error.params };
+  }
+  return verbatim(error instanceof Error ? error.message : String(error));
 }
 
 export interface RequestOptions {
@@ -151,7 +166,13 @@ export function parseReply<T>(status: number, text: string): T {
   try {
     return JSON.parse(text) as T;
   } catch {
-    throw new PathApiError(status, `the server's reply was not valid JSON (status ${status})`);
+    throw new PathApiError(
+      status,
+      `the server's reply was not valid JSON (status ${status})`,
+      undefined,
+      "client.bad-reply",
+      { status },
+    );
   }
 }
 
@@ -159,10 +180,19 @@ export function toApiError(status: number, body: string): PathApiError {
   try {
     const parsed = JSON.parse(body) as Partial<WireError>;
     if (parsed.error && typeof parsed.error.message === "string") {
-      return new PathApiError(status, parsed.error.message, parsed.error.details);
+      const { message, details, code, params } = parsed.error;
+      return new PathApiError(status, message, details, code, params);
     }
   } catch {
     // Non-JSON error body — fall through to a status-only message.
   }
-  return new PathApiError(status, `request failed with status ${status}`);
+  return new PathApiError(
+    status,
+    `request failed with status ${status}`,
+    undefined,
+    "client.request-failed",
+    {
+      status,
+    },
+  );
 }

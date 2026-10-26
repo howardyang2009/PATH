@@ -236,7 +236,7 @@ function TemplatesTab({
   if (templateList.phase === "error") {
     return (
       <p className="palette-note palette-note-error" role="alert">
-        {t("designer.palette.listFailed", { message: templateList.message })}
+        {t("designer.palette.listFailed", { message: renderMessage(templateList.message) })}
       </p>
     );
   }

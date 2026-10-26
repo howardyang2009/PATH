@@ -132,9 +132,13 @@ export function CompleteForm({
         if (thrown instanceof PathApiError && thrown.status === 400) {
           const mapped = mapCompleteErrors(thrown.details);
           setFieldErrors(mapped.fieldErrors);
-          setFormErrors(mapped.formErrors.length > 0 ? mapped.formErrors : [thrown.message]);
+          setFormErrors(
+            mapped.formErrors.length > 0
+              ? mapped.formErrors
+              : [renderMessage(errorMessage(thrown))],
+          );
         } else {
-          setFormErrors([errorMessage(thrown)]);
+          setFormErrors([renderMessage(errorMessage(thrown))]);
         }
       },
     );

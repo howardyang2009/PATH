@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { type RouteReply, readRequestBody, replyError } from "../http-json.js";
+import { type RouteReply, readRequestBody, replyError, replyRefusal } from "../http-json.js";
 import type { ApiRequest } from "./route-context.js";
 
 const PutSecretBodySchema = z.object({ value: z.string() }).strict();
@@ -11,10 +11,10 @@ export async function handlePutSecret({
   ctx,
   params: [name],
 }: ApiRequest<[string]>): Promise<RouteReply> {
-  if (ctx.secrets === undefined) return replyError(404, "not found");
+  if (ctx.secrets === undefined) return replyError(404, "request.not-found");
   const parsed = readRequestBody(body, PutSecretBodySchema);
   if (!parsed.ok) return parsed.reply;
   const written = ctx.secrets.set(name, parsed.data.value);
-  if (!written.ok) return replyError(400, written.message);
+  if (!written.ok) return replyRefusal(400, written);
   return { status: 200, body: written.summary };
 }

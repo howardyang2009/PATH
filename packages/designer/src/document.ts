@@ -4,7 +4,6 @@ import {
   PathApiError,
   type WireStepPlugin,
 } from "@path/client-core";
-import { verbatim } from "@path/i18n";
 import { FORMAT_VERSION, type WorkflowFile, type WorkflowNode } from "@path/schema";
 import { errorMessage } from "@path/viewer";
 import { openWorkflowFile } from "./open-workflow.js";
@@ -113,7 +112,7 @@ export async function writeDocument(
             });
     return { ok: true, ...(result satisfies WriteSuccess) };
   } catch (error) {
-    const message = verbatim(errorMessage(error));
+    const message = errorMessage(error);
     if (error instanceof PathApiError) {
       const creates =
         write.to === "new-template" || (write.to === "workflow" && write.ifMatch === undefined);

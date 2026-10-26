@@ -688,5 +688,116 @@
       "notWorkflow": "“{label}”已不是嵌套工作流。",
       "refUnresolved": "“{label}”引用的文件已不在工作流中。"
     }
+  },
+  "errors": {
+    "request": {
+      "not-found": "未找到",
+      "invalid-body": "请求体无效",
+      "body-too-large": "请求体过大：最多 {limit}",
+      "body-not-json": "请求体必须是有效的 JSON",
+      "bad-path-encoding": "请求路径中的百分号编码格式错误",
+      "cross-origin": "已拒绝跨源请求",
+      "too-many": "请求过多：请稍后再试",
+      "funnel-guard": "Funnel 防护：本地模式只响应来自 localhost 和 tailscale serve 的请求，而此请求来自公共入口（Tailscale Funnel、Cloudflare Tunnel 或其他代理）。请通过 tailnet（tailscale serve）访问 PATH，以托管模式运行服务器，或设置 PATH_FUNNEL_GUARD=off 以允许此请求"
+    },
+    "auth": {
+      "sign-in-required": "需要登录：bearer 令牌缺失、无效或已过期"
+    },
+    "server": {
+      "internal": "{message}"
+    },
+    "client": {
+      "bad-reply": "服务器的回复不是有效的 JSON（状态 {status}）",
+      "request-failed": "请求失败，状态 {status}"
+    },
+    "limits": {
+      "storage-full": "存储已满，请删除运行",
+      "host-disk-low": "主机磁盘空间不足：启动已暂停，请稍后再试",
+      "launches-off": "此用户的启动已关闭",
+      "no-vm-time": "预算已用完：此用户没有虚拟机时间",
+      "budget-used": "预算已用完，请在 {retryAt} 再试"
+    },
+    "run": {
+      "not-found": "未找到 ID 为“{rootRunId}”的运行",
+      "step-not-found": "未找到 ID 为“{stepRunId}”的步骤运行",
+      "config-env": "运维配置不能来自服务器环境：{paths} 处的 $env",
+      "workflow-missing": "运行“{rootRunId}”的工作流文件在“{workflowPath}”未找到",
+      "invalid-worker-defaults": "worker_defaults 无效",
+      "start-failed": "运行启动失败：{message}",
+      "refused": "{message}",
+      "resume": {
+        "no-path": "运行“{rootRunId}”没有记录工作流路径，无法恢复",
+        "swapped": "“{workflowPath}”处的工作流已不是运行“{rootRunId}”所运行的那个（其 ID 已改变）；无法恢复",
+        "start-failed": "恢复启动失败：{message}"
+      },
+      "complete": {
+        "missing-output": "缺少必填字段“output”",
+        "not-awaiting": "步骤运行“{stepRunId}”的状态是 {status}，不是等待中",
+        "no-path": "运行“{rootRunId}”没有记录工作流路径，无法完成",
+        "swapped": "“{workflowPath}”处的工作流已不是运行“{rootRunId}”所运行的那个（其 ID 已改变）；无法完成"
+      },
+      "cancel": {
+        "finished": "运行“{rootRunId}”已结束，状态为“{status}”",
+        "not-here": "运行“{rootRunId}”不在此服务器进程中执行，无法取消"
+      },
+      "delete": {
+        "running": "运行“{rootRunId}”仍处于 {status}；删除前请先取消",
+        "reused": "拒绝删除 {rootRunId}：仍在运行的后续运行复用了它的数据：{blockers}。如仍要删除，请用 ?force=true 重试"
+      },
+      "blob": {
+        "unknown-name": "未知的数据块名称“{name}”（应为“input”“output”或“context”）",
+        "no-run": "根运行“{rootRunId}”下没有运行“{runId}”",
+        "missing": "运行“{runId}”没有 {name} 数据块"
+      }
+    },
+    "runs": {
+      "invalid-limit": "limit“{limit}”无效：必须是正整数",
+      "invalid-status": "status“{status}”无效：必须是 {statuses} 之一"
+    },
+    "workflow": {
+      "not-found": "未找到工作流文件：“{workflowPath}”",
+      "escapes-root": "workflow_path“{workflowPath}”解析到项目目录之外",
+      "invalid": "工作流校验失败",
+      "template-path": "工作流路径不能是模板路径",
+      "shipped-read-only": "内置工作流是只读的",
+      "shipped-copy-first": "内置工作流必须先复制才能运行",
+      "not-shipped": "不是内置工作流",
+      "copy-failed": "无法复制内置工作流：{message}",
+      "bundle-failed": "无法打包工作流引用",
+      "download-origin": "若提供 origin，必须为“shipped”"
+    },
+    "lease": {
+      "held": "工作流正在另一个会话中编辑",
+      "just-locked": "工作流刚刚在另一个会话中被锁定",
+      "not-held": "此会话未持有编辑锁"
+    },
+    "authored": {
+      "shared-read-only": "只有创建者能编辑共享项",
+      "shared-limit": "已达到共享项上限（{max}）：请先删除一个共享项",
+      "file-too-large": "文件过大：编写的文件最多 {limit}"
+    },
+    "file": {
+      "precondition": {
+        "missing": "前置条件失败：文件已不存在",
+        "changed": "前置条件失败：文件在读取后已被修改",
+        "exists": "前置条件失败：文件已存在（发送 If-Match 以覆盖）",
+        "required": "前置条件失败：请发送带有上次读取的 ETag 的 If-Match"
+      }
+    },
+    "template": {
+      "duplicate-id": "ID“{id}”重复：已被 {origin} 模板“{name}”使用",
+      "read-only": "模板是只读的",
+      "invalid": "模板校验失败",
+      "id-taken": "模板 ID“{id}”已被 {origin} 模板“{name}”使用",
+      "name-taken": "名为“{name}”的 {kind} 模板已存在",
+      "id-mismatch": "请求体中的模板 ID 必须与 URL 中的 ID 一致"
+    },
+    "secret": {
+      "not-found": "没有名为“{name}”的用户密钥",
+      "bad-name": "用户密钥名称“{name}”必须匹配 ^[A-Z_][A-Z0-9_]*$，且最多 {max} 个字符",
+      "reserved": "用户密钥名称“{name}”是保留名称",
+      "too-large": "用户密钥“{name}”超过 {kib} KiB",
+      "too-many": "每个用户最多 {max} 个用户密钥"
+    }
   }
 }

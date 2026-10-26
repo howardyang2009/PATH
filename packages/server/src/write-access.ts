@@ -8,6 +8,7 @@ import type {
 } from "./authored-layout.js";
 import { confineToProjectRoot } from "./confine.js";
 import { type CreatorTable, projectPathOf, SHARED_ITEM_READ_ONLY } from "./creator-table.js";
+import type { Refusal } from "./http-json.js";
 import { megabytes, type UserLimits } from "./request-limits.js";
 
 // Who may change an authored file (ADR 0088): the requester's view, the layout's shipped and kind
@@ -15,9 +16,8 @@ import { megabytes, type UserLimits } from "./request-limits.js";
 // door that writes, removes or leases an authored file asks here, and tells it what it created.
 
 /** A door's refusal of a path it may not change: `404` for a path outside the view. */
-export interface WriteRefusal {
+export interface WriteRefusal extends Refusal {
   status: 400 | 403 | 404;
-  message: string;
 }
 
 /** Where a workflow door may act: the confined file, and whether it exists yet. */
@@ -57,15 +57,15 @@ export function writeAccess(
   return {
     layout,
     workflow(path) {
-      if (!layout.inView(path)) return { ok: false, status: 404, message: "not found" };
+      if (!layout.inView(path)) return { ok: false, status: 404, code: "request.not-found" };
       const refusal = layout.workflowRefusal(path, "write");
       if (refusal !== undefined) return { ok: false, ...refusal };
       // Confinement before any read of the file: an escape or a symlink is a 404 whatever it holds.
       const absPath = confineToProjectRoot(layout.projectDir, path, { allowMissingTail: true });
-      if (absPath === undefined) return { ok: false, status: 404, message: "not found" };
+      if (absPath === undefined) return { ok: false, status: 404, code: "request.not-found" };
       const exists = existsSync(absPath);
       if (exists && shared(path) && !isCreator(path, "workflow")) {
-        return { ok: false, status: 403, message: SHARED_ITEM_READ_ONLY };
+        return { ok: false, status: 403, code: SHARED_ITEM_READ_ONLY };
       }
       return { ok: true, absPath, exists };
     },
@@ -74,14 +74,16 @@ export function writeAccess(
       if (creators.countBy(layout.userId) < limits.maxSharedItems) return undefined;
       return {
         status: 403,
-        message: `shared item limit reached (${limits.maxSharedItems}): delete a shared item first`,
+        code: "authored.shared-limit",
+        params: { max: limits.maxSharedItems },
       };
     },
     sizeRefusal(bytes) {
       if (limits === undefined || bytes <= limits.maxFileBytes) return undefined;
       return {
         status: 403,
-        message: `file too large: an authored file may be at most ${megabytes(limits.maxFileBytes)}`,
+        code: "authored.file-too-large",
+        params: { limit: megabytes(limits.maxFileBytes) },
       };
     },
     readOnly({ absPath, root }) {

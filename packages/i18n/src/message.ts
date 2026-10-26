@@ -6,6 +6,11 @@ export type MessageKey = MessageKeys<Messages, NestedKeyOf<Messages>>;
 
 export type MessageParam = string | number | Message;
 
+type CodeOf<K> = K extends `errors.${infer C}` ? C : never;
+
+/** An ADR 0107 error code: the key of an `errors.<code>` message, without the namespace. */
+export type ErrorCode = CodeOf<MessageKey>;
+
 /** User-visible text as data: code outside React returns this, and the React layer renders it. */
 export interface Message {
   key: MessageKey;

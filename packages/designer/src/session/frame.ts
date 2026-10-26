@@ -81,7 +81,7 @@ export interface TemplateSource {
  * refusal). */
 export type FrameState =
   | { phase: "loading" }
-  | { phase: "fetch-error"; message: string }
+  | { phase: "fetch-error"; message: Message }
   | { phase: "open"; result: OpenResult };
 
 /** The undo/redo history of one frame: snapshots either side of the present buffer, which is not

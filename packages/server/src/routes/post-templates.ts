@@ -1,6 +1,6 @@
 import { NameSchema, type WireTemplateWriteResponse } from "@path/schema";
 import { z } from "zod";
-import { type RouteReply, readRequestBody, replyError } from "../http-json.js";
+import { type RouteReply, readRequestBody, replyRefusal } from "../http-json.js";
 import { templatesOf } from "../template-store.js";
 import type { ApiRequest } from "./route-context.js";
 
@@ -43,9 +43,9 @@ export async function handlePostTemplates({ body, ctx }: ApiRequest): Promise<Ro
   // The store validates the envelope, refuses a taken name or id, and writes.
   const written = templatesOf(ctx).create(kind, name, rawBody, folder, origin);
   if (!written.ok) {
-    return replyError(
+    return replyRefusal(
       written.status,
-      written.message,
+      written,
       "details" in written ? written.details : undefined,
     );
   }

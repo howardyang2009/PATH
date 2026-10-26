@@ -84,7 +84,8 @@ describe("template store — create", () => {
     expect(reopened.create("step", "other", USER_TEMPLATE)).toEqual({
       ok: false,
       status: 409,
-      message: `template id "${USER_TEMPLATE.id}" is already used by user template "mine"`,
+      code: "template.id-taken",
+      params: { id: USER_TEMPLATE.id, origin: "user", name: "mine" },
     });
   });
 
@@ -95,7 +96,8 @@ describe("template store — create", () => {
     expect(again).toEqual({
       ok: false,
       status: 409,
-      message: 'a step template named "mine" already exists',
+      code: "template.name-taken",
+      params: { kind: "step", name: "mine" },
     });
   });
 });
@@ -120,12 +122,12 @@ describe("template store — resolve and update", () => {
     expect(reopened.update(USER_TEMPLATE.id, USER_TEMPLATE, undefined)).toEqual({
       ok: false,
       status: 412,
-      message: "precondition failed: send If-Match with the ETag you last read",
+      code: "file.precondition.required",
     });
     expect(reopened.update(USER_TEMPLATE.id, USER_TEMPLATE, "stale")).toEqual({
       ok: false,
       status: 412,
-      message: "precondition failed: the file changed since it was read",
+      code: "file.precondition.changed",
     });
   });
 
@@ -153,7 +155,7 @@ describe("template store — resolve and update", () => {
     expect(reopened.update(USER_TEMPLATE.id, otherId, created.etag)).toEqual({
       ok: false,
       status: 400,
-      message: "template id in body must match the URL id",
+      code: "template.id-mismatch",
     });
     const invalid = reopened.update(USER_TEMPLATE.id, { ...USER_TEMPLATE, body: 1 }, created.etag);
     expect(invalid.ok === false && invalid.status).toBe(400);
@@ -163,12 +165,12 @@ describe("template store — resolve and update", () => {
     expect(store.writable("22222222-2222-4222-8222-222222222222")).toEqual({
       ok: false,
       status: 404,
-      message: "not found",
+      code: "request.not-found",
     });
     expect(store.writable(shippedId(store))).toEqual({
       ok: false,
       status: 403,
-      message: "template is read-only",
+      code: "template.read-only",
     });
   });
 });
@@ -183,7 +185,7 @@ describe("template store — remove", () => {
     expect((await openStore()).remove(USER_TEMPLATE.id)).toEqual({
       ok: false,
       status: 404,
-      message: "not found",
+      code: "request.not-found",
     });
   });
 
@@ -191,7 +193,7 @@ describe("template store — remove", () => {
     expect(store.remove(shippedId(store))).toEqual({
       ok: false,
       status: 403,
-      message: "template is read-only",
+      code: "template.read-only",
     });
   });
 });
@@ -212,7 +214,7 @@ describe("template store — shared items", () => {
 
     const bob = await openStore("user_bob");
     expect(bob.find(USER_TEMPLATE.id)?.readOnly).toBe(true);
-    const refused = { ok: false, status: 403, message: "only the creator edits a shared item" };
+    const refused = { ok: false, status: 403, code: "authored.shared-read-only" };
     expect(bob.update(USER_TEMPLATE.id, USER_TEMPLATE, created.etag)).toEqual(refused);
     expect(bob.remove(USER_TEMPLATE.id)).toEqual(refused);
 

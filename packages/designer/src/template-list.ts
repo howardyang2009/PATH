@@ -1,4 +1,5 @@
 import type { PathApiClient, TemplateSummary } from "@path/client-core";
+import type { Message } from "@path/i18n";
 import { useCallback, useMemo } from "react";
 import { useScanOnSave } from "./scan-on-save.js";
 import type { SaveState } from "./session-reducer.js";
@@ -8,7 +9,7 @@ import type { SaveState } from "./session-reducer.js";
  * 0050). */
 export type TemplateListLoad =
   | { phase: "loading" }
-  | { phase: "error"; message: string }
+  | { phase: "error"; message: Message }
   | { phase: "ready"; templates: readonly TemplateSummary[] };
 
 export function useTemplateList(

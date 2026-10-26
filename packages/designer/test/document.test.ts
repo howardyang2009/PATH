@@ -252,7 +252,7 @@ describe("loadDocument", () => {
     expect(
       await loadDocument(client, loadingFrame("gone.workflow.json", undefined, 1), []),
     ).toMatchObject({
-      frameState: { phase: "fetch-error", message: "404 not found" },
+      frameState: { phase: "fetch-error", message: verbatim("404 not found") },
     });
   });
 });

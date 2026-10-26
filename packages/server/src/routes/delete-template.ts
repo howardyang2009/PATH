@@ -1,4 +1,4 @@
-import { type RouteReply, replyError } from "../http-json.js";
+import { type RouteReply, replyRefusal } from "../http-json.js";
 import { templatesOf } from "../template-store.js";
 import type { ApiRequest } from "./route-context.js";
 
@@ -6,7 +6,7 @@ import type { ApiRequest } from "./route-context.js";
  * unknown → `404`. */
 export function handleDeleteTemplate({ ctx, params: [id] }: ApiRequest<[string]>): RouteReply {
   const removed = templatesOf(ctx).remove(id);
-  if (!removed.ok) return replyError(removed.status, removed.message);
+  if (!removed.ok) return replyRefusal(removed.status, removed);
 
   return { status: 204 };
 }

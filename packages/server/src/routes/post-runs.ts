@@ -7,7 +7,7 @@ import {
   validateLaunchWorkerDefaults,
 } from "@path/schema";
 import { z } from "zod";
-import { type RouteReply, readRequestBody, replyError } from "../http-json.js";
+import { type RouteReply, readRequestBody, replyError, replyRefusal } from "../http-json.js";
 import { operatorConfigEnvError, prepareWorkflow } from "../launch.js";
 import type { StartedRun } from "../live-runs.js";
 import type { ApiRequest } from "./route-context.js";
@@ -42,16 +42,16 @@ export async function handlePostRuns({ body, ctx }: ApiRequest): Promise<RouteRe
   // be.
   if (config !== undefined) {
     const envError = operatorConfigEnvError(config);
-    if (envError) return replyError(400, envError);
+    if (envError) return replyRefusal(400, envError);
   }
 
   // Escape / not-found / invalid, decided once for both launch surfaces (launch.ts).
   const prepared = await prepareWorkflow(ctx.layout, workflowPath, {
-    notFound: (p) => `workflow file not found: "${p}"`,
-    escapesRoot: (p) => `workflow_path "${p}" resolves outside the project root`,
+    notFound: (p) => ({ code: "workflow.not-found", params: { workflowPath: p } }),
+    escapesRoot: (p) => ({ code: "workflow.escapes-root", params: { workflowPath: p } }),
   });
   if (!prepared.ok) {
-    return replyError(prepared.refusal.status, prepared.refusal.message, prepared.refusal.details);
+    return replyRefusal(prepared.refusal.status, prepared.refusal, prepared.refusal.details);
   }
   const { workflow } = prepared;
 
@@ -63,7 +63,7 @@ export async function handlePostRuns({ body, ctx }: ApiRequest): Promise<RouteRe
     workflow.registry,
   ).map((message) => `worker_defaults: ${message}`);
   if (workerDefaultErrors.length > 0) {
-    return replyError(400, "invalid worker_defaults", workerDefaultErrors);
+    return replyError(400, "run.invalid-worker-defaults", {}, workerDefaultErrors);
   }
 
   let ids: StartedRun;
@@ -91,10 +91,9 @@ export async function handlePostRuns({ body, ctx }: ApiRequest): Promise<RouteRe
       userSecrets: ctx.secrets?.values(),
     });
   } catch (err) {
-    return replyError(
-      500,
-      `run failed to start: ${err instanceof Error ? err.message : String(err)}`,
-    );
+    return replyError(500, "run.start-failed", {
+      message: err instanceof Error ? err.message : String(err),
+    });
   }
 
   const started: StartRunResponse = { run_id: ids.runId, root_run_id: ids.rootRunId };

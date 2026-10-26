@@ -1,4 +1,4 @@
-import { type RouteReply, replyError } from "../http-json.js";
+import { type RouteReply, replyError, replyRefusal } from "../http-json.js";
 import { firstHeader } from "../origin-gate.js";
 import { workflowsOf } from "../workflow-store.js";
 import type { ApiRequest } from "./route-context.js";
@@ -12,13 +12,13 @@ import type { ApiRequest } from "./route-context.js";
  */
 export function handleDeleteWorkflow({ req, ctx, query }: ApiRequest): RouteReply {
   const path = query.get("path");
-  if (path === null || path === "") return replyError(404, "not found");
+  if (path === null || path === "") return replyError(404, "request.not-found");
   const removed = workflowsOf(ctx).remove(
     path,
     firstHeader(req.headers["if-match"]),
     query.get("session_id"),
   );
-  if (!removed.ok) return replyError(removed.status, removed.message);
+  if (!removed.ok) return replyRefusal(removed.status, removed);
 
   return { status: 204 };
 }
