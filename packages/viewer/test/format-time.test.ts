@@ -2,15 +2,20 @@ import { describe, expect, it } from "vitest";
 import { formatClockTime, formatTimestamp } from "../src/format-time.js";
 
 describe("formatTimestamp", () => {
-  it.each(["de", "en", "zh-CN"] as const)(
-    "renders a timestamp in the %s Locale and the browser's time zone",
-    (locale) => {
-      const iso = "2026-07-25T10:00:00.000Z";
-      expect(formatTimestamp(iso, locale)).toBe(
-        new Date(iso).toLocaleString(locale, { dateStyle: "short", timeStyle: "medium" }),
-      );
-    },
-  );
+  it.each([
+    ["de", "de"],
+    ["en", "en-GB"],
+    ["zh-CN", "zh-CN"],
+  ] as const)("renders the %s Locale as %s in the browser's time zone", (locale, format) => {
+    const iso = "2026-07-25T10:00:00.000Z";
+    expect(formatTimestamp(iso, locale)).toBe(
+      new Date(iso).toLocaleString(format, { dateStyle: "short", timeStyle: "medium" }),
+    );
+  });
+
+  it("renders English dates as day/month/year on a 24-hour clock", () => {
+    expect(formatTimestamp("2026-07-25T10:00:00.000Z", "en")).toMatch(/^25\/07\/2026, \d{2}:/);
+  });
 
   it("renders German dates as day.month.year", () => {
     expect(formatTimestamp("2026-07-25T10:00:00.000Z", "de")).toMatch(/^25\.07\.26/);
