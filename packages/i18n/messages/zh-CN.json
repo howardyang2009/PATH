@@ -21,6 +21,39 @@
       "prompt": "登录后继续。",
       "signIn": "登录"
     },
+    "launchPanel": {
+      "kind": "类型",
+      "kinds": {
+        "all": "全部",
+        "root": "根",
+        "nested": "嵌套",
+        "invalid": "无效"
+      },
+      "noWorkflows": "未找到工作流。",
+      "noFiltered": "没有“{filter}”类型的工作流。",
+      "launch": "启动 {name}",
+      "launchWorkflow": "启动工作流",
+      "loadFailed": "无法加载此工作流。",
+      "shippedReadOnly": "内置工作流为只读。复制到自己的文件夹后即可启动。",
+      "copy": "复制到我的文件夹",
+      "copying": "正在复制…",
+      "readOnly": "只读",
+      "readOnlyTitle": "只读：由其他用户共享"
+    },
+    "secretsPage": {
+      "title": "密钥",
+      "intro": "启动的运行通过 <code>$env</code> 读取这些密钥。值无法读回。",
+      "empty": "暂无密钥。",
+      "name": "名称",
+      "value": "值",
+      "set": "设置",
+      "hint": "设置已存在的名称会替换其值。",
+      "notice": "已设置 {name}。",
+      "delete": "删除…",
+      "warning": "删除 {name}？读取它的运行将失败，直到重新设置。"
+    }
+  },
+  "shared": {
     "assigneeChip": {
       "title": "已分配给 {assignee}"
     },
@@ -56,24 +89,11 @@
       "empty": "空，省略此字段",
       "valid": "有效的 JSON"
     },
-    "launchPanel": {
-      "kind": "类型",
-      "kinds": {
-        "all": "全部",
-        "root": "根",
-        "nested": "嵌套",
-        "invalid": "无效"
-      },
-      "noWorkflows": "未找到工作流。",
-      "noFiltered": "没有“{filter}”类型的工作流。",
-      "launch": "启动 {name}",
-      "launchWorkflow": "启动工作流",
-      "loadFailed": "无法加载此工作流。",
-      "shippedReadOnly": "内置工作流为只读。复制到自己的文件夹后即可启动。",
-      "copy": "复制到我的文件夹",
-      "copying": "正在复制…",
-      "readOnly": "只读",
-      "readOnlyTitle": "只读：由其他用户共享"
+    "launchForm": {
+      "workerDefaults": "启动执行器预设（可选）",
+      "workerDefaultsHint": "此运行中各步骤类型未指定执行器的步骤所用的执行器。按步骤类型选择，不属于配置：步骤自身的执行器优先，而此处设置优先于文件自身的预设。",
+      "sending": "正在启动…",
+      "warning": "{count, plural, other {# 个未解决的警告}}，运行可能在启动时失败。"
     },
     "narrative": {
       "title": "事件记录",
@@ -89,78 +109,6 @@
         "closed": "已完成",
         "failed": "连接已断开"
       }
-    },
-    "paneNote": {
-      "loading": {
-        "workflows": "正在加载工作流…",
-        "runs": "正在加载运行…",
-        "run": "正在加载运行…",
-        "input": "正在加载输入…",
-        "output": "正在加载输出…",
-        "context": "正在加载上下文…",
-        "secrets": "正在加载密钥…"
-      },
-      "failed": {
-        "workflows": "无法加载工作流：{message}",
-        "runs": "无法加载运行：{message}",
-        "run": "无法加载运行：{message}",
-        "input": "无法加载输入：{message}",
-        "output": "无法加载输出：{message}",
-        "context": "无法加载上下文：{message}",
-        "secrets": "无法加载密钥：{message}"
-      }
-    },
-    "runFacts": {
-      "rootRunId": "根运行 ID",
-      "workflowName": "工作流名称",
-      "workflowId": "工作流 ID",
-      "workflowFile": "工作流文件",
-      "nodeId": "节点 ID",
-      "runId": "运行 ID"
-    },
-    "runTree": {
-      "empty": "此根运行没有记录任何运行。",
-      "pass": "第 {pass} 轮次",
-      "passOpenedBy": "第 {pass} 轮次 · 由 {nodeName} 开启",
-      "iteration": "{name} · 第 {iteration} 次迭代",
-      "expand": "展开 {label}",
-      "collapse": "折叠 {label}"
-    },
-    "runsList": {
-      "openWorkflow": "打开一个工作流以查看其运行。",
-      "status": "状态",
-      "all": "全部",
-      "noRuns": "暂无运行。",
-      "noFiltered": "没有状态为“{statusFilter}”的运行。",
-      "inFlight": "此运行仍在进行中。运行结束后才能恢复或删除。"
-    },
-    "secretsPage": {
-      "title": "密钥",
-      "intro": "启动的运行通过 <code>$env</code> 读取这些密钥。值无法读回。",
-      "empty": "暂无密钥。",
-      "name": "名称",
-      "value": "值",
-      "set": "设置",
-      "hint": "设置已存在的名称会替换其值。",
-      "notice": "已设置 {name}。",
-      "delete": "删除…",
-      "warning": "删除 {name}？读取它的运行将失败，直到重新设置。"
-    },
-    "status": {
-      "running": "运行中",
-      "awaiting": "等待中",
-      "succeeded": "成功",
-      "failed": "失败",
-      "cancelled": "已取消",
-      "pending": "待处理"
-    }
-  },
-  "shared": {
-    "launchForm": {
-      "workerDefaults": "启动执行器预设（可选）",
-      "workerDefaultsHint": "此运行中各步骤类型未指定执行器的步骤所用的执行器。按步骤类型选择，不属于配置：步骤自身的执行器优先，而此处设置优先于文件自身的预设。",
-      "sending": "正在启动…",
-      "warning": "{count, plural, other {# 个未解决的警告}}，运行可能在启动时失败。"
     },
     "nodeIo": {
       "refresh": "刷新",
@@ -191,6 +139,26 @@
       "secretsLabel": "启动密钥（覆盖配置） · JSON",
       "set": "已设置"
     },
+    "paneNote": {
+      "loading": {
+        "workflows": "正在加载工作流…",
+        "runs": "正在加载运行…",
+        "run": "正在加载运行…",
+        "input": "正在加载输入…",
+        "output": "正在加载输出…",
+        "context": "正在加载上下文…",
+        "secrets": "正在加载密钥…"
+      },
+      "failed": {
+        "workflows": "无法加载工作流：{message}",
+        "runs": "无法加载运行：{message}",
+        "run": "无法加载运行：{message}",
+        "input": "无法加载输入：{message}",
+        "output": "无法加载输出：{message}",
+        "context": "无法加载上下文：{message}",
+        "secrets": "无法加载密钥：{message}"
+      }
+    },
     "resumeActions": {
       "secretsNote": "这些启动密钥以掩码形式存储，恢复时须重新提供。",
       "resume": "恢复运行",
@@ -205,6 +173,38 @@
       "awaitingCount": "{count} 个等待中",
       "runCount": "{count, plural, other {# 个运行}}",
       "resizeTree": "调整运行树大小"
+    },
+    "runFacts": {
+      "rootRunId": "根运行 ID",
+      "workflowName": "工作流名称",
+      "workflowId": "工作流 ID",
+      "workflowFile": "工作流文件",
+      "nodeId": "节点 ID",
+      "runId": "运行 ID"
+    },
+    "runTree": {
+      "empty": "此根运行没有记录任何运行。",
+      "pass": "第 {pass} 轮次",
+      "passOpenedBy": "第 {pass} 轮次 · 由 {nodeName} 开启",
+      "iteration": "{name} · 第 {iteration} 次迭代",
+      "expand": "展开 {label}",
+      "collapse": "折叠 {label}"
+    },
+    "runsList": {
+      "openWorkflow": "打开一个工作流以查看其运行。",
+      "status": "状态",
+      "all": "全部",
+      "noRuns": "暂无运行。",
+      "noFiltered": "没有状态为“{statusFilter}”的运行。",
+      "inFlight": "此运行仍在进行中。运行结束后才能恢复或删除。"
+    },
+    "status": {
+      "running": "运行中",
+      "awaiting": "等待中",
+      "succeeded": "成功",
+      "failed": "失败",
+      "cancelled": "已取消",
+      "pending": "待处理"
     },
     "workerDefaults": {
       "type": "步骤类型",

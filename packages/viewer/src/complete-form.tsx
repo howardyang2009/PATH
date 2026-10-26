@@ -57,7 +57,7 @@ export function CompleteForm({
   submitLabel,
   onCompleted,
 }: CompleteFormProps) {
-  const t = useTranslations("viewer.completeForm");
+  const t = useTranslations("shared.completeForm");
   const fields = useMemo(() => buildCompleteFields(outputSchema), [outputSchema]);
   // A schema with no drawable fields (none authored) falls back to the free-text control.
   const raw = fields.length === 0;
@@ -209,7 +209,7 @@ interface RawOutputControlProps {
  * string, JSON as its value, blank as an empty output.
  */
 function RawOutputControl({ value, onChange }: RawOutputControlProps) {
-  const t = useTranslations("viewer.completeForm");
+  const t = useTranslations("shared.completeForm");
   const id = "complete-fld-__raw";
 
   return (
@@ -241,16 +241,16 @@ interface LaunchSecretsControlProps {
  * and the engine refuses to continue with a token.
  */
 function LaunchSecretsControl({ value, onChange }: LaunchSecretsControlProps) {
-  const t = useTranslations();
+  const t = useTranslations("shared");
   const id = "complete-fld-__config";
 
   return (
     <div className="complete-field" data-testid="complete-field-__config">
       <label className="field-label complete-label" htmlFor={id}>
-        {t("shared.overrides.secretsLabel")}
+        {t("overrides.secretsLabel")}
       </label>
       <p className="complete-help" data-testid="complete-config-note">
-        {t("viewer.completeForm.secretsNote")}
+        {t("completeForm.secretsNote")}
       </p>
       <textarea
         id={id}
@@ -275,7 +275,7 @@ interface CompleteControlProps {
 /** One schema-driven control: a checkbox, a select, or a text/number input, with its help and
  * error. */
 function CompleteControl({ field, value, error, onChange }: CompleteControlProps) {
-  const t = useTranslations("viewer.completeForm");
+  const t = useTranslations("shared.completeForm");
   const id = `complete-fld-${field.key}`;
   const errId = `${id}-err`;
   const invalid = error !== undefined;

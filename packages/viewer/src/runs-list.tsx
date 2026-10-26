@@ -73,7 +73,7 @@ export function RunsList({
   reloadNonce,
   resumeFrom,
 }: RunsListProps) {
-  const t = useTranslations("viewer");
+  const t = useTranslations("shared");
   const locale = useLocale();
   // `null` (nothing open) never reaches a query — the effects short-circuit and the render is idle.
   const scope = typeof workflowId === "string" ? workflowId : undefined;

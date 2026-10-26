@@ -119,7 +119,7 @@ function SecretRow({
   secret: WireSecretSummary;
   onDeleted: () => void;
 }) {
-  const t = useTranslations("viewer");
+  const t = useTranslations();
   const locale = useLocale();
   const [phase, setPhase] = useState<DeletePhase>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -139,11 +139,13 @@ function SecretRow({
       <span className="secret-updated">{formatTimestamp(secret.updated_at, locale)}</span>
       {phase === "idle" ? (
         <button type="button" className="delete-arm" onClick={() => setPhase("confirming")}>
-          {t("secretsPage.delete")}
+          {t("viewer.secretsPage.delete")}
         </button>
       ) : (
         <div className="secret-confirm">
-          <span className="delete-warning">{t("secretsPage.warning", { name: secret.name })}</span>
+          <span className="delete-warning">
+            {t("viewer.secretsPage.warning", { name: secret.name })}
+          </span>
           <button
             type="button"
             className="delete-cancel"
@@ -153,7 +155,7 @@ function SecretRow({
               setPhase("idle");
             }}
           >
-            {t("deleteConfirm.keep")}
+            {t("shared.deleteConfirm.keep")}
           </button>
           <button
             type="button"
@@ -161,7 +163,9 @@ function SecretRow({
             disabled={phase === "sending"}
             onClick={send}
           >
-            {phase === "sending" ? t("deleteConfirm.sending") : t("deleteConfirm.confirm")}
+            {phase === "sending"
+              ? t("shared.deleteConfirm.sending")
+              : t("shared.deleteConfirm.confirm")}
           </button>
         </div>
       )}

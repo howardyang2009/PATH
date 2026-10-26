@@ -17,7 +17,7 @@ export interface NarrativeProps {
  * all live in `@path/client-core`; this component formats and follows.
  */
 export function Narrative({ events, stream }: NarrativeProps) {
-  const t = useTranslations("viewer.narrative");
+  const t = useTranslations("shared.narrative");
   const listRef = useRef<HTMLOListElement>(null);
   const [following, setFollowing] = useState(true);
 
@@ -118,7 +118,7 @@ function EventRow({ event }: { event: LogEvent }) {
  * failure. `role="status"` announces the change without stealing focus.
  */
 function StreamIndicator({ phase }: { phase: StreamPhase }) {
-  const t = useTranslations("viewer.narrative.stream");
+  const t = useTranslations("shared.narrative.stream");
   return (
     <span
       className="stream-indicator"
@@ -137,7 +137,7 @@ function StreamIndicator({ phase }: { phase: StreamPhase }) {
 /** The seq range, not just a count: it says whether the narrative starts at the run's first
  * event. */
 function countLabel(
-  t: ReturnType<typeof useTranslations<"viewer.narrative">>,
+  t: ReturnType<typeof useTranslations<"shared.narrative">>,
   events: readonly LogEvent[],
 ): string {
   const first = events[0];

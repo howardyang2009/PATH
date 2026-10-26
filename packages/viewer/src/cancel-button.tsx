@@ -24,7 +24,7 @@ type Phase = "idle" | "armed" | "sending";
  * mounts it only while the root run is pending/running, so there is no terminal phase to model.
  */
 export function CancelButton({ client, rootRunId }: CancelButtonProps) {
-  const t = useTranslations("viewer.cancelButton");
+  const t = useTranslations("shared.cancelButton");
   const [phase, setPhase] = useState<Phase>("idle");
   const [error, setError] = useState<string | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);

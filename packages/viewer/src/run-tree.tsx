@@ -43,7 +43,7 @@ export function RunTree({
   displayStatus,
   runFiles = EMPTY_RUN_FILE_SET,
 }: RunTreeProps) {
-  const t = useTranslations("viewer.runTree");
+  const t = useTranslations("shared.runTree");
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set<string>());
 
   const root = buildRunTree(rootRunId, runs, displayStatus);
@@ -79,7 +79,7 @@ interface TreeView {
 }
 
 function RunTreeRow({ node, tree }: { node: RunTreeNode; tree: TreeView }) {
-  const t = useTranslations("viewer.runTree");
+  const t = useTranslations("shared.runTree");
   const { run, children } = node;
   const isCollapsed = tree.collapsed.has(run.runId);
   // The human step name is the headline; `nodeId` and `runId` trail it as the machine identities. A

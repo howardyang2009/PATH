@@ -25,7 +25,7 @@ type Phase = "idle" | "confirming" | "sending";
  * collapsing the confirm, so the operator can read the reason.
  */
 export function DeleteButton({ client, run, onDeleted }: DeleteButtonProps) {
-  const t = useTranslations("viewer");
+  const t = useTranslations("shared");
   const [phase, setPhase] = useState<Phase>("idle");
   const [error, setError] = useState<string | null>(null);
 

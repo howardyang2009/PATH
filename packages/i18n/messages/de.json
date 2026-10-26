@@ -21,6 +21,39 @@
       "prompt": "Melden Sie sich an, um fortzufahren.",
       "signIn": "Anmelden"
     },
+    "launchPanel": {
+      "kind": "Art",
+      "kinds": {
+        "all": "alle",
+        "root": "Stamm",
+        "nested": "verschachtelt",
+        "invalid": "ungültig"
+      },
+      "noWorkflows": "Keine Workflows gefunden.",
+      "noFiltered": "Keine Workflows der Art „{filter}“.",
+      "launch": "{name} starten",
+      "launchWorkflow": "Workflow starten",
+      "loadFailed": "Dieser Workflow konnte nicht geladen werden.",
+      "shippedReadOnly": "Mitgelieferte Workflows sind schreibgeschützt. Kopieren Sie ihn in Ihren Ordner, um ihn zu starten.",
+      "copy": "In meinen Ordner kopieren",
+      "copying": "Wird kopiert…",
+      "readOnly": "schreibgeschützt",
+      "readOnlyTitle": "Schreibgeschützt: von einem anderen Benutzer geteilt"
+    },
+    "secretsPage": {
+      "title": "Secrets",
+      "intro": "Ein Lauf, den Sie starten, liest diese über <code>$env</code>. Ein Wert kann nicht zurückgelesen werden.",
+      "empty": "Noch keine Secrets.",
+      "name": "Name",
+      "value": "Wert",
+      "set": "Setzen",
+      "hint": "Ein vorhandener Name erhält den neuen Wert.",
+      "notice": "{name} gesetzt.",
+      "delete": "Löschen…",
+      "warning": "{name} löschen? Ein Lauf, der es liest, schlägt fehl, bis es erneut gesetzt wird."
+    }
+  },
+  "shared": {
     "assigneeChip": {
       "title": "Zugewiesen an {assignee}"
     },
@@ -56,24 +89,11 @@
       "empty": "leer – Feld wird weggelassen",
       "valid": "gültiges JSON"
     },
-    "launchPanel": {
-      "kind": "Art",
-      "kinds": {
-        "all": "alle",
-        "root": "Stamm",
-        "nested": "verschachtelt",
-        "invalid": "ungültig"
-      },
-      "noWorkflows": "Keine Workflows gefunden.",
-      "noFiltered": "Keine Workflows der Art „{filter}“.",
-      "launch": "{name} starten",
-      "launchWorkflow": "Workflow starten",
-      "loadFailed": "Dieser Workflow konnte nicht geladen werden.",
-      "shippedReadOnly": "Mitgelieferte Workflows sind schreibgeschützt. Kopieren Sie ihn in Ihren Ordner, um ihn zu starten.",
-      "copy": "In meinen Ordner kopieren",
-      "copying": "Wird kopiert…",
-      "readOnly": "schreibgeschützt",
-      "readOnlyTitle": "Schreibgeschützt: von einem anderen Benutzer geteilt"
+    "launchForm": {
+      "workerDefaults": "Start-Worker-Vorgaben (optional)",
+      "workerDefaultsHint": "Der Worker, den die Schritte ohne eigenen Worker je Schritttyp in diesem Lauf verwenden. Eine Auswahl je Schritttyp, keine Konfiguration: Der eigene Worker eines Schritts hat Vorrang, und diese Auswahl hat Vorrang vor der Vorgabe der Datei.",
+      "sending": "Wird gestartet…",
+      "warning": "{count, plural, one {# ungelöste Warnung} other {# ungelöste Warnungen}} – der Lauf kann beim Start fehlschlagen."
     },
     "narrative": {
       "title": "Ereignisverlauf",
@@ -89,78 +109,6 @@
         "closed": "abgeschlossen",
         "failed": "Stream verloren"
       }
-    },
-    "paneNote": {
-      "loading": {
-        "workflows": "Workflows werden geladen…",
-        "runs": "Läufe werden geladen…",
-        "run": "Lauf wird geladen…",
-        "input": "Eingabe wird geladen…",
-        "output": "Ausgabe wird geladen…",
-        "context": "Kontext wird geladen…",
-        "secrets": "Secrets werden geladen…"
-      },
-      "failed": {
-        "workflows": "Workflows konnten nicht geladen werden: {message}",
-        "runs": "Läufe konnten nicht geladen werden: {message}",
-        "run": "Lauf konnte nicht geladen werden: {message}",
-        "input": "Eingabe konnte nicht geladen werden: {message}",
-        "output": "Ausgabe konnte nicht geladen werden: {message}",
-        "context": "Kontext konnte nicht geladen werden: {message}",
-        "secrets": "Secrets konnten nicht geladen werden: {message}"
-      }
-    },
-    "runFacts": {
-      "rootRunId": "Stammlauf-ID",
-      "workflowName": "Workflow-Name",
-      "workflowId": "Workflow-ID",
-      "workflowFile": "Workflow-Datei",
-      "nodeId": "Knoten-ID",
-      "runId": "Lauf-ID"
-    },
-    "runTree": {
-      "empty": "Für diesen Stammlauf sind keine Läufe gespeichert.",
-      "pass": "Durchgang {pass}",
-      "passOpenedBy": "Durchgang {pass} · geöffnet von {nodeName}",
-      "iteration": "{name} · Iteration {iteration}",
-      "expand": "{label} aufklappen",
-      "collapse": "{label} zuklappen"
-    },
-    "runsList": {
-      "openWorkflow": "Öffnen Sie einen Workflow, um seine Läufe zu sehen.",
-      "status": "Status",
-      "all": "alle",
-      "noRuns": "Noch keine Läufe.",
-      "noFiltered": "Keine Läufe mit Status „{statusFilter}“.",
-      "inFlight": "Dieser Lauf ist noch aktiv. Fortsetzen und Löschen sind möglich, sobald er endet."
-    },
-    "secretsPage": {
-      "title": "Secrets",
-      "intro": "Ein Lauf, den Sie starten, liest diese über <code>$env</code>. Ein Wert kann nicht zurückgelesen werden.",
-      "empty": "Noch keine Secrets.",
-      "name": "Name",
-      "value": "Wert",
-      "set": "Setzen",
-      "hint": "Ein vorhandener Name erhält den neuen Wert.",
-      "notice": "{name} gesetzt.",
-      "delete": "Löschen…",
-      "warning": "{name} löschen? Ein Lauf, der es liest, schlägt fehl, bis es erneut gesetzt wird."
-    },
-    "status": {
-      "running": "läuft",
-      "awaiting": "wartet",
-      "succeeded": "erfolgreich",
-      "failed": "fehlgeschlagen",
-      "cancelled": "abgebrochen",
-      "pending": "ausstehend"
-    }
-  },
-  "shared": {
-    "launchForm": {
-      "workerDefaults": "Start-Worker-Vorgaben (optional)",
-      "workerDefaultsHint": "Der Worker, den die Schritte ohne eigenen Worker je Schritttyp in diesem Lauf verwenden. Eine Auswahl je Schritttyp, keine Konfiguration: Der eigene Worker eines Schritts hat Vorrang, und diese Auswahl hat Vorrang vor der Vorgabe der Datei.",
-      "sending": "Wird gestartet…",
-      "warning": "{count, plural, one {# ungelöste Warnung} other {# ungelöste Warnungen}} – der Lauf kann beim Start fehlschlagen."
     },
     "nodeIo": {
       "refresh": "Aktualisieren",
@@ -191,6 +139,26 @@
       "secretsLabel": "Start-Secrets (Konfiguration überschreiben) · JSON",
       "set": "gesetzt"
     },
+    "paneNote": {
+      "loading": {
+        "workflows": "Workflows werden geladen…",
+        "runs": "Läufe werden geladen…",
+        "run": "Lauf wird geladen…",
+        "input": "Eingabe wird geladen…",
+        "output": "Ausgabe wird geladen…",
+        "context": "Kontext wird geladen…",
+        "secrets": "Secrets werden geladen…"
+      },
+      "failed": {
+        "workflows": "Workflows konnten nicht geladen werden: {message}",
+        "runs": "Läufe konnten nicht geladen werden: {message}",
+        "run": "Lauf konnte nicht geladen werden: {message}",
+        "input": "Eingabe konnte nicht geladen werden: {message}",
+        "output": "Ausgabe konnte nicht geladen werden: {message}",
+        "context": "Kontext konnte nicht geladen werden: {message}",
+        "secrets": "Secrets konnten nicht geladen werden: {message}"
+      }
+    },
     "resumeActions": {
       "secretsNote": "Diese Start-Secrets sind maskiert gespeichert und müssen zum Fortsetzen erneut angegeben werden.",
       "resume": "Lauf fortsetzen",
@@ -205,6 +173,38 @@
       "awaitingCount": "{count} wartend",
       "runCount": "{count, plural, one {# Lauf} other {# Läufe}}",
       "resizeTree": "Größe des Laufbaums ändern"
+    },
+    "runFacts": {
+      "rootRunId": "Stammlauf-ID",
+      "workflowName": "Workflow-Name",
+      "workflowId": "Workflow-ID",
+      "workflowFile": "Workflow-Datei",
+      "nodeId": "Knoten-ID",
+      "runId": "Lauf-ID"
+    },
+    "runTree": {
+      "empty": "Für diesen Stammlauf sind keine Läufe gespeichert.",
+      "pass": "Durchgang {pass}",
+      "passOpenedBy": "Durchgang {pass} · geöffnet von {nodeName}",
+      "iteration": "{name} · Iteration {iteration}",
+      "expand": "{label} aufklappen",
+      "collapse": "{label} zuklappen"
+    },
+    "runsList": {
+      "openWorkflow": "Öffnen Sie einen Workflow, um seine Läufe zu sehen.",
+      "status": "Status",
+      "all": "alle",
+      "noRuns": "Noch keine Läufe.",
+      "noFiltered": "Keine Läufe mit Status „{statusFilter}“.",
+      "inFlight": "Dieser Lauf ist noch aktiv. Fortsetzen und Löschen sind möglich, sobald er endet."
+    },
+    "status": {
+      "running": "läuft",
+      "awaiting": "wartet",
+      "succeeded": "erfolgreich",
+      "failed": "fehlgeschlagen",
+      "cancelled": "abgebrochen",
+      "pending": "ausstehend"
     },
     "workerDefaults": {
       "type": "Schritttyp",

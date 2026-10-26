@@ -31,7 +31,7 @@ export function JsonField({
   rows: number;
   placeholder?: string;
 }) {
-  const t = useTranslations("viewer.jsonField");
+  const t = useTranslations("shared.jsonField");
   const hint = result.ok ? (result.empty ? t("empty") : t("valid")) : result.message;
   return (
     <div className="launch-field">

@@ -21,6 +21,39 @@
       "prompt": "Sign in to continue.",
       "signIn": "Sign in"
     },
+    "launchPanel": {
+      "kind": "Kind",
+      "kinds": {
+        "all": "all",
+        "root": "root",
+        "nested": "nested",
+        "invalid": "invalid"
+      },
+      "noWorkflows": "No workflows found.",
+      "noFiltered": "No {filter} workflows.",
+      "launch": "Launch {name}",
+      "launchWorkflow": "Launch workflow",
+      "loadFailed": "This workflow could not be loaded.",
+      "shippedReadOnly": "Shipped workflows are read-only. Copy it to your folder to launch it.",
+      "copy": "Copy to mine",
+      "copying": "Copying…",
+      "readOnly": "read-only",
+      "readOnlyTitle": "Read-only: shared by another user"
+    },
+    "secretsPage": {
+      "title": "Secrets",
+      "intro": "A run you launch reads these through <code>$env</code>. A value cannot be read back.",
+      "empty": "No secrets yet.",
+      "name": "Name",
+      "value": "Value",
+      "set": "Set",
+      "hint": "Setting a name that exists replaces its value.",
+      "notice": "Set {name}.",
+      "delete": "Delete…",
+      "warning": "Delete {name}? A run that reads it fails until it is set again."
+    }
+  },
+  "shared": {
     "assigneeChip": {
       "title": "Assigned to {assignee}"
     },
@@ -56,24 +89,11 @@
       "empty": "empty — field omitted",
       "valid": "valid JSON"
     },
-    "launchPanel": {
-      "kind": "Kind",
-      "kinds": {
-        "all": "all",
-        "root": "root",
-        "nested": "nested",
-        "invalid": "invalid"
-      },
-      "noWorkflows": "No workflows found.",
-      "noFiltered": "No {filter} workflows.",
-      "launch": "Launch {name}",
-      "launchWorkflow": "Launch workflow",
-      "loadFailed": "This workflow could not be loaded.",
-      "shippedReadOnly": "Shipped workflows are read-only. Copy it to your folder to launch it.",
-      "copy": "Copy to mine",
-      "copying": "Copying…",
-      "readOnly": "read-only",
-      "readOnlyTitle": "Read-only: shared by another user"
+    "launchForm": {
+      "workerDefaults": "Launch worker defaults (optional)",
+      "workerDefaultsHint": "The worker each type's un-pinned steps use across this run. A per-type selection, not config: a step's own worker still wins, and this outranks the file's own default.",
+      "sending": "Launching…",
+      "warning": "{count, plural, one {# unresolved warning} other {# unresolved warnings}} — the run may fail at start."
     },
     "narrative": {
       "title": "Narrative",
@@ -89,78 +109,6 @@
         "closed": "complete",
         "failed": "stream lost"
       }
-    },
-    "paneNote": {
-      "loading": {
-        "workflows": "Loading workflows…",
-        "runs": "Loading runs…",
-        "run": "Loading run…",
-        "input": "Loading input…",
-        "output": "Loading output…",
-        "context": "Loading context…",
-        "secrets": "Loading secrets…"
-      },
-      "failed": {
-        "workflows": "Failed to load workflows: {message}",
-        "runs": "Failed to load runs: {message}",
-        "run": "Failed to load run: {message}",
-        "input": "Failed to load input: {message}",
-        "output": "Failed to load output: {message}",
-        "context": "Failed to load context: {message}",
-        "secrets": "Failed to load secrets: {message}"
-      }
-    },
-    "runFacts": {
-      "rootRunId": "root run id",
-      "workflowName": "workflow name",
-      "workflowId": "workflow id",
-      "workflowFile": "workflow file",
-      "nodeId": "node id",
-      "runId": "run id"
-    },
-    "runTree": {
-      "empty": "No runs recorded for this root run.",
-      "pass": "Pass {pass}",
-      "passOpenedBy": "Pass {pass} · opened by {nodeName}",
-      "iteration": "{name} · iteration {iteration}",
-      "expand": "Expand {label}",
-      "collapse": "Collapse {label}"
-    },
-    "runsList": {
-      "openWorkflow": "Open a workflow to see its runs.",
-      "status": "Status",
-      "all": "all",
-      "noRuns": "No runs yet.",
-      "noFiltered": "No {statusFilter} runs.",
-      "inFlight": "This run is still in flight. Resume and delete become available once it finishes."
-    },
-    "secretsPage": {
-      "title": "Secrets",
-      "intro": "A run you launch reads these through <code>$env</code>. A value cannot be read back.",
-      "empty": "No secrets yet.",
-      "name": "Name",
-      "value": "Value",
-      "set": "Set",
-      "hint": "Setting a name that exists replaces its value.",
-      "notice": "Set {name}.",
-      "delete": "Delete…",
-      "warning": "Delete {name}? A run that reads it fails until it is set again."
-    },
-    "status": {
-      "running": "running",
-      "awaiting": "awaiting",
-      "succeeded": "succeeded",
-      "failed": "failed",
-      "cancelled": "cancelled",
-      "pending": "pending"
-    }
-  },
-  "shared": {
-    "launchForm": {
-      "workerDefaults": "Launch worker defaults (optional)",
-      "workerDefaultsHint": "The worker each type's un-pinned steps use across this run. A per-type selection, not config: a step's own worker still wins, and this outranks the file's own default.",
-      "sending": "Launching…",
-      "warning": "{count, plural, one {# unresolved warning} other {# unresolved warnings}} — the run may fail at start."
     },
     "nodeIo": {
       "refresh": "Refresh",
@@ -191,6 +139,26 @@
       "secretsLabel": "Launch secrets (config override) · JSON",
       "set": "set"
     },
+    "paneNote": {
+      "loading": {
+        "workflows": "Loading workflows…",
+        "runs": "Loading runs…",
+        "run": "Loading run…",
+        "input": "Loading input…",
+        "output": "Loading output…",
+        "context": "Loading context…",
+        "secrets": "Loading secrets…"
+      },
+      "failed": {
+        "workflows": "Failed to load workflows: {message}",
+        "runs": "Failed to load runs: {message}",
+        "run": "Failed to load run: {message}",
+        "input": "Failed to load input: {message}",
+        "output": "Failed to load output: {message}",
+        "context": "Failed to load context: {message}",
+        "secrets": "Failed to load secrets: {message}"
+      }
+    },
     "resumeActions": {
       "secretsNote": "These launch secrets are stored masked and must be supplied again to resume.",
       "resume": "Resume run",
@@ -205,6 +173,38 @@
       "awaitingCount": "{count} awaiting",
       "runCount": "{count, plural, one {# run} other {# runs}}",
       "resizeTree": "Resize run tree"
+    },
+    "runFacts": {
+      "rootRunId": "root run id",
+      "workflowName": "workflow name",
+      "workflowId": "workflow id",
+      "workflowFile": "workflow file",
+      "nodeId": "node id",
+      "runId": "run id"
+    },
+    "runTree": {
+      "empty": "No runs recorded for this root run.",
+      "pass": "Pass {pass}",
+      "passOpenedBy": "Pass {pass} · opened by {nodeName}",
+      "iteration": "{name} · iteration {iteration}",
+      "expand": "Expand {label}",
+      "collapse": "Collapse {label}"
+    },
+    "runsList": {
+      "openWorkflow": "Open a workflow to see its runs.",
+      "status": "Status",
+      "all": "all",
+      "noRuns": "No runs yet.",
+      "noFiltered": "No {statusFilter} runs.",
+      "inFlight": "This run is still in flight. Resume and delete become available once it finishes."
+    },
+    "status": {
+      "running": "running",
+      "awaiting": "awaiting",
+      "succeeded": "succeeded",
+      "failed": "failed",
+      "cancelled": "cancelled",
+      "pending": "pending"
     },
     "workerDefaults": {
       "type": "type",

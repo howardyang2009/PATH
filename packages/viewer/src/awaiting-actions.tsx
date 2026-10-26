@@ -34,7 +34,7 @@ export function AwaitingActions({
   awaitingNode,
   launchSecretKeys,
 }: AwaitingActionsProps) {
-  const t = useTranslations("viewer.awaitingActions");
+  const t = useTranslations("shared.awaitingActions");
   const node = awaitingNode ?? FALLBACK_NODE;
 
   return (
