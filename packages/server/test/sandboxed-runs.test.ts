@@ -482,7 +482,11 @@ describe("the run limits", () => {
 
 describe("the time limit", () => {
   it("asks the engine to stop, which still exports a cancelled run", async () => {
-    const { runs } = sandboxed(inProcessVm, { timeoutMs: 100 });
+    // The real grace: a kill after the 50ms test default can beat a loaded engine's export.
+    const { runs } = sandboxed(inProcessVm, {
+      timeoutMs: 100,
+      stopGraceMs: SANDBOX_LIMITS.stopGraceMs,
+    });
     const started = await runs.start(...(await workflow("setTimeout(() => {}, 60000)")));
     expect(await settled(runs, started.rootRunId)).toBe("cancelled");
   });
