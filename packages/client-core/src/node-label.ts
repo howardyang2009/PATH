@@ -1,3 +1,5 @@
+import type { MessageParam } from "@path/i18n";
+
 /** A run and every log event is labelled by its node; the top-level workflow's implicit root step
  * has no node id, so a null `node_id` reads as "root" (CONTEXT.md, "Core execution model").
  */
@@ -15,7 +17,10 @@ export function shortGuid(guid: string): string {
  * are nullable together for the implicit root step, which reads as "root", and a name-less row
  * falls back to the full id alone.
  */
-export function nodeEventLabel(nodeId: string | null, nodeName: string | null | undefined): string {
-  if (nodeName === null || nodeName === undefined) return nodeLabel(nodeId);
+export function nodeEventLabel(
+  nodeId: string | null,
+  nodeName: string | null | undefined,
+): MessageParam {
+  if (nodeName === null || nodeName === undefined) return nodeId ?? { key: "events.root" };
   return nodeId === null ? nodeName : `${nodeName} (${shortGuid(nodeId)})`;
 }

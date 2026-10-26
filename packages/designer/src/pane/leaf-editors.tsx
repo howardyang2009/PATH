@@ -1,4 +1,5 @@
 import { credentialHint, type WireFieldSpec, type WireStepPlugin } from "@path/client-core";
+import { useMessage } from "@path/i18n/react";
 import type { WorkflowFile, WorkflowNode } from "@path/schema";
 import { useTranslations } from "use-intl";
 import { type EditCommit, editKey } from "../edit-key.js";
@@ -60,11 +61,12 @@ export function PromptEditor({ file, node, plugins, commit }: LeafEditorProps): 
 
 // The config key each `prompt` worker reads its credential from (ADR 0045, ADR 0095).
 function CredentialHint({ worker }: { worker: string | undefined }): JSX.Element | null {
+  const renderMessage = useMessage();
   const hint = credentialHint(worker);
   if (hint === undefined) return null;
   return (
     <p className="pane-hint" data-testid="credential-hint">
-      {hint}
+      {renderMessage(hint)}
     </p>
   );
 }

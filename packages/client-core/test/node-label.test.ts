@@ -33,7 +33,7 @@ describe("nodeEventLabel", () => {
   });
 
   it("reads the root step as 'root' when id and name are both null", () => {
-    expect(nodeEventLabel(null, null)).toBe("root");
+    expect(nodeEventLabel(null, null)).toEqual({ key: "events.root" });
   });
 
   it("shows the name alone when the id is null but a name is present", () => {

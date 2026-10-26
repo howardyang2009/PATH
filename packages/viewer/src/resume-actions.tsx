@@ -6,6 +6,7 @@ import {
   resupplyGate,
   type WorkflowFile,
 } from "@path/client-core";
+import { useMessage } from "@path/i18n/react";
 import { useEffect, useState } from "react";
 import { useTranslations } from "use-intl";
 import { JsonField } from "./json-field.js";
@@ -72,6 +73,7 @@ export function ResumeActions({
   onResumed,
 }: ResumeActionsProps): JSX.Element {
   const t = useTranslations("shared");
+  const renderMessage = useMessage();
   const [phase, setPhase] = useState<Phase>("idle");
   const secrets = launchSecretKeys ?? [];
   const resupply = launchSecretResupply(secrets);
@@ -124,7 +126,7 @@ export function ResumeActions({
   // fill in.
   const secretReason =
     gate.blockMessage !== null && (resumeEnabledByStatus || resumeFromEnabledByStatus)
-      ? gate.blockMessage
+      ? renderMessage(gate.blockMessage)
       : null;
 
   const sendResume = (): void => {
@@ -237,7 +239,7 @@ export function ResumeActions({
                     nodeName: eligibility.nodeName,
                     runId: eligibility.runId,
                   }))
-                : eligibility.message
+                : renderMessage(eligibility.message)
             }
             onClick={sendResumeFrom}
           >
@@ -252,7 +254,7 @@ export function ResumeActions({
           </button>
           {!eligibility.ok && (
             <span className="resume-reason" data-testid="resume-from-reason" role="note">
-              {eligibility.message}
+              {renderMessage(eligibility.message)}
             </span>
           )}
         </div>

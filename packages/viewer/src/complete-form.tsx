@@ -12,6 +12,7 @@ import {
   resupplyGate,
   validateCompleteDraft,
 } from "@path/client-core";
+import { useMessage } from "@path/i18n/react";
 import { useMemo, useState } from "react";
 import { useTranslations } from "use-intl";
 import { errorMessage } from "./load-state.js";
@@ -58,6 +59,7 @@ export function CompleteForm({
   onCompleted,
 }: CompleteFormProps) {
   const t = useTranslations("shared.completeForm");
+  const renderMessage = useMessage();
   const fields = useMemo(() => buildCompleteFields(outputSchema), [outputSchema]);
   // A schema with no drawable fields (none authored) falls back to the free-text control.
   const raw = fields.length === 0;
@@ -113,7 +115,7 @@ export function CompleteForm({
       return;
     }
     if (submitGate.blockMessage !== null) {
-      setFormErrors([submitGate.blockMessage]);
+      setFormErrors([renderMessage(submitGate.blockMessage)]);
       return;
     }
     setPhase("sending");
@@ -169,7 +171,7 @@ export function CompleteForm({
           role="alert"
           data-testid="complete-secret-error"
         >
-          {gate.blockMessage}
+          {renderMessage(gate.blockMessage)}
         </p>
       )}
 

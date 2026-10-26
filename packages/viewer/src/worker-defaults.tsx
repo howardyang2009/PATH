@@ -1,4 +1,5 @@
 import { credentialHint, type WireStepPlugin } from "@path/client-core";
+import { useMessage } from "@path/i18n/react";
 import { useTranslations } from "use-intl";
 
 /**
@@ -38,6 +39,7 @@ export function WorkerDefaultsEditor({
   hint,
 }: WorkerDefaultsEditorProps): JSX.Element | null {
   const t = useTranslations("shared.workerDefaults");
+  const renderMessage = useMessage();
   const candidates = workerDefaultCandidates(plugins);
   // No multi-worker type in the registry → no selection to make. Hide the section entirely.
   if (candidates.length === 0) return null;
@@ -131,7 +133,7 @@ export function WorkerDefaultsEditor({
                 className="worker-default-credential"
                 data-testid={`worker-default-credential-${type}`}
               >
-                {credential}
+                {renderMessage(credential)}
               </p>
             )}
           </div>

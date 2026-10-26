@@ -69,7 +69,7 @@ describe("resumeFromEligibility precedence", () => {
     expect(result).toEqual({
       ok: false,
       reason: "no-selection",
-      message: "Select a node in the run tree.",
+      message: { key: "events.resumeFrom.noSelection" },
     });
   });
 
@@ -104,7 +104,11 @@ describe("resumeFromEligibility precedence", () => {
       selectedRunId: "a",
       dirty: DIRTY,
     });
-    expect(result).toEqual({ ok: false, reason: "dirty-buffer", message: "Save to enable." });
+    expect(result).toEqual({
+      ok: false,
+      reason: "dirty-buffer",
+      message: { key: "events.resumeFrom.dirty" },
+    });
   });
 });
 
@@ -208,7 +212,12 @@ describe("resumeFromEligibility taxonomy (root level)", () => {
       selectedRunId: "inner",
       dirty: CLEAN,
     });
-    expect(result).toMatchObject({ ok: false, reason: "in-body", container: "loop" });
+    expect(result).toMatchObject({
+      ok: false,
+      reason: "in-body",
+      container: "loop",
+      message: { key: "events.resumeFrom.inBody", params: { label: "inner", container: "loop" } },
+    });
   });
 
   it("checks the leaf's success (#4) before the prefix (#5), matching the engine order", () => {
@@ -361,7 +370,11 @@ describe("resumeFromEligibility — a sequence body is transparent (ADR 0064)", 
       selectedRunId: "pass-2",
       dirty: CLEAN,
     });
-    expect(result).toMatchObject({ ok: false, reason: "pass-run" });
+    expect(result).toMatchObject({
+      ok: false,
+      reason: "pass-run",
+      message: { key: "events.resumeFrom.passRun", params: { pass: 2 } },
+    });
   });
 
   it("counts earlier passes as prefix under a goto pass run", () => {

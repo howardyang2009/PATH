@@ -1,3 +1,5 @@
+import type { Message } from "@path/i18n";
+
 /** The config key, or User secret name, each prompt worker reads its provider credential from
  * (ADR 0045). */
 const CREDENTIAL_KEYS: { readonly [worker: string]: string } = {
@@ -7,11 +9,13 @@ const CREDENTIAL_KEYS: { readonly [worker: string]: string } = {
 
 /** The one-line auth hint an editor shows for a worker; `undefined` for a worker with no
  * credential. */
-export function credentialHint(worker: string | undefined): string | undefined {
+export function credentialHint(worker: string | undefined): Message | undefined {
   const key = worker === undefined ? undefined : CREDENTIAL_KEYS[worker];
   if (key === undefined) return undefined;
-  const source = worker === "anthropic" ? " (from `claude setup-token`)" : "";
-  return `Auth: set config ${key}${source} or a User secret of that name.`;
+  // `claude setup-token` mints the Anthropic credential; the other workers name no tool.
+  return worker === "anthropic"
+    ? { key: "events.credentialHint.setupToken", params: { key } }
+    : { key: "events.credentialHint.config", params: { key } };
 }
 
 /** A launch config placeholder naming the credential of every given worker, as a `$secret`;

@@ -639,5 +639,48 @@
       "noWorkflows": "此项目中尚未发现工作流。",
       "discoveredWorkflows": "已发现的工作流"
     }
+  },
+  "events": {
+    "root": "根",
+    "stepStarted": "{label} 已开始 · {worker}",
+    "stepAwaiting": "{label} 等待完成",
+    "stepFinished": "{label} {status}",
+    "stepFinishedError": "{label} {status} · {error}",
+    "checkpointPassed": "检查点 {label} 已通过",
+    "checkpointFailed": "检查点 {label} 未通过",
+    "branchTookElse": "分支 {label} 进入了否则分支",
+    "branchTookArm": "分支 {label} 进入了条件分支 {arm}",
+    "branchNoMatch": "分支 {label} 没有匹配的条件分支",
+    "joinApplied": "汇合 {label} 已应用 · 分支 {branches}",
+    "joinAppliedPublished": "汇合 {label} 已应用 · 分支 {branches} · 已发布 {keys}",
+    "cancelledByOperator": "{label} 被运维人员取消",
+    "cancelledByRun": "{label} 已取消 · 原因 {causeRunId}",
+    "iterationStarted": "条件循环 {label} 第 {iteration} 次迭代",
+    "loopExited": "条件循环 {label} 在 {iterations} 次迭代后退出 · {reason}",
+    "loopExitReason": {
+      "conditionFalse": "条件不成立",
+      "maxIterationsExceeded": "超过最大迭代次数"
+    },
+    "passStarted": "第 {pass} 轮次",
+    "passOpenedBy": "第 {pass} 轮次，由跳转 {label} 开启",
+    "gotoTaken": "跳转 {label} 跳到 {target} · 第 {jump}/{maxJumps} 次跳转 · 第 {pass} 轮次",
+    "gotoExhausted": "跳转 {label} 已用尽 · max_jumps {maxJumps} · 目标 {target}",
+    "reuseMarker": "{label} 复用自 {originalRunId}",
+    "credentialHint": {
+      "config": "认证：设置配置 {key}，或设置同名的用户密钥。",
+      "setupToken": "认证：设置配置 {key}（来自 `claude setup-token`），或设置同名的用户密钥。"
+    },
+    "blankSecrets": "{count, plural, other {启动密钥 {names} 为空，{verb, select, completing {完成} other {恢复}}前请为每一项填写值。}}",
+    "resumeFrom": {
+      "noSelection": "请在运行树中选择一个节点。",
+      "dirty": "保存后可用。",
+      "passRun": "第 {pass} 轮次是跳转轮次，不是节点；请在其中选择一个节点。",
+      "notInFile": "“{label}”已不在工作流中。",
+      "inBody": "“{label}”位于{container, select, loop {循环} parallel {并行块} branch {分支} other {循环、并行块或分支}}主体内，不能作为重跑起点。",
+      "notSucceeded": "“{label}”未成功。",
+      "prefixUnsucceeded": "“{label}”之前的某个节点未成功；要复用它，之前的所有节点都必须成功。",
+      "notWorkflow": "“{label}”已不是嵌套工作流。",
+      "refUnresolved": "“{label}”引用的文件已不在工作流中。"
+    }
   }
 }

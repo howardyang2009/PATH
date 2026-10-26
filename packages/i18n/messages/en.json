@@ -639,5 +639,48 @@
       "noWorkflows": "No workflows discovered in this project yet.",
       "discoveredWorkflows": "Discovered workflows"
     }
+  },
+  "events": {
+    "root": "root",
+    "stepStarted": "{label} started · {worker}",
+    "stepAwaiting": "{label} awaiting completion",
+    "stepFinished": "{label} {status}",
+    "stepFinishedError": "{label} {status} · {error}",
+    "checkpointPassed": "checkpoint {label} passed",
+    "checkpointFailed": "checkpoint {label} failed",
+    "branchTookElse": "branch {label} took the else arm",
+    "branchTookArm": "branch {label} took arm {arm}",
+    "branchNoMatch": "branch {label} matched no arm",
+    "joinApplied": "join {label} applied · branches {branches}",
+    "joinAppliedPublished": "join {label} applied · branches {branches} · published {keys}",
+    "cancelledByOperator": "{label} cancelled by the operator",
+    "cancelledByRun": "{label} cancelled · cause {causeRunId}",
+    "iterationStarted": "while-do {label} iteration {iteration}",
+    "loopExited": "while-do {label} exited after {iterations} iterations · {reason}",
+    "loopExitReason": {
+      "conditionFalse": "condition-false",
+      "maxIterationsExceeded": "max-iterations-exceeded"
+    },
+    "passStarted": "pass {pass}",
+    "passOpenedBy": "pass {pass} opened by goto {label}",
+    "gotoTaken": "goto {label} jumped to {target} · jump {jump}/{maxJumps} · pass {pass}",
+    "gotoExhausted": "goto {label} exhausted · max_jumps {maxJumps} · target {target}",
+    "reuseMarker": "{label} reused from {originalRunId}",
+    "credentialHint": {
+      "config": "Auth: set config {key} or a User secret of that name.",
+      "setupToken": "Auth: set config {key} (from `claude setup-token`) or a User secret of that name."
+    },
+    "blankSecrets": "{count, plural, one {Launch secret {names} is empty — enter a value before {verb, select, completing {completing} other {resuming}}.} other {Launch secrets {names} are empty — enter a value for each before {verb, select, completing {completing} other {resuming}}.}}",
+    "resumeFrom": {
+      "noSelection": "Select a node in the run tree.",
+      "dirty": "Save to enable.",
+      "passRun": "Pass {pass} is a goto pass, not a node; select a node inside it.",
+      "notInFile": "“{label}” is no longer in the workflow.",
+      "inBody": "“{label}” is inside a {container, select, loop {loop} parallel {parallel} branch {branch} other {loop, parallel, or branch}} body and cannot be a rerun boundary.",
+      "notSucceeded": "“{label}” did not succeed.",
+      "prefixUnsucceeded": "A node before “{label}” did not succeed; the whole prefix must succeed to reuse it.",
+      "notWorkflow": "“{label}” is no longer a nested workflow.",
+      "refUnresolved": "“{label}” references a file that is no longer in the workflow."
+    }
   }
 }

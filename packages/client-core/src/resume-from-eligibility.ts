@@ -1,3 +1,4 @@
+import type { Message } from "@path/i18n";
 import {
   type ControlBlockKind,
   type LegalKBoundaryReason,
@@ -25,7 +26,7 @@ export type ResumeFromContainer = ControlBlockKind;
 
 export type ResumeFromEligibility =
   | { ok: true; runId: string; nodeName: string; shortRunId: string }
-  | { ok: false; reason: ResumeFromReasonCode; message: string; container?: ResumeFromContainer };
+  | { ok: false; reason: ResumeFromReasonCode; message: Message; container?: ResumeFromContainer };
 
 export interface ResumeFromEligibilityArgs {
   rootRunId: string;
@@ -75,39 +76,43 @@ export function resumeFromEligibility(args: ResumeFromEligibilityArgs): ResumeFr
 
   // (3) A legal K over an unsaved file — Launch's save-first gate, last in precedence.
   if (dirty) {
-    return { ok: false, reason: "dirty-buffer", message: "Save to enable." };
+    return { ok: false, reason: "dirty-buffer", message: { key: "events.resumeFrom.dirty" } };
   }
 
   return { ok: true, runId: run.runId, nodeName, shortRunId: shortRunId(run.runId) };
 }
 
 function noSelection(): ResumeFromEligibility {
-  return { ok: false, reason: "no-selection", message: "Select a node in the run tree." };
+  return { ok: false, reason: "no-selection", message: { key: "events.resumeFrom.noSelection" } };
 }
 
 /** The button's own copy of a refusal: the reason is the shared verdict's, the sentence is the
  * surface's (the engine prints its longer, CLI-shaped wording). */
-function shortMessage(refusal: LegalKBoundaryRefusal): string {
+function shortMessage(refusal: LegalKBoundaryRefusal): Message {
   const { nodeName: label = refusal.runId } = refusal;
   switch (refusal.reason) {
     case "pass-run":
-      return `Pass ${refusal.pass} is a goto pass, not a node; select a node inside it.`;
+      return { key: "events.resumeFrom.passRun", params: { pass: refusal.pass ?? "" } };
     case "not-in-file":
-      return `“${label}” is no longer in the workflow.`;
+      return { key: "events.resumeFrom.notInFile", params: { label } };
     case "in-body":
-      return `“${label}” is inside a ${refusal.container ?? "loop, parallel, or branch"} body and cannot be a rerun boundary.`;
+      // An absent container renders the catalogue's `other` wording.
+      return {
+        key: "events.resumeFrom.inBody",
+        params: { label, container: refusal.container ?? "" },
+      };
     case "not-succeeded":
-      return `“${label}” did not succeed.`;
+      return { key: "events.resumeFrom.notSucceeded", params: { label } };
     case "prefix-unsucceeded":
-      return `A node before “${label}” did not succeed; the whole prefix must succeed to reuse it.`;
+      return { key: "events.resumeFrom.prefixUnsucceeded", params: { label } };
     // A nested `ref` cannot be judged from here, so these two are the engine's to refuse; the
     // switch still accounts for them.
     case "not-workflow":
-      return `“${label}” is no longer a nested workflow.`;
+      return { key: "events.resumeFrom.notWorkflow", params: { label } };
     case "ref-unresolved":
-      return `“${label}” references a file that is no longer in the workflow.`;
+      return { key: "events.resumeFrom.refUnresolved", params: { label } };
     case "not-in-tree":
     case "root-run":
-      return "Select a node in the run tree.";
+      return { key: "events.resumeFrom.noSelection" };
   }
 }

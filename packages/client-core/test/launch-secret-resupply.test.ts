@@ -38,16 +38,18 @@ describe("resupplyGate — the one submit verdict both continuation doors read",
     const gate = resupplyGate(["token"], secretSkeletonJson(["token"]), "resuming");
     expect(gate.ok).toBe(false);
     expect(gate.blankPaths).toEqual(["token"]);
-    expect(gate.blockMessage).toBe(
-      'Launch secret "token" is empty — enter a value before resuming.',
-    );
+    expect(gate.blockMessage).toEqual({
+      key: "events.blankSecrets",
+      params: { count: 1, names: '"token"', verb: "resuming" },
+    });
   });
 
   it("names every blank secret, plural, for completing", () => {
     const gate = resupplyGate(["a", "b"], "{}", "completing");
-    expect(gate.blockMessage).toBe(
-      'Launch secrets "a", "b" are empty — enter a value for each before completing.',
-    );
+    expect(gate.blockMessage).toEqual({
+      key: "events.blankSecrets",
+      params: { count: 2, names: '"a", "b"', verb: "completing" },
+    });
   });
 
   it("passes once every recorded secret has a value", () => {

@@ -1,3 +1,4 @@
+import type { Message } from "@path/i18n";
 import { type JsonValue, must, valueAtConfigPath } from "@path/schema";
 import { type JsonFieldResult, parseJsonField } from "./launch-json.js";
 
@@ -33,7 +34,7 @@ export interface ResupplyGate {
   configResult: JsonFieldResult;
   blankPaths: readonly string[];
   ok: boolean;
-  blockMessage: string | null;
+  blockMessage: Message | null;
 }
 
 /** Compute the {@link ResupplyGate} for one continuation's config draft against its recorded
@@ -97,9 +98,7 @@ export function blankSecretPaths(
 /** The operator-facing reason a continuation waits while a recorded secret path is blank: names
  * each one, singular or plural, with the verb making the sentence read in place.
  */
-export function blankSecretMessage(paths: readonly string[], verb: ContinuationVerb): string {
+export function blankSecretMessage(paths: readonly string[], verb: ContinuationVerb): Message {
   const names = paths.map((path) => `"${path}"`).join(", ");
-  return paths.length === 1
-    ? `Launch secret ${names} is empty — enter a value before ${verb}.`
-    : `Launch secrets ${names} are empty — enter a value for each before ${verb}.`;
+  return { key: "events.blankSecrets", params: { count: paths.length, names, verb } };
 }

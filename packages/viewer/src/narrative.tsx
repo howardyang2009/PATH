@@ -1,4 +1,5 @@
 import { eventMessage, eventOutcome, type LogEvent, type StreamPhase } from "@path/client-core";
+import { useMessage } from "@path/i18n/react";
 import { useEffect, useRef, useState } from "react";
 import { useLocale, useTranslations } from "use-intl";
 import { formatClockTime } from "./format-time.js";
@@ -86,6 +87,7 @@ export function Narrative({ events, stream }: NarrativeProps) {
  */
 function EventRow({ event }: { event: LogEvent }) {
   const locale = useLocale();
+  const renderMessage = useMessage();
   const outcome = eventOutcome(event);
   return (
     <li
@@ -106,7 +108,7 @@ function EventRow({ event }: { event: LogEvent }) {
             {STATUS_GLYPH[outcome]}
           </span>
         )}
-        {eventMessage(event)}
+        {renderMessage(eventMessage(event))}
       </span>
     </li>
   );
