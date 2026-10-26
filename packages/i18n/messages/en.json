@@ -86,7 +86,7 @@
       "follow": "Jump to newest",
       "empty": "Nothing logged yet.",
       "noEvents": "0 events",
-      "count": "{count, plural, one {# events} other {# events}} · seq {first}–{last}",
+      "count": "{count, plural, one {# event} other {# events}} · seq {first}–{last}",
       "stream": {
         "connecting": "connecting…",
         "live": "live · SSE",
@@ -157,7 +157,7 @@
     "runDetail": {
       "runTree": "Run tree",
       "awaitingCount": "{count} awaiting",
-      "runCount": "{count, plural, one {# runs} other {# runs}}",
+      "runCount": "{count, plural, one {# run} other {# runs}}",
       "resizeTree": "Resize run tree"
     },
     "runFacts": {
