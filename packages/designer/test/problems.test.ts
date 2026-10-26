@@ -112,7 +112,75 @@ describe("cross-node problems", () => {
     expect(conflict).toBeDefined();
     expect(conflict!.nodeId).toBe(uuid(3));
     expect(conflict!.nodeName).toBe("b2");
-    expect(conflict!.message).toMatchObject({ key: "errors.schema.publish.sibling-race" });
+    expect(conflict!.message).toEqual({
+      key: "errors.schema.publish.sibling-race",
+      params: { key: "k" },
+    });
+  });
+
+  it("carries a publish inside a do-not-wait branch as a coded problem", () => {
+    const file = wrap([
+      {
+        type: "parallel",
+        id: uuid(10),
+        name: "fan",
+        join: "do-not-wait",
+        branches: [step(2, "fire", { publish: { late: "${output.a}" } })],
+      } as never,
+    ]);
+    const conflict = fileProblems(file).find((p) => p.kind === "publish-conflict");
+    expect(conflict).toMatchObject({ nodeId: uuid(2), nodeName: "fire" });
+    expect(conflict!.message).toEqual({
+      key: "errors.schema.publish.detached",
+      params: { key: "late" },
+    });
+  });
+
+  it("carries each refused goto as a coded problem of its rule", () => {
+    const goto = (id: number, name: string, target: string) =>
+      ({ type: "goto", id: uuid(id), name, target, max_jumps: 3 }) as never;
+    const file = wrap([
+      { type: "sequence", id: uuid(2), name: "group", body: [step(3, "check", {})] } as never,
+      goto(4, "self", "self"),
+      goto(5, "inner", "check"),
+      goto(6, "absent", "nowhere"),
+      {
+        type: "while-do",
+        id: uuid(7),
+        name: "poll",
+        condition: { type: "exists", path: "config.c" },
+        node: goto(8, "out", "group"),
+      } as never,
+    ]);
+    expect(fileProblems(file)).toEqual([
+      {
+        nodeId: uuid(4),
+        nodeName: "self",
+        kind: "target-self",
+        message: { key: "errors.schema.goto.target-self", params: { name: "self" } },
+      },
+      {
+        nodeId: uuid(5),
+        nodeName: "inner",
+        kind: "target-inner",
+        message: { key: "errors.schema.goto.target-inner", params: { target: "check" } },
+      },
+      {
+        nodeId: uuid(6),
+        nodeName: "absent",
+        kind: "target-absent",
+        message: { key: "errors.goto.target-not-found", params: { target: "nowhere" } },
+      },
+      {
+        nodeId: uuid(8),
+        nodeName: "out",
+        kind: "placement",
+        message: {
+          key: "errors.schema.goto.placement",
+          params: { name: "out", barrierType: "while-do", barrier: "poll" },
+        },
+      },
+    ]);
   });
 
   it("de-duplicates the same dangling key repeated in one node", () => {
