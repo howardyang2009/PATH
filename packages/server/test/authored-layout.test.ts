@@ -68,15 +68,15 @@ describe("authoredLayout", () => {
   it("refuses a template path to every workflow door, and a shipped path to write and run", () => {
     expect(layout.workflowRefusal("shared/template/t.step-template.json", "write")).toEqual({
       status: 400,
-      message: "workflow path must not be a template path",
+      code: "workflow.template-path",
     });
     expect(layout.workflowRefusal("install/shipped/workflow/c.workflow.json", "write")).toEqual({
       status: 403,
-      message: "a shipped workflow is read-only",
+      code: "workflow.shipped-read-only",
     });
     expect(layout.workflowRefusal("install/shipped/workflow/c.workflow.json", "run")).toEqual({
       status: 403,
-      message: "a shipped workflow must be copied before it runs",
+      code: "workflow.shipped-copy-first",
     });
     expect(layout.workflowRefusal("users/local/workflow/a.workflow.json", "run")).toBeUndefined();
   });

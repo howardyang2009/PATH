@@ -1,3 +1,5 @@
+import { verbatim } from "@path/i18n";
+import { useMessage } from "@path/i18n/react";
 import { ROOTS } from "@path/schema";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
@@ -36,11 +38,12 @@ function StructuredField({
   owner: string;
   onCommit: (value: string, key?: EditKey) => void;
 }): JSX.Element {
+  const renderMessage = useMessage();
   const { draft, error, onEdit } = useDraft<string, string>(
     () => `seeded-${owner}`,
     (next) =>
       next.length < 3
-        ? { ok: false, error: "Too short." }
+        ? { ok: false, error: verbatim("Too short.") }
         : { ok: true, value: next.toUpperCase() },
     editKey(owner, "when"),
     onCommit,
@@ -52,7 +55,7 @@ function StructuredField({
         value={draft}
         onChange={(e) => onEdit(e.target.value, editKey(owner, "when"))}
       />
-      {error ? <p role="alert">{error}</p> : null}
+      {error ? <p role="alert">{renderMessage(error)}</p> : null}
     </>
   );
 }

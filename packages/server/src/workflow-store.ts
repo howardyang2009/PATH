@@ -7,6 +7,7 @@ import {
   serializeArtifact,
 } from "./artifact-file.js";
 import { editLease } from "./edit-lease.js";
+import type { Refusal } from "./http-json.js";
 import type { WriteAccess } from "./write-access.js";
 
 // The workflow store: the path-addressed door onto workflow files, as the template store is the
@@ -15,11 +16,11 @@ import type { WriteAccess } from "./write-access.js";
 
 export type WorkflowWrite =
   | { ok: true; relativePath: string; id: string; etag: string; created: boolean }
-  | { ok: false; status: 400 | 403 | 404 | 412; message: string; details?: string[] };
+  | ({ ok: false; status: 400 | 403 | 404 | 412; details?: string[] } & Refusal);
 
 export type WorkflowRemove =
   | { ok: true }
-  | { ok: false; status: 400 | 403 | 404 | 409 | 412; message: string };
+  | ({ ok: false; status: 400 | 403 | 404 | 409 | 412 } & Refusal);
 
 export interface WorkflowStore {
   /** Create or overwrite the workflow at `workflowPath` with a valid file, gated on `If-Match`
@@ -59,7 +60,7 @@ export function workflowsOf(ctx: {
         return {
           ok: false,
           status: 400,
-          message: "workflow validation failed",
+          code: "workflow.invalid",
           details: validation.errors,
         };
       }
@@ -68,7 +69,7 @@ export function workflowsOf(ctx: {
         return {
           ok: false,
           status: 400,
-          message: "workflow validation failed",
+          code: "workflow.invalid",
           details: duplicates,
         };
       }
@@ -77,7 +78,7 @@ export function workflowsOf(ctx: {
 
       const written = conditionalWrite(absPath, { ifMatch, rule: "create-or-overwrite", payload });
       if (!written.ok) {
-        return { ok: false, status: 412, message: PRECONDITION_FAILED[written.conflict] };
+        return { ok: false, status: 412, code: PRECONDITION_FAILED[written.conflict] };
       }
       if (written.created) access.created(workflowPath, "workflow");
       return {
@@ -94,19 +95,19 @@ export function workflowsOf(ctx: {
       if (!target.ok) return target;
       const lease = editLease(projectDir, workflowPath);
       if (!target.exists || lease === undefined) {
-        return { ok: false, status: 404, message: "not found" };
+        return { ok: false, status: 404, code: "request.not-found" };
       }
       // The lease first: another session editing the file outranks a stale token, and either way
       // the file is untouched.
       if (lease.heldByOther(sessionId)) {
-        return { ok: false, status: 409, message: "workflow is being edited in another session" };
+        return { ok: false, status: 409, code: "lease.held" };
       }
       const removed = conditionalDelete(target.absPath, ifMatch);
       if (!removed.ok) {
         // A file that is already gone is the `404`; a missing or stale token is the `412`.
         return removed.conflict === "missing"
-          ? { ok: false, status: 404, message: "not found" }
-          : { ok: false, status: 412, message: PRECONDITION_FAILED[removed.conflict] };
+          ? { ok: false, status: 404, code: "request.not-found" }
+          : { ok: false, status: 412, code: PRECONDITION_FAILED[removed.conflict] };
       }
       lease.remove();
       access.removed(workflowPath, "workflow");

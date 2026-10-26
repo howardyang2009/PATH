@@ -1,3 +1,4 @@
+import { useMessage } from "@path/i18n/react";
 import {
   Fragment,
   type KeyboardEvent as ReactKeyboardEvent,
@@ -6,6 +7,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { useTranslations } from "use-intl";
 import type { EditorChrome } from "./editor-chrome.js";
 import type { LeaseState } from "./lease-client.js";
 import { canonicalSerialize } from "./serialize.js";
@@ -17,10 +19,7 @@ import {
 } from "./session-reducer.js";
 import type { EditMode, SaveState, TemplateSource } from "./use-open-file.js";
 
-const MODES: readonly { key: EditMode; label: string }[] = [
-  { key: "workflow", label: "Workflow" },
-  { key: "template", label: "Template" },
-];
+const MODES: readonly EditMode[] = ["workflow", "template"];
 
 /**
  * Workflow mode's file name, centred in the top bar: the opened workflow's path, or — for a new
@@ -28,14 +27,15 @@ const MODES: readonly { key: EditMode; label: string }[] = [
  * replaces it while a status shows.
  */
 export function WorkflowFileName({ path }: { path: string | undefined }): JSX.Element {
+  const t = useTranslations("designer.editingToolbar");
   if (path === undefined) {
-    return <span className="author-mode-tag">New workflow (not saved)</span>;
+    return <span className="author-mode-tag">{t("newWorkflow")}</span>;
   }
   return (
     <span
       className="author-mode-tag"
       data-testid="workflow-file-name"
-      title="Save writes back to this file"
+      title={t("workflowFileTitle")}
     >
       <code>{path}</code>
     </span>
@@ -49,20 +49,17 @@ export function WorkflowFileName({ path }: { path: string | undefined }): JSX.El
  * it. {@link FileStatus} replaces it while a status shows.
  */
 export function TemplateFileName({ template }: { template: TemplateSource | null }): JSX.Element {
+  const t = useTranslations("designer.editingToolbar");
   if (!template) {
-    return <span className="author-mode-tag">New template (not saved)</span>;
+    return <span className="author-mode-tag">{t("newTemplate")}</span>;
   }
   return (
-    <span
-      className="author-mode-tag"
-      data-testid="author-mode"
-      title="Save writes back to this template"
-    >
+    <span className="author-mode-tag" data-testid="author-mode" title={t("templateFileTitle")}>
       <code>
         {template.name}
         {TEMPLATE_SUFFIX}
       </code>
-      {template.readOnly ? ` (${template.readOnly}, read-only)` : null}
+      {template.readOnly ? t("readOnlyTag", { readOnly: template.readOnly }) : null}
     </span>
   );
 }
@@ -89,46 +86,46 @@ export function FileStatus({
   /** The active file's name, shown when there is no status to show. */
   fileName?: ReactNode;
 }): JSX.Element | null {
+  const t = useTranslations("designer.editingToolbar");
+  const renderMessage = useMessage();
   if (saveState.phase === "conflict") {
     return (
-      <span
-        className="file-status file-status-failed"
-        role="alert"
-        title="This file changed on disk since you opened it. Your save was refused to avoid overwriting that change. Reload to get the latest, then re-apply your edits."
-      >
-        Save refused: this file changed on disk since you opened it
+      <span className="file-status file-status-failed" role="alert" title={t("conflictTitle")}>
+        {t("conflict")}
         <button type="button" className="file-status-action" onClick={onReload}>
-          Reload file
+          {t("reload")}
         </button>
       </span>
     );
   }
   if (saveState.phase === "error" || saveState.phase === "delete-error") {
-    const verb = saveState.phase === "error" ? "save" : "delete";
+    const message = renderMessage(saveState.message);
     return (
-      <span className="file-status file-status-failed" role="alert" title={saveState.message}>
-        Could not {verb}: {saveState.message}
+      <span className="file-status file-status-failed" role="alert" title={message}>
+        {saveState.phase === "error"
+          ? t("couldNotSave", { message })
+          : t("couldNotDelete", { message })}
       </span>
     );
   }
   if (saveState.phase === "saved-as-template") {
     return (
       <span className="file-status file-status-saved" role="status">
-        Saved as template "{saveState.name}"
+        {t("savedAsTemplate", { name: saveState.name })}
       </span>
     );
   }
   if (saveState.phase === "deleting") {
     return (
       <span className="file-status" role="status">
-        Deleting…
+        {t("deleting")}
       </span>
     );
   }
   if (saveState.phase === "deleted") {
     return (
       <span className="file-status file-status-saved" role="status">
-        Deleted
+        {t("deleted")}
       </span>
     );
   }
@@ -139,18 +136,14 @@ export function FileStatus({
     const pristine = canonicalSerialize(opened.file) === frame.openedBytes;
     return (
       <span className="file-status file-status-unsaved" role="status">
-        {!pristine
-          ? "Unsaved edits"
-          : opened.idsStamped
-            ? "Ids stamped on import — unsaved (ADR 0015)"
-            : "Non-canonical file: Save will reformat it"}
+        {!pristine ? t("unsavedEdits") : opened.idsStamped ? t("idsStamped") : t("nonCanonical")}
       </span>
     );
   }
   if (saveState.phase !== "saved") return <>{fileName ?? null}</>;
   return (
     <span className="file-status file-status-saved" role="status">
-      Saved
+      {t("saved")}
     </span>
   );
 }
@@ -182,19 +175,20 @@ export function ModeSwitch({
   mode: EditMode;
   onSwitch: (mode: EditMode) => void;
 }): JSX.Element {
+  const t = useTranslations("designer.editingToolbar");
   return (
-    <div className="mode-switch" role="radiogroup" aria-label="Edit mode">
-      {MODES.map(({ key, label }) => (
+    <div className="mode-switch" role="radiogroup" aria-label={t("editMode")}>
+      {MODES.map((key) => (
         <label key={key} className="mode-switch-option">
           <input
             type="radio"
             name="edit-mode"
             value={key}
             checked={mode === key}
-            aria-label={label}
+            aria-label={t(`modes.${key}`)}
             onChange={() => mode !== key && onSwitch(key)}
           />
-          {label}
+          {t(`modes.${key}`)}
         </label>
       ))}
     </div>
@@ -234,6 +228,8 @@ export function EditingToolbar({
   onTakeover: () => void;
   onReacquire: () => void;
 }): JSX.Element {
+  const t = useTranslations("designer.editingToolbar");
+  const renderMessage = useMessage();
   return (
     <div className="editing-toolbar">
       {/* The rare whole-file actions sit behind File: New and Open… discard the current stack, and
@@ -241,21 +237,21 @@ export function EditingToolbar({
       <FileMenu
         groups={[
           [
-            { label: "New", onSelect: onNew },
-            { label: "Open…", onSelect: onOpen },
+            { label: t("new"), onSelect: onNew },
+            { label: t("open"), onSelect: onOpen },
           ],
           [
-            { label: "Save as…", onSelect: onSaveAs, disabled: chrome.busy || !chrome.saveAs },
+            { label: t("saveAs"), onSelect: onSaveAs, disabled: chrome.busy || !chrome.saveAs },
             {
-              label: "Download",
+              label: t("download"),
               onSelect: onDownload,
               disabled: !chrome.download,
-              title: chrome.download ? "Download the saved file" : "Save first",
+              title: chrome.download ? t("downloadTitle") : t("saveFirst"),
             },
           ],
           [
             {
-              label: "Delete",
+              label: t("delete"),
               onSelect: onDelete,
               disabled: chrome.busy || !chrome.remove,
               title: chrome.readOnlyTitle,
@@ -270,22 +266,22 @@ export function EditingToolbar({
       <button
         type="button"
         className="toolbar-btn"
-        aria-label="Undo"
+        aria-label={t("undo")}
         onClick={onUndo}
         disabled={!chrome.undo}
-        title={`Undo (${UNDO_SHORTCUT})`}
+        title={t("undoTitle", { shortcut: UNDO_SHORTCUT })}
       >
-        ↶ Undo
+        ↶ {t("undo")}
       </button>
       <button
         type="button"
         className="toolbar-btn"
-        aria-label="Redo"
+        aria-label={t("redo")}
         onClick={onRedo}
         disabled={!chrome.redo}
-        title={`Redo (${REDO_SHORTCUT})`}
+        title={t("redoTitle", { shortcut: REDO_SHORTCUT })}
       >
-        ↷ Redo
+        ↷ {t("redo")}
       </button>
       {/* Disabled in `conflict`: re-sending the same stale ETag would only 412 again — the author
           must reload first. Otherwise enabled only for a dirty buffer. */}
@@ -294,9 +290,9 @@ export function EditingToolbar({
         className="save-btn"
         onClick={onSave}
         disabled={!chrome.save}
-        title={chrome.readOnlyTitle ?? `Save (${SAVE_SHORTCUT})`}
+        title={chrome.readOnlyTitle ?? t("saveTitle", { shortcut: SAVE_SHORTCUT })}
       >
-        {chrome.saveLabel}
+        {renderMessage(chrome.saveLabel)}
       </button>
       <LeaseBanner lease={chrome.lease} onTakeover={onTakeover} onReacquire={onReacquire} />
     </div>
@@ -322,6 +318,7 @@ function enabledItems(menu: HTMLElement | null): HTMLButtonElement[] {
  * focus to the button; a click outside or a Tab away closes it. A disabled item stays visible, and a
  * separator splits the groups. */
 function FileMenu({ groups }: { groups: readonly (readonly FileMenuItem[])[] }): JSX.Element {
+  const t = useTranslations("designer.editingToolbar");
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -383,7 +380,7 @@ function FileMenu({ groups }: { groups: readonly (readonly FileMenuItem[])[] }):
           }
         }}
       >
-        File
+        {t("file")}
         <span className="file-menu-caret" aria-hidden="true">
           {open ? "▾" : "▸"}
         </span>
@@ -392,7 +389,7 @@ function FileMenu({ groups }: { groups: readonly (readonly FileMenuItem[])[] }):
         <div
           className="file-menu-list"
           role="menu"
-          aria-label="File"
+          aria-label={t("file")}
           ref={menuRef}
           onKeyDown={onMenuKeyDown}
         >
@@ -437,34 +434,34 @@ function LeaseBanner({
   onTakeover: () => void;
   onReacquire: () => void;
 }): JSX.Element | null {
+  const t = useTranslations("designer.editingToolbar");
+  const renderMessage = useMessage();
   const [confirming, setConfirming] = useState(false);
 
   if (lease?.phase === "held-by-other") {
+    const expiresAt = lease.expiresAt;
     return (
       <div className="lease-banner lease-held-by-other" role="alert">
         <span>
-          Another session is editing this file
-          {lease.expiresAt ? (
-            <>
-              {" "}
-              — its lease expires in <Countdown expiresAt={lease.expiresAt} />
-            </>
-          ) : null}
-          .
+          {expiresAt
+            ? t.rich("heldByOtherExpiring", {
+                countdown: () => <Countdown expiresAt={expiresAt} />,
+              })
+            : t("heldByOther")}
         </span>
         {confirming ? (
           <>
-            <span className="lease-confirm-q">Take over anyway?</span>
+            <span className="lease-confirm-q">{t("takeOverQuestion")}</span>
             <button type="button" onClick={onTakeover}>
-              Confirm takeover
+              {t("confirmTakeover")}
             </button>
             <button type="button" onClick={() => setConfirming(false)}>
-              Cancel
+              {t("cancel")}
             </button>
           </>
         ) : (
           <button type="button" onClick={() => setConfirming(true)}>
-            Take over
+            {t("takeOver")}
           </button>
         )}
       </div>
@@ -474,9 +471,9 @@ function LeaseBanner({
   if (lease?.phase === "lost") {
     return (
       <div className="lease-banner lease-lost" role="alert">
-        <span>Editing lease lost. Another session may have taken over, or your lease expired.</span>
+        <span>{t("leaseLost")}</span>
         <button type="button" onClick={onReacquire}>
-          Re-acquire
+          {t("reacquire")}
         </button>
       </div>
     );
@@ -485,7 +482,7 @@ function LeaseBanner({
   if (lease?.phase === "error") {
     return (
       <div className="lease-banner lease-error" role="alert">
-        Could not acquire the editing lease: {lease.message}
+        {t("leaseError", { message: renderMessage(lease.message) })}
       </div>
     );
   }
@@ -495,11 +492,12 @@ function LeaseBanner({
 
 /** A live "in Ns" countdown to a wall-clock `expiresAt`, ticking each second; never below zero. */
 function Countdown({ expiresAt }: { expiresAt: string }): JSX.Element {
+  const t = useTranslations("designer.editingToolbar");
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
   }, []);
   const seconds = Math.max(0, Math.round((Date.parse(expiresAt) - now) / 1000));
-  return <span className="lease-countdown">{seconds}s</span>;
+  return <span className="lease-countdown">{t("countdown", { seconds })}</span>;
 }

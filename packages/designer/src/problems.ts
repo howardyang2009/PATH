@@ -1,3 +1,4 @@
+import { type Message, verbatim } from "@path/i18n";
 import {
   type Condition,
   type GotoIssueRule,
@@ -55,7 +56,7 @@ export interface Problem {
   nodeId: string;
   nodeName: string;
   kind: ProblemKind;
-  message: string;
+  message: Message;
 }
 
 /** Every `${…}` placeholder dot-path in a value, recursing through arrays and objects (whose keys
@@ -154,9 +155,9 @@ export function fileProblems(file: WorkflowFile, refs?: RefLookup): Problem[] {
 
   // The canvas projection of the load-time publish-set verdict (`publishSetIssues`): one issue per
   // offending node, first wins when a node carries more than one.
-  const conflicts = new Map<string, string>();
+  const conflicts = new Map<string, Message>();
   for (const issue of publishSetIssues(file)) {
-    if (!conflicts.has(issue.nodeId)) conflicts.set(issue.nodeId, issue.message);
+    if (!conflicts.has(issue.nodeId)) conflicts.set(issue.nodeId, verbatim(issue.message));
   }
   // The goto rule module's verdict, read the same way: one issue per offending goto, by its id.
   const gotos = new Map(gotoIssues(file).map((issue) => [issue.nodeId, issue]));
@@ -178,7 +179,7 @@ export function fileProblems(file: WorkflowFile, refs?: RefLookup): Problem[] {
         nodeId: node.id,
         nodeName: node.name,
         kind: jump.rule,
-        message: jump.message,
+        message: verbatim(jump.message),
       });
 
     const readSeen = new Set<string>();
@@ -190,7 +191,7 @@ export function fileProblems(file: WorkflowFile, refs?: RefLookup): Problem[] {
         nodeId: node.id,
         nodeName: node.name,
         kind: "dangling-interpolation",
-        message: `reads \`\${context.${key}}\`, which no step in this file publishes`,
+        message: { key: "designer.problems.danglingInterpolation", params: { key } },
       });
     }
 
@@ -204,7 +205,7 @@ export function fileProblems(file: WorkflowFile, refs?: RefLookup): Problem[] {
           nodeId: node.id,
           nodeName: node.name,
           kind: "dangling-condition",
-          message: `condition reads \`context.${key}\`, which no step in this file publishes`,
+          message: { key: "designer.problems.danglingCondition", params: { key } },
         });
       }
     }
@@ -219,7 +220,7 @@ export function fileProblems(file: WorkflowFile, refs?: RefLookup): Problem[] {
           nodeId: node.id,
           nodeName: node.name,
           kind: "dangling-ref",
-          message: `references \`${node.ref}\`, which has no saved file yet`,
+          message: { key: "designer.problems.danglingRef", params: { ref: node.ref } },
         });
       }
     }
@@ -232,11 +233,12 @@ export function fileProblems(file: WorkflowFile, refs?: RefLookup): Problem[] {
  * The per-node marker map the canvas reads: a node with several problems gets one marker whose
  * title stacks its messages, so a collapsed marker still names every reason.
  */
-export function problemMarks(problems: Problem[]): Map<string, string> {
-  const marks = new Map<string, string>();
+export function problemMarks(problems: Problem[]): Map<string, Message[]> {
+  const marks = new Map<string, Message[]>();
   for (const problem of problems) {
     const existing = marks.get(problem.nodeId);
-    marks.set(problem.nodeId, existing ? `${existing}\n${problem.message}` : problem.message);
+    if (existing) existing.push(problem.message);
+    else marks.set(problem.nodeId, [problem.message]);
   }
   return marks;
 }

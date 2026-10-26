@@ -125,10 +125,10 @@ export async function writeDocument(
         return {
           ok: false,
           conflict: null,
-          message: "Read-only: only the creator can save. Use Save as.",
+          message: { key: "designer.document.readOnly" },
         };
       if (!creates && error.status === 404)
-        return { ok: false, conflict: null, message: "No longer available" };
+        return { ok: false, conflict: null, message: { key: "designer.document.gone" } };
     }
     return { ok: false, conflict: null, message };
   }

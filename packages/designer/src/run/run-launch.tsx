@@ -1,6 +1,7 @@
 import type { PathApiClient, WireStepPlugin } from "@path/client-core";
 import type { WorkflowFile } from "@path/schema";
 import { LaunchForm } from "@path/viewer";
+import { useTranslations } from "use-intl";
 import { fileWorkers } from "../effective-worker.js";
 
 export interface RunLaunchProps {
@@ -31,11 +32,12 @@ export function RunLaunch({
   warningCount,
   onLaunched,
 }: RunLaunchProps): JSX.Element {
+  const t = useTranslations();
   const gate =
     workflowPath === null
-      ? "Save this new workflow before you can run it."
+      ? t("designer.runLaunch.saveNew")
       : dirty
-        ? "Save your edits before you can run — a run uses the file on disk."
+        ? t("designer.runLaunch.saveEdits")
         : null;
 
   return (
@@ -45,7 +47,7 @@ export function RunLaunch({
       workers={rootFile === null ? [] : fileWorkers(rootFile, plugins)}
       workflowPath={workflowPath}
       onLaunched={onLaunched}
-      submitLabel="Run workflow"
+      submitLabel={t("designer.runLaunch.submit")}
       idBase="run-launch"
       testIdPrefix="run-launch"
       containerTestId="run-launch"

@@ -1,4 +1,5 @@
 import type { PathApiClient, WireStepPlugin } from "@path/client-core";
+import type { Message } from "@path/i18n";
 import { errorMessage } from "@path/viewer";
 import { type Load, useResource } from "@path/viewer/use-resource";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -63,7 +64,7 @@ export type RegistryLoad = Load<WireStepPlugin[]>;
 export type SaveAsResult =
   | { status: "created"; path: string | null }
   | { status: "exists" }
-  | { status: "error"; message: string };
+  | { status: "error"; message: Message };
 
 export interface OpenSession {
   registry: RegistryLoad;

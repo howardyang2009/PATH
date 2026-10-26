@@ -1,4 +1,7 @@
+import type { Message } from "@path/i18n";
+import { useMessage } from "@path/i18n/react";
 import { useMemo, useState } from "react";
+import { useFormatter, useTranslations } from "use-intl";
 import { TEMPLATE_SUFFIX } from "./session-reducer.js";
 import type { TemplateListLoad } from "./template-list.js";
 import type { SaveAsResult, TemplateSource } from "./use-open-file.js";
@@ -49,6 +52,9 @@ export function SaveTemplateAsDialog({
   onCreated: () => void;
   onCancel: () => void;
 }): JSX.Element {
+  const t = useTranslations("designer");
+  const format = useFormatter();
+  const renderMessage = useMessage();
   const fromWorkflow = workflowName !== undefined;
   // A template source's name is taken, so its copy is prefilled `<name>-copy`; a workflow's name is
   // not a template's.
@@ -57,7 +63,7 @@ export function SaveTemplateAsDialog({
   // A picker value is `<origin>:<subfolder>`, the subfolder `""` at an origin's top.
   const [picked, setPicked] = useState(`user:`);
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<Message | null>(null);
 
   const suffix = TEMPLATE_SUFFIX;
   const trimmed = name.trim();
@@ -72,14 +78,19 @@ export function SaveTemplateAsDialog({
   const pickedDir = picked.slice(picked.indexOf(":") + 1);
   const joined = [pickedDir, typedFolder].filter((part) => part !== "").join("/");
   const folder = joined === "" ? undefined : joined;
-  const folders = useMemo(() => writableFolders(templateList), [templateList]);
+  const myTemplates = t("saveTemplateAsDialog.myTemplates");
+  const sharedTemplates = t("saveTemplateAsDialog.sharedTemplates");
+  const folders = useMemo(
+    () => writableFolders(templateList, { user: myTemplates, shared: sharedTemplates }),
+    [templateList, myTemplates, sharedTemplates],
+  );
   const described = description.trim() !== "";
   const canSubmit = legal && folderLegal && described && !submitting;
   const title = fromWorkflow
-    ? "Save workflow as template"
+    ? t("saveTemplateAsDialog.titleFromWorkflow")
     : source
-      ? "Save as new template"
-      : "Save new template";
+      ? t("saveTemplateAsDialog.titleCopy")
+      : t("saveTemplateAsDialog.titleNew");
 
   const submit = (): void => {
     if (!canSubmit) return;
@@ -94,7 +105,7 @@ export function SaveTemplateAsDialog({
       setSubmitting(false);
       if (result.status === "created") onCreated();
       else if (result.status === "exists")
-        setError("A template with that name already exists. Choose another name.");
+        setError({ key: "designer.saveTemplateAsDialog.exists" });
       else setError(result.message);
     });
   };
@@ -105,17 +116,17 @@ export function SaveTemplateAsDialog({
         <h2 className="dialog-title">{title}</h2>
         <p className="dialog-hint">
           {fromWorkflow
-            ? "The template is a copy of the workflow's body with a new identity, saved with this project's templates. The workflow stays open. Pick the shared folder to share it with the team."
+            ? t("saveTemplateAsDialog.hintFromWorkflow")
             : source
-              ? "The copy gets a new identity and is saved with this project's templates."
-              : "The template is saved with this project's templates."}
+              ? t("saveTemplateAsDialog.hintCopy")
+              : t("saveTemplateAsDialog.hintNew")}
         </p>
 
         <label className="dialog-field">
-          <span className="dialog-label">Folder</span>
+          <span className="dialog-label">{t("saveTemplateAsDialog.folder")}</span>
           <select
             className="new-file-directory"
-            aria-label="Folder"
+            aria-label={t("saveTemplateAsDialog.folder")}
             value={picked}
             onChange={(event) => setPicked(event.target.value)}
           >
@@ -128,12 +139,12 @@ export function SaveTemplateAsDialog({
         </label>
 
         <label className="dialog-field">
-          <span className="dialog-label">Name</span>
+          <span className="dialog-label">{t("saveTemplateAsDialog.name")}</span>
           <span className="new-file-name">
             <input
               className="new-file-stem"
-              aria-label="Template name"
-              placeholder="name or folder/name"
+              aria-label={t("saveTemplateAsDialog.nameLabel")}
+              placeholder={t("saveDialog.placeholder")}
               value={name}
               onChange={(event) => setName(event.target.value)}
               onKeyDown={(event) => {
@@ -147,49 +158,50 @@ export function SaveTemplateAsDialog({
         </label>
 
         <label className="dialog-field">
-          <span className="dialog-label">Description</span>
+          <span className="dialog-label">{t("saveTemplateAsDialog.description")}</span>
           <textarea
             className="template-description"
-            aria-label="Template description"
+            aria-label={t("saveTemplateAsDialog.descriptionLabel")}
             rows={3}
-            placeholder="What this template does. It is shown on the palette card."
+            placeholder={t("saveTemplateAsDialog.descriptionPlaceholder")}
             value={description}
             onChange={(event) => setDescription(event.target.value)}
           />
         </label>
 
         {!folderLegal ? (
-          <p className="new-file-error">
-            Folder names cannot be empty or start with a dot, and cannot contain a backslash.
-          </p>
+          <p className="new-file-error">{t("saveTemplateAsDialog.badFolder")}</p>
         ) : null}
         {!legal && clean !== "" ? (
-          <p className="new-file-error">
-            Use lowercase letters, digits, and hyphens, starting with a letter.
-          </p>
+          <p className="new-file-error">{t("saveTemplateAsDialog.badName")}</p>
         ) : null}
         <p className="dialog-hint">
-          Use <code>/</code> to save in a subfolder. Missing folders are created.
+          {t.rich("saveDialog.subfolderHint", { code: (chunks) => <code>{chunks}</code> })}
         </p>
-        {!described ? <p className="dialog-hint">A template needs a description.</p> : null}
+        {!described ? (
+          <p className="dialog-hint">{t("saveTemplateAsDialog.needsDescription")}</p>
+        ) : null}
         {fromWorkflow ? (
           <p className="dialog-hint" role="note">
-            A template keeps only the body.
-            {droppedFields.length > 0 ? ` ${formatList(droppedFields)} will be dropped.` : null}
+            {droppedFields.length > 0
+              ? t("saveTemplateAsDialog.keepsBodyDropping", {
+                  droppedFields: format.list(droppedFields, { type: "conjunction" }),
+                })
+              : t("saveTemplateAsDialog.keepsBody")}
           </p>
         ) : null}
         {error !== null ? (
           <p className="new-file-error" role="alert">
-            {error}
+            {renderMessage(error)}
           </p>
         ) : null}
 
         <div className="dialog-actions">
           <button type="button" onClick={onCancel} disabled={submitting}>
-            Cancel
+            {t("saveDialog.cancel")}
           </button>
           <button type="button" className="new-file-create" onClick={submit} disabled={!canSubmit}>
-            {submitting ? "Saving…" : "Create"}
+            {submitting ? t("saveDialog.saving") : t("saveDialog.create")}
           </button>
         </div>
       </div>
@@ -198,11 +210,15 @@ export function SaveTemplateAsDialog({
 }
 
 /** The folders a template can be saved into: the user's own and the shared template folder, each
- * with every subfolder (ancestors included) found by the last scan. */
-function writableFolders(list: TemplateListLoad): { value: string; label: string }[] {
+ * with every subfolder (ancestors included) found by the last scan. `tops` labels each origin's
+ * top folder. */
+function writableFolders(
+  list: TemplateListLoad,
+  tops: { user: string; shared: string },
+): { value: string; label: string }[] {
   const origins = [
-    { origin: "user", top: "(my templates)", prefix: "" },
-    { origin: "shared", top: "(shared templates)", prefix: "shared/" },
+    { origin: "user", top: tops.user, prefix: "" },
+    { origin: "shared", top: tops.shared, prefix: "shared/" },
   ] as const;
   return origins.flatMap(({ origin, top, prefix }) => {
     const dirs = new Set<string>([""]);
@@ -221,11 +237,4 @@ function writableFolders(list: TemplateListLoad): { value: string; label: string
       label: dir === "" ? top : `${prefix}${dir}`,
     }));
   });
-}
-
-/** `a`, `a and b`, `a, b and c`. */
-function formatList(items: readonly string[]): string {
-  return items.length <= 1
-    ? (items[0] ?? "")
-    : `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
 }

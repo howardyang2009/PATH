@@ -1,5 +1,5 @@
 import { must, toWireLaunchFacts, toWireRunRecord } from "@path/schema";
-import { type RouteReply, replyError } from "../http-json.js";
+import { type RouteReply, replyRefusal } from "../http-json.js";
 import { liveDisplayStatus } from "../live-status.js";
 import { resolveTree } from "./resolve-run.js";
 import type { ApiRequest } from "./route-context.js";
@@ -8,7 +8,7 @@ export function handleGetRun({ ctx, params: [rootRunId] }: ApiRequest<[string]>)
   // A read door: the tree's rows are enough, and its status falls back to the earliest row when the
   // root row is missing. `output` does not fall back: `tree.output()` is the *root's* output.
   const address = resolveTree(ctx, rootRunId);
-  if (!address.ok) return replyError(address.status, address.message);
+  if (!address.ok) return replyRefusal(address.status, address);
   const { tree } = address;
   const rootRow = must(tree.root ?? tree.runs[0], "root or earliest row of a run tree");
   // What the run was launched with (ADR 0046) — a per-tree fact. Absent for a bare launch; its

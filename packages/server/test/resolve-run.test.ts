@@ -75,7 +75,8 @@ describe("resolveTree", () => {
     expect(address).toEqual({
       ok: false,
       status: 404,
-      message: 'no run found with id "nope"',
+      code: "run.not-found",
+      params: { rootRunId: "nope" },
     });
   });
 });
@@ -98,7 +99,8 @@ describe("resolveRun", () => {
     expect(resolveRun(ctx, ROOT)).toEqual({
       ok: false,
       status: 404,
-      message: `no run found with id "${ROOT}"`,
+      code: "run.not-found",
+      params: { rootRunId: ROOT },
     });
   });
 });
@@ -124,7 +126,8 @@ describe("resolveLeaf", () => {
     expect(resolveLeaf(context({}), "nope")).toEqual({
       ok: false,
       status: 404,
-      message: 'no step run found with id "nope"',
+      code: "run.step-not-found",
+      params: { stepRunId: "nope" },
     });
   });
 });

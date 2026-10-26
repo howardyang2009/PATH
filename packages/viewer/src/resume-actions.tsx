@@ -6,7 +6,9 @@ import {
   resupplyGate,
   type WorkflowFile,
 } from "@path/client-core";
+import { useMessage } from "@path/i18n/react";
 import { useEffect, useState } from "react";
+import { useTranslations } from "use-intl";
 import { JsonField } from "./json-field.js";
 import { errorMessage } from "./load-state.js";
 
@@ -70,6 +72,8 @@ export function ResumeActions({
   launchSecretKeys,
   onResumed,
 }: ResumeActionsProps): JSX.Element {
+  const t = useTranslations("shared");
+  const renderMessage = useMessage();
   const [phase, setPhase] = useState<Phase>("idle");
   const secrets = launchSecretKeys ?? [];
   const resupply = launchSecretResupply(secrets);
@@ -122,7 +126,7 @@ export function ResumeActions({
   // fill in.
   const secretReason =
     gate.blockMessage !== null && (resumeEnabledByStatus || resumeFromEnabledByStatus)
-      ? gate.blockMessage
+      ? renderMessage(gate.blockMessage)
       : null;
 
   const sendResume = (): void => {
@@ -133,7 +137,7 @@ export function ResumeActions({
       (res) => onResumed(res.root_run_id),
       (thrown: unknown) => {
         setPhase("idle");
-        setError({ source: "resume", message: errorMessage(thrown) });
+        setError({ source: "resume", message: renderMessage(errorMessage(thrown)) });
       },
     );
   };
@@ -147,14 +151,13 @@ export function ResumeActions({
       (res) => onResumed(res.root_run_id),
       (thrown: unknown) => {
         setPhase("idle");
-        setError({ source: "resume-from", message: errorMessage(thrown) });
+        setError({ source: "resume-from", message: renderMessage(errorMessage(thrown)) });
       },
     );
   };
 
   // The greyed plain-Resume's inline reason: a succeeded run reruns from a chosen boundary instead.
-  const resumeReason =
-    showResume && !plainResumable ? "Succeeded — rerun from a chosen boundary below." : null;
+  const resumeReason = showResume && !plainResumable ? t("resumeActions.succeededReason") : null;
 
   return (
     <div className="launch-form resume-form" data-testid="resume-form">
@@ -166,17 +169,17 @@ export function ResumeActions({
         disabled={configDisabled}
         onClick={() => setShowConfig((shown) => !shown)}
       >
-        {configOpen ? "▾" : "▸"} Override config (optional)
-        {config.trim() !== "" && <span className="launch-disclosure-dot"> · set</span>}
+        {configOpen ? "▾" : "▸"} {t("overrides.overrideConfig")}
+        {config.trim() !== "" && (
+          <span className="launch-disclosure-dot"> · {t("overrides.set")}</span>
+        )}
       </button>
       {configOpen && (
         <>
           <JsonField
             id={`resume-config-${rootRunId}`}
             testId="resume-config"
-            label={
-              showSecrets ? "Launch secrets (config override) · JSON" : "config override · JSON"
-            }
+            label={showSecrets ? t("overrides.secretsLabel") : t("overrides.configLabel")}
             value={config}
             onChange={setConfig}
             result={configResult}
@@ -185,7 +188,7 @@ export function ResumeActions({
           />
           {showSecrets && (
             <p className="pane-note" data-testid="resume-config-note">
-              These launch secrets are stored masked and must be supplied again to resume.
+              {t("resumeActions.secretsNote")}
             </p>
           )}
         </>
@@ -210,7 +213,7 @@ export function ResumeActions({
             disabled={!canResume}
             onClick={sendResume}
           >
-            {phase === "sending" ? "Resuming…" : "Resume run"}
+            {phase === "sending" ? t("resumeActions.sending") : t("resumeActions.resume")}
           </button>
           {resumeReason !== null && (
             <span className="resume-reason" data-testid="resume-reason" role="note">
@@ -231,20 +234,27 @@ export function ResumeActions({
             // which also shows inline beside the button.
             title={
               eligibility.ok
-                ? (secretReason ?? `Resume from ${eligibility.nodeName} (${eligibility.runId})`)
-                : eligibility.message
+                ? (secretReason ??
+                  t("resumeActions.resumeFromTitle", {
+                    nodeName: eligibility.nodeName,
+                    runId: eligibility.runId,
+                  }))
+                : renderMessage(eligibility.message)
             }
             onClick={sendResumeFrom}
           >
             {phase === "sending"
-              ? "Resuming…"
+              ? t("resumeActions.sending")
               : eligibility.ok
-                ? `Resume from ${eligibility.nodeName}(${eligibility.shortRunId})`
-                : "Resume from …"}
+                ? t("resumeActions.resumeFrom", {
+                    nodeName: eligibility.nodeName,
+                    shortRunId: eligibility.shortRunId,
+                  })
+                : t("resumeActions.resumeFromIdle")}
           </button>
           {!eligibility.ok && (
             <span className="resume-reason" data-testid="resume-from-reason" role="note">
-              {eligibility.message}
+              {renderMessage(eligibility.message)}
             </span>
           )}
         </div>

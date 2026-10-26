@@ -184,6 +184,10 @@ export interface WireCopyWorkflowResponse {
 /** The shared error envelope for every non-2xx response (server-api-v0.md §1). */
 export interface WireError {
   error: {
+    /** The ADR 0107 error code, the client's `errors.<code>` key; absent from an older server. */
+    code?: string;
+    params?: { [name: string]: string | number };
+    /** English, for `curl`, an older client and a code the client does not know. */
     message: string;
     details?: JsonValue;
   };

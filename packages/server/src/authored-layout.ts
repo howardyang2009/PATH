@@ -1,6 +1,7 @@
 import { type Dirent, lstatSync, readdirSync } from "node:fs";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import type { Refusal } from "./http-json.js";
 
 // Where authored files live (ADR 0084): a read-only shipped root in the PATH install, then a
 // `shared/` root the team owns and one `users/<user-id>/` root per user under the project, each
@@ -27,9 +28,8 @@ export interface AuthoredRoot {
 export type AuthoredPlace = Pick<AuthoredRoot, "origin" | "kind" | "writable">;
 
 /** A door's refusal of a path: the status and message it replies with. */
-export interface AuthoredRefusal {
+export interface AuthoredRefusal extends Refusal {
   status: 400 | 403;
-  message: string;
 }
 
 /** The file suffix that types an authored file by its kind. */
@@ -126,15 +126,12 @@ export function authoredLayout({
     workflowRefusal(projectPath, door) {
       const root = classify(projectPath);
       if (root?.kind === "template") {
-        return { status: 400, message: "workflow path must not be a template path" };
+        return { status: 400, code: "workflow.template-path" };
       }
       if (root?.origin === "shipped") {
         return {
           status: 403,
-          message:
-            door === "write"
-              ? "a shipped workflow is read-only"
-              : "a shipped workflow must be copied before it runs",
+          code: door === "write" ? "workflow.shipped-read-only" : "workflow.shipped-copy-first",
         };
       }
       return undefined;

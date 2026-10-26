@@ -6,10 +6,20 @@ export type MessageKey = MessageKeys<Messages, NestedKeyOf<Messages>>;
 
 export type MessageParam = string | number | Message;
 
+type CodeOf<K> = K extends `errors.${infer C}` ? C : never;
+
+/** An ADR 0107 error code: the key of an `errors.<code>` message, without the namespace. */
+export type ErrorCode = CodeOf<MessageKey>;
+
 /** User-visible text as data: code outside React returns this, and the React layer renders it. */
 export interface Message {
   key: MessageKey;
   params?: Record<string, MessageParam>;
+}
+
+/** Text PATH does not own (a server refusal, a parser error), carried as a `Message` unchanged. */
+export function verbatim(text: string): Message {
+  return { key: "shared.verbatim", params: { text } };
 }
 
 export type Translate = (key: MessageKey, values?: Record<string, string | number>) => string;

@@ -1,3 +1,4 @@
+import { type Message, verbatim } from "@path/i18n";
 import {
   type ChildSlot,
   CONTROL_CHILD_SLOTS,
@@ -24,13 +25,19 @@ export interface AbsentStepType {
   folder: string;
 }
 
+/** A refusal's text: a headline, then one line per detail. */
+export interface RefusalText {
+  message: Message;
+  details: Message[];
+}
+
 /** The outcome of opening a file: a rendered model, or one of the legible refusals. */
 export type OpenResult =
   | { status: "opened"; file: WorkflowFile; idsStamped: boolean }
-  | { status: "unregistered-types"; absent: AbsentStepType[]; message: string }
-  | { status: "duplicate-ids"; message: string }
-  | { status: "invalid-ids"; message: string }
-  | { status: "invalid"; message: string };
+  | ({ status: "unregistered-types"; absent: AbsentStepType[] } & RefusalText)
+  | ({ status: "duplicate-ids" } & RefusalText)
+  | ({ status: "invalid-ids" } & RefusalText)
+  | ({ status: "invalid" } & RefusalText);
 
 function asObject(value: unknown): Record<string, unknown> | null {
   return typeof value === "object" && value !== null && !Array.isArray(value)
@@ -92,19 +99,39 @@ function collectRawNodes(body: unknown[]): RawNodeRef[] {
   return out;
 }
 
-function nodeLabel(ref: RawNodeRef): string {
-  return typeof ref.obj.name === "string" ? `"${ref.obj.name}"` : `at ${ref.path.join(".")}`;
+function nodeAt(path: (string | number)[]): Message {
+  return { key: "designer.openWorkflow.nodeAt", params: { path: path.join(".") } };
+}
+
+function nodeLabel(ref: RawNodeRef): Message {
+  return typeof ref.obj.name === "string"
+    ? { key: "designer.openWorkflow.nodeNamed", params: { name: ref.obj.name } }
+    : nodeAt(ref.path);
+}
+
+/** `labels` as one comma-separated list, built from pairs so each Locale picks its separator. */
+function nodeList(labels: Message[]): Message {
+  const [first, ...rest] = labels;
+  if (first === undefined) return verbatim("");
+  if (rest.length === 0) return first;
+  return { key: "designer.openWorkflow.nodeList", params: { first, rest: nodeList(rest) } };
 }
 
 /** The aggregate refusal for a file naming types absent from the registry: every absent type, the
  * folder that resolves each, and the refresh-and-retry the stale-snapshot case needs. */
-function unregisteredTypesMessage(absent: AbsentStepType[]): string {
-  const lines = absent.map((a) => `  • "${a.type}" — add ${a.folder} to this PATH tree`);
-  return [
-    `Cannot open: this file names ${absent.length} step type${absent.length === 1 ? "" : "s"} absent from the server's registry.`,
-    ...lines,
-    "If the server has since loaded these plugins, refresh the registry and retry.",
-  ].join("\n");
+function unregisteredTypesRefusal(absent: AbsentStepType[]): RefusalText {
+  return {
+    message: { key: "designer.openWorkflow.unregisteredTypes", params: { count: absent.length } },
+    details: [
+      ...absent.map(
+        (a): Message => ({
+          key: "designer.openWorkflow.unregisteredType",
+          params: { type: a.type, folder: a.folder },
+        }),
+      ),
+      { key: "designer.openWorkflow.unregisteredRetry" },
+    ],
+  };
 }
 
 /**
@@ -168,16 +195,17 @@ function isPresent(id: unknown): boolean {
 function resolveIdentity(
   root: Record<string, unknown>,
   nodes: RawNodeRef[],
-): { status: "invalid-ids" | "duplicate-ids"; message: string } | { dirty: boolean } {
+): ({ status: "invalid-ids" | "duplicate-ids" } & RefusalText) | { dirty: boolean } {
   const rootRef: RawNodeRef = { obj: root, path: ["(workflow)"] };
-  const labelFor = (ref: RawNodeRef): string => (ref === rootRef ? "the workflow" : nodeLabel(ref));
+  const labelFor = (ref: RawNodeRef): Message =>
+    ref === rootRef ? { key: "designer.openWorkflow.theWorkflow" } : nodeLabel(ref);
   const all = [rootRef, ...nodes];
   // Paths are the caller's own spelling, so an issue path maps back to the ref whose label is
   // printed.
   const refByPath = new Map(all.map((ref) => [JSON.stringify(ref.path), ref]));
-  const labelAt = (path: (string | number)[]): string => {
+  const labelAt = (path: (string | number)[]): Message => {
     const ref = refByPath.get(JSON.stringify(path));
-    return ref === undefined ? `at ${path.join(".")}` : labelFor(ref);
+    return ref === undefined ? nodeAt(path) : labelFor(ref);
   };
 
   const issues = identityIssues(
@@ -189,16 +217,13 @@ function resolveIdentity(
   // which the Designer must not clobber.
   const invalid = issues.filter((issue) => issue.rule === "invalid-id");
   if (invalid.length > 0) {
-    const lines = invalid.map(
-      (issue) =>
-        `  • ${labelAt(issue.path)} has an id that is not a UUIDv4: ${JSON.stringify(issue.value)}`,
-    );
     return {
       status: "invalid-ids",
-      message: [
-        `Cannot open: ${invalid.length} node id${invalid.length === 1 ? " is" : "s are"} not valid UUIDv4s.`,
-        ...lines,
-      ].join("\n"),
+      message: { key: "designer.openWorkflow.invalidIds", params: { count: invalid.length } },
+      details: invalid.map((issue) => ({
+        key: "designer.openWorkflow.invalidId",
+        params: { node: labelAt(issue.path), value: JSON.stringify(issue.value) },
+      })),
     };
   }
 
@@ -212,15 +237,13 @@ function resolveIdentity(
     shared.set(issue.value, paths);
   }
   if (shared.size > 0) {
-    const lines = [...shared.entries()].map(
-      ([id, paths]) => `  • id ${JSON.stringify(id)} is shared by ${paths.map(labelAt).join(", ")}`,
-    );
     return {
       status: "duplicate-ids",
-      message: [
-        `Cannot open: ${shared.size} node id${shared.size === 1 ? " is" : "s are"} used more than once.`,
-        ...lines,
-      ].join("\n"),
+      message: { key: "designer.openWorkflow.duplicateIds", params: { count: shared.size } },
+      details: [...shared.entries()].map(([id, paths]) => ({
+        key: "designer.openWorkflow.duplicateId",
+        params: { id: JSON.stringify(id), nodes: nodeList(paths.map(labelAt)) },
+      })),
     };
   }
 
@@ -245,7 +268,11 @@ export function openWorkflowFile(rawText: string, plugins: WireStepPlugin[]): Op
   } catch (error) {
     return {
       status: "invalid",
-      message: `Cannot open: the file is not valid JSON (${error instanceof Error ? error.message : String(error)}).`,
+      message: {
+        key: "designer.openWorkflow.notJson",
+        params: { error: error instanceof Error ? error.message : String(error) },
+      },
+      details: [],
     };
   }
 
@@ -255,7 +282,7 @@ export function openWorkflowFile(rawText: string, plugins: WireStepPlugin[]): Op
 
   const absent = findAbsentTypes(nodes, plugins);
   if (absent.length > 0) {
-    return { status: "unregistered-types", absent, message: unregisteredTypesMessage(absent) };
+    return { status: "unregistered-types", absent, ...unregisteredTypesRefusal(absent) };
   }
 
   let idsStamped = false;
@@ -269,7 +296,8 @@ export function openWorkflowFile(rawText: string, plugins: WireStepPlugin[]): Op
   if (!parsed.success) {
     return {
       status: "invalid",
-      message: `Cannot open: the file does not validate.\n${parsed.errors.join("\n")}`,
+      message: { key: "designer.openWorkflow.notValid" },
+      details: parsed.errors.map(verbatim),
     };
   }
   // `idsStamped` drives the open badge's wording, not the buffer's dirtiness: dirtiness is

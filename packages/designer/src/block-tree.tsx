@@ -1,5 +1,6 @@
 import type { WorkflowNode } from "@path/schema";
 import type { CSSProperties, KeyboardEvent, MouseEvent, ReactNode } from "react";
+import { useTranslations } from "use-intl";
 import { summarizeCondition } from "./condition-summary.js";
 import { ConflictMarker } from "./conflict-context.js";
 import type { SingleSlot } from "./edit-tree.js";
@@ -72,6 +73,7 @@ function TailSocket({
   socket: ListSocket;
   editor?: EditorApi;
 }): JSX.Element | null {
+  const t = useTranslations();
   if (!editor?.socketOpen(socket.flavor, socket.ownerId)) return null;
   return (
     <button
@@ -79,7 +81,7 @@ function TailSocket({
       className="socket socket-tail"
       onClick={() => editor.placeIntoList(socket.ownerId)}
     >
-      + add {editor.armedLabel} here
+      {t("designer.blockTree.addHere", { kind: editor.armedLabel ?? "" })}
     </button>
   );
 }
@@ -100,7 +102,9 @@ function NodeControls({
   node: WorkflowNode;
   editor?: EditorApi;
 }): JSX.Element | null {
+  const t = useTranslations();
   if (!editor) return null;
+  const name = node.name;
   return (
     <span className="node-controls">
       {editor.canMove(node.id) ? (
@@ -108,7 +112,7 @@ function NodeControls({
           <button
             type="button"
             className="ctl"
-            aria-label={`Move ${node.name} up`}
+            aria-label={t("designer.blockTree.moveUp", { name })}
             onClick={() => editor.move(node.id, -1)}
           >
             ▲
@@ -116,7 +120,7 @@ function NodeControls({
           <button
             type="button"
             className="ctl"
-            aria-label={`Move ${node.name} down`}
+            aria-label={t("designer.blockTree.moveDown", { name })}
             onClick={() => editor.move(node.id, 1)}
           >
             ▼
@@ -127,7 +131,7 @@ function NodeControls({
         <button
           type="button"
           className="ctl"
-          aria-label={`Duplicate ${node.name}`}
+          aria-label={t("designer.blockTree.duplicate", { name })}
           onClick={() => editor.duplicate(node.id)}
         >
           ⧉
@@ -137,7 +141,7 @@ function NodeControls({
         <button
           type="button"
           className="ctl ctl-del"
-          aria-label={`Delete ${node.name}`}
+          aria-label={t("designer.blockTree.delete", { name })}
           onClick={() => editor.remove(node.id)}
         >
           ×
@@ -200,6 +204,7 @@ function useSelectable(node: WorkflowNode): {
  * badge.
  */
 function NodeRunBadge({ id }: { id: string }): JSX.Element | null {
+  const t = useTranslations();
   const status = useNodeRunStatus(id);
   if (status === null) return null;
   return (
@@ -207,7 +212,7 @@ function NodeRunBadge({ id }: { id: string }): JSX.Element | null {
       <span className="node-run-badge-glyph" aria-hidden="true">
         {RUN_STATUS_GLYPH[status]}
       </span>
-      {status}
+      {t(`shared.status.${status}`)}
     </span>
   );
 }
@@ -280,6 +285,7 @@ function RefChip({
   onDescend: DescendHandler;
   editor?: EditorApi;
 }): JSX.Element {
+  const t = useTranslations();
   return (
     // biome-ignore lint/a11y/useSemanticElements: blocks host their own socket buttons, so a real
     <div
@@ -288,11 +294,7 @@ function RefChip({
       data-node-type="workflow"
       role="button"
       tabIndex={0}
-      title={
-        node.ref
-          ? "Double-click to open the referenced file"
-          : "Double-click to choose or create this reference's target"
-      }
+      title={node.ref ? t("designer.blockTree.openRef") : t("designer.blockTree.chooseRef")}
       onDoubleClick={() => onDescend(node)}
       onKeyDown={deleteKeyHandler(node, editor)}
       {...useSelectable(node)}
@@ -316,6 +318,7 @@ function CheckpointBlock({
   node: Extract<WorkflowNode, { type: "checkpoint" }>;
   editor?: EditorApi;
 }): JSX.Element {
+  const t = useTranslations();
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: selectable block; its socket buttons own the actions.
     <div
@@ -328,7 +331,9 @@ function CheckpointBlock({
     >
       <span className="chip">CHECKPOINT</span>
       <span className="node-name">{node.name}</span>
-      <span className="summary">assert {summarizeCondition(node.condition)}</span>
+      <span className="summary">
+        {t("designer.blockTree.assert", { condition: summarizeCondition(node.condition) })}
+      </span>
       <NodeRunBadge id={node.id} />
       <IncomingBadge node={node} />
       <ConflictMarker id={node.id} />
@@ -346,13 +351,14 @@ function GotoJumpsBadge({
 }: {
   node: Extract<WorkflowNode, { type: "goto" }>;
 }): JSX.Element | null {
+  const t = useTranslations();
   const spent = useGotoJumpsSpent(node.id);
   if (spent === null) return null;
   return (
     <span
       className="goto-jumps"
       data-testid={`goto-jumps-${node.id}`}
-      title="Jumps spent in the watched run"
+      title={t("designer.blockTree.jumpsSpent")}
     >
       {spent}/{node.max_jumps}
     </span>
@@ -437,10 +443,11 @@ function SlotSwap({
   target: SingleSlot;
   editor?: EditorApi;
 }): JSX.Element | null {
+  const t = useTranslations();
   if (!editor?.socketOpen("single", target.ownerId)) return null;
   return (
     <button type="button" className="socket socket-swap" onClick={() => editor.swapSingle(target)}>
-      swap for {editor.armedLabel}
+      {t("designer.blockTree.swapFor", { kind: editor.armedLabel ?? "" })}
     </button>
   );
 }
@@ -456,6 +463,7 @@ function ParallelBlock({
   onDescend: DescendHandler;
   editor?: EditorApi;
 }): JSX.Element {
+  const t = useTranslations();
   const branchSocketOpen = editor?.socketOpen("branches", node.id) ?? false;
   return (
     <CBlock
@@ -483,7 +491,7 @@ function ParallelBlock({
               className="socket socket-tail"
               onClick={() => editor.placeIntoList(node.id)}
             >
-              + add {editor.armedLabel} branch
+              {t("designer.blockTree.addBranch", { kind: editor.armedLabel ?? "" })}
             </button>
           </div>
         ) : null}
@@ -503,6 +511,7 @@ function BranchBlock({
   onDescend: DescendHandler;
   editor?: EditorApi;
 }): JSX.Element {
+  const t = useTranslations();
   return (
     <CBlock
       node={node}
@@ -517,14 +526,16 @@ function BranchBlock({
       <div className="c-columns">
         {node.arms.map((arm, armIndex) => (
           <div className="c-column" key={arm.node.id}>
-            <span className="col-caption summary">when {summarizeCondition(arm.when)}</span>
+            <span className="col-caption summary">
+              {t("designer.blockTree.when", { condition: summarizeCondition(arm.when) })}
+            </span>
             <NodeBlock node={arm.node} onDescend={onDescend} editor={editor} />
             <SlotSwap target={{ slot: "arm", ownerId: node.id, armIndex }} editor={editor} />
           </div>
         ))}
         {node.else ? (
           <div className="c-column">
-            <span className="col-caption">else</span>
+            <span className="col-caption">{t("designer.blockTree.else")}</span>
             <NodeBlock node={node.else} onDescend={onDescend} editor={editor} />
             <SlotSwap target={{ slot: "else", ownerId: node.id }} editor={editor} />
           </div>
@@ -533,11 +544,11 @@ function BranchBlock({
       {editor ? (
         <div className="block-affordances">
           <button type="button" className="socket" onClick={() => editor.addArm(node.id)}>
-            + add arm
+            {t("designer.blockTree.addArm")}
           </button>
           {node.else ? null : (
             <button type="button" className="socket" onClick={() => editor.addElse(node.id)}>
-              + add else
+              {t("designer.blockTree.addElse")}
             </button>
           )}
         </div>
@@ -557,6 +568,7 @@ function WhileBlock({
   onDescend: DescendHandler;
   editor?: EditorApi;
 }): JSX.Element {
+  const t = useTranslations();
   return (
     <CBlock
       node={node}
@@ -566,7 +578,10 @@ function WhileBlock({
           <span className="kind-tag">while-do</span>
           <span className="node-name">{node.name}</span>
           <span className="summary">
-            while {summarizeCondition(node.condition)} · max {node.max_iterations}
+            {t("designer.blockTree.whileMax", {
+              condition: summarizeCondition(node.condition),
+              max: node.max_iterations,
+            })}
           </span>
         </>
       }

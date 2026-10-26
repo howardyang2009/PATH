@@ -96,15 +96,12 @@ describe("grammar — goto placement reads the socket's ancestor chain", () => {
 
 describe("palette and mint", () => {
   it("offers goto in the Controller group", () => {
-    const controllers = paletteGroups([]).find((group) => group.title === "Controller")!;
+    const controllers = paletteGroups([]).find((group) => group.key === "controller")!;
     expect(controllers.entries.map((entry) => entry.kind)).toContain("goto");
-    const tabs = controllers.tabs!.map((tab) => [
-      tab.label,
-      tab.entries.map((entry) => entry.kind),
-    ]);
+    const tabs = controllers.tabs!.map((tab) => [tab.key, tab.entries.map((entry) => entry.kind)]);
     expect(tabs).toEqual([
-      ["Structure", ["parallel", "branch", "while-do", "sequence", "checkpoint"]],
-      ["Graph", ["goto"]],
+      ["structure", ["parallel", "branch", "while-do", "sequence", "checkpoint"]],
+      ["graph", ["goto"]],
     ]);
   });
 

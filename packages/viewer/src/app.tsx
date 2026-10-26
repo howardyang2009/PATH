@@ -4,7 +4,7 @@ import {
   runFileSetFromDisk,
   type UserMenuItem,
 } from "@path/client-core";
-
+import { useTranslations } from "use-intl";
 import { AppShell, TopBar } from "./app-shell.js";
 import { useAuthMode } from "./auth-gate.js";
 import { LaunchPanel } from "./launch-panel.js";
@@ -22,15 +22,16 @@ import { useViewerPage, viewerPath } from "./viewer-page.js";
  * reached from the user menu. Local mode has no Secrets page, so that URL shows the console.
  */
 export function App({ client }: { client: PathApiClient }) {
+  const t = useTranslations("viewer");
   const hosted = useAuthMode() === "hosted";
   const { page, go } = useViewerPage();
   const menuItems: UserMenuItem[] = hosted
-    ? [{ label: "Secrets", icon: "\u{1F511}", onClick: () => go("secrets") }]
+    ? [{ label: t("secretsPage.title"), icon: "\u{1F511}", onClick: () => go("secrets") }]
     : [];
   if (!hosted || page !== "secrets") return <RunsConsole client={client} menuItems={menuItems} />;
   return (
     <div className="shell">
-      <TopBar sub="viewer · secrets" menuItems={menuItems} />
+      <TopBar sub={t("app.subSecrets")} menuItems={menuItems} />
       <main className="secrets-main">
         <a
           className="secrets-back"
@@ -40,7 +41,7 @@ export function App({ client }: { client: PathApiClient }) {
             go("console");
           }}
         >
-          Back to runs
+          {t("app.backToRuns")}
         </a>
         <SecretsPage client={client} />
       </main>
@@ -57,6 +58,7 @@ export function App({ client }: { client: PathApiClient }) {
  * run id, not a visible row, so narrowing the list is no reason to stop watching.
  */
 function RunsConsole({ client, menuItems }: { client: PathApiClient; menuItems: UserMenuItem[] }) {
+  const t = useTranslations("viewer.app");
   // The watched root run, the selected node run and the list's reload nudge: one selection the
   // Viewer shares with the Designer's dock (use-run-selection.ts).
   const selection = useRunSelection();
@@ -115,7 +117,7 @@ function RunsConsole({ client, menuItems }: { client: PathApiClient; menuItems: 
       }
       detail={
         selectedRootRunId === null ? (
-          <p className="pane-note">Select a run.</p>
+          <p className="pane-note">{t("selectRun")}</p>
         ) : (
           <RunDetail
             client={client}
@@ -129,7 +131,7 @@ function RunsConsole({ client, menuItems }: { client: PathApiClient; menuItems: 
       }
       nodeIo={
         selectedRun === undefined ? (
-          <p className="pane-note">Select a run in the tree.</p>
+          <p className="pane-note">{t("selectTreeRun")}</p>
         ) : (
           <NodeIo
             client={client}

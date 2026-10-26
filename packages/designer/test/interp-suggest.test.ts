@@ -75,11 +75,18 @@ describe("parseInputDraft", () => {
 
   it("rejects malformed JSON, an unclosed placeholder, and an illegal root", () => {
     // Starts with `{`, so it is taken as structured JSON and its parse error is reported.
-    expect(parseInputDraft("{ not json", ROOTS.typeField).ok).toBe(false);
+    expect(parseInputDraft("{ not json", ROOTS.typeField)).toEqual({
+      ok: false,
+      error: { key: "designer.draft.notJson", params: { error: expect.any(String) } },
+    });
     expect(parseInputDraft('{ "x": "${context.a" }', ROOTS.typeField).ok).toBe(false);
     // `output` is not a legal input root — checked at every string leaf, raw whole-string included.
     expect(parseInputDraft('{ "x": "${output.a}" }', ROOTS.typeField).ok).toBe(false);
-    expect(parseInputDraft("${output.a}", ROOTS.typeField).ok).toBe(false);
+    // The schema's own text until its validation codes land.
+    expect(parseInputDraft("${output.a}", ROOTS.typeField)).toMatchObject({
+      ok: false,
+      error: { key: "shared.verbatim" },
+    });
     expect(parseInputDraft("${context.a", ROOTS.typeField).ok).toBe(false);
   });
 });

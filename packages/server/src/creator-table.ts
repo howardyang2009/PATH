@@ -1,5 +1,6 @@
 import { mkdirSync } from "node:fs";
 import { dirname, relative, resolve, sep } from "node:path";
+import type { ErrorCode } from "@path/i18n";
 import Database from "better-sqlite3";
 import type { AuthoredKind, AuthoredLayout } from "./authored-layout.js";
 
@@ -22,7 +23,7 @@ export interface CreatorTable {
   close(): void;
 }
 
-export const SHARED_ITEM_READ_ONLY = "only the creator edits a shared item";
+export const SHARED_ITEM_READ_ONLY = "authored.shared-read-only" satisfies ErrorCode;
 
 /** Opens (creating if absent) the creator table at `dbPath`; `":memory:"` keeps it in memory. */
 export function openCreatorTable(dbPath: string): CreatorTable {

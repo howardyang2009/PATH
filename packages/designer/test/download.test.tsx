@@ -4,6 +4,7 @@ import { FORMAT_VERSION } from "@path/schema";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../src/app.js";
+import { downloadFailure } from "../src/download-file.js";
 import { fileMenuItem, findFileMenuItem } from "./file-menu.js";
 
 /** The Download button saves the active frame's saved file: a workflow by path, a template by id. */
@@ -135,5 +136,24 @@ describe("Download", () => {
     expect(alert.mock.calls[0]?.[0]).toContain(
       `gone.workflow.json (in ${WORKFLOW_PATH}): file not found`,
     );
+  });
+});
+
+describe("downloadFailure", () => {
+  it("renders the server's code and names each ref it could not follow", () => {
+    const error = new PathApiError(
+      422,
+      "workflow refs could not be bundled",
+      [{ ref: "gone.workflow.json", from: "a.workflow.json", reason: "file not found" }],
+      "workflow.bundle-failed",
+      {},
+    );
+    expect(downloadFailure(error)).toEqual([
+      { key: "errors.workflow.bundle-failed", params: {} },
+      {
+        key: "designer.download.unbundledRef",
+        params: { ref: "gone.workflow.json", from: "a.workflow.json", reason: "file not found" },
+      },
+    ]);
   });
 });

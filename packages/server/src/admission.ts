@@ -1,6 +1,6 @@
 import type { IncomingMessage } from "node:http";
 import type { CreatorTable } from "./creator-table.js";
-import { type RouteReply, replyError } from "./http-json.js";
+import { type RouteReply, refusalText, replyError, replyRefusal } from "./http-json.js";
 import { type RequestBody, readBodyUnderCap } from "./request-body.js";
 import {
   createRateLimiter,
@@ -85,7 +85,7 @@ export function hostedAdmission({
         return {
           ok: false,
           reply: {
-            ...replyError(429, "too many requests: try again later"),
+            ...replyError(429, "request.too-many"),
             headers: { "Retry-After": String(taken.retryAfterSeconds) },
           },
         };
@@ -106,9 +106,9 @@ export function hostedAdmission({
       return {
         userId,
         maxRunningVms: user.maxRunningVms,
-        startRefusal: () => run.launchRefusal(userId, user)?.message,
+        startRefusal: () => textOf(run.launchRefusal(userId, user)),
         meter: () => usage.begin(userId),
-        importRefusal: () => run.storageRefusal(userId, user, true)?.message,
+        importRefusal: () => textOf(run.storageRefusal(userId, user, true)),
       };
     },
 
@@ -116,9 +116,15 @@ export function hostedAdmission({
   };
 }
 
-function refusalReply({ status, message, retryAfterSeconds }: RunRefusal): RouteReply {
+/** A run limit's English text, for the VM-start and import doors that record it as a string. */
+function textOf(refusal: RunRefusal | undefined): string | undefined {
+  return refusal === undefined ? undefined : refusalText(refusal);
+}
+
+function refusalReply(refusal: RunRefusal): RouteReply {
+  const { status, retryAfterSeconds } = refusal;
   return {
-    ...replyError(status, message),
+    ...replyRefusal(status, refusal),
     headers:
       retryAfterSeconds === undefined ? undefined : { "Retry-After": String(retryAfterSeconds) },
   };

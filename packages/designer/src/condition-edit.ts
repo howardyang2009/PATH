@@ -1,3 +1,4 @@
+import { type Message, verbatim } from "@path/i18n";
 import {
   type Condition,
   ConditionSchema,
@@ -121,8 +122,10 @@ export function changeConditionType(prev: Condition, next: Condition["type"]): C
 }
 
 /** Validate a whole condition against the schema; returns the first issue message, or `null` when
- * valid. */
-export function validateCondition(condition: Condition): string | null {
+ * valid. The zod text travels verbatim until the schema slice maps issues. */
+export function validateCondition(condition: Condition): Message | null {
   const result = ConditionSchema.safeParse(condition);
-  return result.success ? null : (result.error.issues[0]?.message ?? "invalid condition");
+  if (result.success) return null;
+  const message = result.error.issues[0]?.message;
+  return message === undefined ? { key: "designer.draft.invalidCondition" } : verbatim(message);
 }

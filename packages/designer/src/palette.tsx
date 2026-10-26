@@ -1,15 +1,18 @@
 import type { TemplateSummary, WireStepPlugin } from "@path/client-core";
+import type { MessageKey } from "@path/i18n";
+import { useMessage } from "@path/i18n/react";
 import { must } from "@path/schema";
 import { useState } from "react";
+import { useTranslations } from "use-intl";
 import { type PaletteEntry, type PaletteSubTab, paletteGroups } from "./palette-data.js";
 import type { TemplateListLoad } from "./template-list.js";
 import type { Armed, ArmedState } from "./use-armed.js";
 
 type PaletteTab = "nodes" | "templates";
 
-const TABS: readonly { key: PaletteTab; label: string }[] = [
-  { key: "nodes", label: "Nodes" },
-  { key: "templates", label: "Templates" },
+const TABS: readonly { key: PaletteTab; label: MessageKey }[] = [
+  { key: "nodes", label: "designer.palette.nodes" },
+  { key: "templates", label: "designer.palette.templates" },
 ];
 
 /**
@@ -45,10 +48,11 @@ export function Palette({
   /** Does a double-click on a template card open it for edit? Only in template mode. */
   canEditTemplates: boolean;
 }) {
+  const t = useTranslations();
   const [tab, setTab] = useState<PaletteTab>("nodes");
   return (
     <>
-      <div className="palette-tabs" role="tablist" aria-label="Palette sections">
+      <div className="palette-tabs" role="tablist" aria-label={t("designer.palette.sections")}>
         {TABS.map(({ key, label }) => (
           <button
             key={key}
@@ -60,7 +64,7 @@ export function Palette({
             aria-controls={`palette-panel-${key}`}
             onClick={() => setTab(key)}
           >
-            {label}
+            {t(label)}
           </button>
         ))}
       </div>
@@ -86,8 +90,16 @@ export function Palette({
 }
 
 /** One titled palette section, labelled by its heading. */
-function PaletteGroupSection({ title, children }: { title: string; children: React.ReactNode }) {
-  const titleId = `palette-${title.toLowerCase().replace(/\s+/g, "-")}`;
+function PaletteGroupSection({
+  id,
+  title,
+  children,
+}: {
+  id: string;
+  title: string;
+  children: React.ReactNode;
+}) {
+  const titleId = `palette-${id}`;
   return (
     <section className="palette-group" aria-labelledby={titleId}>
       <h3 className="palette-group-title" id={titleId}>
@@ -107,14 +119,21 @@ function NodesTab({
   armed: Armed | null;
   onArm: (armed: Armed | null) => void;
 }) {
+  const t = useTranslations();
   return (
     <>
       {paletteGroups(plugins).map((group) => (
-        <PaletteGroupSection key={group.title} title={group.title}>
+        <PaletteGroupSection key={group.key} id={group.key} title={t(group.title)}>
           {group.tabs === undefined ? (
             <PaletteCardList entries={group.entries} armed={armed} onArm={onArm} />
           ) : (
-            <PaletteSubTabs group={group.title} tabs={group.tabs} armed={armed} onArm={onArm} />
+            <PaletteSubTabs
+              group={group.key}
+              title={t(group.title)}
+              tabs={group.tabs}
+              armed={armed}
+              onArm={onArm}
+            />
           )}
         </PaletteGroupSection>
       ))}
@@ -149,22 +168,29 @@ function PaletteCardList({
  * default. */
 function PaletteSubTabs({
   group,
+  title,
   tabs,
   armed,
   onArm,
 }: {
   group: string;
+  title: string;
   tabs: readonly PaletteSubTab[];
   armed: Armed | null;
   onArm: (armed: Armed | null) => void;
 }) {
   const firstTab = must(tabs[0], "first palette tab");
   const [selected, setSelected] = useState(firstTab.key);
+  const t = useTranslations();
   const current = tabs.find((tab) => tab.key === selected) ?? firstTab;
-  const prefix = `palette-${group.toLowerCase().replace(/\s+/g, "-")}`;
+  const prefix = `palette-${group}`;
   return (
     <>
-      <div className="palette-subtabs" role="tablist" aria-label={`${group} sections`}>
+      <div
+        className="palette-subtabs"
+        role="tablist"
+        aria-label={t("designer.palette.groupSections", { group: title })}
+      >
         {tabs.map(({ key, label }) => (
           <button
             key={key}
@@ -176,7 +202,7 @@ function PaletteSubTabs({
             aria-controls={`${prefix}-panel-${key}`}
             onClick={() => setSelected(key)}
           >
-            {label}
+            {t(label)}
           </button>
         ))}
       </div>
@@ -202,11 +228,15 @@ function TemplatesTab({
   onEditTemplate: (template: TemplateSummary) => void;
   canEditTemplates: boolean;
 }) {
-  if (templateList.phase === "loading") return <p className="palette-note">Loading templates…</p>;
+  const t = useTranslations();
+  const renderMessage = useMessage();
+  if (templateList.phase === "loading") {
+    return <p className="palette-note">{t("designer.palette.loadingTemplates")}</p>;
+  }
   if (templateList.phase === "error") {
     return (
       <p className="palette-note palette-note-error" role="alert">
-        Could not list templates: {templateList.message}
+        {t("designer.palette.listFailed", { message: renderMessage(templateList.message) })}
       </p>
     );
   }
@@ -215,14 +245,14 @@ function TemplatesTab({
     <>
       {arming.templateError !== null ? (
         <p className="palette-note palette-note-error" role="alert">
-          {arming.templateError}
+          {renderMessage(arming.templateError)}
         </p>
       ) : null}
       {/* One kind only (ADR 0063), so the tab lists the templates with no group heading, in server
           order (shipped before user). Invalid rows stay in, shown unselectable with their error
           (ADR 0050 decision 4). */}
       {templateList.templates.length === 0 ? (
-        <p className="palette-note">No templates</p>
+        <p className="palette-note">{t("designer.palette.noTemplates")}</p>
       ) : (
         <ul className="palette-list">
           {templateList.templates.map((template) => (
@@ -253,6 +283,7 @@ function PaletteCard({
   armed: boolean;
   onArm: (kind: string | null) => void;
 }) {
+  const renderMessage = useMessage();
   const style = {
     "--card-fg": `var(--k-${entry.hue})`,
     "--card-bg": `var(--k-${entry.hue}-bg)`,
@@ -269,8 +300,8 @@ function PaletteCard({
       >
         <span className="palette-card-swatch" aria-hidden="true" />
         <span className="palette-card-text">
-          <span className="palette-card-label">{entry.label}</span>
-          <span className="palette-card-blurb">{entry.blurb}</span>
+          <span className="palette-card-label">{renderMessage(entry.label)}</span>
+          <span className="palette-card-blurb">{renderMessage(entry.blurb)}</span>
         </span>
       </button>
     </li>
@@ -300,15 +331,14 @@ function TemplateCard({
   onDisarm: () => void;
   onEdit: () => void;
 }) {
+  const t = useTranslations();
   const style = {
     "--card-fg": "var(--k-template)",
     "--card-bg": "var(--k-template-bg)",
   } as React.CSSProperties;
   const disabled = !template.valid;
   const editable = canEdit && template.id !== null;
-  const editHint = canEdit
-    ? "Double-click to edit the template."
-    : "Switch to Template mode to edit this template.";
+  const editHint = t(canEdit ? "designer.palette.editHint" : "designer.palette.switchToEdit");
   return (
     <li>
       <button
@@ -328,11 +358,13 @@ function TemplateCard({
           <span className="palette-card-blurb">{template.description}</span>
           {template.valid ? null : (
             <span className="palette-card-error">
-              {template.error?.message ?? "invalid template"}
+              {template.error?.message ?? t("designer.palette.invalidTemplate")}
             </span>
           )}
         </span>
-        {template.origin === "shipped" ? <span className="palette-card-tag">shipped</span> : null}
+        {template.origin === "shipped" ? (
+          <span className="palette-card-tag">{t("designer.palette.shipped")}</span>
+        ) : null}
       </button>
     </li>
   );

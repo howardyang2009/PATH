@@ -1,4 +1,10 @@
-import type { AcquireLockResult, HeartbeatResult, PathApiClient } from "@path/client-core";
+import {
+  type AcquireLockResult,
+  apiErrorMessage,
+  type HeartbeatResult,
+  type PathApiClient,
+} from "@path/client-core";
+import type { Message } from "@path/i18n";
 
 /**
  * The client half of the Designer edit-lock lease (ADR 0017): a lease is kept alive per open file —
@@ -22,7 +28,7 @@ export type LeaseState =
   /** The lease was lost mid-edit (heartbeat `409`): reclaimed after expiry, or taken over. */
   | { phase: "lost" }
   /** The acquire failed for a non-`409` reason (a `404` escape, a network error). */
-  | { phase: "error"; message: string };
+  | { phase: "error"; message: Message };
 
 export type LeaseMap = ReadonlyMap<string, LeaseState>;
 
@@ -139,7 +145,7 @@ export class LeaseController {
     } catch (error) {
       this.settle(path, epoch, {
         phase: "error",
-        message: error instanceof Error ? error.message : String(error),
+        message: apiErrorMessage(error),
       });
       return;
     }

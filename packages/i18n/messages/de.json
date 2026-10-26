@@ -1,12 +1,804 @@
 {
   "viewer": {
     "app": {
-      "title": "PATH by RheinWeg · viewer"
+      "title": "PATH by RheinWeg · viewer",
+      "subConsole": "viewer · nur lesen",
+      "subSecrets": "viewer · Secrets",
+      "backToRuns": "Zurück zu den Läufen",
+      "selectRun": "Wählen Sie einen Lauf.",
+      "selectTreeRun": "Wählen Sie einen Lauf im Laufbaum."
+    },
+    "appShell": {
+      "runDetail": "Laufdetails",
+      "nodeIo": "Knoten-E/A/K/F",
+      "workflows": "Workflows",
+      "runs": "Läufe",
+      "resizeWorkflows": "Größe des Workflow-Bereichs ändern",
+      "resizeRuns": "Größe des Lauf-Bereichs ändern",
+      "resizeNodeIo": "Größe des Knoten-E/A/K/F-Bereichs ändern"
+    },
+    "authGate": {
+      "prompt": "Melden Sie sich an, um fortzufahren.",
+      "signIn": "Anmelden"
+    },
+    "launchPanel": {
+      "kind": "Art",
+      "kinds": {
+        "all": "alle",
+        "root": "Stamm",
+        "nested": "verschachtelt",
+        "invalid": "ungültig"
+      },
+      "noWorkflows": "Keine Workflows gefunden.",
+      "noFiltered": "Keine Workflows der Art „{filter}“.",
+      "launch": "{name} starten",
+      "launchWorkflow": "Workflow starten",
+      "loadFailed": "Dieser Workflow konnte nicht geladen werden.",
+      "shippedReadOnly": "Mitgelieferte Workflows sind schreibgeschützt. Kopieren Sie ihn in Ihren Ordner, um ihn zu starten.",
+      "copy": "In meinen Ordner kopieren",
+      "copying": "Wird kopiert…",
+      "readOnly": "schreibgeschützt",
+      "readOnlyTitle": "Schreibgeschützt: von einem anderen Benutzer geteilt"
+    },
+    "secretsPage": {
+      "title": "Secrets",
+      "intro": "Ein Lauf, den Sie starten, liest diese über <code>$env</code>. Ein Wert kann nicht zurückgelesen werden.",
+      "empty": "Noch keine Secrets.",
+      "name": "Name",
+      "value": "Wert",
+      "set": "Setzen",
+      "hint": "Ein vorhandener Name erhält den neuen Wert.",
+      "notice": "{name} gesetzt.",
+      "delete": "Löschen…",
+      "warning": "{name} löschen? Ein Lauf, der es liest, schlägt fehl, bis es erneut gesetzt wird."
+    }
+  },
+  "shared": {
+    "assigneeChip": {
+      "title": "Zugewiesen an {assignee}"
+    },
+    "awaitingActions": {
+      "label": "Wartenden Schritt abschließen",
+      "unresolved": "Das Formular dieses Schritts konnte nicht aus der Workflow-Datei gelesen werden. Beim Absenden wird eine leere Ausgabe gesendet.",
+      "outputSchema": "Ausgabeschema",
+      "noOutputSchema": "Dieser Schritt hat kein Ausgabeschema – jede JSON-Ausgabe wird akzeptiert."
+    },
+    "cancelButton": {
+      "cancel": "Lauf abbrechen",
+      "confirm": "Abbruch bestätigen?",
+      "sending": "Wird abgebrochen…"
+    },
+    "completeForm": {
+      "submit": "Diese Aktivität abschließen",
+      "sending": "Wird gesendet…",
+      "output": "Ausgabe",
+      "rawHelp": "Geben Sie beliebigen Text ein oder JSON für einen strukturierten Wert. Lassen Sie das Feld leer, um eine leere Ausgabe zu senden.",
+      "secretsNote": "Diese Start-Secrets sind maskiert gespeichert und müssen erneut angegeben werden, um den Lauf fortzuführen.",
+      "select": "– auswählen –"
+    },
+    "deleteButton": {
+      "arm": "Lauf löschen…",
+      "warning": "Die Daten dieses Laufs endgültig aus der Datenbank und den Blobs löschen? Dies kann nicht rückgängig gemacht werden."
+    },
+    "deleteConfirm": {
+      "keep": "Behalten",
+      "confirm": "Löschen bestätigen",
+      "sending": "Wird gelöscht…"
+    },
+    "jsonField": {
+      "empty": "leer – Feld wird weggelassen",
+      "valid": "gültiges JSON"
+    },
+    "launchForm": {
+      "workerDefaults": "Start-Worker-Vorgaben (optional)",
+      "workerDefaultsHint": "Der Worker, den die Schritte ohne eigenen Worker je Schritttyp in diesem Lauf verwenden. Eine Auswahl je Schritttyp, keine Konfiguration: Der eigene Worker eines Schritts hat Vorrang, und diese Auswahl hat Vorrang vor der Vorgabe der Datei.",
+      "sending": "Wird gestartet…",
+      "warning": "{count, plural, one {# ungelöste Warnung} other {# ungelöste Warnungen}} – der Lauf kann beim Start fehlschlagen."
+    },
+    "narrative": {
+      "title": "Ereignisverlauf",
+      "follow": "Zum neuesten springen",
+      "empty": "Noch nichts protokolliert.",
+      "noEvents": "0 Ereignisse",
+      "count": "{count, plural, one {# Ereignis} other {# Ereignisse}} · seq {first}–{last}",
+      "stream": {
+        "connecting": "wird verbunden…",
+        "live": "live · SSE",
+        "waiting": "wartet auf Abschluss",
+        "reconnecting": "wird neu verbunden…",
+        "closed": "abgeschlossen",
+        "failed": "Stream verloren"
+      }
+    },
+    "nodeIo": {
+      "refresh": "Aktualisieren",
+      "reused": "Aus einem früheren Lauf wiederverwendet – Eingabe und Ausgabe unten stammen aus diesem Lauf.",
+      "reusedRootRun": "wiederverwendeter Stammlauf",
+      "reusedRun": "wiederverwendeter Lauf",
+      "deleted": "(gelöscht)",
+      "resumed": "Von einem früheren Lauf fortgesetzt – die Eingabe unten ist dessen Stammeingabe.",
+      "resumedFromRootRun": "fortgesetzt von Stammlauf",
+      "input": "Eingabe",
+      "output": "Ausgabe",
+      "context": "Kontext",
+      "noInput": "Für diesen Lauf ist kein Eingabeobjekt gespeichert.",
+      "resumedNoInput": "Der Lauf, von dem fortgesetzt wurde, hat kein Eingabeobjekt gespeichert.",
+      "noOutput": "Für diesen Lauf ist kein Ausgabeobjekt gespeichert.",
+      "noOutputYet": "Noch kein Ausgabeobjekt – ein Lauf schreibt seine Ausgabe, wenn er endet.",
+      "noContext": "Für diesen Lauf ist kein Kontext gespeichert.",
+      "overrideInput": "Überschriebene Eingabe",
+      "overrideConfig": "Überschriebene Konfiguration",
+      "launchWorkerDefaults": "Start-Worker-Vorgaben",
+      "error": "Fehler",
+      "errorSource": "aus dem step-finished-Ereignis des Laufs (Ereignisprotokoll)"
+    },
+    "overrides": {
+      "overrideInput": "Eingabe überschreiben (optional)",
+      "overrideConfig": "Konfiguration überschreiben (optional)",
+      "configLabel": "Konfiguration überschreiben · JSON",
+      "secretsLabel": "Start-Secrets (Konfiguration überschreiben) · JSON",
+      "set": "gesetzt"
+    },
+    "paneNote": {
+      "loading": {
+        "workflows": "Workflows werden geladen…",
+        "runs": "Läufe werden geladen…",
+        "run": "Lauf wird geladen…",
+        "input": "Eingabe wird geladen…",
+        "output": "Ausgabe wird geladen…",
+        "context": "Kontext wird geladen…",
+        "secrets": "Secrets werden geladen…"
+      },
+      "failed": {
+        "workflows": "Workflows konnten nicht geladen werden: {message}",
+        "runs": "Läufe konnten nicht geladen werden: {message}",
+        "run": "Lauf konnte nicht geladen werden: {message}",
+        "input": "Eingabe konnte nicht geladen werden: {message}",
+        "output": "Ausgabe konnte nicht geladen werden: {message}",
+        "context": "Kontext konnte nicht geladen werden: {message}",
+        "secrets": "Secrets konnten nicht geladen werden: {message}"
+      }
+    },
+    "resumeActions": {
+      "secretsNote": "Diese Start-Secrets sind maskiert gespeichert und müssen zum Fortsetzen erneut angegeben werden.",
+      "resume": "Lauf fortsetzen",
+      "sending": "Wird fortgesetzt…",
+      "succeededReason": "Erfolgreich – unten ab einer gewählten Wiederholgrenze erneut ausführen.",
+      "resumeFromTitle": "Fortsetzen ab {nodeName} ({runId})",
+      "resumeFrom": "Fortsetzen ab {nodeName}({shortRunId})",
+      "resumeFromIdle": "Fortsetzen ab …"
+    },
+    "runDetail": {
+      "runTree": "Laufbaum",
+      "awaitingCount": "{count} wartend",
+      "runCount": "{count, plural, one {# Lauf} other {# Läufe}}",
+      "resizeTree": "Größe des Laufbaums ändern"
+    },
+    "runFacts": {
+      "rootRunId": "Stammlauf-ID",
+      "workflowName": "Workflow-Name",
+      "workflowId": "Workflow-ID",
+      "workflowFile": "Workflow-Datei",
+      "nodeId": "Knoten-ID",
+      "runId": "Lauf-ID"
+    },
+    "runTree": {
+      "empty": "Für diesen Stammlauf sind keine Läufe gespeichert.",
+      "pass": "Durchgang {pass}",
+      "passOpenedBy": "Durchgang {pass} · geöffnet von {nodeName}",
+      "iteration": "{name} · Iteration {iteration}",
+      "expand": "{label} aufklappen",
+      "collapse": "{label} zuklappen"
+    },
+    "runsList": {
+      "openWorkflow": "Öffnen Sie einen Workflow, um seine Läufe zu sehen.",
+      "status": "Status",
+      "all": "alle",
+      "noRuns": "Noch keine Läufe.",
+      "noFiltered": "Keine Läufe mit Status „{statusFilter}“.",
+      "inFlight": "Dieser Lauf ist noch aktiv. Fortsetzen und Löschen sind möglich, sobald er endet."
+    },
+    "status": {
+      "running": "läuft",
+      "awaiting": "wartet",
+      "succeeded": "erfolgreich",
+      "failed": "fehlgeschlagen",
+      "cancelled": "abgebrochen",
+      "pending": "ausstehend"
+    },
+    "verbatim": "{text}",
+    "workerDefaults": {
+      "type": "Schritttyp",
+      "worker": "Worker",
+      "defaultOption": "{option} (Standard)",
+      "remove": "Diese Worker-Vorgabe entfernen",
+      "add": "+ Worker-Vorgabe hinzufügen"
     }
   },
   "designer": {
     "app": {
-      "title": "PATH by RheinWeg · designer"
+      "title": "PATH by RheinWeg · designer",
+      "discardUnsaved": "Ungespeicherte Änderungen verwerfen?",
+      "deleteTemplate": "Vorlage „{name}“ löschen? Sie wird von der Festplatte entfernt; dies kann nicht rückgängig gemacht werden.{unsaved, select, true { Ungespeicherte Änderungen gehen ebenfalls verloren.} other {}}",
+      "deleteWorkflow": "„{path}“ löschen? Die Datei wird von der Festplatte entfernt; dies kann nicht rückgängig gemacht werden.{unsaved, select, true { Ungespeicherte Änderungen gehen ebenfalls verloren.} other {}}",
+      "downloadDirty": "Ungespeicherte Änderungen sind nicht enthalten. Die gespeicherte Datei herunterladen?",
+      "couldNotDownload": "Herunterladen nicht möglich: {message}",
+      "templatesDoNotRun": "Vorlagen werden nicht ausgeführt. Wechseln Sie in den Workflow-Modus, um einen Workflow auszuführen.",
+      "saveWorkflowAs": "Workflow speichern unter"
+    },
+    "document": {
+      "readOnly": "Schreibgeschützt: Nur der Ersteller kann speichern. Verwenden Sie „Speichern unter“.",
+      "gone": "Nicht mehr verfügbar"
+    },
+    "editingToolbar": {
+      "modes": {
+        "workflow": "Workflow",
+        "template": "Vorlage"
+      },
+      "editMode": "Bearbeitungsmodus",
+      "newWorkflow": "Neuer Workflow (nicht gespeichert)",
+      "workflowFileTitle": "Speichern schreibt in diese Datei zurück",
+      "newTemplate": "Neue Vorlage (nicht gespeichert)",
+      "templateFileTitle": "Speichern schreibt in diese Vorlage zurück",
+      "readOnlyTag": " ({readOnly, select, shipped {mitgeliefert} other {geteilt}}, schreibgeschützt)",
+      "conflictTitle": "Diese Datei hat sich auf der Festplatte geändert, seit Sie sie geöffnet haben. Ihr Speichern wurde abgelehnt, damit diese Änderung nicht überschrieben wird. Laden Sie die neueste Fassung neu und wenden Sie Ihre Änderungen dann erneut an.",
+      "conflict": "Speichern abgelehnt: Diese Datei hat sich auf der Festplatte geändert, seit Sie sie geöffnet haben",
+      "reload": "Datei neu laden",
+      "couldNotSave": "Speichern nicht möglich: {message}",
+      "couldNotDelete": "Löschen nicht möglich: {message}",
+      "savedAsTemplate": "Als Vorlage „{name}“ gespeichert",
+      "deleting": "Wird gelöscht…",
+      "deleted": "Gelöscht",
+      "unsavedEdits": "Ungespeicherte Änderungen",
+      "idsStamped": "IDs beim Import vergeben – nicht gespeichert (ADR 0015)",
+      "nonCanonical": "Nicht kanonische Datei: Speichern formatiert sie neu",
+      "saved": "Gespeichert",
+      "file": "Datei",
+      "new": "Neu",
+      "open": "Öffnen…",
+      "saveAs": "Speichern unter…",
+      "download": "Herunterladen",
+      "downloadTitle": "Die gespeicherte Datei herunterladen",
+      "saveFirst": "Zuerst speichern",
+      "delete": "Löschen",
+      "undo": "Rückgängig",
+      "undoTitle": "Rückgängig ({shortcut})",
+      "redo": "Wiederholen",
+      "redoTitle": "Wiederholen ({shortcut})",
+      "saveTitle": "Speichern ({shortcut})",
+      "heldByOther": "Eine andere Sitzung bearbeitet diese Datei.",
+      "heldByOtherExpiring": "Eine andere Sitzung bearbeitet diese Datei – ihre Bearbeitungssperre läuft ab in <countdown></countdown>.",
+      "takeOverQuestion": "Trotzdem übernehmen?",
+      "confirmTakeover": "Übernahme bestätigen",
+      "cancel": "Abbrechen",
+      "takeOver": "Übernehmen",
+      "leaseLost": "Bearbeitungssperre verloren. Eine andere Sitzung hat sie möglicherweise übernommen, oder Ihre Sperre ist abgelaufen.",
+      "reacquire": "Erneut anfordern",
+      "leaseError": "Bearbeitungssperre konnte nicht angefordert werden: {message}",
+      "countdown": "{seconds} s",
+      "save": "Speichern",
+      "saving": "Wird gespeichert…"
+    },
+    "newFileDialog": {
+      "title": "Neuen Workflow speichern",
+      "hint": "Wählen Sie, wo im Projekt dieser Workflow gespeichert wird.",
+      "saveTo": "Speichern in",
+      "mine": "Meine",
+      "shared": "Geteilt",
+      "directory": "Verzeichnis",
+      "projectRoot": "(Projektverzeichnis)",
+      "filename": "Dateiname",
+      "finding": "Ihr Workflow-Ordner wird gesucht…",
+      "savesToPending": "Speichert in …",
+      "savesTo": "Speichert in <code>{path}</code>",
+      "savesToNewFolder": "Speichert in <code>{path}</code> (neuer Ordner)",
+      "exists": "Unter diesem Pfad gibt es bereits einen Workflow. Wählen Sie einen anderen Namen.",
+      "backslash": "Trennen Sie Ordner mit /, nicht mit \\.",
+      "emptySegment": "Ordner- und Dateinamen dürfen nicht leer sein.",
+      "dotSegment": "Namen dürfen nicht mit einem Punkt beginnen."
+    },
+    "openWorkflow": {
+      "notJson": "Öffnen nicht möglich: Die Datei ist kein gültiges JSON ({error}).",
+      "unregisteredTypes": "Öffnen nicht möglich: Diese Datei nennt {count, plural, one {# Schritttyp, der im Plugin-Verzeichnis des Servers fehlt} other {# Schritttypen, die im Plugin-Verzeichnis des Servers fehlen}}.",
+      "unregisteredType": "  • „{type}“ – fügen Sie {folder} zu diesem PATH-Verzeichnisbaum hinzu",
+      "unregisteredRetry": "Hat der Server diese Plugins inzwischen geladen, aktualisieren Sie das Plugin-Verzeichnis und versuchen Sie es erneut.",
+      "invalidIds": "Öffnen nicht möglich: {count, plural, one {# Knoten-ID ist keine gültige UUIDv4} other {# Knoten-IDs sind keine gültigen UUIDv4s}}.",
+      "invalidId": "  • {node} hat eine ID, die keine UUIDv4 ist: {value}",
+      "duplicateIds": "Öffnen nicht möglich: {count, plural, one {# Knoten-ID wird} other {# Knoten-IDs werden}} mehrfach verwendet.",
+      "duplicateId": "  • ID {id} wird geteilt von {nodes}",
+      "nodeNamed": "„{name}“",
+      "nodeAt": "bei {path}",
+      "theWorkflow": "der Workflow",
+      "nodeList": "{first}, {rest}",
+      "notValid": "Öffnen nicht möglich: Die Datei ist ungültig."
+    },
+    "saveDialog": {
+      "placeholder": "Name oder Ordner/Name",
+      "subfolderHint": "Mit <code>/</code> speichern Sie in einem Unterordner. Fehlende Ordner werden angelegt.",
+      "cancel": "Abbrechen",
+      "saving": "Wird gespeichert…",
+      "create": "Erstellen"
+    },
+    "savePlan": {
+      "nothingOpen": "Nichts zum Speichern geöffnet.",
+      "noPath": "Der Entwurf hat noch keinen Pfad.",
+      "childExists": "Unter {path} gibt es bereits einen Workflow. Wählen Sie ein anderes Ziel für den Verweis.",
+      "noNewFile": "Kein Entwurf einer neuen Datei zum Speichern.",
+      "noWorkflow": "Kein Workflow zum Speichern.",
+      "noNewTemplate": "Keine neue Vorlage zum Speichern.",
+      "noTemplateSource": "Keine Quellvorlage zum Speichern."
+    },
+    "saveTemplateAsDialog": {
+      "titleFromWorkflow": "Workflow als Vorlage speichern",
+      "titleCopy": "Als neue Vorlage speichern",
+      "titleNew": "Neue Vorlage speichern",
+      "hintFromWorkflow": "Die Vorlage ist eine Kopie des Workflow-Inhalts mit neuer Identität und wird bei den Vorlagen dieses Projekts gespeichert. Der Workflow bleibt geöffnet. Wählen Sie den geteilten Ordner, um sie mit dem Team zu teilen.",
+      "hintCopy": "Die Kopie erhält eine neue Identität und wird bei den Vorlagen dieses Projekts gespeichert.",
+      "hintNew": "Die Vorlage wird bei den Vorlagen dieses Projekts gespeichert.",
+      "folder": "Ordner",
+      "myTemplates": "(meine Vorlagen)",
+      "sharedTemplates": "(geteilte Vorlagen)",
+      "name": "Name",
+      "nameLabel": "Name der Vorlage",
+      "description": "Beschreibung",
+      "descriptionLabel": "Beschreibung der Vorlage",
+      "descriptionPlaceholder": "Was diese Vorlage tut. Wird auf der Palettenkarte angezeigt.",
+      "badFolder": "Ordnernamen dürfen nicht leer sein, nicht mit einem Punkt beginnen und keinen Backslash enthalten.",
+      "badName": "Verwenden Sie Kleinbuchstaben, Ziffern und Bindestriche, beginnend mit einem Buchstaben.",
+      "needsDescription": "Eine Vorlage braucht eine Beschreibung.",
+      "keepsBody": "Eine Vorlage behält nur den Inhalt.",
+      "keepsBodyDropping": "Eine Vorlage behält nur den Inhalt. {droppedFields} werden verworfen.",
+      "exists": "Eine Vorlage mit diesem Namen gibt es bereits. Wählen Sie einen anderen Namen."
+    },
+    "useArmed": {
+      "readFailed": "„{name}“ konnte nicht gelesen werden: {error}",
+      "insertFailed": "„{name}“ kann nicht eingefügt werden: {error}",
+      "invalidTemplate": "ungültige Vorlage"
+    },
+    "appShell": {
+      "palette": "Palette",
+      "resizePalette": "Palettenbreite ändern",
+      "resizeProperties": "Eigenschaftenbreite ändern",
+      "properties": "Eigenschaften"
+    },
+    "blockTree": {
+      "addHere": "+ {kind} hier hinzufügen",
+      "moveUp": "{name} nach oben verschieben",
+      "moveDown": "{name} nach unten verschieben",
+      "duplicate": "{name} duplizieren",
+      "delete": "{name} löschen",
+      "openRef": "Doppelklick öffnet die referenzierte Datei",
+      "chooseRef": "Doppelklick wählt das Ziel dieser Referenz oder legt es an",
+      "assert": "prüft {condition}",
+      "jumpsSpent": "Verbrauchte Sprünge im beobachteten Lauf",
+      "swapFor": "durch {kind} ersetzen",
+      "addBranch": "+ Zweig {kind} hinzufügen",
+      "when": "wenn {condition}",
+      "else": "sonst",
+      "addArm": "+ Fall hinzufügen",
+      "addElse": "+ Sonst-Zweig hinzufügen",
+      "whileMax": "solange {condition} · max. {max}"
+    },
+    "canvas": {
+      "loading": "Wird geladen…",
+      "fetchingRegistry": "Das Plugin-Verzeichnis wird abgerufen.",
+      "registryUnavailable": "Plugin-Verzeichnis nicht verfügbar",
+      "empty": "Leere Arbeitsfläche",
+      "emptyHint": "{mode, select, template {Keine Vorlage geöffnet. Legen Sie eine neue an oder öffnen Sie eine vorhandene Vorlage zum Bearbeiten.} other {Kein Workflow geöffnet. Legen Sie einen neuen an oder öffnen Sie einen vorhandenen Workflow zum Bearbeiten.}}",
+      "newFile": "{mode, select, template {Neue Vorlage} other {Neuer Workflow}}",
+      "openFile": "{mode, select, template {Vorlage öffnen} other {Workflow öffnen}}",
+      "label": "Workflow-Arbeitsfläche",
+      "breadcrumb": "Dateipfad",
+      "loadingFile": "{path} wird geladen…",
+      "couldNotRead": "Die Datei konnte nicht gelesen werden",
+      "unregisteredTypes": "Nicht registrierte Schritttypen",
+      "duplicateIds": "Doppelte Knoten-IDs",
+      "invalidIds": "Ungültige Knoten-IDs",
+      "cannotOpen": "Die Datei kann nicht geöffnet werden",
+      "startBody": "Rumpf beginnen",
+      "startBodyHint": "Leerer Rumpf. Wählen Sie einen Schritt oder Block aus der Palette, um ihn zu beginnen."
+    },
+    "nodeKind": {
+      "prompt": {
+        "label": "Prompt",
+        "blurb": "LLM-Prompt an ein Modell",
+        "explanation": "Ein LLM-Prompt, der gegen ein Modell ausgeführt wird."
+      },
+      "binary": {
+        "label": "Binärprogramm",
+        "blurb": "Ein Befehl mit Argumenten und Arbeitsverzeichnis",
+        "explanation": "Ein Befehl, der mit Argumenten in einem Arbeitsverzeichnis ausgeführt wird."
+      },
+      "personActivity": {
+        "label": "Personenaktivität",
+        "blurb": "Eine Offline-Aktivität, die eine Person erledigt",
+        "explanation": "Eine Offline-Aktivität, die eine Person erledigt; der Lauf wartet auf ihr Abschließen."
+      },
+      "workflow": {
+        "label": "Workflow",
+        "blurb": "Eine Referenz auf einen Unter-Workflow",
+        "explanation": "Eine Referenz auf eine andere Workflow-Datei, ausgeführt als verschachtelter Lauf."
+      },
+      "parallel": {
+        "label": "Parallel",
+        "blurb": "Zweige mit einer Zusammenführung",
+        "explanation": "Führt seine Zweige gleichzeitig aus; die Zusammenführung bestimmt, wie ihre Ausgaben landen."
+      },
+      "branch": {
+        "label": "Verzweigung",
+        "blurb": "Fälle nach erstem Treffer, mit Sonst-Zweig",
+        "explanation": "Der erste zutreffende Fall gewinnt; jeder Fall hat eine Bedingung, dazu ein optionaler Sonst-Zweig."
+      },
+      "whileDo": {
+        "label": "While-do",
+        "blurb": "Eine begrenzte Schleife über einen Rumpf",
+        "explanation": "Wiederholt einen Rumpf, solange eine Bedingung gilt, bis zu einer Höchstzahl."
+      },
+      "sequence": {
+        "label": "Sequenz",
+        "blurb": "Ein geordneter Stapel von Knoten",
+        "explanation": "Ein geordneter Stapel von Knoten, die nacheinander ausgeführt werden."
+      },
+      "checkpoint": {
+        "label": "Checkpoint",
+        "blurb": "Eine Prüfung des Laufs",
+        "explanation": "Prüft eine Bedingung des Laufs; eine fehlgeschlagene Prüfung lässt den Lauf fehlschlagen."
+      },
+      "goto": {
+        "label": "Goto",
+        "blurb": "Ein begrenzter Sprung zu einem Knoten der ersten Ebene",
+        "explanation": "Springt zurück oder vor zu einem Knoten der ersten Ebene, höchstens max jumps Mal."
+      },
+      "step": {
+        "blurb": "Ein Schritt vom Typ {type}",
+        "explanation": "Ein Schritt vom Typ {type}."
+      }
+    },
+    "palette": {
+      "nodes": "Knoten",
+      "templates": "Vorlagen",
+      "sections": "Palettenbereiche",
+      "groupSections": "Bereiche: {group}",
+      "step": "Schritt",
+      "controller": "Controller",
+      "structure": "Struktur",
+      "graph": "Graph",
+      "loadingTemplates": "Vorlagen werden geladen…",
+      "listFailed": "Vorlagen konnten nicht aufgelistet werden: {message}",
+      "noTemplates": "Keine Vorlagen",
+      "editHint": "Doppelklick bearbeitet die Vorlage.",
+      "switchToEdit": "Wechseln Sie in den Vorlagenmodus, um diese Vorlage zu bearbeiten.",
+      "invalidTemplate": "ungültige Vorlage",
+      "shipped": "mitgeliefert"
+    },
+    "problems": {
+      "danglingInterpolation": "liest `$'{'context.{key}'}'`, das kein Schritt in dieser Datei veröffentlicht",
+      "danglingCondition": "Bedingung liest `context.{key}`, das kein Schritt in dieser Datei veröffentlicht",
+      "danglingRef": "verweist auf `{ref}`, für das noch keine gespeicherte Datei existiert",
+      "markerLabel": "Validierungsfehler: {message}",
+      "label": "Probleme",
+      "warnings": "{count, plural, one {# Warnung} other {# Warnungen}}",
+      "note": "Weiche Fehler – Speichern und Starten werden nicht blockiert.",
+      "jumpTo": "Zu {name} springen: {message}",
+      "kind": {
+        "publish": "Veröffentlichung",
+        "contextRead": "Kontext-Lesezugriff",
+        "condition": "Bedingung",
+        "ref": "Referenz",
+        "goto": "goto"
+      }
+    },
+    "draft": {
+      "notJson": "Kein gültiges JSON: {error}",
+      "invalidInterpolation": "ungültige Interpolation",
+      "payloadNotObject": "Die Nutzdaten müssen ein JSON-Objekt sein.",
+      "fileInputNotObject": "Die Workflow-Eingabe muss ein JSON-Objekt sein.",
+      "outputSchemaNotObject": "Das Ausgabeschema muss ein JSON-Objekt sein.",
+      "maxIterationsRequired": "Erforderlich – eine positive ganze Zahl oder eine Referenz $'{'config.…'}' / $'{'context.…'}'.",
+      "positiveWholeNumber": "Muss eine positive ganze Zahl sein.",
+      "maxIterationsInvalid": "Ungültige Interpolation.",
+      "invalidCondition": "ungültige Bedingung"
+    },
+    "pane": {
+      "fileExplain": "Die Workflow-Datei – ihre Identität und der auf der Arbeitsfläche erstellte Rumpf.",
+      "reference": "Referenz",
+      "role": {
+        "else": "Sonst-Zweig der Verzweigung",
+        "parallelBranch": "paralleler Zweig",
+        "arm": "Fall der Verzweigung ({position} von {total})"
+      },
+      "branchHint": "Fälle und Sonst-Zweig werden auf der Arbeitsfläche bearbeitet; eine Verzweigung hat keine eigenen Felder.",
+      "sequenceHint": "Die Reihenfolge ist Struktur – ordnen Sie den Rumpf auf der Arbeitsfläche neu.",
+      "missingTarget": "fehlt: {name}",
+      "maxIterationsPlaceholder": "10 oder $'{'config.max_revisions'}'",
+      "config": {
+        "emptyStep": "Keine Konfiguration. Fügen Sie einen Schlüssel hinzu oder übernehmen Sie einen aus dem Workflow.",
+        "emptyFile": "Keine Konfiguration. Fügen Sie einen Schlüssel hinzu, um eine Workflow-Vorgabe zu setzen, die jeder Schritt übernimmt.",
+        "newKeyLabel": "Neuer Konfigurationsschlüssel",
+        "newKeyPlaceholder": "neuer Schlüssel",
+        "addKey": "+ Konfigurationsschlüssel hinzufügen",
+        "override": "Überschreiben",
+        "remove": "{key} entfernen"
+      },
+      "revert": "Zurücksetzen",
+      "stepInputLabel": "input (beliebiger JSON-Wert, $'{'…'}' interpolierbar)",
+      "fileInputLabel": "input (JSON-Objekt, der Startwert des Workflows)",
+      "contextWrites": "Kontext-Schreibzugriffe",
+      "publish": {
+        "key": "Veröffentlichungsschlüssel",
+        "value": "Veröffentlichungswert",
+        "remove": "Veröffentlichung entfernen",
+        "keyPlaceholder": "Kontextschlüssel",
+        "add": "+ Veröffentlichung hinzufügen"
+      },
+      "none": "(keine)",
+      "workerDefaults": "Worker-Vorgaben",
+      "workerDefaultsHint": "Der Worker, den nicht festgelegte Schritte jedes Typs in dieser Datei verwenden. Eine Auswahl je Typ, keine Konfiguration: Der eigene Worker eines Schritts hat Vorrang, und dies gilt nie über eine Workflow-Referenz hinweg.",
+      "output": {
+        "hint": "Das Ausgabeobjekt des Workflows, ausgewertet bei Erfolg – das, was die Veröffentlichung eines übergeordneten Workflows über eine Workflow-Referenz zurückliest.",
+        "key": "Ausgabeschlüssel",
+        "value": "Ausgabewert",
+        "remove": "Ausgabe entfernen",
+        "keyPlaceholder": "Ausgabeschlüssel",
+        "add": "+ Ausgabeschlüssel hinzufügen"
+      },
+      "model": {
+        "placeholder": "Modell-ID",
+        "inherited": "Übernommen aus der Workflow-Konfiguration: {inherited}",
+        "revertTitle": "Auf das übernommene Modell zurücksetzen: {inherited}"
+      },
+      "ref": {
+        "label": "referenzierte Datei",
+        "noTarget": "Diese Referenz hat noch kein Ziel.",
+        "chooseTarget": "Referenzziel wählen…"
+      },
+      "outputSchemaLabel": "outputSchema (JSON Schema, optional)",
+      "payloadLabel": "Nutzdaten (JSON)",
+      "workerDefault": "(Standard: {worker} – {tier, select, file {Datei} other {Typ}})",
+      "onePerLine": "(einer pro Zeile)"
+    },
+    "condition": {
+      "operator": "Operator",
+      "removeCondition": "Bedingung entfernen",
+      "addCondition": "+ Bedingung hinzufügen",
+      "valueType": "Werttyp",
+      "booleanValue": "Boolescher Wert",
+      "numberValue": "Zahlenwert",
+      "stringValue": "Zeichenkettenwert",
+      "removeValue": "Wert entfernen",
+      "addValue": "+ Wert hinzufügen"
+    },
+    "configValue": {
+      "mode": "{label}: Modus",
+      "literal": "Literal",
+      "envVariable": "{label}: $env-Variable",
+      "secretSource": "{label}: $secret-Quelle",
+      "literalSecret": "Literales Secret",
+      "fromEnv": "Aus $env",
+      "secretEnvVariable": "{label}: $secret-$env-Variable",
+      "secretValue": "{label}: $secret-Wert",
+      "secretPlaceholder": "Secret"
+    },
+    "goto": {
+      "targetedBy": "Ziel von goto {sources}",
+      "noTarget": "(kein Ziel)"
+    },
+    "readOnly": {
+      "shipped": "Schreibgeschützt: mitgeliefert",
+      "shared": "Schreibgeschützt: von einem anderen Benutzer geteilt",
+      "tag": "schreibgeschützt"
+    },
+    "download": {
+      "unbundledRef": "{ref} (in {from}): {reason}"
+    },
+    "openWorkflowDialog": {
+      "title": "Workflow öffnen",
+      "hint": "Wählen Sie einen Workflow aus diesem Projekt zum Öffnen und Bearbeiten.",
+      "notLoaded": "Dieser Workflow konnte nicht geladen werden.",
+      "copyNamed": "{name} in meine Workflows kopieren",
+      "copy": "In meine kopieren"
+    },
+    "openTemplateDialog": {
+      "title": "Vorlage öffnen",
+      "hint": "Wählen Sie eine Vorlage aus diesem Projekt zum Öffnen und Bearbeiten."
+    },
+    "refTargetDialog": {
+      "title": "Workflow-Referenz hinzufügen",
+      "hint": "Richten Sie diese Referenz auf einen vorhandenen Workflow oder legen Sie einen neuen an, den Sie jetzt erstellen.",
+      "existing": "Auf einen vorhandenen Workflow verweisen",
+      "createNew": "Neuen Workflow anlegen",
+      "existingHint": "Wählen Sie den Workflow, den diese Referenz als verschachtelten Lauf ausführt."
+    },
+    "saveAsChoiceDialog": {
+      "title": "Speichern unter",
+      "hint": "Speichern Sie eine Kopie dieses Workflows. Der geöffnete Workflow wird auf der Festplatte nicht geändert.",
+      "workflow": "Workflow…",
+      "workflowHint": "Eine neue *.workflow.json-Datei. Der Editor bearbeitet danach die Kopie.",
+      "template": "Vorlage…",
+      "templateHint": "Eine neue Vorlage aus dem Rumpf des Workflows. Der Workflow bleibt geöffnet."
+    },
+    "runLaunch": {
+      "saveNew": "Speichern Sie diesen neuen Workflow, bevor Sie ihn ausführen können.",
+      "saveEdits": "Speichern Sie Ihre Änderungen, bevor Sie ausführen können – ein Lauf verwendet die Datei auf der Festplatte.",
+      "submit": "Workflow ausführen"
+    },
+    "runDock": {
+      "runs": "Läufe",
+      "resizePanel": "Höhe des Laufbereichs ändern",
+      "resizeList": "Breite der Laufliste ändern",
+      "runDetail": "Laufdetails",
+      "selectRun": "Wählen Sie einen Lauf.",
+      "resizeDetail": "Breite der Laufdetails ändern",
+      "nodeIo": "Knoten-E/A/K/F",
+      "selectTreeRun": "Wählen Sie einen Lauf im Laufbaum."
+    },
+    "dialog": {
+      "cancel": "Abbrechen",
+      "back": "Zurück",
+      "discovering": "Workflows werden gesucht…",
+      "noWorkflows": "In diesem Projekt wurden noch keine Workflows gefunden.",
+      "discoveredWorkflows": "Gefundene Workflows"
+    }
+  },
+  "events": {
+    "nodeLabel": {
+      "root": "Wurzel"
+    },
+    "narrative": {
+      "stepStarted": "{label} gestartet · {workerName}",
+      "stepAwaiting": "{label} wartet auf Abschluss",
+      "stepFinished": "{label} {status}",
+      "stepFinishedError": "{label} {status} · {error}",
+      "checkpointPassed": "Checkpoint {label} bestanden",
+      "checkpointFailed": "Checkpoint {label} nicht bestanden",
+      "branchTookElse": "Verzweigung {label} nahm den Sonst-Zweig",
+      "branchTookArm": "Verzweigung {label} nahm Fall {arm}",
+      "branchNoMatch": "Verzweigung {label}: kein Fall traf zu",
+      "joinApplied": "Zusammenführung {label} angewendet · Zweige {branches}",
+      "joinAppliedPublished": "Zusammenführung {label} angewendet · Zweige {branches} · veröffentlicht {publishedKeys}",
+      "cancelledByOperator": "{label} vom Betreiber abgebrochen",
+      "cancelledByRun": "{label} abgebrochen · Ursache {causeRunId}",
+      "iterationStarted": "While-do {label} Iteration {iteration}",
+      "loopExited": "While-do {label} beendet nach {iterations, plural, one {# Iteration} other {# Iterationen}} · {reason}",
+      "loopExitReason": {
+        "conditionFalse": "Bedingung nicht erfüllt",
+        "maxIterationsExceeded": "Höchstzahl an Iterationen überschritten"
+      },
+      "passStarted": "Durchgang {pass}",
+      "passOpenedBy": "Durchgang {pass}, geöffnet durch goto {label}",
+      "gotoTaken": "goto {label} sprang zu {targetNodeName} · Sprung {jump}/{maxJumps} · Durchgang {pass}",
+      "gotoExhausted": "goto {label} erschöpft · max_jumps {maxJumps} · Ziel {targetNodeName}",
+      "reuseMarker": "{label} wiederverwendet aus {originalRunId}"
+    },
+    "resupply": {
+      "blankSecrets": "{count, plural, one {Start-Secret {names} ist leer – geben Sie vor dem {verb, select, completing {Abschließen} other {Fortsetzen}} einen Wert ein.} other {Start-Secrets {names} sind leer – geben Sie vor dem {verb, select, completing {Abschließen} other {Fortsetzen}} für jedes einen Wert ein.}}"
+    },
+    "credentialHint": {
+      "config": "Anmeldung: Setzen Sie die Konfiguration {key} oder ein Benutzer-Secret mit diesem Namen.",
+      "setupToken": "Anmeldung: Setzen Sie die Konfiguration {key} (aus `claude setup-token`) oder ein Benutzer-Secret mit diesem Namen."
+    },
+    "resumeFrom": {
+      "noSelection": "Wählen Sie einen Knoten im Laufbaum.",
+      "dirty": "Speichern Sie, um dies zu aktivieren.",
+      "passRun": "Durchgang {pass} ist ein goto-Durchgang, kein Knoten; wählen Sie einen Knoten darin.",
+      "notInFile": "„{label}“ ist nicht mehr im Workflow.",
+      "inBody": "„{label}“ liegt im Rumpf {container, select, loop {einer Schleife} parallel {eines parallel-Blocks} branch {einer Verzweigung} other {einer Schleife, eines parallel-Blocks oder einer Verzweigung}} und kann keine Wiederholgrenze sein.",
+      "notSucceeded": "„{label}“ war nicht erfolgreich.",
+      "prefixUnsucceeded": "Ein Knoten vor „{label}“ war nicht erfolgreich; der gesamte Vorlauf muss erfolgreich sein, um ihn wiederzuverwenden.",
+      "notWorkflow": "„{label}“ ist kein verschachtelter Workflow mehr.",
+      "refUnresolved": "„{label}“ verweist auf eine Datei, die nicht mehr im Workflow ist."
+    }
+  },
+  "errors": {
+    "request": {
+      "not-found": "nicht gefunden",
+      "invalid-body": "ungültiger Anfrageinhalt",
+      "body-too-large": "Anfrageinhalt zu groß: höchstens {limit}",
+      "body-not-json": "Der Anfrageinhalt muss gültiges JSON sein",
+      "bad-path-encoding": "fehlerhafte Prozentkodierung im Anfragepfad",
+      "cross-origin": "ursprungsübergreifende Anfrage abgelehnt",
+      "too-many": "zu viele Anfragen: versuchen Sie es später erneut",
+      "funnel-guard": "Funnel-Schutz: Der lokale Modus beantwortet nur Anfragen von localhost und tailscale serve, und diese kam über einen öffentlichen Zugang (Tailscale Funnel, Cloudflare Tunnel oder ein anderer Proxy). Erreichen Sie PATH über das Tailnet (tailscale serve), betreiben Sie den Server im gehosteten Modus oder setzen Sie PATH_FUNNEL_GUARD=off, um dies zu erlauben"
+    },
+    "auth": {
+      "sign-in-required": "Anmeldung erforderlich: Bearer-Token fehlt, ist ungültig oder abgelaufen"
+    },
+    "server": {
+      "internal": "Serverfehler: {message}"
+    },
+    "client": {
+      "bad-reply": "Die Antwort des Servers war kein gültiges JSON (Status {status})",
+      "request-failed": "Anfrage mit Status {status} fehlgeschlagen"
+    },
+    "limits": {
+      "storage-full": "Speicher voll, löschen Sie Läufe",
+      "host-disk-low": "Auf dem Host ist wenig Speicherplatz frei: Starts sind pausiert, versuchen Sie es später",
+      "launches-off": "Starts sind für diesen Benutzer deaktiviert",
+      "no-vm-time": "Budget aufgebraucht: Dieser Benutzer hat keine VM-Zeit",
+      "budget-used": "Budget aufgebraucht, versuchen Sie es um {retryAt}"
+    },
+    "run": {
+      "not-found": "Kein Lauf mit der ID „{rootRunId}“ gefunden",
+      "step-not-found": "Kein Schrittlauf mit der ID „{stepRunId}“ gefunden",
+      "config-env": "Die Betreiberkonfiguration darf nicht aus der Serverumgebung stammen: $env bei {paths}",
+      "workflow-missing": "Workflow-Datei für Lauf „{rootRunId}“ nicht gefunden unter „{workflowPath}“",
+      "invalid-worker-defaults": "ungültige worker_defaults",
+      "start-failed": "Lauf konnte nicht gestartet werden: {message}",
+      "refused": "{message}",
+      "resume": {
+        "no-path": "Lauf „{rootRunId}“ hat keinen gespeicherten Workflow-Pfad und kann nicht fortgesetzt werden",
+        "swapped": "Der Workflow unter „{workflowPath}“ ist nicht mehr der, den Lauf „{rootRunId}“ ausgeführt hat (seine ID hat sich geändert); Fortsetzen nicht möglich",
+        "start-failed": "Fortsetzen konnte nicht gestartet werden: {message}"
+      },
+      "complete": {
+        "missing-output": "Pflichtfeld „output“ fehlt",
+        "not-awaiting": "Schrittlauf „{stepRunId}“ ist {status, select, pending {ausstehend} running {läuft} awaiting {wartet} succeeded {erfolgreich} failed {fehlgeschlagen} other {abgebrochen}}, nicht wartend",
+        "no-path": "Lauf „{rootRunId}“ hat keinen gespeicherten Workflow-Pfad und kann nicht abgeschlossen werden",
+        "swapped": "Der Workflow unter „{workflowPath}“ ist nicht mehr der, den Lauf „{rootRunId}“ ausgeführt hat (seine ID hat sich geändert); Abschließen nicht möglich",
+        "lease-held": "Lauf „{rootRunId}“ wird gerade in einem anderen Aufruf abgeschlossen"
+      },
+      "cancel": {
+        "finished": "Lauf „{rootRunId}“ ist bereits mit Status „{status, select, pending {ausstehend} running {läuft} awaiting {wartet} succeeded {erfolgreich} failed {fehlgeschlagen} other {abgebrochen}}“ beendet",
+        "not-here": "Lauf „{rootRunId}“ wird nicht in diesem Serverprozess ausgeführt und kann nicht abgebrochen werden"
+      },
+      "delete": {
+        "running": "Lauf „{rootRunId}“ ist noch {status, select, pending {ausstehend} running {läuft} awaiting {wartet} succeeded {erfolgreich} failed {fehlgeschlagen} other {abgebrochen}}; brechen Sie ihn vor dem Löschen ab",
+        "reused": "Löschen von {rootRunId} abgelehnt: aktive Folgeläufe verwenden seine Daten wieder: {blockers} – mit ?force=true erneut versuchen, um ihn trotzdem zu löschen"
+      },
+      "blob": {
+        "unknown-name": "unbekannter Blob-Name „{name}“ (erwartet „input“, „output“ oder „context“)",
+        "no-run": "kein Lauf „{runId}“ unter Wurzel „{rootRunId}“",
+        "missing": "kein {name}-Blob für Lauf „{runId}“"
+      }
+    },
+    "runs": {
+      "invalid-limit": "ungültiges Limit „{limit}“: muss eine positive ganze Zahl sein",
+      "invalid-status": "ungültiger Status „{status}“: muss einer von {statuses} sein"
+    },
+    "workflow": {
+      "not-found": "Workflow-Datei nicht gefunden: „{workflowPath}“",
+      "escapes-root": "workflow_path „{workflowPath}“ liegt außerhalb des Projektverzeichnisses",
+      "invalid": "Workflow-Validierung fehlgeschlagen",
+      "template-path": "Der Workflow-Pfad darf kein Vorlagenpfad sein",
+      "shipped-read-only": "Ein mitgelieferter Workflow ist schreibgeschützt",
+      "shipped-copy-first": "Ein mitgelieferter Workflow muss vor dem Ausführen kopiert werden",
+      "not-shipped": "kein mitgelieferter Workflow",
+      "copy-failed": "Mitgelieferter Workflow kann nicht kopiert werden: {message}",
+      "bundle-failed": "Workflow-Referenzen konnten nicht gebündelt werden",
+      "download-origin": "origin muss „shipped“ sein, wenn angegeben"
+    },
+    "lease": {
+      "held": "Der Workflow wird in einer anderen Sitzung bearbeitet",
+      "just-locked": "Der Workflow wurde gerade in einer anderen Sitzung gesperrt",
+      "not-held": "Diese Sitzung hält keine Bearbeitungssperre"
+    },
+    "authored": {
+      "shared-read-only": "Nur der Ersteller bearbeitet ein geteiltes Element",
+      "shared-limit": "Limit für geteilte Elemente erreicht ({max}): löschen Sie zuerst ein geteiltes Element",
+      "file-too-large": "Datei zu groß: Eine erstellte Datei darf höchstens {limit} groß sein"
+    },
+    "file": {
+      "precondition": {
+        "missing": "Vorbedingung fehlgeschlagen: Die Datei existiert nicht mehr",
+        "changed": "Vorbedingung fehlgeschlagen: Die Datei hat sich seit dem Lesen geändert",
+        "exists": "Vorbedingung fehlgeschlagen: Die Datei existiert bereits (senden Sie If-Match zum Überschreiben)",
+        "required": "Vorbedingung fehlgeschlagen: Senden Sie If-Match mit dem zuletzt gelesenen ETag"
+      }
+    },
+    "template": {
+      "duplicate-id": "doppelte ID „{id}“: bereits verwendet von {origin, select, shipped {mitgelieferte} shared {geteilte} other {eigene}}-Vorlage „{name}“",
+      "read-only": "Die Vorlage ist schreibgeschützt",
+      "invalid": "Vorlagen-Validierung fehlgeschlagen",
+      "id-taken": "Vorlagen-ID „{id}“ wird bereits von {origin, select, shipped {mitgelieferte} shared {geteilte} other {eigene}}-Vorlage „{name}“ verwendet",
+      "name-taken": "Eine {kind, select, other {Schritt}}-Vorlage namens „{name}“ existiert bereits",
+      "id-mismatch": "Die Vorlagen-ID im Inhalt muss der ID in der URL entsprechen"
+    },
+    "secret": {
+      "not-found": "Kein Benutzer-Secret namens „{name}“",
+      "bad-name": "Der Name des Benutzer-Secrets „{name}“ muss ^[A-Z_][A-Z0-9_]*$ entsprechen und darf höchstens {max} Zeichen lang sein",
+      "reserved": "Der Name des Benutzer-Secrets „{name}“ ist reserviert",
+      "too-large": "Benutzer-Secret „{name}“ ist größer als {kib} KiB",
+      "too-many": "höchstens {max} Benutzer-Secrets pro Benutzer"
     }
   }
 }

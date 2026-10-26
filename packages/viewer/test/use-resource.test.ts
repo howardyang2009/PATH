@@ -1,3 +1,4 @@
+import { verbatim } from "@path/i18n";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { useResource } from "../src/use-resource.js";
@@ -103,13 +104,17 @@ describe("useResource", () => {
       }, []),
     );
 
-    await waitFor(() => expect(result.current.load).toEqual({ phase: "error", message: "nope" }));
+    await waitFor(() =>
+      expect(result.current.load).toEqual({ phase: "error", message: verbatim("nope") }),
+    );
   });
 
   it("reports a rejected read as an error", async () => {
     const { result } = renderHook(() => useResource(() => Promise.reject(new Error("down")), []));
 
-    await waitFor(() => expect(result.current.load).toEqual({ phase: "error", message: "down" }));
+    await waitFor(() =>
+      expect(result.current.load).toEqual({ phase: "error", message: verbatim("down") }),
+    );
   });
 
   it("carries the last landed value on an error when keepLastGood is set", async () => {
@@ -124,7 +129,11 @@ describe("useResource", () => {
     fail = true;
     act(() => result.current.refetch());
     await waitFor(() =>
-      expect(result.current.load).toEqual({ phase: "error", message: "blip", lastGood: "kept" }),
+      expect(result.current.load).toEqual({
+        phase: "error",
+        message: verbatim("blip"),
+        lastGood: "kept",
+      }),
     );
   });
 

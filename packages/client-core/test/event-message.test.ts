@@ -1,3 +1,4 @@
+import { verbatim } from "@path/i18n";
 import type { LogEvent } from "@path/schema";
 import { describe, expect, it } from "vitest";
 import { eventMessage } from "../src/event-message.js";
@@ -31,7 +32,10 @@ describe("eventMessage", () => {
         step_type: "binary",
         worker_name: "spawn",
       }),
-    ).toBe("step-a (n1) started · spawn");
+    ).toEqual({
+      key: "events.narrative.stepStarted",
+      params: { label: "step-a (n1)", workerName: "spawn" },
+    });
   });
 
   it("labels the implicit root step's events as the root", () => {
@@ -44,19 +48,30 @@ describe("eventMessage", () => {
         step_type: "workflow",
         worker_name: "workflow",
       }),
-    ).toBe("root started · workflow");
+    ).toEqual({
+      key: "events.narrative.stepStarted",
+      params: { label: { key: "events.nodeLabel.root" }, workerName: "workflow" },
+    });
   });
 
   it("carries the failure message on a failed step-finished", () => {
     expect(
       eventMessage({ ...ENVELOPE, type: "step-finished", status: "failed", error: "exit 1: boom" }),
-    ).toBe("step-a (n1) failed · exit 1: boom");
+    ).toEqual({
+      key: "events.narrative.stepFinishedError",
+      params: {
+        label: "step-a (n1)",
+        status: { key: "shared.status.failed" },
+        error: verbatim("exit 1: boom"),
+      },
+    });
   });
 
   it("says only the outcome when a step finished without an error", () => {
-    expect(eventMessage({ ...ENVELOPE, type: "step-finished", status: "succeeded" })).toBe(
-      "step-a (n1) succeeded",
-    );
+    expect(eventMessage({ ...ENVELOPE, type: "step-finished", status: "succeeded" })).toEqual({
+      key: "events.narrative.stepFinished",
+      params: { label: "step-a (n1)", status: { key: "shared.status.succeeded" } },
+    });
   });
 
   it("reports checkpoint verdicts", () => {
@@ -68,7 +83,7 @@ describe("eventMessage", () => {
         type: "checkpoint-passed",
         trace: TRACE,
       }),
-    ).toBe("checkpoint gate (n2) passed");
+    ).toEqual({ key: "events.narrative.checkpointPassed", params: { label: "gate (n2)" } });
     expect(
       eventMessage({
         ...ENVELOPE,
@@ -77,7 +92,7 @@ describe("eventMessage", () => {
         type: "checkpoint-failed",
         trace: TRACE,
       }),
-    ).toBe("checkpoint gate (n2) failed");
+    ).toEqual({ key: "events.narrative.checkpointFailed", params: { label: "gate (n2)" } });
   });
 
   it("names the arm a branch took, including the else fallback", () => {
@@ -90,7 +105,7 @@ describe("eventMessage", () => {
         arm: 0,
         trace: TRACE,
       }),
-    ).toBe("branch route (n3) took arm 0");
+    ).toEqual({ key: "events.narrative.branchTookArm", params: { label: "route (n3)", arm: 0 } });
     // The fallback arm has no condition of its own, so it carries no trace.
     expect(
       eventMessage({
@@ -101,7 +116,7 @@ describe("eventMessage", () => {
         arm: "else",
         trace: null,
       }),
-    ).toBe("branch route (n3) took the else arm");
+    ).toEqual({ key: "events.narrative.branchTookElse", params: { label: "route (n3)" } });
     expect(
       eventMessage({
         ...ENVELOPE,
@@ -110,7 +125,7 @@ describe("eventMessage", () => {
         type: "branch-no-match",
         traces: [TRACE],
       }),
-    ).toBe("branch route (n3) matched no arm");
+    ).toEqual({ key: "events.narrative.branchNoMatch", params: { label: "route (n3)" } });
   });
 
   it("lists the branches a collect join applied and the context keys they published", () => {
@@ -123,7 +138,10 @@ describe("eventMessage", () => {
         branches: ["a", "b"],
         published_keys: ["notes"],
       }),
-    ).toBe("join fan (n4) applied · branches a, b · published notes");
+    ).toEqual({
+      key: "events.narrative.joinAppliedPublished",
+      params: { label: "fan (n4)", branches: "a, b", publishedKeys: "notes" },
+    });
   });
 
   it("says nothing about published keys when a join published none", () => {
@@ -136,7 +154,10 @@ describe("eventMessage", () => {
         branches: ["a"],
         published_keys: [],
       }),
-    ).toBe("join fan (n4) applied · branches a");
+    ).toEqual({
+      key: "events.narrative.joinApplied",
+      params: { label: "fan (n4)", branches: "a" },
+    });
   });
 
   it("names the sibling run that caused a cancellation", () => {
@@ -147,13 +168,16 @@ describe("eventMessage", () => {
         cause: "sibling-failed",
         cause_run_id: "run_b",
       }),
-    ).toBe("step-a (n1) cancelled · cause run_b");
+    ).toEqual({
+      key: "events.narrative.cancelledByRun",
+      params: { label: "step-a (n1)", causeRunId: "run_b" },
+    });
   });
 
   it("attributes an operator cancel to the operator, not a sibling run", () => {
     expect(
       eventMessage({ ...ENVELOPE, type: "run-cancelled", cause: "operator", cause_run_id: null }),
-    ).toBe("step-a (n1) cancelled by the operator");
+    ).toEqual({ key: "events.narrative.cancelledByOperator", params: { label: "step-a (n1)" } });
   });
 
   it("counts while-do iterations and reports why the loop exited", () => {
@@ -166,7 +190,10 @@ describe("eventMessage", () => {
         iteration: 2,
         trace: TRACE,
       }),
-    ).toBe("while-do revise (n5) iteration 2");
+    ).toEqual({
+      key: "events.narrative.iterationStarted",
+      params: { label: "revise (n5)", iteration: 2 },
+    });
     expect(
       eventMessage({
         ...ENVELOPE,
@@ -177,7 +204,14 @@ describe("eventMessage", () => {
         iterations: 3,
         trace: TRACE,
       }),
-    ).toBe("while-do revise (n5) exited after 3 iterations · max-iterations-exceeded");
+    ).toEqual({
+      key: "events.narrative.loopExited",
+      params: {
+        label: "revise (n5)",
+        iterations: 3,
+        reason: { key: "events.narrative.loopExitReason.maxIterationsExceeded" },
+      },
+    });
   });
 });
 
@@ -195,7 +229,10 @@ describe("eventMessage — goto (spec docs/spec/goto.md §7, G-V-02)", () => {
         max_jumps: 3,
         pass: 3,
       }),
-    ).toBe("goto check jumped to B · jump 2/3 · pass 3");
+    ).toEqual({
+      key: "events.narrative.gotoTaken",
+      params: { label: "check", targetNodeName: "B", jump: 2, maxJumps: 3, pass: 3 },
+    });
   });
 
   it("narrates an exhausted goto with its bound and target", () => {
@@ -208,15 +245,19 @@ describe("eventMessage — goto (spec docs/spec/goto.md §7, G-V-02)", () => {
         max_jumps: 3,
         pass: 4,
       }),
-    ).toBe("goto check exhausted · max_jumps 3 · target B");
+    ).toEqual({
+      key: "events.narrative.gotoExhausted",
+      params: { label: "check", maxJumps: 3, targetNodeName: "B" },
+    });
   });
 
   it("names the goto that opened a pass, and pass 1 by its ordinal alone", () => {
-    expect(eventMessage({ ...GOTO, node_id: "g1", type: "pass-started", pass: 2 })).toBe(
-      "pass 2 opened by goto check (g1)",
-    );
+    expect(eventMessage({ ...GOTO, node_id: "g1", type: "pass-started", pass: 2 })).toEqual({
+      key: "events.narrative.passOpenedBy",
+      params: { pass: 2, label: "check (g1)" },
+    });
     expect(
       eventMessage({ ...ENVELOPE, node_id: null, node_name: null, type: "pass-started", pass: 1 }),
-    ).toBe("pass 1");
+    ).toEqual({ key: "events.narrative.passStarted", params: { pass: 1 } });
   });
 });

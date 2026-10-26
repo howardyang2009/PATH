@@ -1,3 +1,6 @@
+import type { MessageKey } from "@path/i18n";
+import { useMessage } from "@path/i18n/react";
+import { useTranslations } from "use-intl";
 import type { Problem, ProblemKind } from "./problems.js";
 import { useSelection } from "./selection-context.js";
 
@@ -9,15 +12,15 @@ import { useSelection } from "./selection-context.js";
  */
 
 /** The short tag each row wears, naming which check flagged it. */
-const KIND_LABEL: Record<ProblemKind, string> = {
-  "publish-conflict": "publish",
-  "dangling-interpolation": "context read",
-  "dangling-condition": "condition",
-  "dangling-ref": "ref",
-  "target-absent": "goto",
-  "target-inner": "goto",
-  "target-self": "goto",
-  placement: "goto",
+const KIND_LABEL: Record<ProblemKind, MessageKey> = {
+  "publish-conflict": "designer.problems.kind.publish",
+  "dangling-interpolation": "designer.problems.kind.contextRead",
+  "dangling-condition": "designer.problems.kind.condition",
+  "dangling-ref": "designer.problems.kind.ref",
+  "target-absent": "designer.problems.kind.goto",
+  "target-inner": "designer.problems.kind.goto",
+  "target-self": "designer.problems.kind.goto",
+  placement: "designer.problems.kind.goto",
 };
 
 /** Select the node and scroll its block into view — the panel's jump-to-node. */
@@ -30,42 +33,44 @@ function jumpTo(nodeId: string, onSelect: (id: string) => void): void {
 }
 
 export function ProblemsPanel({ problems }: { problems: Problem[] }): JSX.Element | null {
+  const t = useTranslations();
+  const renderMessage = useMessage();
   const selection = useSelection();
   if (problems.length === 0) return null;
 
   const count = problems.length;
+  const warnings = t("designer.problems.warnings", { count });
   return (
-    <section className="problems-panel" aria-label="Problems">
+    <section className="problems-panel" aria-label={t("designer.problems.label")}>
       <header className="problems-head">
-        <span
-          className="problems-title"
-          role="img"
-          aria-label={`${count} warning${count === 1 ? "" : "s"}`}
-        >
-          ⚠ {count} {count === 1 ? "warning" : "warnings"}
+        <span className="problems-title" role="img" aria-label={warnings}>
+          ⚠ {warnings}
         </span>
-        <span className="problems-note">Soft errors — save and launch are not blocked.</span>
+        <span className="problems-note">{t("designer.problems.note")}</span>
       </header>
       <ul className="problems-list">
-        {problems.map((problem, index) => (
-          // biome-ignore lint/suspicious/noArrayIndexKey: a node can repeat a kind, so the index disambiguates.
-          <li className="problems-row" key={`${problem.nodeId}:${problem.kind}:${index}`}>
-            <button
-              type="button"
-              className="problems-jump"
-              data-testid={`problem-jump-${problem.nodeId}`}
-              onClick={selection ? () => jumpTo(problem.nodeId, selection.onSelect) : undefined}
-              disabled={!selection}
-              aria-label={`Jump to ${problem.nodeName}: ${problem.message}`}
-            >
-              <span className="problems-kind" data-kind={problem.kind}>
-                {KIND_LABEL[problem.kind]}
-              </span>
-              <span className="problems-node">{problem.nodeName}</span>
-              <span className="problems-message">{problem.message}</span>
-            </button>
-          </li>
-        ))}
+        {problems.map((problem, index) => {
+          const message = renderMessage(problem.message);
+          return (
+            // biome-ignore lint/suspicious/noArrayIndexKey: a node can repeat a kind, so the index disambiguates.
+            <li className="problems-row" key={`${problem.nodeId}:${problem.kind}:${index}`}>
+              <button
+                type="button"
+                className="problems-jump"
+                data-testid={`problem-jump-${problem.nodeId}`}
+                onClick={selection ? () => jumpTo(problem.nodeId, selection.onSelect) : undefined}
+                disabled={!selection}
+                aria-label={t("designer.problems.jumpTo", { name: problem.nodeName, message })}
+              >
+                <span className="problems-kind" data-kind={problem.kind}>
+                  {t(KIND_LABEL[problem.kind])}
+                </span>
+                <span className="problems-node">{problem.nodeName}</span>
+                <span className="problems-message">{message}</span>
+              </button>
+            </li>
+          );
+        })}
       </ul>
     </section>
   );

@@ -1,4 +1,5 @@
 import { type PathApiClient, PathApiError } from "@path/client-core";
+import { verbatim } from "@path/i18n";
 import { FORMAT_VERSION, type WorkflowFile, type WorkflowNode } from "@path/schema";
 import { describe, expect, it } from "vitest";
 import {
@@ -206,21 +207,21 @@ describe("writeDocument", () => {
     ).toEqual({
       ok: false,
       conflict: null,
-      message: "Read-only: only the creator can save. Use Save as.",
+      message: { key: "designer.document.readOnly" },
     });
     expect(
       await writeDocument(fakeClient(new PathApiError(404, "not found")).client, overwrite),
-    ).toEqual({ ok: false, conflict: null, message: "No longer available" });
+    ).toEqual({ ok: false, conflict: null, message: { key: "designer.document.gone" } });
   });
 
   it("reads any other failure as an error with its message", async () => {
     expect(
       await writeDocument(fakeClient(new PathApiError(500, "boom")).client, templatePut),
-    ).toEqual({ ok: false, conflict: null, message: "boom" });
+    ).toEqual({ ok: false, conflict: null, message: verbatim("boom") });
     expect(await writeDocument(fakeClient(new Error("offline")).client, overwrite)).toEqual({
       ok: false,
       conflict: null,
-      message: "offline",
+      message: verbatim("offline"),
     });
   });
 });
@@ -251,7 +252,7 @@ describe("loadDocument", () => {
     expect(
       await loadDocument(client, loadingFrame("gone.workflow.json", undefined, 1), []),
     ).toMatchObject({
-      frameState: { phase: "fetch-error", message: "404 not found" },
+      frameState: { phase: "fetch-error", message: verbatim("404 not found") },
     });
   });
 });

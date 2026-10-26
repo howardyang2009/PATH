@@ -1,3 +1,4 @@
+import type { Message } from "@path/i18n";
 import { instantiateWorkflow, type WorkflowFile } from "@path/schema";
 import { openedResultOf, type SaveState, stemName, type TemplateSource } from "./frame.js";
 import { IDLE, type SessionAction, type SessionState } from "./state.js";
@@ -35,8 +36,8 @@ export interface WriteSuccess {
  * anything else. */
 export type WriteOutcome =
   | ({ ok: true } & WriteSuccess)
-  | { ok: false; conflict: "stale" | "exists"; message: string }
-  | { ok: false; conflict: null; message: string };
+  | { ok: false; conflict: "stale" | "exists"; message: Message }
+  | { ok: false; conflict: null; message: Message };
 
 // ── The write plans, one per door ───────────────────────────────────────────────────────────────
 
@@ -70,7 +71,7 @@ export type WriteRefusalReason = "nothing-open" | "needs-workflow-path" | "needs
 export interface WriteRefusal {
   ok: false;
   reason: WriteRefusalReason;
-  message: string;
+  message: Message;
 }
 
 /** The one write a door runs, and the two decisions the hook would otherwise re-derive. */
@@ -85,14 +86,14 @@ export interface WritePlan {
   landed(result: WriteSuccess, savedBytes: string): SessionAction;
   /** The phase a refusal leaves the session in: the stale-write conflict an author reloads from, an
    * error to read, or nothing at all when the surface owns the refusal (a Save as… dialog). */
-  refused(outcome: { ok: false; conflict: "stale" | "exists" | null; message: string }): SaveState;
+  refused(outcome: { ok: false; conflict: "stale" | "exists" | null; message: Message }): SaveState;
 }
 
 /** The standard refusal reading behind the doors that are not a first save: a stale token is the
  * conflict banner, anything else is an error. */
 function conflictOrError(outcome: {
   conflict: "stale" | "exists" | null;
-  message: string;
+  message: Message;
 }): SaveState {
   return outcome.conflict === null
     ? { phase: "error", message: outcome.message }
@@ -110,7 +111,7 @@ function saveInPlace(state: PlanState): WritePlan | WriteRefusal {
   const frame = state.frames[depth];
   const opened = openedResultOf(frame);
   if (!frame || !opened) {
-    return { ok: false, reason: "nothing-open", message: "Nothing is open to save." };
+    return { ok: false, reason: "nothing-open", message: { key: "designer.savePlan.nothingOpen" } };
   }
   if (frame.template) {
     // Author mode writes the envelope back by id; the read always carried an ETag.
@@ -138,7 +139,7 @@ function saveInPlace(state: PlanState): WritePlan | WriteRefusal {
     return {
       ok: false,
       reason: state.mode === "template" ? "needs-template-name" : "needs-workflow-path",
-      message: "The buffer has no path yet.",
+      message: { key: "designer.savePlan.noPath" },
     };
   }
   const path = frame.path;
@@ -155,7 +156,7 @@ function saveInPlace(state: PlanState): WritePlan | WriteRefusal {
       ? conflictOrError
       : () => ({
           phase: "error",
-          message: `A workflow already exists at ${path}. Choose a different target for the reference.`,
+          message: { key: "designer.savePlan.childExists", params: { path } },
         }),
   };
 }
@@ -194,7 +195,11 @@ function planNewFile(
   // Only a from-scratch **root** buffer picks its path here; a saved frame and a create-new child
   // go through Save.
   if (!frame || !opened || frame.written || frame.path !== null) {
-    return { ok: false, reason: "needs-workflow-path", message: "No new-file buffer to save." };
+    return {
+      ok: false,
+      reason: "needs-workflow-path",
+      message: { key: "designer.savePlan.noNewFile" },
+    };
   }
   return {
     ok: true,
@@ -233,7 +238,11 @@ function planSaveAs(state: PlanState, intent: SaveAsIntent): WritePlan | WriteRe
     case "workflow-copy": {
       const plan = workflowBuffer(state);
       if (!plan) {
-        return { ok: false, reason: "needs-workflow-path", message: "No workflow to save." };
+        return {
+          ok: false,
+          reason: "needs-workflow-path",
+          message: { key: "designer.savePlan.noWorkflow" },
+        };
       }
       const file: WorkflowFile = { ...instantiateWorkflow(plan.file), name: stemName(intent.path) };
       return {
@@ -254,7 +263,11 @@ function planSaveAs(state: PlanState, intent: SaveAsIntent): WritePlan | WriteRe
     case "workflow-as-template": {
       const plan = workflowBuffer(state);
       if (!plan) {
-        return { ok: false, reason: "needs-workflow-path", message: "No workflow to save." };
+        return {
+          ok: false,
+          reason: "needs-workflow-path",
+          message: { key: "designer.savePlan.noWorkflow" },
+        };
       }
       // Only the body survives; the workflow-level fields are dropped.
       const file: WorkflowFile = {
@@ -291,8 +304,8 @@ function planSaveAs(state: PlanState, intent: SaveAsIntent): WritePlan | WriteRe
           reason: "needs-template-name",
           message:
             intent.kind === "new-template"
-              ? "No new template to save."
-              : "No template source to save.",
+              ? { key: "designer.savePlan.noNewTemplate" }
+              : { key: "designer.savePlan.noTemplateSource" },
         };
       }
       const fromId = copy?.template.id ?? null;

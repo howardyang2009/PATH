@@ -1,5 +1,7 @@
 import type { PathApiClient, RootRunSummary } from "@path/client-core";
+import { useMessage } from "@path/i18n/react";
 import { useState } from "react";
+import { useTranslations } from "use-intl";
 import { errorMessage } from "./load-state.js";
 
 export interface DeleteButtonProps {
@@ -24,6 +26,8 @@ type Phase = "idle" | "confirming" | "sending";
  * collapsing the confirm, so the operator can read the reason.
  */
 export function DeleteButton({ client, run, onDeleted }: DeleteButtonProps) {
+  const t = useTranslations("shared");
+  const renderMessage = useMessage();
   const [phase, setPhase] = useState<Phase>("idle");
   const [error, setError] = useState<string | null>(null);
 
@@ -34,7 +38,7 @@ export function DeleteButton({ client, run, onDeleted }: DeleteButtonProps) {
       () => onDeleted(run.run_id),
       (thrown: unknown) => {
         setPhase("confirming");
-        setError(errorMessage(thrown));
+        setError(renderMessage(errorMessage(thrown)));
       },
     );
   };
@@ -49,7 +53,7 @@ export function DeleteButton({ client, run, onDeleted }: DeleteButtonProps) {
             data-testid="delete-arm"
             onClick={() => setPhase("confirming")}
           >
-            Delete run…
+            {t("deleteButton.arm")}
           </button>
         </div>
       </div>
@@ -58,17 +62,15 @@ export function DeleteButton({ client, run, onDeleted }: DeleteButtonProps) {
 
   return (
     <div className="delete-form" data-testid="delete-form">
-      <p className="delete-warning">
-        Permanently delete this run's data from the database and blobs? This cannot be undone.
-      </p>
+      <p className="delete-warning">{t("deleteButton.warning")}</p>
       <dl className="delete-identity" data-testid="delete-identity">
-        <dt>root run id</dt>
+        <dt>{t("runFacts.rootRunId")}</dt>
         <dd className="run-id">{run.run_id}</dd>
-        <dt>workflow name</dt>
+        <dt>{t("runFacts.workflowName")}</dt>
         <dd>{run.workflow_name ?? "—"}</dd>
-        <dt>workflow id</dt>
+        <dt>{t("runFacts.workflowId")}</dt>
         <dd className="run-workflow-id">{run.workflow_id ?? "—"}</dd>
-        <dt>workflow file</dt>
+        <dt>{t("runFacts.workflowFile")}</dt>
         <dd className="run-workflow-path">{run.workflow_path ?? "—"}</dd>
       </dl>
 
@@ -83,7 +85,7 @@ export function DeleteButton({ client, run, onDeleted }: DeleteButtonProps) {
             setPhase("idle");
           }}
         >
-          Keep
+          {t("deleteConfirm.keep")}
         </button>
         <button
           type="button"
@@ -92,7 +94,7 @@ export function DeleteButton({ client, run, onDeleted }: DeleteButtonProps) {
           disabled={phase === "sending"}
           onClick={send}
         >
-          {phase === "sending" ? "Deleting…" : "Confirm delete"}
+          {phase === "sending" ? t("deleteConfirm.sending") : t("deleteConfirm.confirm")}
         </button>
       </div>
 

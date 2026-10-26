@@ -14,13 +14,13 @@ export function handleGetWorkflowFile({ res, ctx, query }: StreamRequest): void 
   const path = query.get("path");
 
   if (path === null || path === "") {
-    sendError(res, 404, "not found");
+    sendError(res, 404, "request.not-found");
     return;
   }
 
   const absPath = confineToProjectRoot(ctx.layout.projectDir, path);
   if (absPath === undefined || !ctx.layout.inView(path)) {
-    sendError(res, 404, "not found");
+    sendError(res, 404, "request.not-found");
     return;
   }
 
@@ -28,7 +28,7 @@ export function handleGetWorkflowFile({ res, ctx, query }: StreamRequest): void 
   // directory.
   const bytes = readArtifact(absPath);
   if (bytes === undefined) {
-    sendError(res, 404, "not found");
+    sendError(res, 404, "request.not-found");
     return;
   }
 

@@ -13,18 +13,18 @@ export function handleGetWorkflowDownload({ res, ctx, query }: StreamRequest): v
   const path = query.get("path");
   const origin = query.get("origin");
   if (origin !== null && origin !== "shipped") {
-    sendError(res, 400, 'origin must be "shipped" when present');
+    sendError(res, 400, "workflow.download-origin");
     return;
   }
   if (path === null || path === "") {
-    sendError(res, 404, "not found");
+    sendError(res, 404, "request.not-found");
     return;
   }
 
   const bundle = bundleWorkflow(ctx.layout, path, origin === "shipped");
   if (!bundle.ok) {
-    if (bundle.status === 404) sendError(res, 404, "not found");
-    else sendError(res, 422, "workflow refs could not be bundled", bundle.failures);
+    if (bundle.status === 404) sendError(res, 404, "request.not-found");
+    else sendError(res, 422, "workflow.bundle-failed", {}, bundle.failures);
     return;
   }
   const etag = bundle.contentType === "application/json" ? strongEtag(bundle.bytes) : undefined;

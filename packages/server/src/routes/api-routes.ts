@@ -146,7 +146,7 @@ export async function dispatchApi(
     // mounts stay public (ADR 0090).
     const requester = await server.requesters.forRequest(req);
     if (requester === undefined) {
-      sendReply(res, replyError(401, "sign-in required: missing, invalid or expired bearer token"));
+      sendReply(res, replyError(401, "auth.sign-in-required"));
       return true;
     }
     // One admission call decides the rate and reads the request body under the user's cap
@@ -166,7 +166,7 @@ export async function dispatchApi(
     }
     const params = decodeAll(captures);
     if (params === undefined) {
-      sendReply(res, replyError(400, "malformed percent-encoding in the request path"));
+      sendReply(res, replyError(400, "request.bad-path-encoding"));
       return true;
     }
     const request: ApiRequest = {

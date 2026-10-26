@@ -1,4 +1,5 @@
 import type { PathApiClient, WorkflowRootSummary, WorkflowSummary } from "@path/client-core";
+import type { Message } from "@path/i18n";
 import { useCallback, useMemo } from "react";
 import { useScanOnSave } from "./scan-on-save.js";
 import type { SaveState } from "./session-reducer.js";
@@ -14,7 +15,7 @@ export interface DiscoveryScan {
 export type DiscoveryLoad =
   | { phase: "loading" }
   /** A scan failed. `scan` is the last successful one, or `null` if none ever landed. */
-  | { phase: "error"; message: string; scan: DiscoveryScan | null }
+  | { phase: "error"; message: Message; scan: DiscoveryScan | null }
   | { phase: "ready"; scan: DiscoveryScan };
 
 function scanOf(load: DiscoveryLoad): DiscoveryScan | null {

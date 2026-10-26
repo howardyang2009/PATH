@@ -1,6 +1,8 @@
+import { useMessage } from "@path/i18n/react";
 import type { Condition, JsonScalar } from "@path/schema";
 import type { ReactNode } from "react";
 import { useState } from "react";
+import { useTranslations } from "use-intl";
 import {
   CONDITION_TYPES,
   changeConditionType,
@@ -38,6 +40,7 @@ export function ConditionField({
   identity: EditKey;
   onChange: (next: Condition) => void;
 }): JSX.Element {
+  const renderMessage = useMessage();
   const { draft, error, onEdit } = useDraft<Condition, Condition>(
     () => condition,
     (next) => {
@@ -53,7 +56,7 @@ export function ConditionField({
       <ConditionNode value={draft} suggestions={suggestions} onChange={onEdit} />
       {error ? (
         <p className="pane-error" role="alert">
-          {error}
+          {renderMessage(error)}
         </p>
       ) : null}
     </fieldset>
@@ -71,10 +74,11 @@ function ConditionNode({
   suggestions: string[];
   onChange: (next: Condition) => void;
 }): JSX.Element {
+  const t = useTranslations();
   const operator = (
     <select
       className="pane-input cond-op"
-      aria-label="Operator"
+      aria-label={t("designer.condition.operator")}
       value={value.type}
       onChange={(e) => onChange(changeConditionType(value, e.target.value as Condition["type"]))}
     >
@@ -241,6 +245,7 @@ function CombinatorChildren({
   suggestions: string[];
   onChange: (next: Condition) => void;
 }): JSX.Element {
+  const t = useTranslations();
   const setChild = (index: number, child: Condition): void =>
     onChange({ ...value, of: value.of.map((c, i) => (i === index ? child : c)) });
   const removeChild = (index: number): void =>
@@ -260,7 +265,7 @@ function CombinatorChildren({
             <button
               type="button"
               className="pane-btn cond-remove"
-              aria-label="Remove condition"
+              aria-label={t("designer.condition.removeCondition")}
               onClick={() => removeChild(index)}
             >
               ×
@@ -269,7 +274,7 @@ function CombinatorChildren({
         </div>
       ))}
       <button type="button" className="pane-btn cond-add" onClick={addChild}>
-        + add condition
+        {t("designer.condition.addCondition")}
       </button>
     </div>
   );
@@ -315,6 +320,7 @@ function ScalarField({
   value: JsonScalar;
   onChange: (value: JsonScalar) => void;
 }): JSX.Element {
+  const t = useTranslations();
   const kind = scalarKind(value);
   return (
     <div className="cond-operand cond-scalar">
@@ -322,7 +328,7 @@ function ScalarField({
       <div className="cond-scalar-controls">
         <select
           className="pane-input cond-scalar-kind"
-          aria-label="Value type"
+          aria-label={t("designer.condition.valueType")}
           value={kind}
           onChange={(e) => onChange(defaultScalar(e.target.value as ScalarKind))}
         >
@@ -348,12 +354,13 @@ function ScalarValue({
   value: JsonScalar;
   onChange: (value: JsonScalar) => void;
 }): JSX.Element | null {
+  const t = useTranslations();
   if (kind === "null") return null;
   if (kind === "boolean") {
     return (
       <select
         className="pane-input"
-        aria-label="Boolean value"
+        aria-label={t("designer.condition.booleanValue")}
         value={value === true ? "true" : "false"}
         onChange={(e) => onChange(e.target.value === "true")}
       >
@@ -367,7 +374,7 @@ function ScalarValue({
       <input
         className="pane-input"
         type="number"
-        aria-label="Number value"
+        aria-label={t("designer.condition.numberValue")}
         value={typeof value === "number" ? value : 0}
         onChange={(e) => onChange(e.target.value === "" ? 0 : Number(e.target.value))}
       />
@@ -377,7 +384,7 @@ function ScalarValue({
     <input
       className="pane-input"
       type="text"
-      aria-label="String value"
+      aria-label={t("designer.condition.stringValue")}
       value={typeof value === "string" ? value : ""}
       onChange={(e) => onChange(e.target.value)}
     />
@@ -392,6 +399,7 @@ function ScalarListField({
   values: JsonScalar[];
   onChange: (values: JsonScalar[]) => void;
 }): JSX.Element {
+  const t = useTranslations();
   const setAt = (index: number, scalar: JsonScalar): void =>
     onChange(values.map((v, i) => (i === index ? scalar : v)));
   const removeAt = (index: number): void => onChange(values.filter((_, i) => i !== index));
@@ -405,7 +413,7 @@ function ScalarListField({
             <button
               type="button"
               className="pane-btn cond-remove"
-              aria-label="Remove value"
+              aria-label={t("designer.condition.removeValue")}
               onClick={() => removeAt(index)}
             >
               ×
@@ -414,7 +422,7 @@ function ScalarListField({
         </div>
       ))}
       <button type="button" className="pane-btn cond-add" onClick={() => onChange([...values, ""])}>
-        + add value
+        {t("designer.condition.addValue")}
       </button>
     </div>
   );

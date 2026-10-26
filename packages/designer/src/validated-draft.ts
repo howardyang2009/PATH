@@ -1,4 +1,5 @@
 import type { WireStepPlugin } from "@path/client-core";
+import { type Message, verbatim } from "@path/i18n";
 import {
   checkInterpolationSyntax,
   FORMAT_VERSION,
@@ -12,7 +13,7 @@ import {
 import { useState } from "react";
 import { type EditKey, sameEditKey } from "./edit-key.js";
 import { withoutKey } from "./edit-target.js";
-import { parseInputDraft } from "./interp-suggest.js";
+import { notJson, parseInputDraft } from "./interp-suggest.js";
 import { dropNodeKey, mergeNodePayload, setNodeField } from "./node-edit.js";
 import { wireToRegistry } from "./open-workflow.js";
 
@@ -26,7 +27,7 @@ import { wireToRegistry } from "./open-workflow.js";
  * A committable value, or a message to show and not commit. The message is optional: a keyed row
  * mid-edit holds its draft silently.
  */
-export type DraftResult<T> = { ok: true; value: T } | { ok: false; error?: string };
+export type DraftResult<T> = { ok: true; value: T } | { ok: false; error?: Message };
 
 /**
  * The protocol's core over a draft `D` validating into `C`; when `identity` changes the draft
@@ -34,7 +35,7 @@ export type DraftResult<T> = { ok: true; value: T } | { ok: false; error?: strin
  */
 export interface DraftField<D> {
   draft: D;
-  error: string | null;
+  error: Message | null;
   onEdit: (next: D, key?: EditKey) => void;
 }
 
@@ -44,7 +45,7 @@ export function useDraft<D, C>(
   identity: EditKey,
   commit: (value: C, key?: EditKey) => void,
 ): DraftField<D> {
-  const seed = (): { identity: EditKey; draft: D; error: string | null } => ({
+  const seed = (): { identity: EditKey; draft: D; error: Message | null } => ({
     identity,
     draft: initial(),
     error: null,
@@ -74,7 +75,7 @@ export function useValidatedDraft<T>(
   validate: (text: string) => DraftResult<T>,
   identity: EditKey,
   commit: (value: T) => void,
-): { draft: string; error: string | null; onEdit: (text: string) => void } {
+): { draft: string; error: Message | null; onEdit: (text: string) => void } {
   const field = useDraft<string, T>(
     typeof initial === "function" ? initial : () => initial,
     validate,
@@ -98,10 +99,10 @@ export function validateJsonPayload(
   try {
     parsed = JSON.parse(text);
   } catch (e) {
-    return { ok: false, error: `Not valid JSON: ${e instanceof Error ? e.message : String(e)}` };
+    return { ok: false, error: notJson(e) };
   }
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-    return { ok: false, error: "The payload must be a JSON object." };
+    return { ok: false, error: { key: "designer.draft.payloadNotObject" } };
   }
   const next = mergeNodePayload(node, parsed as Record<string, unknown>);
   const trial: WorkflowFile = {
@@ -113,7 +114,7 @@ export function validateJsonPayload(
   const result = safeParseWorkflowFile(trial, wireToRegistry(plugins));
   return result.success
     ? { ok: true, value: next }
-    : { ok: false, error: result.errors.join("\n") };
+    : { ok: false, error: verbatim(result.errors.join("\n")) };
 }
 
 /**
@@ -150,7 +151,7 @@ export function validateFileInputDraft(
   const parsed = parseInputDraft(text, []);
   if (!parsed.ok) return { ok: false, error: parsed.error };
   if (parsed.value === null || typeof parsed.value !== "object" || Array.isArray(parsed.value)) {
-    return { ok: false, error: "The workflow input must be a JSON object." };
+    return { ok: false, error: { key: "designer.draft.fileInputNotObject" } };
   }
   if (Object.keys(parsed.value).length === 0) return { ok: true, value: dropInput() };
   return { ok: true, value: { ...file, input: parsed.value as { [key: string]: JsonValue } } };
@@ -166,10 +167,10 @@ export function validateOutputSchema(node: WorkflowNode, text: string): DraftRes
   try {
     parsed = JSON.parse(text);
   } catch (e) {
-    return { ok: false, error: `Not valid JSON: ${e instanceof Error ? e.message : String(e)}` };
+    return { ok: false, error: notJson(e) };
   }
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-    return { ok: false, error: "The output schema must be a JSON object." };
+    return { ok: false, error: { key: "designer.draft.outputSchemaNotObject" } };
   }
   return { ok: true, value: setNodeField(node, "outputSchema", parsed) };
 }
@@ -181,18 +182,21 @@ export function validateOutputSchema(node: WorkflowNode, text: string): DraftRes
 export function validateMaxIterations(text: string): DraftResult<number | string> {
   const trimmed = text.trim();
   if (trimmed === "") {
-    return {
-      ok: false,
-      error: "Required — a positive whole number, or a ${config.…} / ${context.…} reference.",
-    };
+    return { ok: false, error: { key: "designer.draft.maxIterationsRequired" } };
   }
   if (/^\d+$/.test(trimmed)) {
     const n = Number(trimmed);
-    if (n < 1) return { ok: false, error: "Must be a positive whole number." };
+    if (n < 1) return { ok: false, error: { key: "designer.draft.positiveWholeNumber" } };
     return { ok: true, value: n };
   }
   const check = checkInterpolationSyntax(text, ROOTS.limit);
-  if (!check.ok) return { ok: false, error: check.error ?? "Invalid interpolation." };
+  if (!check.ok) {
+    const error: Message =
+      check.error === undefined
+        ? { key: "designer.draft.maxIterationsInvalid" }
+        : verbatim(check.error);
+    return { ok: false, error };
+  }
   return { ok: true, value: text };
 }
 

@@ -1,6 +1,7 @@
 import type { PathApiClient, WireSecretSummary } from "@path/client-core";
+import { useMessage } from "@path/i18n/react";
 import { type FormEvent, useState } from "react";
-import { useLocale } from "use-intl";
+import { useLocale, useTranslations } from "use-intl";
 import { formatTimestamp } from "./format-time.js";
 import { errorMessage } from "./load-state.js";
 import { PaneError, PaneLoading } from "./pane-note.js";
@@ -12,21 +13,22 @@ import { useResource } from "./use-resource.js";
  * a set lands.
  */
 export function SecretsPage({ client }: { client: PathApiClient }) {
+  const t = useTranslations("viewer.secretsPage");
   const { load, refetch } = useResource(() => client.listSecrets(), [client]);
   return (
     <section className="secrets" aria-labelledby="secrets-title">
       <h1 className="secrets-title" id="secrets-title">
-        Secrets
+        {t("title")}
       </h1>
       <p className="secrets-intro">
-        A run you launch reads these through <code>$env</code>. A value cannot be read back.
+        {t.rich("intro", { code: (chunks) => <code>{chunks}</code> })}
       </p>
       <SetSecretForm client={client} onSet={refetch} />
       {load.phase === "loading" && <PaneLoading what="secrets" />}
       {load.phase === "error" && <PaneError what="secrets" message={load.message} />}
       {load.phase === "ready" &&
         (load.value.length === 0 ? (
-          <p className="pane-note">No secrets yet.</p>
+          <p className="pane-note">{t("empty")}</p>
         ) : (
           <ul className="secret-list">
             {load.value.map((secret) => (
@@ -40,6 +42,8 @@ export function SecretsPage({ client }: { client: PathApiClient }) {
 
 /** Set or replace one User secret. A refused set keeps both fields, so the user can fix the name. */
 function SetSecretForm({ client, onSet }: { client: PathApiClient; onSet: () => void }) {
+  const t = useTranslations("viewer.secretsPage");
+  const renderMessage = useMessage();
   const [name, setName] = useState("");
   const [value, setValue] = useState("");
   const [sending, setSending] = useState(false);
@@ -56,12 +60,12 @@ function SetSecretForm({ client, onSet }: { client: PathApiClient; onSet: () => 
         setSending(false);
         setName("");
         setValue("");
-        setNotice(`Set ${summary.name}.`);
+        setNotice(t("notice", { name: summary.name }));
         onSet();
       },
       (thrown: unknown) => {
         setSending(false);
-        setError(errorMessage(thrown));
+        setError(renderMessage(errorMessage(thrown)));
       },
     );
   };
@@ -69,7 +73,7 @@ function SetSecretForm({ client, onSet }: { client: PathApiClient; onSet: () => 
   return (
     <form className="secret-form" onSubmit={submit}>
       <label className="secret-field">
-        Name
+        {t("name")}
         <input
           value={name}
           onChange={(event) => setName(event.target.value)}
@@ -79,7 +83,7 @@ function SetSecretForm({ client, onSet }: { client: PathApiClient; onSet: () => 
         />
       </label>
       <label className="secret-field">
-        Value
+        {t("value")}
         <input
           type="password"
           value={value}
@@ -92,9 +96,9 @@ function SetSecretForm({ client, onSet }: { client: PathApiClient; onSet: () => 
         className="launch-submit"
         disabled={sending || name.trim() === "" || value === ""}
       >
-        Set
+        {t("set")}
       </button>
-      <p className="secret-hint">Setting a name that exists replaces its value.</p>
+      <p className="secret-hint">{t("hint")}</p>
       {error !== null && (
         <p className="pane-note pane-error secret-message" role="alert">
           {error}
@@ -117,6 +121,8 @@ function SecretRow({
   secret: WireSecretSummary;
   onDeleted: () => void;
 }) {
+  const t = useTranslations();
+  const renderMessage = useMessage();
   const locale = useLocale();
   const [phase, setPhase] = useState<DeletePhase>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -126,7 +132,7 @@ function SecretRow({
     setPhase("sending");
     client.deleteSecret(secret.name).then(onDeleted, (thrown: unknown) => {
       setPhase("confirming");
-      setError(errorMessage(thrown));
+      setError(renderMessage(errorMessage(thrown)));
     });
   };
 
@@ -136,12 +142,12 @@ function SecretRow({
       <span className="secret-updated">{formatTimestamp(secret.updated_at, locale)}</span>
       {phase === "idle" ? (
         <button type="button" className="delete-arm" onClick={() => setPhase("confirming")}>
-          Delete…
+          {t("viewer.secretsPage.delete")}
         </button>
       ) : (
         <div className="secret-confirm">
           <span className="delete-warning">
-            Delete {secret.name}? A run that reads it fails until it is set again.
+            {t("viewer.secretsPage.warning", { name: secret.name })}
           </span>
           <button
             type="button"
@@ -152,7 +158,7 @@ function SecretRow({
               setPhase("idle");
             }}
           >
-            Keep
+            {t("shared.deleteConfirm.keep")}
           </button>
           <button
             type="button"
@@ -160,7 +166,9 @@ function SecretRow({
             disabled={phase === "sending"}
             onClick={send}
           >
-            {phase === "sending" ? "Deleting…" : "Confirm delete"}
+            {phase === "sending"
+              ? t("shared.deleteConfirm.sending")
+              : t("shared.deleteConfirm.confirm")}
           </button>
         </div>
       )}

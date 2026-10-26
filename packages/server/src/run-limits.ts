@@ -1,7 +1,9 @@
 import { lstatSync, readdirSync, statfsSync } from "node:fs";
 import { join } from "node:path";
+import type { ErrorCode } from "@path/i18n";
 import type { CreatorTable } from "./creator-table.js";
 import { userDir } from "./host-layout.js";
+import type { Refusal } from "./http-json.js";
 import type { UserLimits } from "./request-limits.js";
 import type { VmUsage } from "./vm-usage.js";
 
@@ -9,15 +11,14 @@ import type { VmUsage } from "./vm-usage.js";
 // the free disk the host keeps. Running VMs per user are held by the VM slots.
 
 export const MIN_FREE_DISK_BYTES = 5 * 1024 * 1024 * 1024;
-export const STORAGE_FULL = "storage full, delete runs";
+export const STORAGE_FULL = "limits.storage-full" satisfies ErrorCode;
 
 /** How long a measured storage size under the user's limit is reused. */
 const STORAGE_CACHE_MS = 30_000;
 
 /** A run limit's refusal: the status and message the user sees. */
-export interface RunRefusal {
+export interface RunRefusal extends Refusal {
   status: 429 | 507;
-  message: string;
   retryAfterSeconds?: number;
 }
 
@@ -70,27 +71,28 @@ export function createRunLimits({
   ): RunRefusal | undefined =>
     limits.maxStorageBytes === 0 ||
     storageBytes(userId, limits.maxStorageBytes, fresh) > limits.maxStorageBytes
-      ? { status: 507, message: STORAGE_FULL }
+      ? { status: 507, code: STORAGE_FULL }
       : undefined;
 
   return {
     launchRefusal(userId, limits) {
       if (freeDiskBytes() < MIN_FREE_DISK_BYTES) {
-        return { status: 507, message: "the host is low on disk: launches are paused, try later" };
+        return { status: 507, code: "limits.host-disk-low" };
       }
       const full = storageRefusal(userId, limits, true);
       if (full !== undefined) return full;
       if (limits.maxRunningVms === 0) {
-        return { status: 429, message: "launches are off for this user" };
+        return { status: 429, code: "limits.launches-off" };
       }
       const retryAt = usage.retryAt(userId, limits.vmSecondsPerDay * 1000);
       if (retryAt === undefined) return undefined;
       if (retryAt === Number.POSITIVE_INFINITY) {
-        return { status: 429, message: "budget used: this user has no VM time" };
+        return { status: 429, code: "limits.no-vm-time" };
       }
       return {
         status: 429,
-        message: `budget used, try at ${new Date(retryAt).toISOString()}`,
+        code: "limits.budget-used",
+        params: { retryAt: new Date(retryAt).toISOString() },
         retryAfterSeconds: Math.ceil((retryAt - now()) / 1000),
       };
     },

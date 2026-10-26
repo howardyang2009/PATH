@@ -44,6 +44,7 @@ export {
 export {
   type AcquireLockInput,
   type AcquireLockResult,
+  apiErrorMessage,
   type CreateTemplateInput,
   type DownloadedFile,
   type FetchLike,

@@ -1,5 +1,6 @@
 import type { UserMenuItem } from "@path/client-core";
 import { type CSSProperties, type ReactNode, useRef } from "react";
+import { useTranslations } from "use-intl";
 import { UserMenu } from "./auth-gate.js";
 import { useDragSize } from "./drag-size.js";
 import { type PaneHandleProps, usePaneWidths } from "./use-pane-resize.js";
@@ -34,6 +35,7 @@ const RAIL_VRESIZER_SPAN = 12;
  * `localStorage`, so the fluid centre never starves.
  */
 export function AppShell({ workflows, runs, detail, nodeIo, menuItems }: AppShellProps) {
+  const t = useTranslations("viewer");
   const panesRef = useRef<HTMLDivElement>(null);
   // The left handle grows its rail towards the right (+1); the right handle is mirrored (-1).
   const { widths, handleProps } = usePaneWidths({
@@ -53,15 +55,15 @@ export function AppShell({ workflows, runs, detail, nodeIo, menuItems }: AppShel
 
   return (
     <div className="shell">
-      <TopBar sub="viewer · read-only" menuItems={menuItems} />
+      <TopBar sub={t("app.subConsole")} menuItems={menuItems} />
       <div className="panes" ref={panesRef} style={style}>
         <LeftRail workflows={workflows} runs={runs} />
         <Resizer rail="left" {...handleProps(0)} />
-        <Pane id="pane-detail" title="Run detail">
+        <Pane id="pane-detail" title={t("appShell.runDetail")}>
           {detail}
         </Pane>
         <Resizer rail="right" {...handleProps(1)} />
-        <Pane id="pane-io" title="Node I/O/C/E">
+        <Pane id="pane-io" title={t("appShell.nodeIo")}>
           {nodeIo}
         </Pane>
       </div>
@@ -99,6 +101,7 @@ const MIN_RUNS_HEIGHT = 140;
  * that keeps growing.
  */
 function LeftRail({ workflows, runs }: { workflows: ReactNode; runs: ReactNode }) {
+  const t = useTranslations("viewer.appShell");
   const railRef = useRef<HTMLDivElement>(null);
   const { size: height, handleProps } = useDragSize({
     storageKey: LEFT_SPLIT_KEY,
@@ -116,11 +119,11 @@ function LeftRail({ workflows, runs }: { workflows: ReactNode; runs: ReactNode }
 
   return (
     <div className="left-rail" ref={railRef} style={style}>
-      <Pane id="pane-workflows" title="Workflows">
+      <Pane id="pane-workflows" title={t("workflows")}>
         {workflows}
       </Pane>
-      <hr className="row-resizer" aria-label="Resize workflows panel" {...handleProps} />
-      <Pane id="pane-runs" title="Runs">
+      <hr className="row-resizer" aria-label={t("resizeWorkflows")} {...handleProps} />
+      <Pane id="pane-runs" title={t("runs")}>
         {runs}
       </Pane>
     </div>
@@ -130,10 +133,11 @@ function LeftRail({ workflows, runs }: { workflows: ReactNode; runs: ReactNode }
 /** A drag handle between two panes. Exposed as a `separator` so screen readers can resize it
  * too. */
 function Resizer({ rail, ...handle }: { rail: "left" | "right" } & PaneHandleProps) {
+  const t = useTranslations("viewer.appShell");
   return (
     <hr
       className="pane-resizer"
-      aria-label={`Resize ${rail === "left" ? "runs" : "node I/O/C/E"} pane`}
+      aria-label={rail === "left" ? t("resizeRuns") : t("resizeNodeIo")}
       aria-valuemax={MAX_RAIL}
       {...handle}
     />

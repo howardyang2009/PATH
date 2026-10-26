@@ -1,5 +1,8 @@
 import type { LogEvent, RunStatus } from "@path/client-core";
+import { eventMessage } from "@path/client-core";
+import { loadMessages, renderMessage } from "@path/i18n";
 import { fireEvent, render, screen } from "@testing-library/react";
+import { createTranslator } from "use-intl/core";
 import { describe, expect, it } from "vitest";
 import { Narrative } from "../src/narrative.js";
 import { STATUS_GLYPH } from "../src/status-glyph.js";
@@ -164,5 +167,139 @@ describe("Narrative", () => {
     render(<Narrative events={[started(1, null)]} stream="live" />);
 
     expect(screen.queryByTestId("narrative-follow")).not.toBeInTheDocument();
+  });
+});
+
+describe("Narrative lines in en", () => {
+  const base = {
+    seq: 0,
+    ts: "2026-07-25T10:00:00.000Z",
+    run_id: "run_a",
+    node_id: "n1",
+    node_name: "s",
+  };
+  const trace = { type: "exists", path: "previous.status", outcome: "true" } as const;
+  const lines: [LogEvent, string][] = [
+    [
+      { ...base, type: "step-started", step_type: "binary", worker_name: "spawn" },
+      "s (n1) started · spawn",
+    ],
+    [
+      {
+        ...base,
+        node_id: null,
+        node_name: null,
+        type: "step-started",
+        step_type: "workflow",
+        worker_name: "workflow",
+      },
+      "root started · workflow",
+    ],
+    [{ ...base, type: "step-awaiting", assignee: null }, "s (n1) awaiting completion"],
+    [{ ...base, type: "step-finished", status: "succeeded" }, "s (n1) succeeded"],
+    [
+      { ...base, type: "step-finished", status: "failed", error: "exit 1: boom" },
+      "s (n1) failed · exit 1: boom",
+    ],
+    [{ ...base, type: "checkpoint-passed", trace }, "checkpoint s (n1) passed"],
+    [{ ...base, type: "checkpoint-failed", trace }, "checkpoint s (n1) failed"],
+    [{ ...base, type: "branch-taken", arm: 0, trace }, "branch s (n1) took arm 0"],
+    [
+      { ...base, type: "branch-taken", arm: "else", trace: null },
+      "branch s (n1) took the else arm",
+    ],
+    [{ ...base, type: "branch-no-match", traces: [trace] }, "branch s (n1) matched no arm"],
+    [
+      { ...base, type: "join-applied", branches: ["a", "b"], published_keys: ["k"] },
+      "join s (n1) applied · branches a, b · published k",
+    ],
+    [
+      { ...base, type: "join-applied", branches: ["a"], published_keys: [] },
+      "join s (n1) applied · branches a",
+    ],
+    [
+      { ...base, type: "run-cancelled", cause: "operator", cause_run_id: null },
+      "s (n1) cancelled by the operator",
+    ],
+    [
+      { ...base, type: "run-cancelled", cause: "sibling-failed", cause_run_id: "run_b" },
+      "s (n1) cancelled · cause run_b",
+    ],
+    [{ ...base, type: "iteration-started", iteration: 2, trace }, "while-do s (n1) iteration 2"],
+    [
+      { ...base, type: "loop-exited", reason: "condition-false", iterations: 3, trace },
+      "while-do s (n1) exited after 3 iterations · condition-false",
+    ],
+    [{ ...base, node_id: null, node_name: null, type: "pass-started", pass: 1 }, "pass 1"],
+    [{ ...base, node_name: "g", type: "pass-started", pass: 2 }, "pass 2 opened by goto g (n1)"],
+    [
+      {
+        ...base,
+        type: "goto-taken",
+        target_node_id: "n2",
+        target_node_name: "B",
+        jump: 2,
+        max_jumps: 3,
+        pass: 3,
+      },
+      "goto s (n1) jumped to B · jump 2/3 · pass 3",
+    ],
+    [
+      {
+        ...base,
+        type: "goto-exhausted",
+        target_node_id: "n2",
+        target_node_name: "B",
+        max_jumps: 3,
+        pass: 4,
+      },
+      "goto s (n1) exhausted · max_jumps 3 · target B",
+    ],
+    [{ ...base, type: "reuse-marker", original_run_id: "run_0" }, "s (n1) reused from run_0"],
+  ];
+
+  it.each(["de", "zh-CN"] as const)("renders every event type's line in %s", async (locale) => {
+    const messages = await loadMessages(locale);
+    const t = createTranslator({
+      locale,
+      messages,
+      onError: (error) => {
+        throw error;
+      },
+    });
+    for (const [event, english] of lines) {
+      const text = renderMessage(t, eventMessage(event));
+      expect(text).not.toBe(english);
+      expect(text).not.toMatch(/events\./);
+    }
+  });
+
+  it("renders every event type's line as before", () => {
+    const events = lines.map(([event], index) => ({ ...event, seq: index + 1 }));
+    const { container } = render(<Narrative events={events} stream="closed" />);
+    const texts = [...container.querySelectorAll(".event-msg")].map((el) =>
+      el.textContent?.replace(/^[^\w(]+/u, ""),
+    );
+    expect(texts).toEqual(lines.map(([, text]) => text));
+  });
+});
+
+describe("Narrative counts in en", () => {
+  it("says 1 iteration", () => {
+    const event: LogEvent = {
+      seq: 1,
+      ts: "2026-07-25T10:00:00.000Z",
+      run_id: "run_a",
+      node_id: "n1",
+      node_name: "s",
+      type: "loop-exited",
+      reason: "condition-false",
+      iterations: 1,
+      trace: { type: "exists", path: "previous.status", outcome: "false" },
+    };
+    const { container } = render(<Narrative events={[event]} stream="closed" />);
+    expect(container.querySelector(".event-msg")).toHaveTextContent(
+      "while-do s (n1) exited after 1 iteration · condition-false",
+    );
   });
 });

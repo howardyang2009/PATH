@@ -12,13 +12,14 @@ import { dirname, join, relative, sep } from "node:path";
 import { instantiateWorkflow, type WorkflowFile } from "@path/schema";
 import type { AuthoredLayout } from "./authored-layout.js";
 import { confineToProjectRoot } from "./confine.js";
+import type { Refusal } from "./http-json.js";
 
 // Shipped workflows (ADR 0086): read-only starting points in the shipped workflow root. A user never
 // runs one in place; Copy puts it in their own folder first.
 
 export type ShippedCopy =
   | { ok: true; relativePath: string; rootPath: string }
-  | { ok: false; status: 400 | 404; message: string };
+  | ({ ok: false; status: 400 | 404 } & Refusal);
 
 /** A workflow file's bytes with fresh ids: two workflows must not share an identity (ADR 0006).
  * `suffix` is appended to the workflow's `name` when the copy took a numbered target. */
@@ -57,7 +58,7 @@ export function copyShippedWorkflow(layout: AuthoredLayout, shippedPath: string)
   const shippedDir = layout.root("shipped", "workflow").dir;
   const source = confineToProjectRoot(shippedDir, shippedPath);
   if (source === undefined || !source.endsWith(WORKFLOW_SUFFIX)) {
-    return { ok: false, status: 404, message: "not a shipped workflow" };
+    return { ok: false, status: 404, code: "workflow.not-shipped" };
   }
 
   const segments = relative(shippedDir, source).split(sep);
@@ -81,7 +82,7 @@ export function copyShippedWorkflow(layout: AuthoredLayout, shippedPath: string)
     });
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
-    return { ok: false, status: 400, message: `shipped workflow cannot be copied: ${reason}` };
+    return { ok: false, status: 400, code: "workflow.copy-failed", params: { message: reason } };
   }
 
   mkdirSync(userRoot, { recursive: true });

@@ -17,6 +17,7 @@ import {
 import { AUTHORED_SUFFIX, type AuthoredOrigin } from "./authored-layout.js";
 import { SHARED_ITEM_READ_ONLY } from "./creator-table.js";
 import { strongEtag } from "./etag.js";
+import type { Refusal } from "./http-json.js";
 import type { WriteAccess } from "./write-access.js";
 
 // The Template store (ADR 0050, ADR 0084): Server-owned, engine-blind discovery of
@@ -64,16 +65,16 @@ interface LocatedTemplate extends TemplateEntry {
  * ADR 0050 decision 9). */
 export type WritableTemplate =
   | { ok: true; entry: TemplateEntry }
-  | { ok: false; status: 403 | 404; message: string };
+  | ({ ok: false; status: 403 | 404 } & Refusal);
 
 /** A write that landed, addressed by the project-relative path the reply carries. A payload that
  * fails the registry-relative envelope is the `400`, its issues in `details`. */
 export type TemplateWrite =
   | { ok: true; id: string; relativePath: string; etag: string }
-  | { ok: false; status: 400; message: string; details?: string[] }
-  | { ok: false; status: 403 | 404 | 409 | 412; message: string };
+  | ({ ok: false; status: 400; details?: string[] } & Refusal)
+  | ({ ok: false; status: 403 | 404 | 409 | 412 } & Refusal);
 
-export type TemplateRemove = { ok: true } | { ok: false; status: 403 | 404; message: string };
+export type TemplateRemove = { ok: true } | ({ ok: false; status: 403 | 404 } & Refusal);
 
 /**
  * The template union one Server serves, and the only door onto the files it holds: a read lists the
@@ -194,23 +195,23 @@ export function discoverTemplates(
 
   const locate = (
     id: string,
-  ): { ok: true; entry: LocatedTemplate } | { ok: false; status: 403 | 404; message: string } => {
+  ): { ok: true; entry: LocatedTemplate } | ({ ok: false; status: 403 | 404 } & Refusal) => {
     const entry = byId.get(id);
-    if (entry === undefined) return { ok: false, status: 404, message: "not found" };
+    if (entry === undefined) return { ok: false, status: 404, code: "request.not-found" };
     if (entry.readOnly) {
-      const message = entry.origin === "shared" ? SHARED_ITEM_READ_ONLY : "template is read-only";
-      return { ok: false, status: 403, message };
+      const code = entry.origin === "shared" ? SHARED_ITEM_READ_ONLY : "template.read-only";
+      return { ok: false, status: 403, code };
     }
     return { ok: true, entry };
   };
 
   const validate = (
     payload: unknown,
-  ): { ok: true; id: string } | { ok: false; status: 400; message: string; details: string[] } => {
+  ): { ok: true; id: string } | ({ ok: false; status: 400; details: string[] } & Refusal) => {
     const parsed = safeParseStepTemplateWith(stepSchema, payload);
     return parsed.success
       ? { ok: true, id: parsed.data.id }
-      : { ok: false, status: 400, message: "template validation failed", details: parsed.errors };
+      : { ok: false, status: 400, code: "template.invalid", details: parsed.errors };
   };
 
   const writeAt = (
@@ -220,10 +221,10 @@ export function discoverTemplates(
     precondition: { ifMatch: string | undefined; rule: "create-or-overwrite" | "overwrite" },
   ): TemplateWrite => {
     const tooLarge = access.sizeRefusal(Buffer.byteLength(serializeArtifact(payload)));
-    if (tooLarge !== undefined) return { ok: false, status: 403, message: tooLarge.message };
+    if (tooLarge !== undefined) return { ok: false, ...tooLarge, status: 403 };
     const written = conditionalWrite(absPath, { ...precondition, payload });
     if (!written.ok) {
-      return { ok: false, status: 412, message: PRECONDITION_FAILED[written.conflict] };
+      return { ok: false, status: 412, code: PRECONDITION_FAILED[written.conflict] };
     }
     return { ok: true, id, relativePath: relative(projectDir, absPath), etag: written.etag };
   };
@@ -246,14 +247,15 @@ export function discoverTemplates(
       const valid = validate(payload);
       if (!valid.ok) return valid;
       const refusal = access.createRefusal(origin);
-      if (refusal !== undefined) return { ok: false, status: 403, message: refusal.message };
+      if (refusal !== undefined) return { ok: false, ...refusal, status: 403 };
       // A taken id would make the scan flag one of the two entries invalid.
       const holder = byId.get(valid.id);
       if (holder !== undefined) {
         return {
           ok: false,
           status: 409,
-          message: `template id "${valid.id}" is already used by ${holder.origin} template "${holder.name}"`,
+          code: "template.id-taken",
+          params: { id: valid.id, origin: holder.origin, name: holder.name },
         };
       }
       const absPath = join(layout.root(origin, "template").dir, folder ?? "", `${name}${SUFFIX}`);
@@ -266,7 +268,8 @@ export function discoverTemplates(
         return {
           ok: false,
           status: 409,
-          message: `a ${kind} template named "${name}" already exists`,
+          code: "template.name-taken",
+          params: { kind, name },
         };
       }
       if (written.ok) access.created(absPath, "template");
@@ -276,7 +279,7 @@ export function discoverTemplates(
       const found = locate(id);
       if (!found.ok) return found;
       if ((payload as { id?: unknown } | null)?.id !== id) {
-        return { ok: false, status: 400, message: "template id in body must match the URL id" };
+        return { ok: false, status: 400, code: "template.id-mismatch" };
       }
       const valid = validate(payload);
       if (!valid.ok) return valid;

@@ -45,7 +45,7 @@ export function readBodyUnderCap(
         ok: false,
         close: buffered.close,
         reply: {
-          ...replyError(413, `request body too large: at most ${capLabel(maxBytes)}`),
+          ...replyError(413, "request.body-too-large", { limit: capLabel(maxBytes) }),
           headers: buffered.close ? { Connection: "close" } : undefined,
         },
       };
@@ -54,7 +54,7 @@ export function readBodyUnderCap(
     try {
       raw = buffered.bytes === undefined ? {} : JSON.parse(buffered.bytes.toString("utf8"));
     } catch {
-      return { ok: false, close: false, reply: replyError(400, "request body must be valid JSON") };
+      return { ok: false, close: false, reply: replyError(400, "request.body-not-json") };
     }
     return { ok: true, body: { present: true, raw } };
   });

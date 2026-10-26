@@ -32,12 +32,24 @@ change to the contract ships as `/v1` alongside it, never a silent reshape of `/
 - **Field casing is snake_case.** This matches the existing wire conventions in this codebase (the
   log-event envelope's `run_id` and `node_id`, the format's `max_iterations`). It does not match the
   camelCase used internally in `RunRecord` and `RunResult`. The server translates at the boundary.
-- Errors share one shape:
+- Errors share one shape
+  ([ADR 0107](../adr/0107-errors-cross-the-wire-and-the-run-log-as-code-and-params.md)):
   ```json
-  { "error": { "message": "human-readable summary", "details": "<optional>" } }
+  {
+    "error": {
+      "code": "run.not-found",
+      "params": { "rootRunId": "…" },
+      "message": "no run found with id \"…\"",
+      "details": "<optional>"
+    }
+  }
   ```
-  `details` carries structured data where available (for example, zod validation issues from
-  `loadWorkflowTree`). Otherwise it is omitted.
+  `code` is a dotted kebab-case error code; the client renders `errors.<code>` from its catalogue
+  with `params`. `message` is the same text in English, for `curl`, an older client and a code the
+  client does not know. `details` carries structured data where available (for example, zod
+  validation issues from `loadWorkflowTree`). Otherwise it is omitted. The `error` object of a
+  listed workflow or template (§6, §10) is not a refusal and still carries only `message` and
+  `details`.
 - A `root_run_id` always equals its own `run_id` for a root run. The two ever diverge only for non-root
   rows returned inside a run tree (§3).
 

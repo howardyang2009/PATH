@@ -19,16 +19,16 @@ export function handleListRuns({ ctx, query }: ApiRequest): RouteReply {
   if (limitParam !== null) {
     limit = Number(limitParam);
     if (!Number.isInteger(limit) || limit < 1) {
-      return replyError(400, `invalid limit "${limitParam}": must be a positive integer`);
+      return replyError(400, "runs.invalid-limit", { limit: limitParam });
     }
   }
 
   const statusParam = query.get("status");
   if (statusParam !== null && !RUN_STATUSES.includes(statusParam as RunStatus)) {
-    return replyError(
-      400,
-      `invalid status "${statusParam}": must be one of ${RUN_STATUSES.join(", ")}`,
-    );
+    return replyError(400, "runs.invalid-status", {
+      status: statusParam,
+      statuses: RUN_STATUSES.join(", "),
+    });
   }
   const status = statusParam === null ? undefined : (statusParam as RunStatus);
 

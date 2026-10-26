@@ -4,6 +4,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { describe, expect, it } from "vitest";
 import { App } from "../src/app.js";
 import { openWorkflowFile } from "../src/open-workflow.js";
+import { ProblemsPanel } from "../src/problems-panel.js";
 import { canonicalSerialize } from "../src/serialize.js";
 
 /**
@@ -125,5 +126,45 @@ describe("dangling-`workflow`-ref marker + launch badge", () => {
     await waitFor(() =>
       expect(screen.queryByRole("region", { name: "Problems" })).not.toBeInTheDocument(),
     );
+  });
+});
+
+describe("ProblemsPanel in en", () => {
+  it("counts the warnings and names each row's node and reason", () => {
+    render(
+      <ProblemsPanel
+        problems={[
+          {
+            nodeId: uuid(2),
+            nodeName: "reader",
+            kind: "dangling-interpolation",
+            message: { key: "designer.problems.danglingInterpolation", params: { key: "gone" } },
+          },
+          {
+            nodeId: uuid(3),
+            nodeName: "child",
+            kind: "dangling-ref",
+            message: {
+              key: "designer.problems.danglingRef",
+              params: { ref: "child.workflow.json" },
+            },
+          },
+        ]}
+      />,
+    );
+    const panel = screen.getByRole("region", { name: "Problems" });
+    expect(within(panel).getByRole("img", { name: "2 warnings" })).toHaveTextContent(
+      "⚠ 2 warnings",
+    );
+    expect(
+      within(panel).getByRole("button", {
+        name: "Jump to reader: reads `${context.gone}`, which no step in this file publishes",
+      }),
+    ).toHaveTextContent("context read");
+    expect(
+      within(panel).getByRole("button", {
+        name: "Jump to child: references `child.workflow.json`, which has no saved file yet",
+      }),
+    ).toHaveTextContent("ref");
   });
 });

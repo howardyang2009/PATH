@@ -1,5 +1,6 @@
 import { UserMenu, usePaneWidths } from "@path/viewer";
 import { type ReactNode, useRef } from "react";
+import { useTranslations } from "use-intl";
 
 /** Persisted `[palette, properties]` rail widths in px; the canvas stage fills the rest. */
 const RAILS_KEY = "path.designer.shell-rails";
@@ -35,6 +36,7 @@ export function AppShell({
   toolbar,
   runDock,
 }: AppShellProps) {
+  const t = useTranslations();
   const panesRef = useRef<HTMLDivElement | null>(null);
   // Palette handle grows +1 (right edge), properties -1 (left edge); the stage between takes the
   // remainder.
@@ -66,23 +68,31 @@ export function AppShell({
         <UserMenu />
       </header>
       <div className="panes" ref={panesRef}>
-        <section className="rail" aria-label="Palette" style={{ width: `${widths[0]}px` }}>
+        <section
+          className="rail"
+          aria-label={t("designer.appShell.palette")}
+          style={{ width: `${widths[0]}px` }}
+        >
           {palette}
         </section>
         <hr
           className="rail-vresizer"
-          aria-valuetext="Resize palette"
+          aria-valuetext={t("designer.appShell.resizePalette")}
           data-testid="shell-vresizer-0"
           {...handleProps(0)}
         />
         <main className="stage">{canvas}</main>
         <hr
           className="rail-vresizer"
-          aria-valuetext="Resize properties"
+          aria-valuetext={t("designer.appShell.resizeProperties")}
           data-testid="shell-vresizer-1"
           {...handleProps(1)}
         />
-        <section className="pane-rail" aria-label="Properties" style={{ width: `${widths[1]}px` }}>
+        <section
+          className="pane-rail"
+          aria-label={t("designer.appShell.properties")}
+          style={{ width: `${widths[1]}px` }}
+        >
           {pane}
         </section>
       </div>

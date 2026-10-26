@@ -118,7 +118,8 @@ describe("createRunLimits", () => {
 
     const refused = run.launchRefusal(ALICE, DEFAULT_LIMITS);
     expect(refused?.status).toBe(429);
-    expect(refused?.message).toMatch(/^budget used, try at 2026-10-09T12:00:01/);
+    expect(refused?.code).toBe("limits.budget-used");
+    expect(refused?.params?.retryAt).toMatch(/^2026-10-09T12:00:01/);
     expect(refused?.retryAfterSeconds).toBeGreaterThan(22 * 60 * 60);
     expect(run.launchRefusal(BOB, DEFAULT_LIMITS)).toBeUndefined();
   });

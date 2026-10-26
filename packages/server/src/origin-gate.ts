@@ -34,7 +34,7 @@ export function isCrossOriginWrite(req: IncomingMessage): boolean {
 /** On a cross-origin browser call answers `403` and returns `false` (the caller must stop). */
 export function enforceSameOrigin(req: IncomingMessage, res: ServerResponse): boolean {
   if (isCrossOriginWrite(req)) {
-    sendError(res, 403, "cross-origin request rejected");
+    sendError(res, 403, "request.cross-origin");
     return false;
   }
   return true;

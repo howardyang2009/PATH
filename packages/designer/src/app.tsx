@@ -1,5 +1,7 @@
 import type { PathApiClient, TemplateSummary, WireStepPlugin } from "@path/client-core";
+import { useMessage } from "@path/i18n/react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useTranslations } from "use-intl";
 import { AppShell } from "./app-shell.js";
 import { Canvas } from "./canvas.js";
 import {
@@ -60,6 +62,8 @@ export function App({
   client: PathApiClient;
   initialPath?: string;
 }): JSX.Element {
+  const t = useTranslations("designer.app");
+  const renderMessage = useMessage();
   const session = useOpenFile(client, initialPath);
   const arming = useArmed(client);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -124,7 +128,7 @@ export function App({
   // untouched New buffer has none, so it goes quietly.
   const confirmDiscard = (): boolean =>
     !session.frames.some((frame) => frameHasUnsavedWork(frame)) ||
-    window.confirm("Discard unsaved changes?");
+    window.confirm(t("discardUnsaved"));
   const inTemplateMode = session.mode === "template";
   const onNew = (): void => {
     if (!confirmDiscard()) return;
@@ -186,15 +190,12 @@ export function App({
   const deletePlan = planDelete(session);
   const onDelete = (): void => {
     if (!deletePlan) return;
-    const target =
-      deletePlan.kind === "template" ? `template "${deletePlan.name}"` : `"${deletePlan.path}"`;
-    const unsaved = session.frames.some((frame) => frameHasUnsavedWork(frame))
-      ? " Unsaved changes are lost too."
-      : "";
-    if (
-      window.confirm(`Delete ${target}? This removes it from disk and cannot be undone.${unsaved}`)
-    )
-      session.deleteActive(sessionId);
+    const unsaved = String(session.frames.some((frame) => frameHasUnsavedWork(frame)));
+    const question =
+      deletePlan.kind === "template"
+        ? t("deleteTemplate", { name: deletePlan.name, unsaved })
+        : t("deleteWorkflow", { path: deletePlan.path, unsaved });
+    if (window.confirm(question)) session.deleteActive(sessionId);
   };
   // Dirty is content-equality against the active frame's baseline, the same fact launch and Save
   // gate on — not a mutation flag. `active` is the frame the buffer and its baseline live on.
@@ -203,10 +204,11 @@ export function App({
   const downloadPlan = planDownload(session);
   const onDownload = (): void => {
     if (!downloadPlan) return;
-    if (dirty && !window.confirm("Unsaved edits are not included. Download the saved file?"))
-      return;
+    if (dirty && !window.confirm(t("downloadDirty"))) return;
     downloadFile(client, downloadPlan).catch((error: unknown) =>
-      window.alert(`Could not download: ${downloadFailure(error)}`),
+      window.alert(
+        t("couldNotDownload", { message: downloadFailure(error).map(renderMessage).join("\n") }),
+      ),
     );
   };
   // What the open dialog is allowed to be, and what a Save opens: a from-scratch buffer (no path)
@@ -231,7 +233,7 @@ export function App({
   const readOnly = inTemplateMode
     ? (activeTemplate?.readOnly ?? false)
     : workflowReadOnly(discovery, activePath);
-  const readOnlyTitle = readOnly ? READ_ONLY_TITLE[readOnly] : undefined;
+  const readOnlyTitle = readOnly ? renderMessage({ key: READ_ONLY_TITLE[readOnly] }) : undefined;
   // The toolbar's whole capability surface, derived once: the Save button, ⌘S and the two keyboard
   // peers below all read this one value.
   const chrome = editorChrome({
@@ -386,11 +388,7 @@ export function App({
         runDock={
           <RunDock
             client={client}
-            disabledReason={
-              inTemplateMode
-                ? "Templates do not run. Switch to Workflow mode to run a workflow."
-                : undefined
-            }
+            disabledReason={inTemplateMode ? t("templatesDoNotRun") : undefined}
             plugins={plugins}
             // An unwritten buffer has no file on disk for the server to load, so it cannot launch.
             // A create-new child carries a pre-assigned path, so gate the launch handle on
@@ -482,7 +480,7 @@ export function App({
       {openDialog.kind === "save-as" && openDialog.dialog.kind === "workflow-copy" && openedFile ? (
         <NewFileDialog
           discovery={discovery}
-          title="Save workflow as"
+          title={t("saveWorkflowAs")}
           workflowName={`${openedFile.name}-copy`}
           initialDirectory={activePath ? dirnameOf(activePath) : undefined}
           pickOrigin

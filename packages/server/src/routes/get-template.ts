@@ -8,7 +8,7 @@ import type { ApiRequest } from "./route-context.js";
  */
 export function handleGetTemplate({ ctx, params: [id] }: ApiRequest<[string]>): RouteReply {
   const entry = templatesOf(ctx).find(id);
-  if (entry === undefined) return replyError(404, "not found");
+  if (entry === undefined) return replyError(404, "request.not-found");
 
   const etag = entry.etag;
   const body = { ...templateSummary(entry), format: entry.format, body: entry.body, etag };

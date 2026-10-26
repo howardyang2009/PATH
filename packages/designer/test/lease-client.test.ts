@@ -5,6 +5,7 @@ import type {
   LeaseOpInput,
   WorkflowLease,
 } from "@path/client-core";
+import { verbatim } from "@path/i18n";
 import { describe, expect, it } from "vitest";
 import { LeaseController, type LeaseMap, type LeaseScheduler } from "../src/lease-client.js";
 
@@ -215,7 +216,10 @@ describe("LeaseController (#371 edit-lock client)", () => {
     controller.reconcile(["a"]);
     await flush();
 
-    expect(controller.snapshot().get("a")).toEqual({ phase: "error", message: "not found" });
+    expect(controller.snapshot().get("a")).toEqual({
+      phase: "error",
+      message: verbatim("not found"),
+    });
   });
 
   it("dispose releases held leases and clears every timer", async () => {

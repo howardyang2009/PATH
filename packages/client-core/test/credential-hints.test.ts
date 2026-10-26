@@ -3,10 +3,14 @@ import { credentialHint, credentialPlaceholder } from "../src/credential-hints.j
 
 describe("credentialHint", () => {
   it("names each prompt worker's credential key", () => {
-    expect(credentialHint("deepseek")).toBe(
-      "Auth: set config DEEPSEEK_API_KEY or a User secret of that name.",
-    );
-    expect(credentialHint("anthropic")).toContain("CLAUDE_CODE_OAUTH_TOKEN");
+    expect(credentialHint("deepseek")).toEqual({
+      key: "events.credentialHint.config",
+      params: { key: "DEEPSEEK_API_KEY" },
+    });
+    expect(credentialHint("anthropic")).toEqual({
+      key: "events.credentialHint.setupToken",
+      params: { key: "CLAUDE_CODE_OAUTH_TOKEN" },
+    });
   });
 
   it("has no hint for a worker without a credential", () => {

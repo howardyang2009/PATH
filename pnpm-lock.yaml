@@ -355,6 +355,9 @@ importers:
       '@path/engine':
         specifier: workspace:*
         version: link:../engine
+      '@path/i18n':
+        specifier: workspace:*
+        version: link:../i18n
       '@path/schema':
         specifier: workspace:*
         version: link:../schema

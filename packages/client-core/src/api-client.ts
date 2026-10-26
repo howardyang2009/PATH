@@ -39,7 +39,7 @@ import {
   trimBaseUrl,
 } from "./transport.js";
 
-export { defaultFetch, type FetchLike, PathApiError } from "./transport.js";
+export { apiErrorMessage, defaultFetch, type FetchLike, PathApiError } from "./transport.js";
 
 // The v0 API client, in one module: `PathApiClient` is the interface a surface holds, and the
 // endpoint functions below are its implementation. They live here rather than in per-group files

@@ -1,5 +1,7 @@
 import { credentialHint, type WireFieldSpec, type WireStepPlugin } from "@path/client-core";
+import { useMessage } from "@path/i18n/react";
 import type { WorkflowFile, WorkflowNode } from "@path/schema";
+import { useTranslations } from "use-intl";
 import { type EditCommit, editKey } from "../edit-key.js";
 import { editorTier, pluginFor } from "../editor-tiers.js";
 import { effectiveWorker } from "../effective-worker.js";
@@ -59,11 +61,12 @@ export function PromptEditor({ file, node, plugins, commit }: LeafEditorProps): 
 
 // The config key each `prompt` worker reads its credential from (ADR 0045, ADR 0095).
 function CredentialHint({ worker }: { worker: string | undefined }): JSX.Element | null {
+  const renderMessage = useMessage();
   const hint = credentialHint(worker);
   if (hint === undefined) return null;
   return (
     <p className="pane-hint" data-testid="credential-hint">
-      {hint}
+      {renderMessage(hint)}
     </p>
   );
 }
@@ -83,6 +86,7 @@ export function ModelField({
   inherited: string;
   onChange: (v: string) => void;
 }): JSX.Element {
+  const t = useTranslations();
   const inheriting = value === "" && inherited !== "";
   const overridden = value !== "" && inherited !== "";
   // The wrapper renders in every state, only the Revert button toggling inside it, so appearing
@@ -95,18 +99,18 @@ export function ModelField({
           className={inheriting ? "pane-input pane-input-inherit" : "pane-input"}
           type="text"
           value={value}
-          placeholder={inherited !== "" ? inherited : "model id"}
+          placeholder={inherited !== "" ? inherited : t("designer.pane.model.placeholder")}
           onChange={(e) => onChange(e.target.value)}
-          title={inheriting ? `Inherited from the workflow config: ${inherited}` : undefined}
+          title={inheriting ? t("designer.pane.model.inherited", { inherited }) : undefined}
         />
         {overridden ? (
           <button
             type="button"
             className="pane-btn"
             onClick={() => onChange("")}
-            title={`Revert to the inherited model: ${inherited}`}
+            title={t("designer.pane.model.revertTitle", { inherited })}
           >
-            Revert
+            {t("designer.pane.revert")}
           </button>
         ) : null}
       </div>
@@ -125,23 +129,24 @@ export function WorkflowRefEditor({
   commit: EditCommit<WorkflowNode>;
   onAddRefTarget?: (nodeId: string) => void;
 }): JSX.Element {
+  const t = useTranslations();
   const ref = nodeString(node, "ref");
   // An empty ref on a file with a path offers the target chooser; otherwise the plain path field is
   // the editor, so a set ref stays retargetable by hand.
   if (ref === "" && onAddRefTarget) {
     return (
       <div className="pane-field ref-target-field">
-        <span className="pane-label">referenced file</span>
-        <p className="pane-hint">This reference has no target yet.</p>
+        <span className="pane-label">{t("designer.pane.ref.label")}</span>
+        <p className="pane-hint">{t("designer.pane.ref.noTarget")}</p>
         <button type="button" className="ref-choose-target" onClick={() => onAddRefTarget(node.id)}>
-          Choose a reference target…
+          {t("designer.pane.ref.chooseTarget")}
         </button>
       </div>
     );
   }
   return (
     <TextField
-      label="referenced file"
+      label={t("designer.pane.ref.label")}
       value={ref}
       onChange={(v) => commit({ ...node, ref: v } as WorkflowNode, editKey(node.id, "ref"))}
     />
@@ -196,10 +201,11 @@ export function OutputSchemaField({
   node: WorkflowNode;
   commit: EditCommit<WorkflowNode>;
 }): JSX.Element {
+  const t = useTranslations();
   return (
     <JsonDraftField
       id={`output-schema-${node.id}`}
-      label="outputSchema (JSON Schema, optional)"
+      label={t("designer.pane.outputSchemaLabel")}
       rows={8}
       initial={() => {
         const schema = rec(node).outputSchema;
@@ -312,10 +318,11 @@ export function RawJsonFloor({
   plugins,
   commit,
 }: Omit<LeafEditorProps, "file">): JSX.Element {
+  const t = useTranslations();
   return (
     <JsonDraftField
       id={`raw-json-${node.id}`}
-      label="payload (JSON)"
+      label={t("designer.pane.payloadLabel")}
       rows={8}
       initial={() => JSON.stringify(nodePayload(node), null, 2)}
       validate={(text) => validateJsonPayload(node, text, plugins)}
@@ -334,6 +341,7 @@ export function RawJsonFloor({
  * worker pins `node.worker`. The launch tier lives in no file, so it is never shown here.
  */
 export function WorkerSelect({ file, node, plugins, commit }: LeafEditorProps): JSX.Element | null {
+  const t = useTranslations();
   const plugin = pluginFor(node.type, plugins);
   if (!plugin || plugin.workers.length <= 1) return null;
   const pinned = nodeString(node, "worker");
@@ -353,7 +361,11 @@ export function WorkerSelect({ file, node, plugins, commit }: LeafEditorProps): 
       label="worker"
       value={pinned || UNPINNED}
       options={[UNPINNED, ...plugin.workers]}
-      optionLabel={(w) => (w === UNPINNED ? `(default: ${effective} — ${effectiveTier})` : w)}
+      optionLabel={(w) =>
+        w === UNPINNED
+          ? t("designer.pane.workerDefault", { worker: effective, tier: effectiveTier })
+          : w
+      }
       onChange={onChange}
     />
   );

@@ -1,6 +1,7 @@
 import type { WireStepPlugin } from "@path/client-core";
 import { type ConfigObject, ROOTS, type WorkflowFile } from "@path/schema";
 import { WorkerDefaultsEditor, workerDefaultCandidates } from "@path/viewer";
+import { useTranslations } from "use-intl";
 import { type EditCommit, type EditKey, editKey } from "../edit-key.js";
 import { withOptionalKey } from "../edit-target.js";
 import { referenceablePaths } from "../interp-suggest.js";
@@ -21,12 +22,11 @@ export function FileProperties({
   plugins: WireStepPlugin[];
   applyEdit: EditCommit<WorkflowFile>;
 }): JSX.Element {
+  const t = useTranslations();
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: delegated Tab handling for wrapped inputs.
     <div className="pane" onKeyDown={fillPlaceholderOnTab}>
-      <p className="pane-explain">
-        The workflow file — its identity and the body authored on the canvas.
-      </p>
+      <p className="pane-explain">{t("designer.pane.fileExplain")}</p>
       <hr className="pane-divider" />
       {/* A keystroke run in one field folds to one undo entry; a different field's identity breaks
         the run. */}
@@ -82,6 +82,7 @@ export function FileWorkerDefaultsRegion({
   plugins: WireStepPlugin[];
   applyEdit: EditCommit<WorkflowFile>;
 }): JSX.Element | null {
+  const t = useTranslations();
   // No multi-worker type in the registry → no selection to make. Hide the section entirely.
   if (workerDefaultCandidates(plugins).length === 0) return null;
 
@@ -93,12 +94,12 @@ export function FileWorkerDefaultsRegion({
   };
 
   return (
-    <PaneSection title="worker defaults">
+    <PaneSection title={t("designer.pane.workerDefaults")}>
       <WorkerDefaultsEditor
         plugins={plugins}
         value={file.worker_defaults ?? {}}
         onChange={write}
-        hint="The worker each type's un-pinned steps use in this file. A per-type selection, not config: a step's own worker still wins, and this never crosses a workflow reference."
+        hint={t("designer.pane.workerDefaultsHint")}
       />
     </PaneSection>
   );
@@ -129,6 +130,7 @@ export function FileOutputRegion({
   file: WorkflowFile;
   applyEdit: EditCommit<WorkflowFile>;
 }): JSX.Element {
+  const t = useTranslations();
   // Keyed rows: an empty map drops the whole `output` key; a row edit folds to one undo entry.
   const { rows, setRow, addRow, removeRow } = useKeyedRows(
     () => keyedRowsOf((file as { output?: unknown }).output),
@@ -145,10 +147,7 @@ export function FileOutputRegion({
 
   return (
     <PaneSection title="output">
-      <p className="pane-hint">
-        The workflow's output object, evaluated at success — what a parent's publish reads back from
-        a workflow reference.
-      </p>
+      <p className="pane-hint">{t("designer.pane.output.hint")}</p>
       {rows.length > 0 ? (
         <div className="pane-publish-grid">
           {rows.map((row, index) => (
@@ -157,10 +156,10 @@ export function FileOutputRegion({
               key={index}
               row={row}
               roots={ROOTS.fileOutput}
-              keyLabel="Output key"
-              valueLabel="Output value"
-              removeLabel="Remove output"
-              keyPlaceholder="output key"
+              keyLabel={t("designer.pane.output.key")}
+              valueLabel={t("designer.pane.output.value")}
+              removeLabel={t("designer.pane.output.remove")}
+              keyPlaceholder={t("designer.pane.output.keyPlaceholder")}
               // Mirrors the key typed — `${context.<key>}` — landing the step context value of that
               // name.
               valuePlaceholder={(r) => `\${context.${r.key === "" ? "key" : r.key}}`}
@@ -171,7 +170,7 @@ export function FileOutputRegion({
         </div>
       ) : null}
       <button type="button" className="pane-btn" onClick={addRow}>
-        + add output key
+        {t("designer.pane.output.add")}
       </button>
     </PaneSection>
   );
@@ -189,6 +188,7 @@ export function FileConfigRegion({
   file: WorkflowFile;
   applyEdit: EditCommit<WorkflowFile>;
 }): JSX.Element {
+  const t = useTranslations();
   const write = (next: ConfigObject | undefined, key?: EditKey): void => {
     // A cleared config omits the field rather than writing `config: {}` (`withOptionalKey`).
     applyEdit(withOptionalKey(file, "config", next), key);
@@ -199,7 +199,7 @@ export function FileConfigRegion({
       config={file.config}
       scopeId="file"
       write={write}
-      emptyHint="No config. Add a key to set a workflow default that every step inherits."
+      emptyHint={t("designer.pane.config.emptyFile")}
     />
   );
 }
@@ -216,12 +216,13 @@ export function FileInputRegion({
   file: WorkflowFile;
   applyEdit: EditCommit<WorkflowFile>;
 }): JSX.Element {
+  const t = useTranslations();
   const identity = editKey(file.id, "input");
   return (
     <PaneSection title="input">
       <JsonDraftField
         id={`file-input-${file.id}`}
-        label="input (JSON object, the workflow's launch seed)"
+        label={t("designer.pane.fileInputLabel")}
         rows={5}
         initial={() => (file.input === undefined ? "{}" : JSON.stringify(file.input, null, 2))}
         validate={(text) => validateFileInputDraft(file, text)}

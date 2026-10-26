@@ -1,5 +1,6 @@
 import type { RunTree } from "@path/engine";
 import type { RunRecord } from "@path/schema";
+import type { Refusal } from "../http-json.js";
 import type { RouteContext } from "./route-context.js";
 
 /**
@@ -16,18 +17,18 @@ import type { RouteContext } from "./route-context.js";
 /** The tree a root-run id names, or the `404` every run door shares. */
 export type TreeAddress =
   | { ok: true; rootRunId: string; tree: RunTree }
-  | { ok: false; status: 404; message: string };
+  | ({ ok: false; status: 404 } & Refusal);
 
 /** A tree **and** its root row — what an acting door (cancel, delete, resume) addresses. */
 export type RunAddress =
   | { ok: true; rootRunId: string; tree: RunTree; root: RunRecord }
-  | { ok: false; status: 404; message: string };
+  | ({ ok: false; status: 404 } & Refusal);
 
 /** A parked leaf's own tree, its root row (`null` when the tree has no root row) and the leaf row —
  * what `POST /v0/runs/:step_run_id/complete` addresses. */
 export type LeafAddress =
   | { ok: true; rootRunId: string; tree: RunTree; root: RunRecord | null; leaf: RunRecord }
-  | { ok: false; status: 404; message: string };
+  | ({ ok: false; status: 404 } & Refusal);
 
 function treeAddress(ctx: RouteContext, rootRunId: string): TreeAddress {
   const tree = ctx.store.archive.tree(rootRunId);
@@ -35,8 +36,8 @@ function treeAddress(ctx: RouteContext, rootRunId: string): TreeAddress {
   return { ok: true, rootRunId, tree };
 }
 
-function notFound(rootRunId: string): { ok: false; status: 404; message: string } {
-  return { ok: false, status: 404, message: `no run found with id "${rootRunId}"` };
+function notFound(rootRunId: string): { ok: false; status: 404 } & Refusal {
+  return { ok: false, status: 404, code: "run.not-found", params: { rootRunId } };
 }
 
 /** The tree a root-run id names. A **read** door (the detail, the event stream, a blob) needs no
@@ -63,7 +64,7 @@ export function resolveLeaf(ctx: RouteContext, stepRunId: string): LeafAddress {
   const tree = rootRunId === null ? null : ctx.store.archive.tree(rootRunId);
   const leaf = tree?.runs.find((run) => run.runId === stepRunId);
   if (rootRunId === null || tree === null || leaf === undefined) {
-    return { ok: false, status: 404, message: `no step run found with id "${stepRunId}"` };
+    return { ok: false, status: 404, code: "run.step-not-found", params: { stepRunId } };
   }
   return { ok: true, rootRunId, tree, root: tree.root, leaf };
 }

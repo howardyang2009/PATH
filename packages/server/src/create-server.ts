@@ -100,9 +100,11 @@ async function handleRequest(
         return;
     }
 
-    sendError(res, 404, "not found");
+    sendError(res, 404, "request.not-found");
   } catch (err) {
-    sendError(res, 500, err instanceof Error ? err.message : String(err));
+    sendError(res, 500, "server.internal", {
+      message: err instanceof Error ? err.message : String(err),
+    });
   }
 }
 
