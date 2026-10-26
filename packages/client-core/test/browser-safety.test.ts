@@ -40,7 +40,9 @@ describe("client-core stays browser-safe", () => {
     };
     expect(Object.keys(pkg.dependencies ?? {})).toEqual([
       "@clerk/clerk-js",
+      "@clerk/localizations",
       "@clerk/ui",
+      "@path/i18n",
       "@path/schema",
     ]);
   });

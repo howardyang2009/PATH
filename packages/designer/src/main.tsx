@@ -10,4 +10,4 @@ import "./designer.css";
 // `?path=` deep-links the file to open; omitted, the canvas shows its empty affordance.
 const initialPath = new URLSearchParams(window.location.search).get("path") ?? undefined;
 
-mountApp((client) => <App client={client} initialPath={initialPath} />);
+mountApp("designer", (client) => <App client={client} initialPath={initialPath} />);

@@ -50,7 +50,7 @@ describe("SecretsPage", () => {
 
     const row = await screen.findByTestId("secret-row-API_KEY");
     expect(row).toHaveTextContent("API_KEY");
-    expect(row).toHaveTextContent(formatTimestamp(AT));
+    expect(row).toHaveTextContent(formatTimestamp(AT, "en"));
     expect(screen.getByTestId("secret-row-DEEPSEEK_API_KEY")).toBeInTheDocument();
   });
 

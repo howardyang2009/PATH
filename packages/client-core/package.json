@@ -18,7 +18,9 @@
   },
   "dependencies": {
     "@clerk/clerk-js": "~6.37.0",
+    "@clerk/localizations": "~4.22.0",
     "@clerk/ui": "~1.38.1",
+    "@path/i18n": "workspace:*",
     "@path/schema": "workspace:*"
   },
   "devDependencies": {

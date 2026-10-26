@@ -19,8 +19,11 @@
   },
   "dependencies": {
     "@path/client-core": "workspace:*",
+    "@path/i18n": "workspace:*",
     "react": "^19.3.0",
-    "react-dom": "^19.3.0"
+    "react-dom": "^19.3.0",
+    "use-intl": "^4.14.9",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^7.0.1",

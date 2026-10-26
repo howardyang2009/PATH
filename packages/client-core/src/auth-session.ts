@@ -1,3 +1,4 @@
+import type { Locale } from "@path/i18n";
 import {
   defaultFetch,
   type FetchLike,
@@ -43,6 +44,7 @@ export interface ClerkLike {
     routerPush?: (to: string) => void;
     routerReplace?: (to: string) => void;
     afterSignOutUrl?: string;
+    localization?: object;
   }): Promise<void>;
   readonly user: { id: string } | null | undefined;
   readonly session:
@@ -77,6 +79,8 @@ export interface StartAuthSessionOptions {
   loadClerk?: (publishableKey: string) => Promise<ClerkLike>;
   /** The page's `location` (`window.location` in a browser). */
   location: PageLocation;
+  /** The Locale Clerk's sign-in and user menu speak; `en` when omitted. */
+  locale?: Locale;
 }
 
 const LOCAL_SESSION: AuthSession = {
@@ -93,8 +97,23 @@ export async function startAuthSession(options: StartAuthSessionOptions): Promis
   const http = new HttpTransport(trimBaseUrl(options.baseUrl), options.fetch ?? defaultFetch);
   const config = await http.requestJson<AuthConfig>("/v0/auth-config");
   if (config.mode !== "hosted") return LOCAL_SESSION;
-  const clerk = await (options.loadClerk ?? loadClerkJs)(config.publishableKey);
-  return hostedSession(clerk, options.location);
+  const [clerk, localization] = await Promise.all([
+    (options.loadClerk ?? loadClerkJs)(config.publishableKey),
+    clerkLocalization(options.locale ?? "en"),
+  ]);
+  return hostedSession(clerk, options.location, localization);
+}
+
+/** Clerk's built-in text for `locale`; `undefined` keeps Clerk's own English. */
+async function clerkLocalization(locale: Locale): Promise<object | undefined> {
+  switch (locale) {
+    case "en":
+      return undefined;
+    case "de":
+      return (await import("@clerk/localizations/de-DE")).deDE;
+    case "zh-CN":
+      return (await import("@clerk/localizations/zh-CN")).zhCN;
+  }
 }
 
 async function loadClerkJs(publishableKey: string): Promise<ClerkLike> {
@@ -107,7 +126,11 @@ async function loadClerkJs(publishableKey: string): Promise<ClerkLike> {
   return clerk as unknown as ClerkLike;
 }
 
-async function hostedSession(clerk: ClerkLike, location: PageLocation): Promise<AuthSession> {
+async function hostedSession(
+  clerk: ClerkLike,
+  location: PageLocation,
+  localization: object | undefined,
+): Promise<AuthSession> {
   const listeners = new Set<() => void>();
   let pending: { promise: Promise<void>; resolve: () => void } | null = null;
 
@@ -120,6 +143,7 @@ async function hostedSession(clerk: ClerkLike, location: PageLocation): Promise<
     routerPush: navigate,
     routerReplace: navigate,
     afterSignOutUrl: location.href,
+    localization,
   });
 
   // A `401` while Clerk still holds a session means its cached token was refused: the retry mints a

@@ -1,5 +1,6 @@
 import type { PathApiClient, WireSecretSummary } from "@path/client-core";
 import { type FormEvent, useState } from "react";
+import { useLocale } from "use-intl";
 import { formatTimestamp } from "./format-time.js";
 import { errorMessage } from "./load-state.js";
 import { PaneError, PaneLoading } from "./pane-note.js";
@@ -116,6 +117,7 @@ function SecretRow({
   secret: WireSecretSummary;
   onDeleted: () => void;
 }) {
+  const locale = useLocale();
   const [phase, setPhase] = useState<DeletePhase>("idle");
   const [error, setError] = useState<string | null>(null);
 
@@ -131,7 +133,7 @@ function SecretRow({
   return (
     <li className="secret-row" data-testid={`secret-row-${secret.name}`}>
       <span className="secret-name">{secret.name}</span>
-      <span className="secret-updated">{formatTimestamp(secret.updated_at)}</span>
+      <span className="secret-updated">{formatTimestamp(secret.updated_at, locale)}</span>
       {phase === "idle" ? (
         <button type="button" className="delete-arm" onClick={() => setPhase("confirming")}>
           Delete…

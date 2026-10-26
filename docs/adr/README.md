@@ -110,6 +110,7 @@ An Architecture Decision Record (ADR) records one decision PATH has made: the sh
 | [0104](0104-one-run-selection-serves-both-consoles.md) | One run selection serves both consoles | accepted |
 | [0105](0105-one-run-history-carries-the-predecessor-tree.md) | One run history carries the predecessor tree | accepted |
 | [0106](0106-path-is-served-at-path-rheinwegde-de-through-cloudflare-tunnel.md) | PATH is served at path.rheinwegde.de through Cloudflare Tunnel | accepted |
+| [0107](0107-errors-cross-the-wire-and-the-run-log-as-code-and-params.md) | Errors cross the wire and the run log as a code and params | accepted |
 
 ## Superseded decisions
 

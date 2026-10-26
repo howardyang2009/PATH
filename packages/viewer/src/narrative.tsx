@@ -1,5 +1,6 @@
 import { eventMessage, eventOutcome, type LogEvent, type StreamPhase } from "@path/client-core";
 import { useEffect, useRef, useState } from "react";
+import { useLocale } from "use-intl";
 import { formatClockTime } from "./format-time.js";
 import { STATUS_GLYPH } from "./status-glyph.js";
 
@@ -83,6 +84,7 @@ export function Narrative({ events, stream }: NarrativeProps) {
  * glyph and the message already say.
  */
 function EventRow({ event }: { event: LogEvent }) {
+  const locale = useLocale();
   const outcome = eventOutcome(event);
   return (
     <li
@@ -95,7 +97,7 @@ function EventRow({ event }: { event: LogEvent }) {
         {event.seq}
       </span>
       <time className="event-ts" dateTime={event.ts}>
-        {formatClockTime(event.ts)}
+        {formatClockTime(event.ts, locale)}
       </time>
       <span className="event-msg">
         {outcome !== null && (

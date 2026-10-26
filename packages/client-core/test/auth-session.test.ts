@@ -1,3 +1,5 @@
+import { deDE } from "@clerk/localizations/de-DE";
+import { zhCN } from "@clerk/localizations/zh-CN";
 import { describe, expect, it } from "vitest";
 import { type ClerkLike, startAuthSession } from "../src/auth-session.js";
 import type { FetchLike } from "../src/transport.js";
@@ -130,6 +132,32 @@ describe("startAuthSession", () => {
     expect(session.mode).toBe("hosted");
     expect(session.userId()).toBe("user_1");
     await expect(session.clientAuth().getToken?.()).resolves.toBe("token-of-user_1");
+  });
+
+  it.each([
+    ["de", deDE],
+    ["zh-CN", zhCN],
+  ] as const)(
+    "in the %s Locale loads Clerk with its localization",
+    async (locale, localization) => {
+      const clerk = new FakeClerk(null);
+      await startAuthSession({
+        baseUrl: "http://h",
+        fetch: configFetch(hosted).fetch,
+        loadClerk: async () => clerk,
+        location: fakeLocation(),
+        locale,
+      });
+
+      expect(clerk.loadOptions?.localization).toBe(localization);
+    },
+  );
+
+  it("in the en Locale keeps Clerk's own English", async () => {
+    const clerk = new FakeClerk(null);
+    await startHosted(clerk);
+
+    expect(clerk.loadOptions?.localization).toBeUndefined();
   });
 
   it("with no session has no user and no token", async () => {
