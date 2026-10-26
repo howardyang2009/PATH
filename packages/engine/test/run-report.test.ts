@@ -84,13 +84,16 @@ describe("renderResume", () => {
   });
 
   it("exits 1 with the refusal message verbatim for a Resume-from-K refusal", () => {
-    expect(renderResume({ found: false, refusal: { status: 409, message: "K diverged" } })).toEqual(
-      {
-        stdout: [],
-        stderr: ["K diverged"],
-        exitCode: 1,
-      },
-    );
+    expect(
+      renderResume({
+        found: false,
+        refusal: { status: 409, code: "run.resume.succeeded", params: {}, message: "K diverged" },
+      }),
+    ).toEqual({
+      stdout: [],
+      stderr: ["K diverged"],
+      exitCode: 1,
+    });
   });
 });
 

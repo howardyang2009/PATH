@@ -42,6 +42,7 @@ export {
   type ProjectLaunchOptions,
   type ProjectResumeOptions,
   type ProjectRunOptions,
+  type ResumeRefusal,
   type ResumeResult,
 } from "./project.js";
 export type {

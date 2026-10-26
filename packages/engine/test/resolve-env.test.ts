@@ -117,7 +117,7 @@ describe("resolveRunEnv", () => {
 describe("describeUnsetEnv", () => {
   it("names the one unset variable and where it was found", () => {
     // Worded for what happened: the run started, is on the record, and ended before its first step.
-    expect(describeUnsetEnv([{ name: "TOKEN", key: "creds.auth" }])).toBe(
+    expect(describeUnsetEnv([{ name: "TOKEN", key: "creds.auth" }]).error).toBe(
       'run failed before its first step: environment variable "TOKEN" (config key "creds.auth") is not set',
     );
   });
@@ -126,7 +126,7 @@ describe("describeUnsetEnv", () => {
     const message = describeUnsetEnv([
       { name: "FIRST", key: "a" },
       { name: "SECOND", key: "b" },
-    ]);
+    ]).error;
     expect(message).toContain("FIRST");
     expect(message).toContain("SECOND");
     expect(message).toMatch(/2 environment variables are not set/);

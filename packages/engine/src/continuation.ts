@@ -17,6 +17,7 @@ import {
   walkNodes,
 } from "@path/schema";
 import { descendNodePath } from "./descend-node-path.js";
+import { type Failure, failure } from "./failure.js";
 import { recoverLaunchConfig, wrapSecretsAtPaths } from "./launch-facts.js";
 import { RUN_BLOB_FILE } from "./persistence/paths.js";
 import { pickReusedWaitOneWinner, planReuse, type ReusePlan, recordedChild } from "./plan-reuse.js";
@@ -349,7 +350,7 @@ export interface ParkedLeaf {
  * under that pass is still committed first, so a later Resume reuses it instead of asking again. */
 export interface PassDivergence {
   diverged: RunRecord;
-  error: string;
+  failure: Failure;
   commit: ParkedLeaf | undefined;
 }
 
@@ -538,9 +539,12 @@ function completePassWalk(
   if (!goto || !target || passFirstNode(target)?.id !== recordedFirst?.nodeId) {
     return {
       diverged: reentered,
-      error:
-        `Complete replay diverged: pass ${walk.pass} was opened by goto "${goto?.name ?? reentered.nodeName}" ` +
-        `whose target is now "${goto?.target ?? "(none)"}", recorded "${recordedFirst?.nodeName ?? "(none)"}"`,
+      failure: failure("goto.diverged", {
+        pass: String(walk.pass),
+        goto: String(goto?.name ?? reentered.nodeName),
+        target: goto?.target ?? "(none)",
+        recorded: recordedFirst?.nodeName ?? "(none)",
+      }),
       commit: parkedLeafUnder(state, reentered.runId),
     };
   }

@@ -1670,6 +1670,11 @@ describe("runWorkflow — RunObserver hooks (ticket #18 seam)", () => {
         node_name: "boom",
         status: "failed",
         error: expect.stringMatching(/exited with code 2/),
+        error_code: "step.failed",
+        error_params: {
+          name: "boom",
+          error: { key: "errors.spawn.exited", params: { code: "2" } },
+        },
       },
     });
     expect(observer.runFinishes()[0]?.event).toEqual({
@@ -1680,6 +1685,8 @@ describe("runWorkflow — RunObserver hooks (ticket #18 seam)", () => {
       node_name: null,
       status: "failed",
       error: expect.stringMatching(/exited with code 2/),
+      error_code: "step.failed",
+      error_params: { name: "boom", error: { key: "errors.spawn.exited", params: { code: "2" } } },
     });
   });
 

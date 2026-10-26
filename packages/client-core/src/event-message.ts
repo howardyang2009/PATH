@@ -1,5 +1,5 @@
-import { type Message, verbatim } from "@path/i18n";
-import type { LogEvent } from "@path/schema";
+import { isMessageKey, type Message, type MessageParam, verbatim } from "@path/i18n";
+import type { LogEvent, StepFinishedEvent } from "@path/schema";
 import { nodeEventLabel } from "./node-label.js";
 
 /** One log event as one line of the narrative; every branch is exhaustive over the `LogEvent`
@@ -18,14 +18,10 @@ export function eventMessage(event: LogEvent): Message {
       return { key: "events.narrative.stepAwaiting", params: { label } };
     case "step-finished": {
       const status: Message = { key: `shared.status.${event.status}` };
-      // The `error` tail carries the exit code + a short stderr tail on a binary step (mvp spec
-      // §8.1); it is the engine's English until run events carry error codes.
-      return event.error === undefined
+      const error = stepFinishedError(event);
+      return error === undefined
         ? { key: "events.narrative.stepFinished", params: { label, status } }
-        : {
-            key: "events.narrative.stepFinishedError",
-            params: { label, status, error: verbatim(event.error) },
-          };
+        : { key: "events.narrative.stepFinishedError", params: { label, status, error } };
     }
     case "checkpoint-passed":
       return { key: "events.narrative.checkpointPassed", params: { label } };
@@ -108,4 +104,15 @@ export function eventMessage(event: LogEvent): Message {
       return unhandled;
     }
   }
+}
+
+/** A step's failure as the UI shows it (ADR 0107 point 4): a known `error_code` from the
+ * catalogue, else the stored English, as for an event written before codes. */
+export function stepFinishedError(event: StepFinishedEvent): Message | undefined {
+  if (event.error === undefined) return undefined;
+  const key = `errors.${event.error_code}`;
+  if (event.error_code === undefined || !isMessageKey(key)) return verbatim(event.error);
+  // The engine wrote these params from a `Message`; JSON is how they crossed the store.
+  const params = event.error_params as Record<string, MessageParam> | undefined;
+  return params === undefined ? { key } : { key, params };
 }

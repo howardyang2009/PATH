@@ -4,6 +4,7 @@ import {
   type LogBackend,
   type LogBackendId,
   type Project,
+  type ResumeRefusal,
   type RunObserver,
   type UserSecrets,
   WORKFLOW_STEP_TYPE,
@@ -136,13 +137,10 @@ export class ResumeNotFound extends Error {
 }
 
 /** Thrown by `resume` when `Project.resume` refuses a Resume-from-K selection (ADR 0032), carrying
- * its status. */
+ * its status and code. */
 export class ResumeRefused extends Error {
-  constructor(
-    readonly status: number,
-    message: string,
-  ) {
-    super(message);
+  constructor(readonly refusal: ResumeRefusal) {
+    super(refusal.message);
     this.name = "ResumeRefused";
   }
 }
@@ -366,7 +364,7 @@ export function inProcessExecutor(project: Project): RunExecutor {
           // No successor started: the refusal, or a 404, is the launch's rejection.
           if (!result.found) {
             throw "refusal" in result
-              ? new ResumeRefused(result.refusal.status, result.refusal.message)
+              ? new ResumeRefused(result.refusal)
               : new ResumeNotFound(result.error);
           }
           if (result.status === "failed") console.error(`resumed run failed: ${result.error}`);

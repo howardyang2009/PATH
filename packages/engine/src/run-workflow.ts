@@ -14,7 +14,7 @@ import { createProcessorSemaphore, DEFAULT_PROCESSOR_CONCURRENCY } from "./proce
 import type { EnvSource } from "./resolve-env.js";
 import type { Emit, RunIdentity } from "./run-context.js";
 import { createEmitter } from "./run-emitter.js";
-import { executeWorkflowRun } from "./run-node.js";
+import { executeWorkflowRun, type WorkflowRunResult } from "./run-node.js";
 import type { RunOptions, RunResult } from "./run-options.js";
 import { analyzeRunStart, resolveExecutorRegistry } from "./run-start.js";
 import { maskRunEvent } from "./secret-mask.js";
@@ -107,7 +107,7 @@ export async function runWorkflow(
     : completeInput
       ? completeContinuation(completeInput, file, runId)
       : noContinuation();
-  let result: RunResult;
+  let result: WorkflowRunResult;
   try {
     result = await executeWorkflowRun({
       file,
@@ -162,10 +162,12 @@ export async function runWorkflow(
   // is the run's product and prints as the pipeline's answer. `error` always: it carries text the
   // engine did not compose, and the CLI prints it into a CI log. A thrown bug escapes unscrubbed
   // (§8.3).
-  if (masker.isEmpty) return result;
+  // `errorMessage` serves only the nested step above a child run; the caller reads `error`.
+  const { errorMessage: _, ...outward } = result;
+  if (masker.isEmpty) return outward;
   return {
-    ...result,
-    ...(result.status === "succeeded" ? {} : { output: masker.maskValue(result.output) }),
-    ...(result.error !== undefined ? { error: masker.maskString(result.error) } : {}),
+    ...outward,
+    ...(outward.status === "succeeded" ? {} : { output: masker.maskValue(outward.output) }),
+    ...(outward.error !== undefined ? { error: masker.maskString(outward.error) } : {}),
   };
 }

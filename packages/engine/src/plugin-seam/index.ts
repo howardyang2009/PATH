@@ -4,8 +4,10 @@
  * seam types, and `defineStepPlugin` (ADR 0019 sub-5).
  */
 
+export { verbatim } from "@path/i18n";
 export type { JsonValue } from "@path/schema";
 export { z } from "zod";
+export { failure } from "../failure.js";
 export { resolveAgainstWorkflowDir } from "./resolve-against-workflow-dir.js";
 export type { StepPlugin, StepRequest, StepResult, WorkerDescriptor } from "./seam.js";
 export { defineStepPlugin } from "./seam.js";

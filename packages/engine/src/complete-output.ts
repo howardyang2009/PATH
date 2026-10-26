@@ -6,6 +6,7 @@ import {
   validateOutputSchema,
   type WorkflowFile,
 } from "@path/schema";
+import { type CodedRefusal, refusal } from "./failure.js";
 import { InterpolationError, interpolateValue, scopeFor } from "./interpolate.js";
 import { resolveNode } from "./ref-tree.js";
 import type { EnvSource } from "./resolve-env.js";
@@ -20,14 +21,13 @@ import type { EnvSource } from "./resolve-env.js";
 export type OutputCheck =
   | { ok: true }
   /** The node was deleted or retyped mid-wait: the leaf can never validly complete (409). */
-  | { ok: false; reason: "node-gone"; message: string }
+  | ({ ok: false; reason: "node-gone" } & CodedRefusal)
   /** The schema could not be built, or the output does not satisfy it (400, leaf untouched). */
-  | {
+  | ({
       ok: false;
       reason: "output-invalid";
-      message: string;
       details?: Extract<OutputValidation, { ok: false }>["issues"];
-    };
+    } & CodedRefusal);
 
 export function checkCompletedOutput(args: {
   rootFile: WorkflowFile;
@@ -54,7 +54,7 @@ export function checkCompletedOutput(args: {
     return {
       ok: false,
       reason: "node-gone",
-      message: `step run "${stepRunId}" no longer maps to an ${AWAITING_STEP_TYPE} node in the workflow and cannot be completed`,
+      ...refusal("run.complete.node-gone", { stepRunId }),
     };
   }
 
@@ -68,7 +68,7 @@ export function checkCompletedOutput(args: {
     return {
       ok: false,
       reason: "output-invalid",
-      message: `output schema for step run "${stepRunId}" could not be resolved: ${err.message}`,
+      ...refusal("run.complete.schema-unresolved", { stepRunId, reason: err.message }),
     };
   }
   const validation = validateOutputSchema(schema, args.output);
@@ -76,7 +76,7 @@ export function checkCompletedOutput(args: {
     return {
       ok: false,
       reason: "output-invalid",
-      message: "output does not match the step's outputSchema",
+      ...refusal("run.complete.output-invalid", {}),
       details: validation.issues,
     };
   }

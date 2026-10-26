@@ -8,6 +8,7 @@ import {
   updateAtConfigPath,
   valueAtConfigPath,
 } from "@path/schema";
+import { type Failure, failure } from "./failure.js";
 import { mergeConfig } from "./merge-config.js";
 import { type EnvSource, resolveEffectiveConfig } from "./resolve-env.js";
 
@@ -119,9 +120,9 @@ export function wrapSecretsAtPaths(config: ConfigObject, paths: readonly string[
 }
 
 /** The run-start failure for a continuation whose launch secrets were not supplied again. */
-export function describeMissingLaunchSecrets(paths: readonly string[]): string {
-  const list = paths.map((path) => `"${path}"`).join(", ");
-  return paths.length === 1
-    ? `run failed before its first step: launch config secret ${list} was not supplied again`
-    : `run failed before its first step: ${paths.length} launch config secrets were not supplied again: ${list}`;
+export function describeMissingLaunchSecrets(paths: readonly string[]): Failure {
+  return failure("run-start.secrets-missing", {
+    count: paths.length,
+    paths: paths.map((path) => `"${path}"`).join(", "),
+  });
 }

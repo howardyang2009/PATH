@@ -720,18 +720,35 @@
       "workflow-missing": "workflow file for run \"{rootRunId}\" not found at \"{workflowPath}\"",
       "invalid-worker-defaults": "invalid worker_defaults",
       "start-failed": "run failed to start: {message}",
-      "refused": "{message}",
       "resume": {
         "no-path": "run \"{rootRunId}\" has no recorded workflow path and cannot be resumed",
         "swapped": "the workflow at \"{workflowPath}\" is no longer the one run \"{rootRunId}\" ran (its id changed); cannot resume",
-        "start-failed": "resume failed to start: {message}"
+        "start-failed": "resume failed to start: {message}",
+        "not-finished": "run \"{rootRunId}\" is still {status, select, pending {pending} running {running} awaiting {awaiting} succeeded {succeeded} failed {failed} other {cancelled}}; only a finished run can be resumed",
+        "succeeded": "run \"{rootRunId}\" already succeeded; there is nothing to resume",
+        "k": {
+          "not-in-tree": "run id \"{runId}\" is not in the run tree being resumed",
+          "pass-run": "run \"{runId}\" is pass {pass}, a goto pass container, which is never a rerun boundary; choose a node inside it",
+          "root-run": "run \"{runId}\" is the root run, which is never a rerun boundary",
+          "not-in-file": "run \"{runId}\" resolves to node \"{label}\", which is no longer in the workflow",
+          "in-body": "run \"{runId}\" resolves to node \"{label}\", which is inside a {container, select, loop {loop} parallel {parallel} branch {branch} other {loop, parallel, or branch}} body and cannot be a rerun boundary",
+          "not-succeeded": "run \"{runId}\" (node \"{label}\") did not succeed; a rerun boundary must be a succeeded node",
+          "prefix-unsucceeded": "run \"{runId}\" (node \"{label}\") has an unsucceeded node before it; the whole prefix must succeed to reuse it",
+          "not-workflow": "run \"{runId}\" resolves through node \"{label}\", which is no longer a nested workflow and cannot be descended",
+          "ref-unresolved": "run \"{runId}\" resolves through node \"{label}\", whose referenced file \"{ref}\" is no longer in the workflow"
+        }
       },
       "complete": {
         "missing-output": "missing required field \"output\"",
         "not-awaiting": "step run \"{stepRunId}\" is {status, select, pending {pending} running {running} awaiting {awaiting} succeeded {succeeded} failed {failed} other {cancelled}}, not awaiting",
         "no-path": "run \"{rootRunId}\" has no recorded workflow path and cannot be completed",
         "swapped": "the workflow at \"{workflowPath}\" is no longer the one run \"{rootRunId}\" ran (its id changed); cannot complete",
-        "lease-held": "run \"{rootRunId}\" is being completed in another invocation"
+        "lease-held": "run \"{rootRunId}\" is being completed in another invocation",
+        "step-gone": "step run \"{stepRunId}\" is gone, not awaiting",
+        "finished": "run \"{rootRunId}\" already finished with status \"{status, select, pending {pending} running {running} awaiting {awaiting} succeeded {succeeded} failed {failed} other {cancelled}}\"",
+        "node-gone": "step run \"{stepRunId}\" no longer maps to an person-activity node in the workflow and cannot be completed",
+        "schema-unresolved": "output schema for step run \"{stepRunId}\" could not be resolved: {reason}",
+        "output-invalid": "output does not match the step's outputSchema"
       },
       "cancel": {
         "finished": "run \"{rootRunId}\" already finished with status \"{status, select, pending {pending} running {running} awaiting {awaiting} succeeded {succeeded} failed {failed} other {cancelled}}\"",
@@ -761,7 +778,8 @@
       "not-shipped": "not a shipped workflow",
       "copy-failed": "shipped workflow cannot be copied: {message}",
       "bundle-failed": "workflow refs could not be bundled",
-      "download-origin": "origin must be \"shipped\" when present"
+      "download-origin": "origin must be \"shipped\" when present",
+      "output-interpolation": "workflow output: {reason}"
     },
     "lease": {
       "held": "workflow is being edited in another session",
@@ -799,6 +817,72 @@
     "client": {
       "bad-reply": "the server's reply was not valid JSON (status {status})",
       "request-failed": "request failed with status {status}"
+    },
+    "step": {
+      "failed": "step \"{name}\": {error}",
+      "unknown-type": "step \"{name}\": unknown step type \"{type}\" — no plugin contributes it",
+      "no-worker": "step \"{name}\": step type \"{type}\" has no worker \"{worker}\"",
+      "output-not-json": "step \"{name}\": failed to parse output as JSON: {reason}"
+    },
+    "node": {
+      "interpolation": "node \"{name}\": {reason}",
+      "unsupported-type": "node type \"{type}\" (node \"{id}\") is not supported by this engine"
+    },
+    "interpolation": {
+      "unresolved": "cannot resolve \"{path}\": {reason}",
+      "non-scalar-splice": "cannot splice a non-scalar value at \"$'{'{path}'}'\" into \"{value}\"",
+      "unclosed": "unclosed placeholder starting at index {index} in \"{value}\"",
+      "not-string": "expected a string value at \"{value}\", got {got, select, null {null} other {a non-scalar}}"
+    },
+    "condition": {
+      "unresolved": "path \"{path}\" does not resolve",
+      "unresolved-because": "path \"{path}\" does not resolve: {reason}",
+      "wants-string": "\"{predicate}\" requires a string value, got {got}",
+      "wants-number": "\"range\" requires a number value, got {got}",
+      "invalid-json": "value is not valid JSON",
+      "was-false": "{predicate} \"{path}\" was false",
+      "not-satisfied": "condition was not satisfied"
+    },
+    "checkpoint": {
+      "failed": "checkpoint \"{name}\" failed: {reason}"
+    },
+    "branch": {
+      "arm-error": "branch \"{name}\" arm {arm}: condition evaluation error: {reason}",
+      "no-match": "branch \"{name}\": no arm matched and there is no else (spec §5.2)"
+    },
+    "while-do": {
+      "condition-error": "while-do \"{name}\": condition evaluation error: {reason}",
+      "max-iterations": "while-do \"{name}\": condition still true after max_iterations ({maxIterations}) — the run fails (spec §5.2)"
+    },
+    "bound": {
+      "not-positive": "{nodeType} \"{name}\": {field} resolved to \"{value}\", which is not a positive integer"
+    },
+    "goto": {
+      "target-not-found": "goto target \"{target}\" not found in this file",
+      "exhausted": "goto \"{name}\": max_jumps ({maxJumps}) exhausted",
+      "leaves-body": "goto \"{name}\": a jump may not leave a while-do or parallel body",
+      "diverged": "Complete replay diverged: pass {pass} was opened by goto \"{goto}\" whose target is now \"{target}\", recorded \"{recorded}\""
+    },
+    "workflow-step": {
+      "input-not-object": "workflow step \"{name}\": input must be a JSON object to seed the child's context (format doc §6.3)",
+      "no-tree": "workflow step \"{name}\": no loaded file tree to resolve ref \"{ref}\"",
+      "ref-missing": "workflow step \"{name}\": referenced file \"{ref}\" is not in the loaded tree",
+      "failed": "workflow step \"{name}\": {error}"
+    },
+    "parallel": {
+      "all-failed": "parallel \"{name}\": all {count} wait-one branches failed",
+      "branch-failed": "parallel \"{name}\", branch \"{branch}\": {error}"
+    },
+    "run-start": {
+      "env-unset": "run failed before its first step: {count, plural, one {environment variable {vars} is not set} other {# environment variables are not set: {vars}}}",
+      "secrets-missing": "run failed before its first step: {count, plural, one {launch config secret {paths} was not supplied again} other {# launch config secrets were not supplied again: {paths}}}",
+      "config-invalid": "run failed before its first step: {count, plural, one {config validation failed} other {# config validation errors}}: {issues}"
+    },
+    "spawn": {
+      "exited": "exited with code {code}",
+      "exited-with-tail": "exited with code {code}: {tail}",
+      "start-failed": "failed to start \"{command}\": {reason}",
+      "cwd-missing": "failed to start \"{command}\": working directory \"{cwd}\" does not exist"
     }
   }
 }

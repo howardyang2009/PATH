@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { verbatim } from "@path/i18n";
 import {
   type ConfigObject,
   type ControllerType,
@@ -13,6 +14,7 @@ import {
 import { childIdentity } from "./child-run.js";
 import type { Continuation } from "./continuation.js";
 import { runBranchNode, runCheckpointNode, runGotoNode, runWhileDoNode } from "./controllers.js";
+import { described, type Failure, failure } from "./failure.js";
 import { runTopLevelWalk } from "./goto-pass.js";
 import {
   describeInterpolationError,
@@ -51,7 +53,7 @@ export interface WorkflowRunParams {
   emitter: Emitter;
   /** The environment snapshot every `$env` in this run tree resolves against — taken once. */
   env: EnvSource;
-  runStartFailure?: string;
+  runStartFailure?: Failure;
   launchFacts?: LaunchFacts;
   runtime: StepRuntime;
   /**
@@ -70,9 +72,13 @@ export interface WorkflowRunParams {
   sourceWorkflowPath?: string;
 }
 
+/** A workflow-run's result plus its failure as a `Message`, for the step that nests it. */
+export type WorkflowRunResult = RunResult & Partial<Pick<Failure, "errorMessage">>;
+
 /** Executes one workflow-run: walks the file's body sequentially (mvp spec §5.1) — leaf steps on
  * their workers, `workflow` steps as nested runs, controls evaluated in the same walk. */
-export async function executeWorkflowRun(params: WorkflowRunParams): Promise<RunResult> {
+
+export async function executeWorkflowRun(params: WorkflowRunParams): Promise<WorkflowRunResult> {
   const { file, fileDir, input, incomingConfig, identity, files, emitter, continuation } = params;
 
   // Resume replays from the run's **seed**, never the counterpart's final `context.json` — under
@@ -99,9 +105,9 @@ export async function executeWorkflowRun(params: WorkflowRunParams): Promise<Run
     continuation,
     detached: [],
   };
-  const fail = async (error: string): Promise<RunResult> => {
-    await emitter.runFinished({ status: "failed", error });
-    return { status: "failed", output: previousOutput, error };
+  const fail = async (failed: Failure): Promise<WorkflowRunResult> => {
+    await emitter.runFinished({ status: "failed", ...failed });
+    return { status: "failed", output: previousOutput, ...failed };
   };
   const succeed = async (output: JsonValue): Promise<RunResult> => {
     await emitter.runFinished({ status: "succeeded", output });
@@ -117,7 +123,8 @@ export async function executeWorkflowRun(params: WorkflowRunParams): Promise<Run
   // A log-backend write failure fails the run audit-first (mvp spec §8.2); any other thrown error
   // is a bug and propagates. Each run converts its own hooks' ObserverError, so a nested failure
   // travels up.
-  const failFromObserverError = async (err: ObserverError): Promise<RunResult> => {
+  const failFromObserverError = async (err: ObserverError): Promise<WorkflowRunResult> => {
+    const failed = described(verbatim(err.message));
     // Honour the exit barrier even on an audit fault: no detached branch may outlive its owning run
     // (§1.1).
     try {
@@ -126,11 +133,11 @@ export async function executeWorkflowRun(params: WorkflowRunParams): Promise<Run
       // a detached branch's own audit write may fault too; nothing more to salvage
     }
     try {
-      await emitter.runFinished({ status: "failed", error: err.message });
+      await emitter.runFinished({ status: "failed", ...failed });
     } catch {
       // the audit write already failed; still report the run as failed
     }
-    return { status: "failed", output: previousOutput, error: err.message };
+    return { status: "failed", output: previousOutput, ...failed };
   };
 
   try {
@@ -140,7 +147,7 @@ export async function executeWorkflowRun(params: WorkflowRunParams): Promise<Run
     throw err;
   }
 
-  async function runBody(): Promise<RunResult> {
+  async function runBody(): Promise<WorkflowRunResult> {
     // Source identity is root-only: the root run *is* the top-level workflow (invariant 2); the
     // emitter drops a nested run's file id. A Complete re-entry (ADR 0041) already has its row and
     // `context.json`, so it skips its start — a second one would duplicate the row.
@@ -182,7 +189,7 @@ export async function executeWorkflowRun(params: WorkflowRunParams): Promise<Run
     // Drain every detached branch before this run reports finished, so the tree stays strictly
     // nested (§1.1/§2).
     await settleDetached(run);
-    if (outcome.status === "failed") return fail(outcome.error);
+    if (outcome.status === "failed") return fail(outcome);
     if (outcome.status === "cancelled") return cancel();
     previousOutput = outcome.output;
 
@@ -197,7 +204,7 @@ export async function executeWorkflowRun(params: WorkflowRunParams): Promise<Run
       return succeed(workflowOutput);
     } catch (err) {
       if (!(err instanceof InterpolationError)) throw err;
-      return fail(`workflow output: ${err.message}`);
+      return fail(failure("workflow.output-interpolation", { reason: err.reason }));
     }
   }
 }
@@ -218,20 +225,20 @@ async function runWorkflowNode(
   if (!isPlainObject(stepInput)) {
     return {
       status: "failed",
-      error: `workflow step "${node.name}": input must be a JSON object to seed the child's context (format doc §6.3)`,
+      ...failure("workflow-step.input-not-object", { name: node.name }),
     };
   }
   if (!ctx.run.files) {
     return {
       status: "failed",
-      error: `workflow step "${node.name}": no loaded file tree to resolve ref "${node.ref}"`,
+      ...failure("workflow-step.no-tree", { name: node.name, ref: node.ref }),
     };
   }
   const child = resolveChildRef(ctx.run.fileDir, node.ref, ctx.run.files);
   if (!child) {
     return {
       status: "failed",
-      error: `workflow step "${node.name}": referenced file "${node.ref}" is not in the loaded tree`,
+      ...failure("workflow-step.ref-missing", { name: node.name, ref: node.ref }),
     };
   }
 
@@ -262,7 +269,13 @@ async function runWorkflowNode(
   // The child parked; this step's own run *is* that child run (invariant 2), so it parks too.
   if (childResult.status === "awaiting") return { status: "awaiting" };
   if (childResult.status === "failed") {
-    return { status: "failed", error: `workflow step "${node.name}": ${childResult.error}` };
+    return {
+      status: "failed",
+      ...failure("workflow-step.failed", {
+        name: node.name,
+        error: childResult.errorMessage ?? verbatim(childResult.error ?? ""),
+      }),
+    };
   }
   return { status: "succeeded", output: childResult.output };
 }
@@ -299,7 +312,7 @@ export async function runNode(
     const unknown = unwalked as { type: string; id: string };
     return {
       status: "failed",
-      error: `node type "${unknown.type}" (node "${unknown.id}") is not supported by this engine`,
+      ...failure("node.unsupported-type", { type: unknown.type, id: unknown.id }),
     };
   }
 
@@ -344,7 +357,7 @@ export async function runNode(
     try {
       stepInput = node.input !== undefined ? interpolateValue(node.input, scope) : incomingOutput;
     } catch (err) {
-      return { status: "failed", error: describeInterpolationError(node.name, err) };
+      return { status: "failed", ...describeInterpolationError(node.name, err) };
     }
 
     // One context for every step kind; a `workflow` step runs a nested run, every other type
@@ -377,7 +390,7 @@ export async function runNode(
         updates[key] = interpolateValue(expr, publishScope);
       }
     } catch (err) {
-      return { status: "failed", error: describeInterpolationError(node.name, err) };
+      return { status: "failed", ...describeInterpolationError(node.name, err) };
     }
     // Every entry resolves before any is written, so the publish lands atomically (§5.3) and only
     // on this run's context.

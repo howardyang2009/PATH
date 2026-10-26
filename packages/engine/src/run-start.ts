@@ -1,5 +1,6 @@
 import { type ConfigObject, formatIssues, type WorkflowFile, walkNodes } from "@path/schema";
 import { z } from "zod";
+import { type Failure, failure } from "./failure.js";
 import { describeMissingLaunchSecrets } from "./launch-facts.js";
 import { type LoadedStepPluginRegistry, scanStepPlugins } from "./plugin-seam/scan.js";
 import { walkRefTree } from "./ref-tree.js";
@@ -55,7 +56,7 @@ export interface RunStartAnalysis {
   masker: SecretMasker;
   /** The run-start gate's verdict: `undefined` to proceed, else the message the run ends `failed`
    * on before its first node. An unset `$env` pre-empts the config-fragment check. */
-  runStartFailure?: string;
+  runStartFailure?: Failure;
 }
 
 /** The run's whole read of its config tree at start, in a fixed order that is the point: collect
@@ -98,7 +99,7 @@ function validateRunStartConfig(
   operatorConfig: ConfigObject,
   env: EnvSource,
   registry: LoadedStepPluginRegistry,
-): string | undefined {
+): Failure | undefined {
   const issues: string[] = [];
 
   // One descent of the loaded ref tree, so this gate reads the very `stepConfig` the executor
@@ -120,9 +121,7 @@ function validateRunStartConfig(
   }
 
   if (issues.length === 0) return undefined;
-  return `run failed before its first step: ${
-    issues.length === 1 ? "config validation failed" : `${issues.length} config validation errors`
-  }: ${issues.join("; ")}`;
+  return failure("run-start.config-invalid", { count: issues.length, issues: issues.join("; ") });
 }
 
 /** Every config object a run can read, in one sweep: operator overrides first (nearest config wins

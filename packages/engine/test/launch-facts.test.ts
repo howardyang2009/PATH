@@ -119,10 +119,10 @@ describe("wrapSecretsAtPaths", () => {
 
 describe("describeMissingLaunchSecrets", () => {
   it("names one key or several, wording each as a run that ended before its first step", () => {
-    expect(describeMissingLaunchSecrets(["apiKey"])).toBe(
+    expect(describeMissingLaunchSecrets(["apiKey"]).error).toBe(
       'run failed before its first step: launch config secret "apiKey" was not supplied again',
     );
-    expect(describeMissingLaunchSecrets(["a", "b"])).toBe(
+    expect(describeMissingLaunchSecrets(["a", "b"]).error).toBe(
       'run failed before its first step: 2 launch config secrets were not supplied again: "a", "b"',
     );
   });

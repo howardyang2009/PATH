@@ -403,6 +403,7 @@ describe("runNode — while-do", () => {
     expect(outcome).toEqual({
       status: "failed",
       error: 'goto "jump": a jump may not leave a while-do or parallel body',
+      errorMessage: { key: "errors.goto.leaves-body", params: { name: "jump" } },
     });
   });
 

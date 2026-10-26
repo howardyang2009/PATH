@@ -724,18 +724,35 @@
       "workflow-missing": "Workflow-Datei für Lauf „{rootRunId}“ nicht gefunden unter „{workflowPath}“",
       "invalid-worker-defaults": "ungültige worker_defaults",
       "start-failed": "Lauf konnte nicht gestartet werden: {message}",
-      "refused": "{message}",
       "resume": {
         "no-path": "Lauf „{rootRunId}“ hat keinen gespeicherten Workflow-Pfad und kann nicht fortgesetzt werden",
         "swapped": "Der Workflow unter „{workflowPath}“ ist nicht mehr der, den Lauf „{rootRunId}“ ausgeführt hat (seine ID hat sich geändert); Fortsetzen nicht möglich",
-        "start-failed": "Fortsetzen konnte nicht gestartet werden: {message}"
+        "start-failed": "Fortsetzen konnte nicht gestartet werden: {message}",
+        "not-finished": "Lauf „{rootRunId}“ ist noch {status, select, pending {ausstehend} running {läuft} awaiting {wartet} succeeded {erfolgreich} failed {fehlgeschlagen} other {abgebrochen}}; nur ein beendeter Lauf kann fortgesetzt werden",
+        "succeeded": "Lauf „{rootRunId}“ war bereits erfolgreich; es gibt nichts fortzusetzen",
+        "k": {
+          "not-in-tree": "Lauf-ID „{runId}“ ist nicht im fortzusetzenden Laufbaum",
+          "pass-run": "Lauf „{runId}“ ist Durchgang {pass}, ein goto-Durchgangscontainer, der nie eine Wiederholgrenze ist; wählen Sie einen Knoten darin",
+          "root-run": "Lauf „{runId}“ ist der Wurzellauf, der nie eine Wiederholgrenze ist",
+          "not-in-file": "Lauf „{runId}“ verweist auf Knoten „{label}“, der nicht mehr im Workflow ist",
+          "in-body": "Lauf „{runId}“ verweist auf Knoten „{label}“, der in einem {container, select, loop {Schleifen} parallel {parallel-} branch {branch-} other {Schleifen-, parallel- oder branch-}}Rumpf liegt und keine Wiederholgrenze sein kann",
+          "not-succeeded": "Lauf „{runId}“ (Knoten „{label}“) war nicht erfolgreich; eine Wiederholgrenze muss ein erfolgreicher Knoten sein",
+          "prefix-unsucceeded": "Lauf „{runId}“ (Knoten „{label}“) hat davor einen nicht erfolgreichen Knoten; alles davor muss erfolgreich sein, um es wiederzuverwenden",
+          "not-workflow": "Lauf „{runId}“ führt über Knoten „{label}“, der kein verschachtelter Workflow mehr ist und nicht durchlaufen werden kann",
+          "ref-unresolved": "Lauf „{runId}“ führt über Knoten „{label}“, dessen referenzierte Datei „{ref}“ nicht mehr im Workflow ist"
+        }
       },
       "complete": {
         "missing-output": "Pflichtfeld „output“ fehlt",
         "not-awaiting": "Schrittlauf „{stepRunId}“ ist {status, select, pending {ausstehend} running {läuft} awaiting {wartet} succeeded {erfolgreich} failed {fehlgeschlagen} other {abgebrochen}}, nicht wartend",
         "no-path": "Lauf „{rootRunId}“ hat keinen gespeicherten Workflow-Pfad und kann nicht abgeschlossen werden",
         "swapped": "Der Workflow unter „{workflowPath}“ ist nicht mehr der, den Lauf „{rootRunId}“ ausgeführt hat (seine ID hat sich geändert); Abschließen nicht möglich",
-        "lease-held": "Lauf „{rootRunId}“ wird gerade in einem anderen Aufruf abgeschlossen"
+        "lease-held": "Lauf „{rootRunId}“ wird gerade in einem anderen Aufruf abgeschlossen",
+        "step-gone": "Schrittlauf „{stepRunId}“ existiert nicht mehr, nicht wartend",
+        "finished": "Lauf „{rootRunId}“ ist bereits mit Status „{status, select, pending {ausstehend} running {läuft} awaiting {wartet} succeeded {erfolgreich} failed {fehlgeschlagen} other {abgebrochen}}“ beendet",
+        "node-gone": "Schrittlauf „{stepRunId}“ gehört zu keinem Personenaktivität-Knoten im Workflow mehr und kann nicht abgeschlossen werden",
+        "schema-unresolved": "Ausgabeschema für Schrittlauf „{stepRunId}“ konnte nicht aufgelöst werden: {reason}",
+        "output-invalid": "Ausgabe entspricht nicht dem outputSchema des Schritts"
       },
       "cancel": {
         "finished": "Lauf „{rootRunId}“ ist bereits mit Status „{status, select, pending {ausstehend} running {läuft} awaiting {wartet} succeeded {erfolgreich} failed {fehlgeschlagen} other {abgebrochen}}“ beendet",
@@ -765,7 +782,8 @@
       "not-shipped": "kein mitgelieferter Workflow",
       "copy-failed": "Mitgelieferter Workflow kann nicht kopiert werden: {message}",
       "bundle-failed": "Workflow-Referenzen konnten nicht gebündelt werden",
-      "download-origin": "origin muss „shipped“ sein, wenn angegeben"
+      "download-origin": "origin muss „shipped“ sein, wenn angegeben",
+      "output-interpolation": "Workflow-Ausgabe: {reason}"
     },
     "lease": {
       "held": "Der Workflow wird in einer anderen Sitzung bearbeitet",
@@ -799,6 +817,72 @@
       "reserved": "Der Name des Benutzer-Secrets „{name}“ ist reserviert",
       "too-large": "Benutzer-Secret „{name}“ ist größer als {kib} KiB",
       "too-many": "höchstens {max} Benutzer-Secrets pro Benutzer"
+    },
+    "step": {
+      "failed": "Schritt „{name}“: {error}",
+      "unknown-type": "Schritt „{name}“: unbekannter Schritttyp „{type}“, kein Plugin stellt ihn bereit",
+      "no-worker": "Schritt „{name}“: Schritttyp „{type}“ hat keinen Worker „{worker}“",
+      "output-not-json": "Schritt „{name}“: Ausgabe konnte nicht als JSON gelesen werden: {reason}"
+    },
+    "node": {
+      "interpolation": "Knoten „{name}“: {reason}",
+      "unsupported-type": "Knotentyp „{type}“ (Knoten „{id}“) wird von dieser Engine nicht unterstützt"
+    },
+    "interpolation": {
+      "unresolved": "„{path}“ kann nicht aufgelöst werden: {reason}",
+      "non-scalar-splice": "ein nicht skalarer Wert bei „$'{'{path}'}'“ kann nicht in „{value}“ eingesetzt werden",
+      "unclosed": "nicht geschlossener Platzhalter ab Index {index} in „{value}“",
+      "not-string": "Zeichenkette erwartet bei „{value}“, erhalten: {got, select, null {null} other {ein nicht skalarer Wert}}"
+    },
+    "condition": {
+      "unresolved": "Pfad „{path}“ lässt sich nicht auflösen",
+      "unresolved-because": "Pfad „{path}“ lässt sich nicht auflösen: {reason}",
+      "wants-string": "„{predicate}“ erfordert eine Zeichenkette, erhalten: {got}",
+      "wants-number": "„range“ erfordert eine Zahl, erhalten: {got}",
+      "invalid-json": "Wert ist kein gültiges JSON",
+      "was-false": "{predicate} „{path}“ war falsch",
+      "not-satisfied": "Bedingung war nicht erfüllt"
+    },
+    "checkpoint": {
+      "failed": "Checkpoint „{name}“ fehlgeschlagen: {reason}"
+    },
+    "branch": {
+      "arm-error": "branch „{name}“, Zweig {arm}: Fehler beim Auswerten der Bedingung: {reason}",
+      "no-match": "branch „{name}“: kein Zweig passte und es gibt kein else (Spezifikation §5.2)"
+    },
+    "while-do": {
+      "condition-error": "while-do „{name}“: Fehler beim Auswerten der Bedingung: {reason}",
+      "max-iterations": "while-do „{name}“: Bedingung nach max_iterations ({maxIterations}) noch wahr, der Lauf schlägt fehl (Spezifikation §5.2)"
+    },
+    "bound": {
+      "not-positive": "{nodeType} „{name}“: {field} ergab „{value}“, das ist keine positive ganze Zahl"
+    },
+    "goto": {
+      "target-not-found": "goto-Ziel „{target}“ in dieser Datei nicht gefunden",
+      "exhausted": "goto „{name}“: max_jumps ({maxJumps}) aufgebraucht",
+      "leaves-body": "goto „{name}“: ein Sprung darf einen while-do- oder parallel-Rumpf nicht verlassen",
+      "diverged": "Abschließen weicht ab: Durchgang {pass} wurde von goto „{goto}“ geöffnet, dessen Ziel jetzt „{target}“ ist, aufgezeichnet „{recorded}“"
+    },
+    "workflow-step": {
+      "input-not-object": "Workflow-Schritt „{name}“: die Eingabe muss ein JSON-Objekt sein, um den Kontext des Kind-Workflows zu füllen (Formatdokument §6.3)",
+      "no-tree": "Workflow-Schritt „{name}“: kein geladener Dateibaum, um ref „{ref}“ aufzulösen",
+      "ref-missing": "Workflow-Schritt „{name}“: die referenzierte Datei „{ref}“ ist nicht im geladenen Baum",
+      "failed": "Workflow-Schritt „{name}“: {error}"
+    },
+    "parallel": {
+      "all-failed": "parallel „{name}“: alle {count} wait-one-Zweige sind fehlgeschlagen",
+      "branch-failed": "parallel „{name}“, Zweig „{branch}“: {error}"
+    },
+    "run-start": {
+      "env-unset": "Lauf vor seinem ersten Schritt fehlgeschlagen: {count, plural, one {Umgebungsvariable {vars} ist nicht gesetzt} other {# Umgebungsvariablen sind nicht gesetzt: {vars}}}",
+      "secrets-missing": "Lauf vor seinem ersten Schritt fehlgeschlagen: {count, plural, one {das Secret {paths} der Startkonfiguration wurde nicht erneut angegeben} other {# Secrets der Startkonfiguration wurden nicht erneut angegeben: {paths}}}",
+      "config-invalid": "Lauf vor seinem ersten Schritt fehlgeschlagen: {count, plural, one {Konfigurationsprüfung fehlgeschlagen} other {# Fehler bei der Konfigurationsprüfung}}: {issues}"
+    },
+    "spawn": {
+      "exited": "mit Code {code} beendet",
+      "exited-with-tail": "mit Code {code} beendet: {tail}",
+      "start-failed": "„{command}“ konnte nicht gestartet werden: {reason}",
+      "cwd-missing": "„{command}“ konnte nicht gestartet werden: Arbeitsverzeichnis „{cwd}“ existiert nicht"
     }
   }
 }

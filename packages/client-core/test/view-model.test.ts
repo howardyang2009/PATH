@@ -1,3 +1,4 @@
+import { verbatim } from "@path/i18n";
 import type { LogEvent, RunTreeResponse } from "@path/schema";
 import { isPassRun } from "@path/schema";
 import { describe, expect, it, vi } from "vitest";
@@ -259,7 +260,7 @@ describe("RunViewModel", () => {
     expect(failed.displayStatus.get(CHILD)).toBe("failed");
     expect(failed.displayStatus.get(ROOT)).toBe("awaiting");
     expect(failed.awaitingRunIds.size).toBe(0);
-    expect(failed.lastError.get(CHILD)).toBe("review rejected");
+    expect(failed.lastError.get(CHILD)).toEqual(verbatim("review rejected"));
 
     const reread = tree("running");
     reread.display_status = { [ROOT]: "running" };

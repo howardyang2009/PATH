@@ -5,6 +5,7 @@ import {
   mapEnv,
   mapSecrets,
 } from "@path/schema";
+import { type Failure, failure } from "./failure.js";
 import { mergeConfig } from "./merge-config.js";
 
 /**
@@ -127,11 +128,9 @@ export function resolveRunEnv(configs: ConfigObject[], env: EnvSource): RunEnvRe
  * The failure a run with unset variables ends on — every name and where each was found, worded
  * "failed before its first step" because the run row already exists.
  */
-export function describeUnsetEnv(unset: UnsetEnvVar[]): string {
-  const list = unset
-    .map((variable) => `"${variable.name}" (config key "${variable.key}")`)
-    .join(", ");
-  return unset.length === 1
-    ? `run failed before its first step: environment variable ${list} is not set`
-    : `run failed before its first step: ${unset.length} environment variables are not set: ${list}`;
+export function describeUnsetEnv(unset: UnsetEnvVar[]): Failure {
+  return failure("run-start.env-unset", {
+    count: unset.length,
+    vars: unset.map((variable) => `"${variable.name}" (config key "${variable.key}")`).join(", "),
+  });
 }

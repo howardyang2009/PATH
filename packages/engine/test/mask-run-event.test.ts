@@ -17,6 +17,11 @@ const EVENTS: { [K in UnsequencedLogEvent["type"]]: Extract<UnsequencedLogEvent,
     ...env,
     status: "failed",
     error: "died on s3cret-value",
+    error_code: "step.failed",
+    error_params: {
+      name: "n1",
+      error: { key: "shared.verbatim", params: { text: "died on s3cret-value" } },
+    },
   },
   "checkpoint-passed": {
     type: "checkpoint-passed",
@@ -171,9 +176,38 @@ describe("maskRunEvent", () => {
   });
 
   it("masks a failed error, and leaves a cancelled finish alone", () => {
-    expect(maskedEvent(EVENTS["step-finished"])).toMatchObject({ error: `died on ${TOKEN}` });
+    expect(maskedEvent(EVENTS["step-finished"])).toMatchObject({
+      error: `died on ${TOKEN}`,
+      error_code: "step.failed",
+      error_params: {
+        name: "n1",
+        error: { key: "shared.verbatim", params: { text: `died on ${TOKEN}` } },
+      },
+    });
     const cancelled: UnsequencedLogEvent = { type: "step-finished", ...env, status: "cancelled" };
     expect(maskedEvent(cancelled)).toEqual(cancelled);
+  });
+
+  it("masks error_params values but never a nested message key", () => {
+    const keyLike = collectSecrets([{ token: { $secret: "verbatim" } }]);
+    const event: UnsequencedLogEvent = {
+      type: "step-finished",
+      ...env,
+      status: "failed",
+      error: "verbatim",
+      error_code: "step.failed",
+      error_params: {
+        name: "verbatim",
+        error: { key: "shared.verbatim", params: { text: "verbatim" } },
+      },
+    };
+    const masked = maskRunEvent(keyLike, { runId: "r1", rootRunId: "r1", event }).event;
+    expect(masked).toMatchObject({
+      error_params: {
+        name: TOKEN,
+        error: { key: "shared.verbatim", params: { text: TOKEN } },
+      },
+    });
   });
 
   it("masks an interpolated assignee on step-awaiting, and leaves a null assignee alone", () => {

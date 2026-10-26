@@ -1,3 +1,4 @@
+import { englishText, type Message, verbatim } from "@path/i18n";
 import {
   type Condition,
   type ConditionOutcome,
@@ -53,6 +54,16 @@ function jsonType(value: JsonValue): string {
   return typeof value;
 }
 
+// The reason behind each leaf's English `message`, for {@link describeConditionFailure}: the trace
+// schema carries only the text, and a trace is persisted, so the `Message` rides beside it.
+const leafReasons = new WeakMap<LeafTrace, Message>();
+
+function withReason(leaf: Omit<LeafTrace, "message">, reason: Message): LeafTrace {
+  const trace: LeafTrace = { ...leaf, message: englishText(reason) };
+  leafReasons.set(trace, reason);
+  return trace;
+}
+
 function evaluateLeaf(
   condition: Extract<Condition, { path: string }>,
   roots: ConditionRoots,
@@ -64,16 +75,21 @@ function evaluateLeaf(
   if (condition.type === "exists") {
     return resolved.found
       ? { ...base, outcome: "true", value: resolved.value }
-      : { ...base, outcome: "false", message: `path "${path}" does not resolve` };
+      : withReason(
+          { ...base, outcome: "false" },
+          { key: "errors.condition.unresolved", params: { path } },
+        );
   }
 
   // Every other predicate reads a value: an unresolvable path is a strict error, not a false.
   if (!resolved.found) {
-    return {
-      ...base,
-      outcome: "error",
-      message: `path "${path}" does not resolve: ${resolved.error}`,
-    };
+    return withReason(
+      { ...base, outcome: "error" },
+      {
+        key: "errors.condition.unresolved-because",
+        params: { path, reason: verbatim(resolved.error) },
+      },
+    );
   }
   const value = resolved.value;
 
@@ -88,12 +104,13 @@ function evaluateLeaf(
       };
     case "matches":
       if (typeof value !== "string") {
-        return {
-          ...base,
-          outcome: "error",
-          value,
-          message: `"matches" requires a string value, got ${jsonType(value)}`,
-        };
+        return withReason(
+          { ...base, outcome: "error", value },
+          {
+            key: "errors.condition.wants-string",
+            params: { predicate: "matches", got: jsonType(value) },
+          },
+        );
       }
       return {
         ...base,
@@ -102,12 +119,10 @@ function evaluateLeaf(
       };
     case "range": {
       if (typeof value !== "number") {
-        return {
-          ...base,
-          outcome: "error",
-          value,
-          message: `"range" requires a number value, got ${jsonType(value)}`,
-        };
+        return withReason(
+          { ...base, outcome: "error", value },
+          { key: "errors.condition.wants-number", params: { got: jsonType(value) } },
+        );
       }
       const withinMin = condition.min === undefined || value >= condition.min;
       const withinMax = condition.max === undefined || value <= condition.max;
@@ -115,18 +130,22 @@ function evaluateLeaf(
     }
     case "valid-json":
       if (typeof value !== "string") {
-        return {
-          ...base,
-          outcome: "error",
-          value,
-          message: `"valid-json" requires a string value, got ${jsonType(value)}`,
-        };
+        return withReason(
+          { ...base, outcome: "error", value },
+          {
+            key: "errors.condition.wants-string",
+            params: { predicate: "valid-json", got: jsonType(value) },
+          },
+        );
       }
       try {
         JSON.parse(value);
         return { ...base, outcome: "true", value };
       } catch {
-        return { ...base, outcome: "false", value, message: "value is not valid JSON" };
+        return withReason(
+          { ...base, outcome: "false", value },
+          { key: "errors.condition.invalid-json" },
+        );
       }
   }
 }
@@ -176,12 +195,23 @@ export function evaluateCondition(
  * message (strict-error case), else the first `false` leaf's, else a generic fallback. Phrases the
  * checkpoint and branch run-failure messages.
  */
-export function describeConditionFailure(trace: Trace): string {
+export function describeConditionFailure(trace: Trace): Message {
   const errorLeaf = findLeaf(trace, "error");
-  if (errorLeaf?.message) return errorLeaf.message;
+  if (errorLeaf?.message) return leafReason(errorLeaf, errorLeaf.message);
   const falseLeaf = findLeaf(trace, "false");
-  if (falseLeaf) return falseLeaf.message ?? `${falseLeaf.type} "${falseLeaf.path}" was false`;
-  return "condition was not satisfied";
+  if (falseLeaf?.message) return leafReason(falseLeaf, falseLeaf.message);
+  if (falseLeaf) {
+    return {
+      key: "errors.condition.was-false",
+      params: { predicate: falseLeaf.type, path: falseLeaf.path },
+    };
+  }
+  return { key: "errors.condition.not-satisfied" };
+}
+
+// A leaf this module did not evaluate (e.g. one read back from a log) has only its text.
+function leafReason(leaf: LeafTrace, message: string): Message {
+  return leafReasons.get(leaf) ?? verbatim(message);
 }
 
 function findLeaf(trace: Trace, outcome: ConditionOutcome): LeafTrace | undefined {

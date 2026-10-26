@@ -1,6 +1,7 @@
 import type { BranchNode, CheckpointNode, GotoNode, JsonValue, WhileDoNode } from "@path/schema";
 import { openContainerRun } from "./child-run.js";
 import { describeConditionFailure, evaluateCondition, type Trace } from "./condition.js";
+import { failure } from "./failure.js";
 import { describeInterpolationError, interpolateToString, scopeFor } from "./interpolate.js";
 import {
   type NodeExecContext,
@@ -34,7 +35,7 @@ export async function runCheckpointNode(
   if (!passed) {
     return {
       status: "failed",
-      error: `checkpoint "${node.name}" failed: ${describeConditionFailure(trace)}`,
+      ...failure("checkpoint.failed", { name: node.name, reason: describeConditionFailure(trace) }),
     };
   }
   return { status: "succeeded", output: incomingOutput };
@@ -58,7 +59,11 @@ export async function runBranchNode(
     if (outcome === "error") {
       return {
         status: "failed",
-        error: `branch "${node.name}" arm ${index}: condition evaluation error: ${describeConditionFailure(trace)}`,
+        ...failure("branch.arm-error", {
+          name: node.name,
+          arm: String(index),
+          reason: describeConditionFailure(trace),
+        }),
       };
     }
     if (outcome === "true") {
@@ -74,7 +79,7 @@ export async function runBranchNode(
   await run.emitter.emit(node, { type: "branch-no-match", traces });
   return {
     status: "failed",
-    error: `branch "${node.name}": no arm matched and there is no else (spec §5.2)`,
+    ...failure("branch.no-match", { name: node.name }),
   };
 }
 
@@ -133,7 +138,10 @@ export async function runWhileDoNode(
     if (outcome === "error") {
       return {
         status: "failed",
-        error: `while-do "${node.name}": condition evaluation error: ${describeConditionFailure(trace)}`,
+        ...failure("while-do.condition-error", {
+          name: node.name,
+          reason: describeConditionFailure(trace),
+        }),
       };
     }
     if (outcome === "false") {
@@ -155,7 +163,10 @@ export async function runWhileDoNode(
       });
       return {
         status: "failed",
-        error: `while-do "${node.name}": condition still true after max_iterations (${maxIterations}) — the run fails (spec §5.2)`,
+        ...failure("while-do.max-iterations", {
+          name: node.name,
+          maxIterations: String(maxIterations),
+        }),
       };
     }
     iterations += 1;
@@ -183,13 +194,18 @@ export function resolveBound(
       scopeFor("limit", { config: run.fileConfig, context: exec.context }),
     );
   } catch (err) {
-    return { status: "failed", error: describeInterpolationError(node.name, err) };
+    return { status: "failed", ...describeInterpolationError(node.name, err) };
   }
   const parsed = Number(resolved);
   if (!Number.isInteger(parsed) || parsed <= 0) {
     return {
       status: "failed",
-      error: `${node.type} "${node.name}": ${field} resolved to "${resolved}", which is not a positive integer`,
+      ...failure("bound.not-positive", {
+        nodeType: node.type,
+        name: node.name,
+        field,
+        value: resolved,
+      }),
     };
   }
   return parsed;
@@ -209,6 +225,6 @@ export function runGotoNode(
   // The load check refuses a file whose target is not a first-level node, so a miss is a skipped
   // load.
   if (!target)
-    return { status: "failed", error: `goto target "${node.target}" not found in this file` };
+    return { status: "failed", ...failure("goto.target-not-found", { target: node.target }) };
   return { status: "goto", goto: node.id, target: target.id, output: incomingOutput };
 }

@@ -10,6 +10,8 @@ import {
   type RunViewFacts,
   runBlobSource,
 } from "@path/client-core";
+import type { Message } from "@path/i18n";
+import { useMessage } from "@path/i18n/react";
 import { useState } from "react";
 import { useTranslations } from "use-intl";
 import { AwaitingActions } from "./awaiting-actions.js";
@@ -231,17 +233,17 @@ function FactBlock({ title, testId, value }: { title: string; testId: string; va
 /**
  * The E block: the run's failure message, rendered only when the run actually failed — unlike the
  * I/O/C blocks, which are slots every run legitimately has, an error is the exception. The message
- * is a plain string the view folded off the run's `step-finished` event, so it renders verbatim,
- * not as JSON.
+ * is the one the view folded off the run's `step-finished` event, rendered as text, not as JSON.
  */
-function ErrorBlock({ message }: { message: string }) {
+function ErrorBlock({ message }: { message: Message }) {
   const t = useTranslations("shared.nodeIo");
+  const renderMessage = useMessage();
   return (
     <section className="io-block" data-testid="node-io-error" aria-labelledby="node-io-error-title">
       <h3 className="io-title" id="node-io-error-title">
         {t("error")}
       </h3>
-      <pre className="node-io-error-message">{message}</pre>
+      <pre className="node-io-error-message">{renderMessage(message)}</pre>
       {/* The error rides the run's `step-finished` event, not a served blob file, so its provenance
           is that event rather than a filename. */}
       <p className="blob-ref">{t("errorSource")}</p>

@@ -724,18 +724,35 @@
       "workflow-missing": "运行“{rootRunId}”的工作流文件在“{workflowPath}”未找到",
       "invalid-worker-defaults": "worker_defaults 无效",
       "start-failed": "运行启动失败：{message}",
-      "refused": "{message}",
       "resume": {
         "no-path": "运行“{rootRunId}”没有记录工作流路径，无法恢复",
         "swapped": "“{workflowPath}”处的工作流已不是运行“{rootRunId}”所运行的那个（其 ID 已改变）；无法恢复",
-        "start-failed": "恢复启动失败：{message}"
+        "start-failed": "恢复启动失败：{message}",
+        "not-finished": "运行“{rootRunId}”仍处于{status, select, pending {待处理} running {运行中} awaiting {等待中} succeeded {已成功} failed {已失败} other {已取消}}；只有已结束的运行才能恢复",
+        "succeeded": "运行“{rootRunId}”已成功；没有可恢复的内容",
+        "k": {
+          "not-in-tree": "运行 ID“{runId}”不在要恢复的运行树中",
+          "pass-run": "运行“{runId}”是轮次 {pass}，一个 goto 轮次容器，不能作为重跑起点；请选择其中的节点",
+          "root-run": "运行“{runId}”是根运行，不能作为重跑起点",
+          "not-in-file": "运行“{runId}”对应节点“{label}”，该节点已不在工作流中",
+          "in-body": "运行“{runId}”对应节点“{label}”，该节点位于{container, select, loop {循环} parallel { parallel } branch { branch } other {循环、parallel 或 branch }}主体内，不能作为重跑起点",
+          "not-succeeded": "运行“{runId}”（节点“{label}”）未成功；重跑起点必须是已成功的节点",
+          "prefix-unsucceeded": "运行“{runId}”（节点“{label}”）之前有未成功的节点；之前的部分必须全部成功才能复用",
+          "not-workflow": "运行“{runId}”经过节点“{label}”，该节点已不是嵌套工作流，无法深入",
+          "ref-unresolved": "运行“{runId}”经过节点“{label}”，其引用的文件“{ref}”已不在工作流中"
+        }
       },
       "complete": {
         "missing-output": "缺少必填字段“output”",
         "not-awaiting": "步骤运行“{stepRunId}”的状态是 {status, select, pending {待处理} running {运行中} awaiting {等待中} succeeded {已成功} failed {已失败} other {已取消}}，不是等待中",
         "no-path": "运行“{rootRunId}”没有记录工作流路径，无法完成",
         "swapped": "“{workflowPath}”处的工作流已不是运行“{rootRunId}”所运行的那个（其 ID 已改变）；无法完成",
-        "lease-held": "运行“{rootRunId}”正在另一次调用中完成"
+        "lease-held": "运行“{rootRunId}”正在另一次调用中完成",
+        "step-gone": "步骤运行“{stepRunId}”已不存在，不是等待中",
+        "finished": "运行“{rootRunId}”已结束，状态为“{status, select, pending {待处理} running {运行中} awaiting {等待中} succeeded {已成功} failed {已失败} other {已取消}}”",
+        "node-gone": "步骤运行“{stepRunId}”已不对应工作流中的人工活动节点，无法完成",
+        "schema-unresolved": "无法解析步骤运行“{stepRunId}”的输出模式：{reason}",
+        "output-invalid": "输出不符合该步骤的 outputSchema"
       },
       "cancel": {
         "finished": "运行“{rootRunId}”已结束，状态为“{status, select, pending {待处理} running {运行中} awaiting {等待中} succeeded {已成功} failed {已失败} other {已取消}}”",
@@ -765,7 +782,8 @@
       "not-shipped": "不是内置工作流",
       "copy-failed": "无法复制内置工作流：{message}",
       "bundle-failed": "无法打包工作流引用",
-      "download-origin": "若提供 origin，必须为“shipped”"
+      "download-origin": "若提供 origin，必须为“shipped”",
+      "output-interpolation": "工作流输出：{reason}"
     },
     "lease": {
       "held": "工作流正在另一个会话中编辑",
@@ -799,6 +817,72 @@
       "reserved": "用户密钥名称“{name}”是保留名称",
       "too-large": "用户密钥“{name}”超过 {kib} KiB",
       "too-many": "每个用户最多 {max} 个用户密钥"
+    },
+    "step": {
+      "failed": "步骤“{name}”：{error}",
+      "unknown-type": "步骤“{name}”：未知的步骤类型“{type}”，没有插件提供它",
+      "no-worker": "步骤“{name}”：步骤类型“{type}”没有执行器“{worker}”",
+      "output-not-json": "步骤“{name}”：无法将输出解析为 JSON：{reason}"
+    },
+    "node": {
+      "interpolation": "节点“{name}”：{reason}",
+      "unsupported-type": "此引擎不支持节点类型“{type}”（节点“{id}”）"
+    },
+    "interpolation": {
+      "unresolved": "无法解析“{path}”：{reason}",
+      "non-scalar-splice": "无法将“$'{'{path}'}'”处的非标量值拼接到“{value}”中",
+      "unclosed": "“{value}”中从索引 {index} 开始的占位符未闭合",
+      "not-string": "“{value}”处应为字符串，实际为{got, select, null { null} other {非标量值}}"
+    },
+    "condition": {
+      "unresolved": "路径“{path}”无法解析",
+      "unresolved-because": "路径“{path}”无法解析：{reason}",
+      "wants-string": "“{predicate}”需要字符串值，实际为 {got}",
+      "wants-number": "“range”需要数值，实际为 {got}",
+      "invalid-json": "值不是有效的 JSON",
+      "was-false": "{predicate}“{path}”为假",
+      "not-satisfied": "条件未满足"
+    },
+    "checkpoint": {
+      "failed": "检查点“{name}”失败：{reason}"
+    },
+    "branch": {
+      "arm-error": "branch“{name}”分支 {arm}：条件求值出错：{reason}",
+      "no-match": "branch“{name}”：没有分支匹配，且没有 else（规范 §5.2）"
+    },
+    "while-do": {
+      "condition-error": "while-do“{name}”：条件求值出错：{reason}",
+      "max-iterations": "while-do“{name}”：达到 max_iterations（{maxIterations}）后条件仍为真，运行失败（规范 §5.2）"
+    },
+    "bound": {
+      "not-positive": "{nodeType}“{name}”：{field} 解析为“{value}”，不是正整数"
+    },
+    "goto": {
+      "target-not-found": "在此文件中未找到 goto 目标“{target}”",
+      "exhausted": "goto“{name}”：max_jumps（{maxJumps}）已用尽",
+      "leaves-body": "goto“{name}”：跳转不能离开 while-do 或 parallel 的主体",
+      "diverged": "完成重放出现偏差：轮次 {pass} 由 goto“{goto}”开启，其目标现为“{target}”，记录为“{recorded}”"
+    },
+    "workflow-step": {
+      "input-not-object": "工作流步骤“{name}”：输入必须是 JSON 对象，才能填充子工作流的上下文（格式文档 §6.3）",
+      "no-tree": "工作流步骤“{name}”：没有已加载的文件树来解析 ref“{ref}”",
+      "ref-missing": "工作流步骤“{name}”：引用的文件“{ref}”不在已加载的树中",
+      "failed": "工作流步骤“{name}”：{error}"
+    },
+    "parallel": {
+      "all-failed": "parallel“{name}”：全部 {count} 个 wait-one 分支均失败",
+      "branch-failed": "parallel“{name}”，分支“{branch}”：{error}"
+    },
+    "run-start": {
+      "env-unset": "运行在第一个步骤之前失败：{count, plural, other {# 个环境变量未设置：{vars}}}",
+      "secrets-missing": "运行在第一个步骤之前失败：{count, plural, other {# 个启动配置密钥未再次提供：{paths}}}",
+      "config-invalid": "运行在第一个步骤之前失败：{count, plural, other {# 个配置校验错误}}：{issues}"
+    },
+    "spawn": {
+      "exited": "以代码 {code} 退出",
+      "exited-with-tail": "以代码 {code} 退出：{tail}",
+      "start-failed": "无法启动“{command}”：{reason}",
+      "cwd-missing": "无法启动“{command}”：工作目录“{cwd}”不存在"
     }
   }
 }

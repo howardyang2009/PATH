@@ -1,3 +1,4 @@
+import type { Message } from "@path/i18n";
 import type { JsonValue, LaunchFacts, LogEvent, RerunFromNodePathEntry } from "@path/schema";
 
 /**
@@ -13,7 +14,7 @@ export class ObserverError extends Error {}
  */
 export type RunOutcome =
   | { status: "succeeded"; output: JsonValue }
-  | { status: "failed"; error?: string }
+  | { status: "failed"; error?: string; errorMessage?: Message }
   | { status: "cancelled" };
 
 export type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
