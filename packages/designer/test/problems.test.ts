@@ -30,7 +30,10 @@ describe("cross-node problems", () => {
       nodeName: "reader",
       kind: "dangling-interpolation",
     });
-    expect(problems[0]!.message).toContain("missing");
+    expect(problems[0]!.message).toEqual({
+      key: "designer.problems.danglingInterpolation",
+      params: { key: "missing" },
+    });
   });
 
   it("does not flag a context read a sibling publishes, whatever the order", () => {
@@ -68,7 +71,10 @@ describe("cross-node problems", () => {
     const cond = problems.find((p) => p.kind === "dangling-condition");
     expect(cond).toBeDefined();
     expect(cond!.nodeId).toBe(uuid(2));
-    expect(cond!.message).toContain("absent");
+    expect(cond!.message).toEqual({
+      key: "designer.problems.danglingCondition",
+      params: { key: "absent" },
+    });
   });
 
   it("does not flag a condition path whose key is published", () => {
@@ -106,6 +112,8 @@ describe("cross-node problems", () => {
     expect(conflict).toBeDefined();
     expect(conflict!.nodeId).toBe(uuid(3));
     expect(conflict!.nodeName).toBe("b2");
+    // The schema's own text until its validation codes land.
+    expect(conflict!.message).toMatchObject({ key: "shared.verbatim" });
   });
 
   it("de-duplicates the same dangling key repeated in one node", () => {
@@ -127,8 +135,10 @@ describe("cross-node problems", () => {
     const marks = problemMarks(fileProblems(file));
     expect(marks.has(uuid(2))).toBe(true);
     // both the dangling condition path and the dangling max_iterations read land on the one node
-    expect(marks.get(uuid(2))).toContain("c1");
-    expect(marks.get(uuid(2))).toContain("c2");
+    expect(marks.get(uuid(2))).toEqual([
+      { key: "designer.problems.danglingInterpolation", params: { key: "c2" } },
+      { key: "designer.problems.danglingCondition", params: { key: "c1" } },
+    ]);
   });
 
   it("flags a `workflow`-ref whose target has no saved file yet (create-new, not saved)", () => {
@@ -139,7 +149,10 @@ describe("cross-node problems", () => {
     });
     expect(problems).toHaveLength(1);
     expect(problems[0]).toMatchObject({ nodeId: uuid(2), nodeName: "child", kind: "dangling-ref" });
-    expect(problems[0]!.message).toContain("child.workflow.json");
+    expect(problems[0]!.message).toEqual({
+      key: "designer.problems.danglingRef",
+      params: { ref: "flows/child.workflow.json" },
+    });
   });
 
   it("does not flag a `workflow`-ref whose target is a saved (discovered) file", () => {
@@ -173,7 +186,9 @@ describe("cross-node problems", () => {
       knownPaths: new Set(),
     });
     const marks = problemMarks(problems);
-    expect(marks.get(uuid(2))).toContain("child.workflow.json");
+    expect(marks.get(uuid(2))).toEqual([
+      { key: "designer.problems.danglingRef", params: { ref: "child.workflow.json" } },
+    ]);
   });
 
   it("suppresses the ref check before discovery loads (null known set) and for a pathless file", () => {
@@ -228,6 +243,9 @@ describe("file input seeds context", () => {
     };
     const problems = fileProblems(file);
     expect(problems).toHaveLength(1);
-    expect(problems[0]!.message).toContain("other");
+    expect(problems[0]!.message).toEqual({
+      key: "designer.problems.danglingInterpolation",
+      params: { key: "other" },
+    });
   });
 });

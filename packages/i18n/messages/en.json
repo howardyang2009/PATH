@@ -465,6 +465,23 @@
       "switchToEdit": "Switch to Template mode to edit this template.",
       "invalidTemplate": "invalid template",
       "shipped": "shipped"
+    },
+    "problems": {
+      "danglingInterpolation": "reads `$'{'context.{key}'}'`, which no step in this file publishes",
+      "danglingCondition": "condition reads `context.{key}`, which no step in this file publishes",
+      "danglingRef": "references `{ref}`, which has no saved file yet",
+      "markerLabel": "Validation error: {message}",
+      "label": "Problems",
+      "warnings": "{count, plural, one {# warning} other {# warnings}}",
+      "note": "Soft errors — save and launch are not blocked.",
+      "jumpTo": "Jump to {name}: {message}",
+      "kind": {
+        "publish": "publish",
+        "contextRead": "context read",
+        "condition": "condition",
+        "ref": "ref",
+        "goto": "goto"
+      }
     }
   }
 }

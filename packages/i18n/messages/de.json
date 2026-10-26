@@ -465,6 +465,23 @@
       "switchToEdit": "Wechseln Sie in den Vorlagenmodus, um diese Vorlage zu bearbeiten.",
       "invalidTemplate": "ungültige Vorlage",
       "shipped": "mitgeliefert"
+    },
+    "problems": {
+      "danglingInterpolation": "liest `$'{'context.{key}'}'`, das kein Schritt in dieser Datei veröffentlicht",
+      "danglingCondition": "Bedingung liest `context.{key}`, das kein Schritt in dieser Datei veröffentlicht",
+      "danglingRef": "verweist auf `{ref}`, für das noch keine gespeicherte Datei existiert",
+      "markerLabel": "Validierungsfehler: {message}",
+      "label": "Probleme",
+      "warnings": "{count, plural, one {# Warnung} other {# Warnungen}}",
+      "note": "Weiche Fehler – Speichern und Starten werden nicht blockiert.",
+      "jumpTo": "Zu {name} springen: {message}",
+      "kind": {
+        "publish": "Veröffentlichung",
+        "contextRead": "Kontext-Lesezugriff",
+        "condition": "Bedingung",
+        "ref": "Referenz",
+        "goto": "goto"
+      }
     }
   }
 }

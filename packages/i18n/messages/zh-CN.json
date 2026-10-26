@@ -465,6 +465,23 @@
       "switchToEdit": "切换到模板编辑模式以编辑此模板。",
       "invalidTemplate": "无效模板",
       "shipped": "内置"
+    },
+    "problems": {
+      "danglingInterpolation": "读取了 `$'{'context.{key}'}'`，但此文件中没有步骤发布它",
+      "danglingCondition": "条件读取了 `context.{key}`，但此文件中没有步骤发布它",
+      "danglingRef": "引用了 `{ref}`，但该文件尚未保存",
+      "markerLabel": "校验错误：{message}",
+      "label": "问题",
+      "warnings": "{count, plural, other {# 条警告}}",
+      "note": "软错误：不会阻止保存和启动。",
+      "jumpTo": "跳转到 {name}：{message}",
+      "kind": {
+        "publish": "发布",
+        "contextRead": "上下文读取",
+        "condition": "条件",
+        "ref": "引用",
+        "goto": "goto"
+      }
     }
   }
 }
