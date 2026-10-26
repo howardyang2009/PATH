@@ -119,6 +119,8 @@ export {
   resupplyGate,
   secretSkeletonJson,
 } from "./launch-secret-resupply.js";
+// The page's Locale: `?lang=`, then the `RHEINWEG_LOCALE` cookie, then the browser.
+export { type LocaleSources, resolveLocale } from "./locale.js";
 export { narrativeRows } from "./narrative-rows.js";
 export { nodeEventLabel, nodeLabel, shortGuid } from "./node-label.js";
 // The Designer's eager legal-K check (ADR 0033): the client mirror of the engine's one legal-K

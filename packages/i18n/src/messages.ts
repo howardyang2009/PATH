@@ -1,3 +1,5 @@
+// Puts `use-intl` in every importer's program, so the augmentation below resolves there too.
+import type {} from "use-intl";
 import en from "../messages/en.json" with { type: "json" };
 import type { Locale } from "./locale.js";
 
@@ -10,14 +12,15 @@ declare module "use-intl" {
   }
 }
 
-/** The catalogue for `locale`. `en` is bundled as the runtime fallback; the others load lazily. */
+/** The catalogue for `locale`. `en` is bundled as the runtime fallback; the others load lazily,
+ * through a module of their own because Vite's dev server serves a JSON `import()` as script. */
 export async function loadMessages(locale: Locale): Promise<Messages> {
   switch (locale) {
     case "en":
       return en;
     case "de":
-      return (await import("../messages/de.json", { with: { type: "json" } })).default;
+      return (await import("./catalogues/de.js")).messages;
     case "zh-CN":
-      return (await import("../messages/zh-CN.json", { with: { type: "json" } })).default;
+      return (await import("./catalogues/zh-CN.js")).messages;
   }
 }

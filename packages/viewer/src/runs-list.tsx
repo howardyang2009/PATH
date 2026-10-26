@@ -1,5 +1,6 @@
 import { isTerminal, type PathApiClient, type RunStatus, shortGuid } from "@path/client-core";
 import { useEffect, useRef, useState } from "react";
+import { useLocale } from "use-intl";
 import { DeleteButton } from "./delete-button.js";
 import { formatTimestamp } from "./format-time.js";
 import { PaneError, PaneLoading } from "./pane-note.js";
@@ -72,6 +73,7 @@ export function RunsList({
   reloadNonce,
   resumeFrom,
 }: RunsListProps) {
+  const locale = useLocale();
   // `null` (nothing open) never reaches a query — the effects short-circuit and the render is idle.
   const scope = typeof workflowId === "string" ? workflowId : undefined;
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
@@ -182,7 +184,7 @@ export function RunsList({
                     <span className="run-workflow">{run.workflow_name ?? "—"}</span>
                     <StatusPill status={rowStatus} />
                     <span className="run-meta">
-                      <span className="run-started">{formatTimestamp(run.started_at)}</span>
+                      <span className="run-started">{formatTimestamp(run.started_at, locale)}</span>
                       <span className="run-id">{shortGuid(run.run_id)}</span>
                     </span>
                   </button>
