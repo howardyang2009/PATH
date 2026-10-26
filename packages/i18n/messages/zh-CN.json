@@ -381,7 +381,7 @@
     },
     "canvas": {
       "loading": "正在加载…",
-      "fetchingRegistry": "正在获取步骤类型插件注册表。",
+      "fetchingRegistry": "正在获取插件注册表。",
       "registryUnavailable": "插件注册表不可用",
       "empty": "空画布",
       "emptyHint": "{mode, select, template {没有打开的模板。新建一个，或打开已有模板进行编辑。} other {没有打开的工作流。新建一个，或打开已有工作流进行编辑。}}",
@@ -405,7 +405,7 @@
         "explanation": "针对某个模型运行的 LLM 提示词。"
       },
       "binary": {
-        "label": "命令",
+        "label": "二进制程序",
         "blurb": "带参数和工作目录的命令",
         "explanation": "在工作目录中带参数运行的命令。"
       },
@@ -430,7 +430,7 @@
         "explanation": "首个匹配的条件分支胜出，每个分支由一个条件守卫，可选一个否则分支。"
       },
       "whileDo": {
-        "label": "While-do",
+        "label": "条件循环",
         "blurb": "对一个主体的有界循环",
         "explanation": "条件成立时重复执行一个主体，最多执行到上限次数。"
       },
@@ -445,7 +445,7 @@
         "explanation": "对运行断言一个条件；断言失败则运行失败。"
       },
       "goto": {
-        "label": "Goto",
+        "label": "跳转",
         "blurb": "跳转到第一层节点，次数有限",
         "explanation": "向后或向前跳转到第一层节点，最多 max jumps 次。"
       },
@@ -485,7 +485,7 @@
         "contextRead": "上下文读取",
         "condition": "条件",
         "ref": "引用",
-        "goto": "goto"
+        "goto": "跳转"
       }
     },
     "draft": {
@@ -493,7 +493,7 @@
       "invalidInterpolation": "插值无效",
       "payloadNotObject": "负载必须是 JSON 对象。",
       "fileInputNotObject": "工作流输入必须是 JSON 对象。",
-      "outputSchemaNotObject": "输出 schema 必须是 JSON 对象。",
+      "outputSchemaNotObject": "输出结构定义必须是 JSON 对象。",
       "maxIterationsRequired": "必填：一个正整数，或 $'{'config.…'}' / $'{'context.…'}' 引用。",
       "positiveWholeNumber": "必须是正整数。",
       "maxIterationsInvalid": "插值无效。",
@@ -501,7 +501,7 @@
     },
     "pane": {
       "fileExplain": "工作流文件：它的标识，以及在画布上编写的主体。",
-      "reference": "可引用路径",
+      "reference": "引用",
       "role": {
         "else": "分支的否则兜底",
         "parallelBranch": "并行分支",
@@ -591,11 +591,6 @@
     "download": {
       "unbundledRef": "{ref}（位于 {from}）：{reason}"
     },
-    "cancel": "取消",
-    "back": "返回",
-    "discovering": "正在查找工作流…",
-    "noWorkflows": "此项目中尚未发现工作流。",
-    "discoveredWorkflows": "已发现的工作流",
     "openWorkflowDialog": {
       "title": "打开工作流",
       "hint": "从此项目中选择一个工作流进行打开和编辑。",
@@ -636,6 +631,13 @@
       "resizeDetail": "调整运行详情宽度",
       "nodeIo": "节点输入/输出/上下文/错误",
       "selectTreeRun": "请在运行树中选择一个运行。"
+    },
+    "dialog": {
+      "cancel": "取消",
+      "back": "返回",
+      "discovering": "正在查找工作流…",
+      "noWorkflows": "此项目中尚未发现工作流。",
+      "discoveredWorkflows": "已发现的工作流"
     }
   }
 }

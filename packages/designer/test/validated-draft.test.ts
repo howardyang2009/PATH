@@ -43,7 +43,12 @@ describe("validateJsonPayload", () => {
   it("rejects unparseable JSON without committing", () => {
     const r = validateJsonPayload(apiNode(), "{ not json", plugins);
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.error).toMatchObject({ key: "designer.draft.notJson" });
+    if (!r.ok) {
+      expect(r.error).toEqual({
+        key: "designer.draft.notJson",
+        params: { error: expect.any(String) },
+      });
+    }
   });
 
   it("rejects a non-object payload", () => {

@@ -405,7 +405,7 @@
         "explanation": "Ein LLM-Prompt, der gegen ein Modell ausgeführt wird."
       },
       "binary": {
-        "label": "Befehl",
+        "label": "Binärprogramm",
         "blurb": "Ein Befehl mit Argumenten und Arbeitsverzeichnis",
         "explanation": "Ein Befehl, der mit Argumenten in einem Arbeitsverzeichnis ausgeführt wird."
       },
@@ -501,7 +501,7 @@
     },
     "pane": {
       "fileExplain": "Die Workflow-Datei – ihre Identität und der auf der Arbeitsfläche erstellte Rumpf.",
-      "reference": "Referenzen",
+      "reference": "Referenz",
       "role": {
         "else": "Sonst-Zweig der Verzweigung",
         "parallelBranch": "paralleler Zweig",
@@ -591,11 +591,6 @@
     "download": {
       "unbundledRef": "{ref} (in {from}): {reason}"
     },
-    "cancel": "Abbrechen",
-    "back": "Zurück",
-    "discovering": "Workflows werden gesucht…",
-    "noWorkflows": "In diesem Projekt wurden noch keine Workflows gefunden.",
-    "discoveredWorkflows": "Gefundene Workflows",
     "openWorkflowDialog": {
       "title": "Workflow öffnen",
       "hint": "Wählen Sie einen Workflow aus diesem Projekt zum Öffnen und Bearbeiten.",
@@ -636,6 +631,13 @@
       "resizeDetail": "Breite der Laufdetails ändern",
       "nodeIo": "Knoten-E/A/K/F",
       "selectTreeRun": "Wählen Sie einen Lauf im Laufbaum."
+    },
+    "dialog": {
+      "cancel": "Abbrechen",
+      "back": "Zurück",
+      "discovering": "Workflows werden gesucht…",
+      "noWorkflows": "In diesem Projekt wurden noch keine Workflows gefunden.",
+      "discoveredWorkflows": "Gefundene Workflows"
     }
   }
 }

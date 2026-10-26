@@ -62,7 +62,7 @@ export function RefTargetDialog({
         </div>
         <div className="dialog-actions">
           <button type="button" onClick={onCancel}>
-            {t("designer.cancel")}
+            {t("designer.dialog.cancel")}
           </button>
         </div>
       </div>
@@ -108,11 +108,11 @@ function ExistingPicker({
         <h2 className="dialog-title">{t("designer.refTargetDialog.existing")}</h2>
         <p className="dialog-hint">{t("designer.refTargetDialog.existingHint")}</p>
         {paths === null ? (
-          <p className="pane-note">{t("designer.discovering")}</p>
+          <p className="pane-note">{t("designer.dialog.discovering")}</p>
         ) : paths.length === 0 ? (
-          <p className="ref-existing-empty">{t("designer.noWorkflows")}</p>
+          <p className="ref-existing-empty">{t("designer.dialog.noWorkflows")}</p>
         ) : (
-          <ul className="ref-existing-list" aria-label={t("designer.discoveredWorkflows")}>
+          <ul className="ref-existing-list" aria-label={t("designer.dialog.discoveredWorkflows")}>
             {paths.map((path) => (
               <li key={path}>
                 <button type="button" className="ref-existing-item" onClick={() => onPick(path)}>
@@ -124,10 +124,10 @@ function ExistingPicker({
         )}
         <div className="dialog-actions">
           <button type="button" onClick={onBack}>
-            {t("designer.back")}
+            {t("designer.dialog.back")}
           </button>
           <button type="button" onClick={onCancel}>
-            {t("designer.cancel")}
+            {t("designer.dialog.cancel")}
           </button>
         </div>
       </div>

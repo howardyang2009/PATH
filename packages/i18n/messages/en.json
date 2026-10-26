@@ -591,11 +591,6 @@
     "download": {
       "unbundledRef": "{ref} (in {from}): {reason}"
     },
-    "cancel": "Cancel",
-    "back": "Back",
-    "discovering": "Discovering workflows…",
-    "noWorkflows": "No workflows discovered in this project yet.",
-    "discoveredWorkflows": "Discovered workflows",
     "openWorkflowDialog": {
       "title": "Open a workflow",
       "hint": "Choose a workflow from this project to open and edit.",
@@ -636,6 +631,13 @@
       "resizeDetail": "Resize run detail",
       "nodeIo": "Node I/O/C/E",
       "selectTreeRun": "Select a run in the tree."
+    },
+    "dialog": {
+      "cancel": "Cancel",
+      "back": "Back",
+      "discovering": "Discovering workflows…",
+      "noWorkflows": "No workflows discovered in this project yet.",
+      "discoveredWorkflows": "Discovered workflows"
     }
   }
 }

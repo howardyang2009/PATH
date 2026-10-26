@@ -70,15 +70,15 @@ export function OpenWorkflowDialog({
         <h2 className="dialog-title">{t("designer.openWorkflowDialog.title")}</h2>
         <p className="dialog-hint">{t("designer.openWorkflowDialog.hint")}</p>
         {workflows === null ? (
-          <p className="pane-note">{t("designer.discovering")}</p>
+          <p className="pane-note">{t("designer.dialog.discovering")}</p>
         ) : workflows.length === 0 ? (
-          <p className="ref-existing-empty">{t("designer.noWorkflows")}</p>
+          <p className="ref-existing-empty">{t("designer.dialog.noWorkflows")}</p>
         ) : (
           <div className="open-workflow-tree">
             <WorkflowTree
               nodes={tree}
               depth={0}
-              label={t("designer.discoveredWorkflows")}
+              label={t("designer.dialog.discoveredWorkflows")}
               openFolder={openFolder}
               onToggleFolder={(path) => setOpenFolder((prev) => nextOpenFolder(prev, path))}
               onOpen={onOpen}
@@ -93,7 +93,7 @@ export function OpenWorkflowDialog({
         ) : null}
         <div className="dialog-actions">
           <button type="button" onClick={onCancel}>
-            {t("designer.cancel")}
+            {t("designer.dialog.cancel")}
           </button>
         </div>
       </div>

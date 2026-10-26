@@ -75,7 +75,7 @@ export function OpenTemplateDialog({
         )}
         <div className="dialog-actions">
           <button type="button" onClick={onCancel}>
-            {t("designer.cancel")}
+            {t("designer.dialog.cancel")}
           </button>
         </div>
       </div>
