@@ -1,4 +1,6 @@
+import type { Message } from "@path/i18n";
 import { type ZodRawShape, z } from "zod";
+import { codedErrorMap, codedIssue, codedMessage, messageIssue } from "./coded-issue.js";
 import { ConditionSchema } from "./conditions.js";
 import { ConfigObjectSchema } from "./config.js";
 import { IdSchema, NameSchema } from "./ids.js";
@@ -23,9 +25,7 @@ export const commonStepFields = {
 const RefSchema = z
   .string()
   .min(1)
-  .refine((value) => !value.startsWith("/"), {
-    message: "ref must be a relative path, not absolute",
-  });
+  .refine((value) => !value.startsWith("/"), codedIssue("schema.node.absolute-ref"));
 
 const MaxIterationsSchema = z.union([z.number().int().positive(), interpolableString(ROOTS.limit)]);
 
@@ -216,7 +216,11 @@ function buildPluginMember(typeName: string, entry: RegistryStepType): z.ZodObje
     const roots = typeFieldRoots(typeName, fieldName);
     fields[fieldName] = (fieldSchema as z.ZodType).superRefine((value, ctx) => {
       for (const issue of interpolationIssues(value, roots)) {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, path: issue.path, message: issue.error });
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: issue.path,
+          ...messageIssue(issue.error),
+        });
       }
     });
   }
@@ -236,7 +240,10 @@ function buildPluginMember(typeName: string, entry: RegistryStepType): z.ZodObje
       worker: z
         .enum(workerNames as [string, ...string[]], {
           error: (issue) =>
-            describeUnknownWorker(typeName, workerNames, (issue as { input?: unknown }).input),
+            codedErrorMap(
+              issue,
+              describeUnknownWorker(typeName, workerNames, (issue as { input?: unknown }).input),
+            ),
         })
         .optional(),
     })
@@ -250,26 +257,24 @@ export function describeUnknownWorker(
   typeName: string,
   workerNames: string[],
   received: unknown,
-): string {
-  return `unknown worker "${String(received)}" — "${typeName}" ships ${workerNames.map((w) => `"${w}"`).join(" | ")}`;
+): Message {
+  return codedMessage("schema.node.unknown-worker", {
+    worker: String(received),
+    type: typeName,
+    workers: workerNames.map((w) => `"${w}"`).join(" | "),
+  });
 }
 
 // The load error for a `type` no registry entry holds: echoes the received value, lists every known
 // type, and names the remedy. Each unknown node yields one issue, so a single parse names every
 // missing type at once.
-export function describeUnknownStepType(received: unknown, known: (string | number)[]): string {
-  const badType =
-    typeof received === "string"
-      ? `"${received}"`
-      : received === undefined
-        ? "(none)"
-        : JSON.stringify(received);
+export function describeUnknownStepType(received: unknown, known: (string | number)[]): Message {
   const knownList = known.length > 0 ? known.join(", ") : "(none)";
-  const remedy =
-    typeof received === "string"
-      ? `add a step-type plugin folder packages/engine/plugin/step-plugin/${received}/ in your PATH tree`
-      : "add the step-type plugin folder for it under packages/engine/plugin/step-plugin/ in your PATH tree";
-  return `unknown step type ${badType} — no plugin contributes it. Known types: ${knownList}. To add it, ${remedy}`;
+  if (typeof received === "string") {
+    return codedMessage("schema.node.unknown-type", { type: received, known: knownList });
+  }
+  const badType = received === undefined ? "(none)" : JSON.stringify(received);
+  return codedMessage("schema.node.unknown-type-value", { type: badType, known: knownList });
 }
 
 // Wraps only the discriminator miss; every other issue keeps zod's own message. zod v4 folds that
@@ -279,7 +284,7 @@ const unknownStepTypeErrorMap: z.ZodErrorMap = (issue) => {
   if (issue.code === "invalid_union") {
     const received = (issue.input as { type?: unknown } | undefined)?.type;
     const options = (issue as { options?: (string | number)[] }).options ?? [];
-    return { message: describeUnknownStepType(received, options) };
+    return { message: codedErrorMap(issue, describeUnknownStepType(received, options)) };
   }
   return undefined;
 };

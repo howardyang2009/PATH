@@ -1,4 +1,6 @@
+import type { Message } from "@path/i18n";
 import { z } from "zod";
+import { codedErrorMap, codedMessage, issueMessages } from "./coded-issue.js";
 import { formatIssues } from "./format-issues.js";
 import { IdSchema } from "./ids.js";
 import type { StepPluginRegistry } from "./nodes.js";
@@ -14,7 +16,9 @@ function buildStepTemplateSchema(bodySchema: z.ZodType<StepTemplate["body"]>) {
     .object({
       format: z.literal(FORMAT_VERSION),
       id: IdSchema,
-      description: z.string().min(1, "description must be a non-empty string"),
+      description: z.string().min(1, {
+        error: (issue) => codedErrorMap(issue, codedMessage("schema.template.no-description")),
+      }),
       body: bodySchema,
     })
     .strict();
@@ -37,7 +41,10 @@ export interface StepTemplateParseSuccess {
 
 export interface StepTemplateParseFailure {
   success: false;
+  /** One English line per issue, for the CLI and logs. */
   errors: string[];
+  /** The same issues as `Message`s, for a client to render in its Locale. */
+  issues: Message[];
 }
 
 // The superseded-format pre-check and success/failure shaping. A `format` stamp of `@0`–`@3` hits
@@ -53,7 +60,11 @@ export function safeParseStepTemplateWith(
   if (result.success) {
     return { success: true, data: result.data };
   }
-  return { success: false, errors: formatIssues(result.error) };
+  return {
+    success: false,
+    errors: formatIssues(result.error),
+    issues: issueMessages(result.error),
+  };
 }
 
 // The single-template convenience door; the registry is required, since there is no closed built-in

@@ -47,6 +47,14 @@ async function put(
   });
 }
 
+/** The text of each `details` entry, here all `verbatim` messages, one per line. */
+async function detailText(res: Response): Promise<string> {
+  const { error } = (await res.json()) as {
+    error: { details: { params: { text: string } }[] };
+  };
+  return error.details.map((detail) => detail.params.text).join("\n");
+}
+
 describe("PUT /v0/workflows", () => {
   it("creates a confined file and returns 201 with the new ETag in the body and header", async () => {
     const wf = workflow();
@@ -248,6 +256,30 @@ describe("PUT /v0/workflows", () => {
       expect(res.status).toBe(400);
     });
 
+    it("400s a PATH refinement with its error code in details", async () => {
+      const res = await put(
+        "dupname.workflow.json",
+        workflow({
+          body: [
+            { type: "binary", id: randomUUID(), name: "a", command: "echo" },
+            { type: "binary", id: randomUUID(), name: "a", command: "echo" },
+          ],
+        }),
+      );
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { error: { code: string; details: unknown[] } };
+      expect(body.error.code).toBe("workflow.invalid");
+      expect(body.error.details).toEqual([
+        {
+          key: "shared.issueAtPath",
+          params: {
+            path: "body.1.name",
+            issue: { key: "errors.schema.file.duplicate-name", params: { name: "a" } },
+          },
+        },
+      ]);
+    });
+
     it("400s an id-less body (PUT is strict where GET is lenient, ADR 0015)", async () => {
       const res = await put("idless.workflow.json", {
         format: "path/workflow@6",
@@ -269,9 +301,7 @@ describe("PUT /v0/workflows", () => {
       const res = await put("dup.workflow.json", wf);
       expect(res.status).toBe(400);
 
-      const detail = ((await res.json()) as { error: { details: string[] } }).error.details.join(
-        "\n",
-      );
+      const detail = await detailText(res);
       expect(detail).toContain("body.1.id");
       expect(detail).toContain("body.0.id");
       expect(() => readFileSync(join(projectDir, "dup.workflow.json"))).toThrow();
@@ -285,9 +315,7 @@ describe("PUT /v0/workflows", () => {
       });
       const res = await put("selfdup.workflow.json", wf);
       expect(res.status).toBe(400);
-      const detail = ((await res.json()) as { error: { details: string[] } }).error.details.join(
-        "\n",
-      );
+      const detail = await detailText(res);
       expect(detail).toContain("body.0.id");
       expect(detail).toContain("id already used at id");
     });

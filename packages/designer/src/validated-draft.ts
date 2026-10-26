@@ -114,7 +114,7 @@ export function validateJsonPayload(
   const result = safeParseWorkflowFile(trial, wireToRegistry(plugins));
   return result.success
     ? { ok: true, value: next }
-    : { ok: false, error: verbatim(result.errors.join("\n")) };
+    : { ok: false, error: result.issues[0] ?? verbatim(result.errors.join("\n")) };
 }
 
 /**
@@ -190,13 +190,7 @@ export function validateMaxIterations(text: string): DraftResult<number | string
     return { ok: true, value: n };
   }
   const check = checkInterpolationSyntax(text, ROOTS.limit);
-  if (!check.ok) {
-    const error: Message =
-      check.error === undefined
-        ? { key: "designer.draft.maxIterationsInvalid" }
-        : verbatim(check.error);
-    return { ok: false, error };
-  }
+  if (!check.ok) return { ok: false, error: check.error };
   return { ok: true, value: text };
 }
 

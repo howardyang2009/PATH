@@ -1,4 +1,4 @@
-import { type Message, verbatim } from "@path/i18n";
+import type { Message } from "@path/i18n";
 import {
   type Condition,
   type GotoIssueRule,
@@ -157,7 +157,7 @@ export function fileProblems(file: WorkflowFile, refs?: RefLookup): Problem[] {
   // offending node, first wins when a node carries more than one.
   const conflicts = new Map<string, Message>();
   for (const issue of publishSetIssues(file)) {
-    if (!conflicts.has(issue.nodeId)) conflicts.set(issue.nodeId, verbatim(issue.message));
+    if (!conflicts.has(issue.nodeId)) conflicts.set(issue.nodeId, issue.message);
   }
   // The goto rule module's verdict, read the same way: one issue per offending goto, by its id.
   const gotos = new Map(gotoIssues(file).map((issue) => [issue.nodeId, issue]));
@@ -179,7 +179,7 @@ export function fileProblems(file: WorkflowFile, refs?: RefLookup): Problem[] {
         nodeId: node.id,
         nodeName: node.name,
         kind: jump.rule,
-        message: verbatim(jump.message),
+        message: jump.message,
       });
 
     const readSeen = new Set<string>();

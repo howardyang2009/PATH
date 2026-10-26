@@ -1,4 +1,5 @@
 import { relative } from "node:path";
+import { type Message, verbatim } from "@path/i18n";
 import { duplicateIdErrors, type StepPluginRegistry, safeParseWorkflowFile } from "@path/schema";
 import {
   conditionalDelete,
@@ -16,7 +17,7 @@ import type { WriteAccess } from "./write-access.js";
 
 export type WorkflowWrite =
   | { ok: true; relativePath: string; id: string; etag: string; created: boolean }
-  | ({ ok: false; status: 400 | 403 | 404 | 412; details?: string[] } & Refusal);
+  | ({ ok: false; status: 400 | 403 | 404 | 412; details?: Message[] } & Refusal);
 
 export type WorkflowRemove =
   | { ok: true }
@@ -61,7 +62,7 @@ export function workflowsOf(ctx: {
           ok: false,
           status: 400,
           code: "workflow.invalid",
-          details: validation.errors,
+          details: validation.issues,
         };
       }
       const duplicates = duplicateIdErrors(validation.data);
@@ -70,7 +71,7 @@ export function workflowsOf(ctx: {
           ok: false,
           status: 400,
           code: "workflow.invalid",
-          details: duplicates,
+          details: duplicates.map(verbatim),
         };
       }
       const tooLarge = access.sizeRefusal(Buffer.byteLength(serializeArtifact(payload)));

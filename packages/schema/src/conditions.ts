@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { codedIssue, messageIssue } from "./coded-issue.js";
 import type { AllCondition, AnyCondition, Condition, NotCondition } from "./condition-type.js";
 import { checkDotPath } from "./dot-path.js";
 import { ROOTS } from "./roots.js";
@@ -8,14 +9,12 @@ const ConditionPathSchema = z.string().superRefine((value, ctx) => {
   if (value === "output" || value.startsWith("output.")) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
-      message: `"${value}": a condition reads the predecessor's output as "previous", not "output" (ADR 0079)`,
+      ...codedIssue("schema.condition.output-root", { path: value }),
     });
     return;
   }
   const result = checkDotPath(value, ROOTS.condition);
-  if (!result.ok) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, message: result.error });
-  }
+  if (!result.ok) ctx.addIssue({ code: z.ZodIssueCode.custom, ...messageIssue(result.error) });
 });
 
 const JsonScalarSchema = z.union([z.string(), z.number(), z.boolean(), z.null()]);
@@ -26,7 +25,10 @@ const RegexPatternSchema = z.string().superRefine((value, ctx) => {
   } catch (err) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
-      message: `"${value}" is not a valid regular expression: ${(err as Error).message}`,
+      ...codedIssue("schema.condition.invalid-regex", {
+        pattern: value,
+        reason: (err as Error).message,
+      }),
     });
   }
 });
@@ -70,9 +72,10 @@ const RangeConditionSchema = z
     max: z.number().optional(),
   })
   .strict()
-  .refine((v) => v.min !== undefined || v.max !== undefined, {
-    message: "a range condition requires at least one of min/max",
-  });
+  .refine(
+    (v) => v.min !== undefined || v.max !== undefined,
+    codedIssue("schema.condition.range-bounds"),
+  );
 
 const ValidJsonConditionSchema = z
   .object({

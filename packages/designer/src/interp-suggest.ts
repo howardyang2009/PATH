@@ -1,4 +1,4 @@
-import { type Message, verbatim } from "@path/i18n";
+import type { Message } from "@path/i18n";
 import {
   checkInterpolationSyntax,
   type InterpolationRoot,
@@ -49,10 +49,7 @@ export function notJson(e: unknown): Message {
 
 /** The schema's interpolation-syntax verdict as a `Message`, or `null` when the text is valid. */
 function interpolationError(result: ReturnType<typeof checkInterpolationSyntax>): Message | null {
-  if (result.ok) return null;
-  return result.error === undefined
-    ? { key: "designer.draft.invalidInterpolation" }
-    : verbatim(result.error);
+  return result.ok ? null : result.error;
 }
 
 /** Recursively check every string leaf of a parsed JSON value through the interpolation syntax

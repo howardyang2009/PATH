@@ -112,8 +112,7 @@ describe("cross-node problems", () => {
     expect(conflict).toBeDefined();
     expect(conflict!.nodeId).toBe(uuid(3));
     expect(conflict!.nodeName).toBe("b2");
-    // The schema's own text until its validation codes land.
-    expect(conflict!.message).toMatchObject({ key: "shared.verbatim" });
+    expect(conflict!.message).toMatchObject({ key: "errors.schema.publish.sibling-race" });
   });
 
   it("de-duplicates the same dangling key repeated in one node", () => {

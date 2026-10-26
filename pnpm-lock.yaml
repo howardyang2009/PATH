@@ -271,6 +271,9 @@ importers:
       vitest:
         specifier: ^5.0.1
         version: 5.0.1(@types/node@24.13.6)(jsdom@30.1.0(@noble/hashes@1.8.0))(vite@8.3.0(@types/node@24.13.6)(esbuild@0.28.2)(tsx@4.23.15))
+      zod:
+        specifier: ^4.6.5
+        version: 4.6.5
 
   packages/engine:
     dependencies:
@@ -333,6 +336,9 @@ importers:
 
   packages/schema:
     dependencies:
+      '@path/i18n':
+        specifier: workspace:*
+        version: link:../i18n
       ajv:
         specifier: ^8.20.0
         version: 8.20.0

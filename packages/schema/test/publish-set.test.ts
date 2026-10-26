@@ -34,7 +34,10 @@ describe("publishSetIssues — the one publish-set rule, as data", () => {
       nodeId: uuid(3),
       path: ["body", 0, "branches", 1],
     });
-    expect(issues[0]!.message).toContain('duplicate publish key "k"');
+    expect(issues[0]!.message).toEqual({
+      key: "errors.schema.publish.sibling-race",
+      params: { key: "k" },
+    });
   });
 
   it("says nothing about a wait-one race — only the winner lands", () => {
@@ -78,7 +81,7 @@ describe("publishSetIssues — the one publish-set rule, as data", () => {
       // index.
       path: ["body", 0, "branches", 0, "body", 0, "publish", "k"],
     });
-    expect(issues[0]!.message).toContain("inside a do-not-wait branch");
+    expect(issues[0]!.message).toMatchObject({ key: "errors.schema.publish.detached" });
   });
 
   it("reports nothing for a clean file", () => {

@@ -213,7 +213,8 @@
       "defaultOption": "{option}（默认）",
       "remove": "移除此执行器预设",
       "add": "+ 添加执行器预设"
-    }
+    },
+    "issueAtPath": "{path}：{issue}"
   },
   "designer": {
     "app": {
@@ -490,13 +491,11 @@
     },
     "draft": {
       "notJson": "不是有效的 JSON：{error}",
-      "invalidInterpolation": "插值无效",
       "payloadNotObject": "负载必须是 JSON 对象。",
       "fileInputNotObject": "工作流输入必须是 JSON 对象。",
       "outputSchemaNotObject": "输出结构定义必须是 JSON 对象。",
       "maxIterationsRequired": "必填：一个正整数，或 $'{'config.…'}' / $'{'context.…'}' 引用。",
       "positiveWholeNumber": "必须是正整数。",
-      "maxIterationsInvalid": "插值无效。",
       "invalidCondition": "条件无效"
     },
     "pane": {
@@ -883,6 +882,54 @@
       "exited-with-tail": "以代码 {code} 退出：{tail}",
       "start-failed": "无法启动“{command}”：{reason}",
       "cwd-missing": "无法启动“{command}”：工作目录“{cwd}”不存在"
+    },
+    "schema": {
+      "dot-path": {
+        "empty": "路径为空",
+        "invalid-root": "“{path}”中的根“{root}”无效，必须是以下之一：{roots}",
+        "malformed-segment": "“{path}”中的路径段“{segment}”格式错误"
+      },
+      "condition": {
+        "output-root": "“{path}”：条件通过“previous”读取前一节点的输出，而不是“output”（ADR 0079）",
+        "invalid-regex": "“{pattern}”不是有效的正则表达式：{reason}",
+        "range-bounds": "range 条件至少需要 min 或 max 之一"
+      },
+      "config": {
+        "secret-wrapper": "“$secret”包装的值必须是字符串或 '{'\"$env\": \"NAME\"'}' 包装",
+        "env-wrapper": "“$env”包装的值必须是字符串",
+        "reserved-key": "“{key}”是保留键：以“$”开头的唯一键表示配置包装（已知：{known}）"
+      },
+      "interpolation": {
+        "empty": "空占位符：`$'{}'` 不是有效的插值",
+        "bad-path": "“$'{'{path}'}'”中：{reason}"
+      },
+      "node": {
+        "absolute-ref": "ref 必须是相对路径，不能是绝对路径",
+        "unknown-worker": "未知的执行器“{worker}”，“{type}”提供：{workers}",
+        "unknown-type": "未知的步骤类型“{type}”，没有插件提供它。已知类型：{known}。如需添加，请在 PATH 树中添加步骤类型插件文件夹 packages/engine/plugin/step-plugin/{type}/",
+        "unknown-type-value": "未知的步骤类型 {type}，没有插件提供它。已知类型：{known}。如需添加，请在 PATH 树的 packages/engine/plugin/step-plugin/ 下添加对应的步骤类型插件文件夹",
+        "bad-name": "名称必须匹配 ^[a-z][a-z0-9-]*$",
+        "bad-id": "id 必须是 UUIDv4"
+      },
+      "file": {
+        "duplicate-name": "名称“{name}”重复：名称在整个文件中必须唯一"
+      },
+      "publish": {
+        "sibling-race": "publish 键“{key}”重复：同级并行分支不能发布相同的上下文键",
+        "detached": "do-not-wait 分支中的 publish“{key}”：不等待的分支会越过汇合点继续运行，不能发布（do-not-wait-join.md §4）"
+      },
+      "goto": {
+        "placement": "goto“{name}”不能位于 {barrierType}“{barrier}”之下",
+        "target-self": "goto“{name}”的目标是它自己",
+        "target-inner": "goto 目标“{target}”不是第一层节点"
+      },
+      "format": {
+        "newer": "{format} 比此引擎能读取的版本（{current}）更新，请升级 PATH 后再读取",
+        "superseded": "{format} 已不再读取，请运行 {codemods} 将此文件迁移到 {current}"
+      },
+      "template": {
+        "no-description": "description 必须是非空字符串"
+      }
     }
   }
 }

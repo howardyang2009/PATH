@@ -67,6 +67,23 @@ describe("validateJsonPayload", () => {
     const ghost = { id: UUID, name: "g", type: "ghost" } as unknown as WorkflowNode;
     expect(validateJsonPayload(ghost, '{"x":1}', plugins).ok).toBe(false);
   });
+
+  it("returns a registry rejection as its error code at its path", () => {
+    const ghost = { id: UUID, name: "g", type: "ghost" } as unknown as WorkflowNode;
+    expect(validateJsonPayload(ghost, '{"x":1}', plugins)).toEqual({
+      ok: false,
+      error: {
+        key: "shared.issueAtPath",
+        params: {
+          path: "body.0.type",
+          issue: {
+            key: "errors.schema.node.unknown-type",
+            params: { type: "ghost", known: expect.any(String) },
+          },
+        },
+      },
+    });
+  });
 });
 
 describe("validateInputDraft", () => {
@@ -114,7 +131,10 @@ describe("validateMaxIterations", () => {
       ok: false,
       error: { key: "designer.draft.positiveWholeNumber" },
     });
-    expect(validateMaxIterations("${config.x").ok).toBe(false);
+    expect(validateMaxIterations("${config.x")).toEqual({
+      ok: false,
+      error: { key: "errors.interpolation.unclosed", params: { index: 0, value: "${config.x" } },
+    });
   });
 });
 

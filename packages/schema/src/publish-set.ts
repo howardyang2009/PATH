@@ -1,3 +1,5 @@
+import type { Message } from "@path/i18n";
+import { codedMessage } from "./coded-issue.js";
 import type { WorkflowNode } from "./node-type.js";
 import { childBodies, childNodePath, walkNodes } from "./node-walk.js";
 import type { WorkflowFile } from "./workflow-file-type.js";
@@ -16,7 +18,7 @@ export interface PublishSetIssue {
   rule: PublishSetIssueRule;
   nodeId: string;
   path: (string | number)[];
-  message: string;
+  message: Message;
 }
 
 /**
@@ -66,7 +68,7 @@ function siblingRaceIssues(file: WorkflowFile): PublishSetIssue[] {
               rule: "sibling-race",
               nodeId: each.id,
               path: childPath,
-              message: `duplicate publish key "${key}": sibling parallel branches must not publish the same context key`,
+              message: codedMessage("schema.publish.sibling-race", { key }),
             });
           }
         }
@@ -99,7 +101,7 @@ function detachedPublishIssues(file: WorkflowFile): PublishSetIssue[] {
           rule: "detached-publish",
           nodeId: node.id,
           path: [...nodePath, "publish", key],
-          message: `publish "${key}" inside a do-not-wait branch: a fire-and-forget branch runs past the join and may not publish (do-not-wait-join.md §4)`,
+          message: codedMessage("schema.publish.detached", { key }),
         });
       }
     }

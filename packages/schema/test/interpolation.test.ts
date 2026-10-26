@@ -40,22 +40,33 @@ describe("checkInterpolationSyntax", () => {
   });
 
   it("rejects an unclosed placeholder", () => {
-    const result = checkInterpolationSyntax("${config.a", ["config", "context"]);
-    expect(result.ok).toBe(false);
-    expect(result.error).toMatch(/unclosed/i);
+    expect(checkInterpolationSyntax("${config.a", ["config", "context"])).toEqual({
+      ok: false,
+      error: { key: "errors.interpolation.unclosed", params: { index: 0, value: "${config.a" } },
+    });
   });
 
   it("rejects an empty placeholder", () => {
-    const result = checkInterpolationSyntax("${}", ["config", "context"]);
-    expect(result.ok).toBe(false);
-    expect(result.error).toMatch(/empty/i);
+    expect(checkInterpolationSyntax("${}", ["config", "context"])).toEqual({
+      ok: false,
+      error: { key: "errors.schema.interpolation.empty" },
+    });
   });
 
   it("rejects a disallowed root", () => {
-    const result = checkInterpolationSyntax("${output.x}", ["config", "context"]);
-    expect(result.ok).toBe(false);
-    expect(result.error).toMatch(/root/i);
-    expect(result.error).toMatch(/output/);
+    expect(checkInterpolationSyntax("${output.x}", ["config", "context"])).toEqual({
+      ok: false,
+      error: {
+        key: "errors.schema.interpolation.bad-path",
+        params: {
+          reason: {
+            key: "errors.schema.dot-path.invalid-root",
+            params: { root: "output", path: "output.x", roots: "config, context" },
+          },
+          path: "output.x",
+        },
+      },
+    });
   });
 
   it("rejects an unknown root", () => {

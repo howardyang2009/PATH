@@ -213,7 +213,8 @@
       "defaultOption": "{option} (Standard)",
       "remove": "Diese Worker-Vorgabe entfernen",
       "add": "+ Worker-Vorgabe hinzufügen"
-    }
+    },
+    "issueAtPath": "{path}: {issue}"
   },
   "designer": {
     "app": {
@@ -490,13 +491,11 @@
     },
     "draft": {
       "notJson": "Kein gültiges JSON: {error}",
-      "invalidInterpolation": "ungültige Interpolation",
       "payloadNotObject": "Die Nutzdaten müssen ein JSON-Objekt sein.",
       "fileInputNotObject": "Die Workflow-Eingabe muss ein JSON-Objekt sein.",
       "outputSchemaNotObject": "Das Ausgabeschema muss ein JSON-Objekt sein.",
       "maxIterationsRequired": "Erforderlich – eine positive ganze Zahl oder eine Referenz $'{'config.…'}' / $'{'context.…'}'.",
       "positiveWholeNumber": "Muss eine positive ganze Zahl sein.",
-      "maxIterationsInvalid": "Ungültige Interpolation.",
       "invalidCondition": "ungültige Bedingung"
     },
     "pane": {
@@ -883,6 +882,54 @@
       "exited-with-tail": "mit Code {code} beendet: {tail}",
       "start-failed": "„{command}“ konnte nicht gestartet werden: {reason}",
       "cwd-missing": "„{command}“ konnte nicht gestartet werden: Arbeitsverzeichnis „{cwd}“ existiert nicht"
+    },
+    "schema": {
+      "dot-path": {
+        "empty": "leerer Pfad",
+        "invalid-root": "ungültige Wurzel „{root}“ in „{path}“, erlaubt sind: {roots}",
+        "malformed-segment": "fehlerhaftes Pfadsegment „{segment}“ in „{path}“"
+      },
+      "condition": {
+        "output-root": "„{path}“: eine Bedingung liest die Ausgabe des Vorgängers als „previous“, nicht als „output“ (ADR 0079)",
+        "invalid-regex": "„{pattern}“ ist kein gültiger regulärer Ausdruck: {reason}",
+        "range-bounds": "eine range-Bedingung braucht mindestens min oder max"
+      },
+      "config": {
+        "secret-wrapper": "Wert des „$secret“-Wrappers muss eine Zeichenkette oder ein '{'\"$env\": \"NAME\"'}'-Wrapper sein",
+        "env-wrapper": "Wert des „$env“-Wrappers muss eine Zeichenkette sein",
+        "reserved-key": "„{key}“ ist ein reservierter Schlüssel: ein einzelner Schlüssel mit „$“ am Anfang benennt einen Konfigurations-Wrapper (bekannt: {known})"
+      },
+      "interpolation": {
+        "empty": "leerer Platzhalter: `$'{}'` ist keine gültige Interpolation",
+        "bad-path": "{reason} in „$'{'{path}'}'“"
+      },
+      "node": {
+        "absolute-ref": "ref muss ein relativer Pfad sein, kein absoluter",
+        "unknown-worker": "unbekannter Worker „{worker}“, „{type}“ liefert {workers}",
+        "unknown-type": "unbekannter Schritttyp „{type}“, kein Plugin stellt ihn bereit. Bekannte Typen: {known}. Zum Hinzufügen einen Schritttyp-Plugin-Ordner packages/engine/plugin/step-plugin/{type}/ im PATH-Baum anlegen",
+        "unknown-type-value": "unbekannter Schritttyp {type}, kein Plugin stellt ihn bereit. Bekannte Typen: {known}. Zum Hinzufügen den passenden Schritttyp-Plugin-Ordner unter packages/engine/plugin/step-plugin/ im PATH-Baum anlegen",
+        "bad-name": "Name muss ^[a-z][a-z0-9-]*$ entsprechen",
+        "bad-id": "id muss eine UUIDv4 sein"
+      },
+      "file": {
+        "duplicate-name": "doppelter Name „{name}“: Namen müssen in der ganzen Datei eindeutig sein"
+      },
+      "publish": {
+        "sibling-race": "doppelter publish-Schlüssel „{key}“: parallele Geschwisterzweige dürfen nicht denselben Kontextschlüssel veröffentlichen",
+        "detached": "publish „{key}“ in einem do-not-wait-Zweig: ein Zweig ohne Warten läuft über die Zusammenführung hinaus und darf nicht veröffentlichen (do-not-wait-join.md §4)"
+      },
+      "goto": {
+        "placement": "goto „{name}“ darf nicht unter {barrierType} „{barrier}“ stehen",
+        "target-self": "goto „{name}“ zielt auf sich selbst",
+        "target-inner": "goto-Ziel „{target}“ ist kein Knoten der ersten Ebene"
+      },
+      "format": {
+        "newer": "{format} ist neuer als das, was diese Engine liest ({current}); PATH aktualisieren, um es zu lesen",
+        "superseded": "{format} wird nicht mehr gelesen; {codemods} ausführen, um diese Datei auf {current} zu migrieren"
+      },
+      "template": {
+        "no-description": "description muss eine nicht leere Zeichenkette sein"
+      }
     }
   }
 }

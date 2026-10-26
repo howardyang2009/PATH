@@ -1,3 +1,5 @@
+import type { Message } from "@path/i18n";
+import { codedMessage } from "./coded-issue.js";
 import type { JsonValue } from "./json-value.js";
 
 /** Shared dot-path grammar for `${}` interpolation (docs/format/workflow-format.md §6) and the
@@ -6,14 +8,11 @@ import type { JsonValue } from "./json-value.js";
  * grammar. */
 const SEGMENT_PATTERN = /^(?:[A-Za-z_][A-Za-z0-9_-]*|\d+)$/;
 
-export interface DotPathCheckResult {
-  ok: boolean;
-  error?: string;
-}
+export type DotPathCheckResult = { ok: true } | { ok: false; error: Message };
 
 export function checkDotPath(path: string, allowedRoots: readonly string[]): DotPathCheckResult {
   if (path.length === 0) {
-    return { ok: false, error: "empty path" };
+    return { ok: false, error: codedMessage("schema.dot-path.empty") };
   }
 
   const segments = path.split(".");
@@ -22,13 +21,20 @@ export function checkDotPath(path: string, allowedRoots: readonly string[]): Dot
   if (!root || !allowedRoots.includes(root)) {
     return {
       ok: false,
-      error: `invalid root "${root}" in "${path}" — must be one of ${allowedRoots.join(", ")}`,
+      error: codedMessage("schema.dot-path.invalid-root", {
+        root: root ?? "",
+        path,
+        roots: allowedRoots.join(", "),
+      }),
     };
   }
 
   for (const segment of segments.slice(1)) {
     if (!SEGMENT_PATTERN.test(segment)) {
-      return { ok: false, error: `malformed dot-path segment "${segment}" in "${path}"` };
+      return {
+        ok: false,
+        error: codedMessage("schema.dot-path.malformed-segment", { segment, path }),
+      };
     }
   }
 

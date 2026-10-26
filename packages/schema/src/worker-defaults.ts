@@ -1,3 +1,4 @@
+import { englishText, type Message } from "@path/i18n";
 import {
   describeUnknownStepType,
   describeUnknownWorker,
@@ -10,7 +11,7 @@ export interface WorkerDefaultIssue {
   /** The table key whose entry is invalid. */
   type: string;
   /** The bare taxonomy message; the surface prefixes its own source. */
-  message: string;
+  message: Message;
 }
 
 /** The per-entry check both channels share (ADR 0044): the type key must be installed and ship that
@@ -43,5 +44,5 @@ export function validateLaunchWorkerDefaults(
   registry: StepPluginRegistry,
 ): string[] {
   if (!table) return [];
-  return collectWorkerDefaultIssues(table, registry).map((issue) => issue.message);
+  return collectWorkerDefaultIssues(table, registry).map((issue) => englishText(issue.message));
 }
