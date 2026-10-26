@@ -1,6 +1,6 @@
 import { relative } from "node:path";
-import { type Message, verbatim } from "@path/i18n";
-import { duplicateIdErrors, type StepPluginRegistry, safeParseWorkflowFile } from "@path/schema";
+import type { Message } from "@path/i18n";
+import { duplicateIdIssues, type StepPluginRegistry, safeParseWorkflowFile } from "@path/schema";
 import {
   conditionalDelete,
   conditionalWrite,
@@ -65,13 +65,13 @@ export function workflowsOf(ctx: {
           details: validation.issues,
         };
       }
-      const duplicates = duplicateIdErrors(validation.data);
+      const duplicates = duplicateIdIssues(validation.data);
       if (duplicates.length > 0) {
         return {
           ok: false,
           status: 400,
           code: "workflow.invalid",
-          details: duplicates.map(verbatim),
+          details: duplicates,
         };
       }
       const tooLarge = access.sizeRefusal(Buffer.byteLength(serializeArtifact(payload)));

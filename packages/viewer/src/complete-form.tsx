@@ -6,6 +6,7 @@ import {
   coerceRawCompleteOutput,
   type JsonValue,
   launchSecretResupply,
+  type MappedCompleteErrors,
   mapCompleteErrors,
   type PathApiClient,
   PathApiError,
@@ -60,6 +61,8 @@ export function CompleteForm({
 }: CompleteFormProps) {
   const t = useTranslations("shared.completeForm");
   const renderMessage = useMessage();
+  const renderFieldErrors = (errors: MappedCompleteErrors["fieldErrors"]) =>
+    Object.fromEntries(Object.entries(errors).map(([key, error]) => [key, renderMessage(error)]));
   const fields = useMemo(() => buildCompleteFields(outputSchema), [outputSchema]);
   // A schema with no drawable fields (none authored) falls back to the free-text control.
   const raw = fields.length === 0;
@@ -98,8 +101,8 @@ export function CompleteForm({
       // a nested shape is caught here now rather than coming back as a `400`.
       const clientErrors = validateCompleteDraft(outputSchema, output);
       if (Object.keys(clientErrors.fieldErrors).length > 0 || clientErrors.formErrors.length > 0) {
-        setFieldErrors(clientErrors.fieldErrors);
-        setFormErrors(clientErrors.formErrors);
+        setFieldErrors(renderFieldErrors(clientErrors.fieldErrors));
+        setFormErrors(clientErrors.formErrors.map((error) => renderMessage(error)));
         return;
       }
       setFieldErrors({});
@@ -131,10 +134,10 @@ export function CompleteForm({
         // it reads at the form level.
         if (thrown instanceof PathApiError && thrown.status === 400) {
           const mapped = mapCompleteErrors(thrown.details);
-          setFieldErrors(mapped.fieldErrors);
+          setFieldErrors(renderFieldErrors(mapped.fieldErrors));
           setFormErrors(
             mapped.formErrors.length > 0
-              ? mapped.formErrors
+              ? mapped.formErrors.map((error) => renderMessage(error))
               : [renderMessage(errorMessage(thrown))],
           );
         } else {

@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { englishText, type Message } from "@path/i18n";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { type PathServerHandle, startPathServer } from "../src/create-server.js";
 
@@ -47,12 +48,10 @@ async function put(
   });
 }
 
-/** The text of each `details` entry, here all `verbatim` messages, one per line. */
+/** Each `details` message in English, one per line. */
 async function detailText(res: Response): Promise<string> {
-  const { error } = (await res.json()) as {
-    error: { details: { params: { text: string } }[] };
-  };
-  return error.details.map((detail) => detail.params.text).join("\n");
+  const { error } = (await res.json()) as { error: { details: Message[] } };
+  return error.details.map(englishText).join("\n");
 }
 
 describe("PUT /v0/workflows", () => {

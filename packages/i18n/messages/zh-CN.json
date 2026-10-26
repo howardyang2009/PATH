@@ -887,7 +887,11 @@
       "dot-path": {
         "empty": "路径为空",
         "invalid-root": "“{path}”中的根“{root}”无效，必须是以下之一：{roots}",
-        "malformed-segment": "“{path}”中的路径段“{segment}”格式错误"
+        "malformed-segment": "“{path}”中的路径段“{segment}”格式错误",
+        "unknown-root": "未知的根“{root}”",
+        "non-object": "“{segment}”试图访问非对象值的内部",
+        "out-of-bounds": "索引“{segment}”越界",
+        "missing-key": "未找到键“{segment}”"
       },
       "condition": {
         "output-root": "“{path}”：条件通过“previous”读取前一节点的输出，而不是“output”（ADR 0079）",
@@ -912,7 +916,8 @@
         "bad-id": "id 必须是 UUIDv4"
       },
       "file": {
-        "duplicate-name": "名称“{name}”重复：名称在整个文件中必须唯一"
+        "duplicate-name": "名称“{name}”重复：名称在整个文件中必须唯一",
+        "duplicate-id": "id“{id}”重复：该 id 已在 {firstPath} 使用"
       },
       "publish": {
         "sibling-race": "publish 键“{key}”重复：同级并行分支不能发布相同的上下文键",
@@ -929,6 +934,9 @@
       },
       "template": {
         "no-description": "description 必须是非空字符串"
+      },
+      "output-schema": {
+        "invalid": "outputSchema 不是有效的 JSON Schema：{reason}"
       }
     }
   }

@@ -87,7 +87,7 @@ function evaluateLeaf(
       { ...base, outcome: "error" },
       {
         key: "errors.condition.unresolved-because",
-        params: { path, reason: verbatim(resolved.error) },
+        params: { path, reason: resolved.error },
       },
     );
   }

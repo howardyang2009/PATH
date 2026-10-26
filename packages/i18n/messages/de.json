@@ -887,7 +887,11 @@
       "dot-path": {
         "empty": "leerer Pfad",
         "invalid-root": "ungültige Wurzel „{root}“ in „{path}“, erlaubt sind: {roots}",
-        "malformed-segment": "fehlerhaftes Pfadsegment „{segment}“ in „{path}“"
+        "malformed-segment": "fehlerhaftes Pfadsegment „{segment}“ in „{path}“",
+        "unknown-root": "unbekannte Wurzel „{root}“",
+        "non-object": "„{segment}“ greift in einen Wert, der kein Objekt ist",
+        "out-of-bounds": "Index „{segment}“ liegt außerhalb des Bereichs",
+        "missing-key": "Schlüssel „{segment}“ nicht gefunden"
       },
       "condition": {
         "output-root": "„{path}“: eine Bedingung liest die Ausgabe des Vorgängers als „previous“, nicht als „output“ (ADR 0079)",
@@ -912,7 +916,8 @@
         "bad-id": "id muss eine UUIDv4 sein"
       },
       "file": {
-        "duplicate-name": "doppelter Name „{name}“: Namen müssen in der ganzen Datei eindeutig sein"
+        "duplicate-name": "doppelter Name „{name}“: Namen müssen in der ganzen Datei eindeutig sein",
+        "duplicate-id": "doppelte id „{id}“: id wird bereits bei {firstPath} verwendet"
       },
       "publish": {
         "sibling-race": "doppelter publish-Schlüssel „{key}“: parallele Geschwisterzweige dürfen nicht denselben Kontextschlüssel veröffentlichen",
@@ -929,6 +934,9 @@
       },
       "template": {
         "no-description": "description muss eine nicht leere Zeichenkette sein"
+      },
+      "output-schema": {
+        "invalid": "outputSchema ist kein gültiges JSON Schema: {reason}"
       }
     }
   }

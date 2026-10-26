@@ -887,7 +887,11 @@
       "dot-path": {
         "empty": "empty path",
         "invalid-root": "invalid root \"{root}\" in \"{path}\" — must be one of {roots}",
-        "malformed-segment": "malformed dot-path segment \"{segment}\" in \"{path}\""
+        "malformed-segment": "malformed dot-path segment \"{segment}\" in \"{path}\"",
+        "unknown-root": "unknown root \"{root}\"",
+        "non-object": "\"{segment}\" reaches into a non-object value",
+        "out-of-bounds": "index \"{segment}\" is out of bounds",
+        "missing-key": "key \"{segment}\" not found"
       },
       "condition": {
         "output-root": "\"{path}\": a condition reads the predecessor's output as \"previous\", not \"output\" (ADR 0079)",
@@ -912,7 +916,8 @@
         "bad-id": "id must be a UUIDv4"
       },
       "file": {
-        "duplicate-name": "duplicate name \"{name}\": names must be unique across the whole file"
+        "duplicate-name": "duplicate name \"{name}\": names must be unique across the whole file",
+        "duplicate-id": "duplicate id \"{id}\": id already used at {firstPath}"
       },
       "publish": {
         "sibling-race": "duplicate publish key \"{key}\": sibling parallel branches must not publish the same context key",
@@ -929,6 +934,9 @@
       },
       "template": {
         "no-description": "description must be a non-empty string"
+      },
+      "output-schema": {
+        "invalid": "outputSchema is not a valid JSON Schema: {reason}"
       }
     }
   }

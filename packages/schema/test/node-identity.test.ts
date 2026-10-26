@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   duplicateIdErrors,
+  duplicateIdIssues,
   type IdentityOccurrence,
   identityIssues,
   nodeIdentityIssues,
@@ -182,6 +183,25 @@ describe("duplicateIdErrors", () => {
     };
     expect(duplicateIdErrors(shared)).toEqual([
       `body.0.id: duplicate id "${nested.id}": id already used at id`,
+    ]);
+  });
+
+  it("gives the client each offence as a coded message at its path", () => {
+    const shared: WorkflowFile = {
+      ...nested,
+      body: [{ type: "binary", id: nested.id, name: "one", command: "echo" }],
+    };
+    expect(duplicateIdIssues(shared)).toEqual([
+      {
+        key: "shared.issueAtPath",
+        params: {
+          path: "body.0.id",
+          issue: {
+            key: "errors.schema.file.duplicate-id",
+            params: { id: nested.id, firstPath: "id" },
+          },
+        },
+      },
     ]);
   });
 

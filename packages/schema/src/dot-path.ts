@@ -44,7 +44,9 @@ export function checkDotPath(path: string, allowedRoots: readonly string[]): Dot
 /** The walk's outcome. `found: false` is not necessarily an error — the `exists` condition treats
  * an unresolvable path as a plain `false` (mvp spec §5.2) — so the caller decides; `error` says
  * why. */
-export type DotPathResolution = { found: true; value: JsonValue } | { found: false; error: string };
+export type DotPathResolution =
+  | { found: true; value: JsonValue }
+  | { found: false; error: Message };
 
 /** Walks a validated path against `roots`: array segments must be in-bounds integer indices, object
  * segments own properties, so an inherited key never resolves. `error` names the segment that
@@ -58,24 +60,27 @@ export function resolveDotPath(
   const root = segments[0];
 
   if (root === undefined || !Object.hasOwn(roots, root)) {
-    return { found: false, error: `unknown root "${root ?? ""}"` };
+    return {
+      found: false,
+      error: codedMessage("schema.dot-path.unknown-root", { root: root ?? "" }),
+    };
   }
 
   let current: JsonValue = roots[root] as JsonValue;
   for (const segment of segments.slice(1)) {
     if (current === null || typeof current !== "object") {
-      return { found: false, error: `"${segment}" reaches into a non-object value` };
+      return { found: false, error: codedMessage("schema.dot-path.non-object", { segment }) };
     }
     if (Array.isArray(current)) {
       const index = Number(segment);
       if (!Number.isInteger(index) || index < 0 || index >= current.length) {
-        return { found: false, error: `index "${segment}" is out of bounds` };
+        return { found: false, error: codedMessage("schema.dot-path.out-of-bounds", { segment }) };
       }
       current = current[index] as JsonValue;
     } else if (Object.hasOwn(current, segment)) {
       current = (current as { [key: string]: JsonValue })[segment] as JsonValue;
     } else {
-      return { found: false, error: `key "${segment}" not found` };
+      return { found: false, error: codedMessage("schema.dot-path.missing-key", { segment }) };
     }
   }
   return { found: true, value: current };

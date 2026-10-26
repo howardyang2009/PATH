@@ -116,6 +116,7 @@ export { must } from "./must.js";
 // doors cannot disagree about which occurrence offends, which one already held the value, and why.
 export {
   duplicateIdErrors,
+  duplicateIdIssues,
   type IdentityOccurrence,
   identityIssues,
   type NodeIdentityIssue,
