@@ -264,3 +264,23 @@ describe("Narrative lines in en", () => {
     expect(texts).toEqual(lines.map(([, text]) => text));
   });
 });
+
+describe("Narrative counts in en", () => {
+  it("says 1 iteration", () => {
+    const event: LogEvent = {
+      seq: 1,
+      ts: "2026-07-25T10:00:00.000Z",
+      run_id: "run_a",
+      node_id: "n1",
+      node_name: "s",
+      type: "loop-exited",
+      reason: "condition-false",
+      iterations: 1,
+      trace: { type: "exists", path: "previous.status", outcome: "false" },
+    };
+    const { container } = render(<Narrative events={[event]} stream="closed" />);
+    expect(container.querySelector(".event-msg")).toHaveTextContent(
+      "while-do s (n1) exited after 1 iteration · condition-false",
+    );
+  });
+});

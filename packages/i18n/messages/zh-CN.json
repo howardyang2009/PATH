@@ -656,7 +656,7 @@
     "cancelledByOperator": "{label} 被运维人员取消",
     "cancelledByRun": "{label} 已取消 · 原因 {causeRunId}",
     "iterationStarted": "条件循环 {label} 第 {iteration} 次迭代",
-    "loopExited": "条件循环 {label} 在 {iterations} 次迭代后退出 · {reason}",
+    "loopExited": "条件循环 {label} 在 {iterations, plural, other {# 次迭代}}后退出 · {reason}",
     "loopExitReason": {
       "conditionFalse": "条件不成立",
       "maxIterationsExceeded": "超过最大迭代次数"

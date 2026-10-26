@@ -656,7 +656,7 @@
     "cancelledByOperator": "{label} cancelled by the operator",
     "cancelledByRun": "{label} cancelled · cause {causeRunId}",
     "iterationStarted": "while-do {label} iteration {iteration}",
-    "loopExited": "while-do {label} exited after {iterations} iterations · {reason}",
+    "loopExited": "while-do {label} exited after {iterations, plural, one {# iteration} other {# iterations}} · {reason}",
     "loopExitReason": {
       "conditionFalse": "condition-false",
       "maxIterationsExceeded": "max-iterations-exceeded"

@@ -656,7 +656,7 @@
     "cancelledByOperator": "{label} vom Betreiber abgebrochen",
     "cancelledByRun": "{label} abgebrochen · Ursache {causeRunId}",
     "iterationStarted": "While-do {label} Iteration {iteration}",
-    "loopExited": "While-do {label} beendet nach {iterations} Iterationen · {reason}",
+    "loopExited": "While-do {label} beendet nach {iterations, plural, one {# Iteration} other {# Iterationen}} · {reason}",
     "loopExitReason": {
       "conditionFalse": "Bedingung nicht erfüllt",
       "maxIterationsExceeded": "Höchstzahl an Iterationen überschritten"
