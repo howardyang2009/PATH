@@ -641,36 +641,42 @@
     }
   },
   "events": {
-    "root": "root",
-    "stepStarted": "{label} started · {worker}",
-    "stepAwaiting": "{label} awaiting completion",
-    "stepFinished": "{label} {status}",
-    "stepFinishedError": "{label} {status} · {error}",
-    "checkpointPassed": "checkpoint {label} passed",
-    "checkpointFailed": "checkpoint {label} failed",
-    "branchTookElse": "branch {label} took the else arm",
-    "branchTookArm": "branch {label} took arm {arm}",
-    "branchNoMatch": "branch {label} matched no arm",
-    "joinApplied": "join {label} applied · branches {branches}",
-    "joinAppliedPublished": "join {label} applied · branches {branches} · published {keys}",
-    "cancelledByOperator": "{label} cancelled by the operator",
-    "cancelledByRun": "{label} cancelled · cause {causeRunId}",
-    "iterationStarted": "while-do {label} iteration {iteration}",
-    "loopExited": "while-do {label} exited after {iterations, plural, one {# iteration} other {# iterations}} · {reason}",
-    "loopExitReason": {
-      "conditionFalse": "condition-false",
-      "maxIterationsExceeded": "max-iterations-exceeded"
+    "nodeLabel": {
+      "root": "root"
     },
-    "passStarted": "pass {pass}",
-    "passOpenedBy": "pass {pass} opened by goto {label}",
-    "gotoTaken": "goto {label} jumped to {target} · jump {jump}/{maxJumps} · pass {pass}",
-    "gotoExhausted": "goto {label} exhausted · max_jumps {maxJumps} · target {target}",
-    "reuseMarker": "{label} reused from {originalRunId}",
+    "narrative": {
+      "stepStarted": "{label} started · {workerName}",
+      "stepAwaiting": "{label} awaiting completion",
+      "stepFinished": "{label} {status}",
+      "stepFinishedError": "{label} {status} · {error}",
+      "checkpointPassed": "checkpoint {label} passed",
+      "checkpointFailed": "checkpoint {label} failed",
+      "branchTookElse": "branch {label} took the else arm",
+      "branchTookArm": "branch {label} took arm {arm}",
+      "branchNoMatch": "branch {label} matched no arm",
+      "joinApplied": "join {label} applied · branches {branches}",
+      "joinAppliedPublished": "join {label} applied · branches {branches} · published {publishedKeys}",
+      "cancelledByOperator": "{label} cancelled by the operator",
+      "cancelledByRun": "{label} cancelled · cause {causeRunId}",
+      "iterationStarted": "while-do {label} iteration {iteration}",
+      "loopExited": "while-do {label} exited after {iterations, plural, one {# iteration} other {# iterations}} · {reason}",
+      "loopExitReason": {
+        "conditionFalse": "condition-false",
+        "maxIterationsExceeded": "max-iterations-exceeded"
+      },
+      "passStarted": "pass {pass}",
+      "passOpenedBy": "pass {pass} opened by goto {label}",
+      "gotoTaken": "goto {label} jumped to {targetNodeName} · jump {jump}/{maxJumps} · pass {pass}",
+      "gotoExhausted": "goto {label} exhausted · max_jumps {maxJumps} · target {targetNodeName}",
+      "reuseMarker": "{label} reused from {originalRunId}"
+    },
+    "resupply": {
+      "blankSecrets": "{count, plural, one {Launch secret {names} is empty — enter a value before {verb, select, completing {completing} other {resuming}}.} other {Launch secrets {names} are empty — enter a value for each before {verb, select, completing {completing} other {resuming}}.}}"
+    },
     "credentialHint": {
       "config": "Auth: set config {key} or a User secret of that name.",
       "setupToken": "Auth: set config {key} (from `claude setup-token`) or a User secret of that name."
     },
-    "blankSecrets": "{count, plural, one {Launch secret {names} is empty — enter a value before {verb, select, completing {completing} other {resuming}}.} other {Launch secrets {names} are empty — enter a value for each before {verb, select, completing {completing} other {resuming}}.}}",
     "resumeFrom": {
       "noSelection": "Select a node in the run tree.",
       "dirty": "Save to enable.",

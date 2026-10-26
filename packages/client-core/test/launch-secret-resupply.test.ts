@@ -39,7 +39,7 @@ describe("resupplyGate — the one submit verdict both continuation doors read",
     expect(gate.ok).toBe(false);
     expect(gate.blankPaths).toEqual(["token"]);
     expect(gate.blockMessage).toEqual({
-      key: "events.blankSecrets",
+      key: "events.resupply.blankSecrets",
       params: { count: 1, names: '"token"', verb: "resuming" },
     });
   });
@@ -47,7 +47,7 @@ describe("resupplyGate — the one submit verdict both continuation doors read",
   it("names every blank secret, plural, for completing", () => {
     const gate = resupplyGate(["a", "b"], "{}", "completing");
     expect(gate.blockMessage).toEqual({
-      key: "events.blankSecrets",
+      key: "events.resupply.blankSecrets",
       params: { count: 2, names: '"a", "b"', verb: "completing" },
     });
   });

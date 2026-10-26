@@ -1,5 +1,8 @@
 import type { LogEvent, RunStatus } from "@path/client-core";
+import { eventMessage } from "@path/client-core";
+import { loadMessages, renderMessage } from "@path/i18n";
 import { fireEvent, render, screen } from "@testing-library/react";
+import { createTranslator } from "use-intl/core";
 import { describe, expect, it } from "vitest";
 import { Narrative } from "../src/narrative.js";
 import { STATUS_GLYPH } from "../src/status-glyph.js";
@@ -254,6 +257,22 @@ describe("Narrative lines in en", () => {
     ],
     [{ ...base, type: "reuse-marker", original_run_id: "run_0" }, "s (n1) reused from run_0"],
   ];
+
+  it.each(["de", "zh-CN"] as const)("renders every event type's line in %s", async (locale) => {
+    const messages = await loadMessages(locale);
+    const t = createTranslator({
+      locale,
+      messages,
+      onError: (error) => {
+        throw error;
+      },
+    });
+    for (const [event, english] of lines) {
+      const text = renderMessage(t, eventMessage(event));
+      expect(text).not.toBe(english);
+      expect(text).not.toMatch(/events\./);
+    }
+  });
 
   it("renders every event type's line as before", () => {
     const events = lines.map(([event], index) => ({ ...event, seq: index + 1 }));

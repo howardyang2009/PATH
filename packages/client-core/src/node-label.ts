@@ -21,6 +21,7 @@ export function nodeEventLabel(
   nodeId: string | null,
   nodeName: string | null | undefined,
 ): MessageParam {
-  if (nodeName === null || nodeName === undefined) return nodeId ?? { key: "events.root" };
+  if (nodeName === null || nodeName === undefined)
+    return nodeId ?? { key: "events.nodeLabel.root" };
   return nodeId === null ? nodeName : `${nodeName} (${shortGuid(nodeId)})`;
 }

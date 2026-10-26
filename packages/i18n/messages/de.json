@@ -641,39 +641,45 @@
     }
   },
   "events": {
-    "root": "Wurzel",
-    "stepStarted": "{label} gestartet · {worker}",
-    "stepAwaiting": "{label} wartet auf Abschluss",
-    "stepFinished": "{label} {status}",
-    "stepFinishedError": "{label} {status} · {error}",
-    "checkpointPassed": "Checkpoint {label} bestanden",
-    "checkpointFailed": "Checkpoint {label} nicht bestanden",
-    "branchTookElse": "Verzweigung {label} nahm den Sonst-Zweig",
-    "branchTookArm": "Verzweigung {label} nahm Fall {arm}",
-    "branchNoMatch": "Verzweigung {label}: kein Fall traf zu",
-    "joinApplied": "Zusammenführung {label} angewendet · Zweige {branches}",
-    "joinAppliedPublished": "Zusammenführung {label} angewendet · Zweige {branches} · veröffentlicht {keys}",
-    "cancelledByOperator": "{label} vom Betreiber abgebrochen",
-    "cancelledByRun": "{label} abgebrochen · Ursache {causeRunId}",
-    "iterationStarted": "While-do {label} Iteration {iteration}",
-    "loopExited": "While-do {label} beendet nach {iterations, plural, one {# Iteration} other {# Iterationen}} · {reason}",
-    "loopExitReason": {
-      "conditionFalse": "Bedingung nicht erfüllt",
-      "maxIterationsExceeded": "Höchstzahl an Iterationen überschritten"
+    "nodeLabel": {
+      "root": "Wurzel"
     },
-    "passStarted": "Durchgang {pass}",
-    "passOpenedBy": "Durchgang {pass}, geöffnet durch goto {label}",
-    "gotoTaken": "goto {label} sprang zu {target} · Sprung {jump}/{maxJumps} · Durchgang {pass}",
-    "gotoExhausted": "goto {label} erschöpft · max_jumps {maxJumps} · Ziel {target}",
-    "reuseMarker": "{label} wiederverwendet aus {originalRunId}",
+    "narrative": {
+      "stepStarted": "{label} gestartet · {workerName}",
+      "stepAwaiting": "{label} wartet auf Abschluss",
+      "stepFinished": "{label} {status}",
+      "stepFinishedError": "{label} {status} · {error}",
+      "checkpointPassed": "Checkpoint {label} bestanden",
+      "checkpointFailed": "Checkpoint {label} nicht bestanden",
+      "branchTookElse": "Verzweigung {label} nahm den Sonst-Zweig",
+      "branchTookArm": "Verzweigung {label} nahm Fall {arm}",
+      "branchNoMatch": "Verzweigung {label}: kein Fall traf zu",
+      "joinApplied": "Zusammenführung {label} angewendet · Zweige {branches}",
+      "joinAppliedPublished": "Zusammenführung {label} angewendet · Zweige {branches} · veröffentlicht {publishedKeys}",
+      "cancelledByOperator": "{label} vom Betreiber abgebrochen",
+      "cancelledByRun": "{label} abgebrochen · Ursache {causeRunId}",
+      "iterationStarted": "While-do {label} Iteration {iteration}",
+      "loopExited": "While-do {label} beendet nach {iterations, plural, one {# Iteration} other {# Iterationen}} · {reason}",
+      "loopExitReason": {
+        "conditionFalse": "Bedingung nicht erfüllt",
+        "maxIterationsExceeded": "Höchstzahl an Iterationen überschritten"
+      },
+      "passStarted": "Durchgang {pass}",
+      "passOpenedBy": "Durchgang {pass}, geöffnet durch goto {label}",
+      "gotoTaken": "goto {label} sprang zu {targetNodeName} · Sprung {jump}/{maxJumps} · Durchgang {pass}",
+      "gotoExhausted": "goto {label} erschöpft · max_jumps {maxJumps} · Ziel {targetNodeName}",
+      "reuseMarker": "{label} wiederverwendet aus {originalRunId}"
+    },
+    "resupply": {
+      "blankSecrets": "{count, plural, one {Start-Secret {names} ist leer – geben Sie vor dem {verb, select, completing {Abschließen} other {Fortsetzen}} einen Wert ein.} other {Start-Secrets {names} sind leer – geben Sie vor dem {verb, select, completing {Abschließen} other {Fortsetzen}} für jedes einen Wert ein.}}"
+    },
     "credentialHint": {
       "config": "Anmeldung: Setzen Sie die Konfiguration {key} oder ein Benutzer-Secret mit diesem Namen.",
       "setupToken": "Anmeldung: Setzen Sie die Konfiguration {key} (aus `claude setup-token`) oder ein Benutzer-Secret mit diesem Namen."
     },
-    "blankSecrets": "{count, plural, one {Start-Secret {names} ist leer – geben Sie vor dem {verb, select, completing {Abschließen} other {Fortsetzen}} einen Wert ein.} other {Start-Secrets {names} sind leer – geben Sie vor dem {verb, select, completing {Abschließen} other {Fortsetzen}} für jedes einen Wert ein.}}",
     "resumeFrom": {
       "noSelection": "Wählen Sie einen Knoten im Laufbaum.",
-      "dirty": "Speichern, um dies zu aktivieren.",
+      "dirty": "Speichern Sie, um dies zu aktivieren.",
       "passRun": "Durchgang {pass} ist ein goto-Durchgang, kein Knoten; wählen Sie einen Knoten darin.",
       "notInFile": "„{label}“ ist nicht mehr im Workflow.",
       "inBody": "„{label}“ liegt im Rumpf {container, select, loop {einer Schleife} parallel {eines parallel-Blocks} branch {einer Verzweigung} other {einer Schleife, eines parallel-Blocks oder einer Verzweigung}} und kann keine Wiederholgrenze sein.",

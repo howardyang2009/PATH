@@ -100,5 +100,5 @@ export function blankSecretPaths(
  */
 export function blankSecretMessage(paths: readonly string[], verb: ContinuationVerb): Message {
   const names = paths.map((path) => `"${path}"`).join(", ");
-  return { key: "events.blankSecrets", params: { count: paths.length, names, verb } };
+  return { key: "events.resupply.blankSecrets", params: { count: paths.length, names, verb } };
 }
