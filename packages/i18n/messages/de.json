@@ -704,7 +704,7 @@
       "sign-in-required": "Anmeldung erforderlich: Bearer-Token fehlt, ist ungültig oder abgelaufen"
     },
     "server": {
-      "internal": "{message}"
+      "internal": "Serverfehler: {message}"
     },
     "client": {
       "bad-reply": "Die Antwort des Servers war kein gültiges JSON (Status {status})",
@@ -732,16 +732,17 @@
       },
       "complete": {
         "missing-output": "Pflichtfeld „output“ fehlt",
-        "not-awaiting": "Schrittlauf „{stepRunId}“ ist {status}, nicht wartend",
+        "not-awaiting": "Schrittlauf „{stepRunId}“ ist {status, select, pending {ausstehend} running {läuft} awaiting {wartet} succeeded {erfolgreich} failed {fehlgeschlagen} other {abgebrochen}}, nicht wartend",
         "no-path": "Lauf „{rootRunId}“ hat keinen gespeicherten Workflow-Pfad und kann nicht abgeschlossen werden",
-        "swapped": "Der Workflow unter „{workflowPath}“ ist nicht mehr der, den Lauf „{rootRunId}“ ausgeführt hat (seine ID hat sich geändert); Abschließen nicht möglich"
+        "swapped": "Der Workflow unter „{workflowPath}“ ist nicht mehr der, den Lauf „{rootRunId}“ ausgeführt hat (seine ID hat sich geändert); Abschließen nicht möglich",
+        "lease-held": "Lauf „{rootRunId}“ wird gerade in einem anderen Aufruf abgeschlossen"
       },
       "cancel": {
-        "finished": "Lauf „{rootRunId}“ ist bereits mit Status „{status}“ beendet",
+        "finished": "Lauf „{rootRunId}“ ist bereits mit Status „{status, select, pending {ausstehend} running {läuft} awaiting {wartet} succeeded {erfolgreich} failed {fehlgeschlagen} other {abgebrochen}}“ beendet",
         "not-here": "Lauf „{rootRunId}“ wird nicht in diesem Serverprozess ausgeführt und kann nicht abgebrochen werden"
       },
       "delete": {
-        "running": "Lauf „{rootRunId}“ ist noch {status}; brechen Sie ihn vor dem Löschen ab",
+        "running": "Lauf „{rootRunId}“ ist noch {status, select, pending {ausstehend} running {läuft} awaiting {wartet} succeeded {erfolgreich} failed {fehlgeschlagen} other {abgebrochen}}; brechen Sie ihn vor dem Löschen ab",
         "reused": "Löschen von {rootRunId} abgelehnt: aktive Folgeläufe verwenden seine Daten wieder: {blockers} – mit ?force=true erneut versuchen, um ihn trotzdem zu löschen"
       },
       "blob": {
@@ -785,11 +786,11 @@
       }
     },
     "template": {
-      "duplicate-id": "doppelte ID „{id}“: bereits verwendet von {origin}-Vorlage „{name}“",
+      "duplicate-id": "doppelte ID „{id}“: bereits verwendet von {origin, select, shipped {mitgelieferte} shared {geteilte} other {eigene}}-Vorlage „{name}“",
       "read-only": "Die Vorlage ist schreibgeschützt",
       "invalid": "Vorlagen-Validierung fehlgeschlagen",
-      "id-taken": "Vorlagen-ID „{id}“ wird bereits von {origin}-Vorlage „{name}“ verwendet",
-      "name-taken": "Eine {kind}-Vorlage namens „{name}“ existiert bereits",
+      "id-taken": "Vorlagen-ID „{id}“ wird bereits von {origin, select, shipped {mitgelieferte} shared {geteilte} other {eigene}}-Vorlage „{name}“ verwendet",
+      "name-taken": "Eine {kind, select, other {Schritt}}-Vorlage namens „{name}“ existiert bereits",
       "id-mismatch": "Die Vorlagen-ID im Inhalt muss der ID in der URL entsprechen"
     },
     "secret": {

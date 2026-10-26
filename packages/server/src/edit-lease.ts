@@ -10,9 +10,9 @@ import {
   renewMarkerLease,
 } from "@path/engine";
 import type { ErrorCode } from "@path/i18n";
-import type { WireLockHeldBody, WireWorkflowLease } from "@path/schema";
+import type { WireError, WireLockHeldBody, WireWorkflowLease } from "@path/schema";
 import { confineToProjectRoot } from "./confine.js";
-import { refusalText } from "./http-json.js";
+import { replyError } from "./http-json.js";
 
 /**
  * The Designer **edit lease** (ADR 0017), over the marker-lease primitive: an expiring marker
@@ -114,7 +114,7 @@ export function editLease(
   const held = (code: ErrorCode, expiresAt: string | null): AcquireResult => ({
     ok: false,
     held: {
-      error: { code, params: {}, message: refusalText({ code }) },
+      ...(replyError(409, code).body as WireError),
       held_by_other: true,
       expires_at: expiresAt as string,
     },

@@ -704,7 +704,7 @@
       "sign-in-required": "需要登录：bearer 令牌缺失、无效或已过期"
     },
     "server": {
-      "internal": "{message}"
+      "internal": "服务器错误：{message}"
     },
     "client": {
       "bad-reply": "服务器的回复不是有效的 JSON（状态 {status}）",
@@ -732,16 +732,17 @@
       },
       "complete": {
         "missing-output": "缺少必填字段“output”",
-        "not-awaiting": "步骤运行“{stepRunId}”的状态是 {status}，不是等待中",
+        "not-awaiting": "步骤运行“{stepRunId}”的状态是 {status, select, pending {待处理} running {运行中} awaiting {等待中} succeeded {已成功} failed {已失败} other {已取消}}，不是等待中",
         "no-path": "运行“{rootRunId}”没有记录工作流路径，无法完成",
-        "swapped": "“{workflowPath}”处的工作流已不是运行“{rootRunId}”所运行的那个（其 ID 已改变）；无法完成"
+        "swapped": "“{workflowPath}”处的工作流已不是运行“{rootRunId}”所运行的那个（其 ID 已改变）；无法完成",
+        "lease-held": "运行“{rootRunId}”正在另一次调用中完成"
       },
       "cancel": {
-        "finished": "运行“{rootRunId}”已结束，状态为“{status}”",
+        "finished": "运行“{rootRunId}”已结束，状态为“{status, select, pending {待处理} running {运行中} awaiting {等待中} succeeded {已成功} failed {已失败} other {已取消}}”",
         "not-here": "运行“{rootRunId}”不在此服务器进程中执行，无法取消"
       },
       "delete": {
-        "running": "运行“{rootRunId}”仍处于 {status}；删除前请先取消",
+        "running": "运行“{rootRunId}”仍处于 {status, select, pending {待处理} running {运行中} awaiting {等待中} succeeded {已成功} failed {已失败} other {已取消}}；删除前请先取消",
         "reused": "拒绝删除 {rootRunId}：仍在运行的后续运行复用了它的数据：{blockers}。如仍要删除，请用 ?force=true 重试"
       },
       "blob": {
@@ -785,11 +786,11 @@
       }
     },
     "template": {
-      "duplicate-id": "ID“{id}”重复：已被 {origin} 模板“{name}”使用",
+      "duplicate-id": "ID“{id}”重复：已被 {origin, select, shipped {内置} shared {共享} other {用户}} 模板“{name}”使用",
       "read-only": "模板是只读的",
       "invalid": "模板校验失败",
-      "id-taken": "模板 ID“{id}”已被 {origin} 模板“{name}”使用",
-      "name-taken": "名为“{name}”的 {kind} 模板已存在",
+      "id-taken": "模板 ID“{id}”已被 {origin, select, shipped {内置} shared {共享} other {用户}} 模板“{name}”使用",
+      "name-taken": "名为“{name}”的 {kind, select, other {步骤}} 模板已存在",
       "id-mismatch": "请求体中的模板 ID 必须与 URL 中的 ID 一致"
     },
     "secret": {

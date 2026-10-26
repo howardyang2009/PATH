@@ -1,5 +1,5 @@
-import { type PathApiClient, PathApiError } from "@path/client-core";
-import { type Message, verbatim } from "@path/i18n";
+import { apiErrorMessage, type PathApiClient, PathApiError } from "@path/client-core";
+import type { Message } from "@path/i18n";
 import type { DownloadPlan } from "./session-reducer.js";
 
 /** Fetch the plan's file and hand it to the browser as a save. */
@@ -20,7 +20,7 @@ export async function downloadFile(client: PathApiClient, plan: DownloadPlan): P
  * follow. */
 export function downloadFailure(error: unknown): Message[] {
   if (!(error instanceof PathApiError)) {
-    return [verbatim(error instanceof Error ? error.message : String(error))];
+    return [apiErrorMessage(error)];
   }
   const lines: Message[] = Array.isArray(error.details)
     ? error.details.map((item) => {
@@ -28,5 +28,5 @@ export function downloadFailure(error: unknown): Message[] {
         return { key: "designer.download.unbundledRef", params: { ref, from, reason } };
       })
     : [];
-  return [verbatim(error.message), ...lines];
+  return [apiErrorMessage(error), ...lines];
 }

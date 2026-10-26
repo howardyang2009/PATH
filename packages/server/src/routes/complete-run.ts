@@ -93,6 +93,9 @@ export async function handleCompleteRun({
     if (result.reason === "output-invalid") {
       return replyError(400, "run.refused", { message: result.message }, result.details);
     }
+    if (result.reason === "lease-held") {
+      return replyError(409, "run.complete.lease-held", { rootRunId });
+    }
     // The engine's own words until its refusals carry codes.
     return replyError(result.reason === "not-found" ? 404 : 409, "run.refused", {
       message: result.message,
