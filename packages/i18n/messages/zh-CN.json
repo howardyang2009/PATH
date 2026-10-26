@@ -225,7 +225,8 @@
       "downloadDirty": "未保存的更改不会包含在内。要下载已保存的文件吗？",
       "couldNotDownload": "无法下载：{message}",
       "templatesDoNotRun": "模板不能运行。切换到工作流模式以运行工作流。",
-      "saveWorkflowAs": "工作流另存为"
+      "saveWorkflowAs": "工作流另存为",
+      "paneIdle": "打开一个{mode, select, template {模板} other {工作流}}，然后选择要编辑的节点。"
     },
     "document": {
       "readOnly": "只读：只有创建者可以保存。请使用“另存为”。",
