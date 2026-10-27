@@ -224,6 +224,8 @@
       "deleteWorkflow": "„{path}“ löschen? Die Datei wird von der Festplatte entfernt; dies kann nicht rückgängig gemacht werden.{unsaved, select, true { Ungespeicherte Änderungen gehen ebenfalls verloren.} other {}}",
       "downloadDirty": "Ungespeicherte Änderungen sind nicht enthalten. Die gespeicherte Datei herunterladen?",
       "couldNotDownload": "Herunterladen nicht möglich: {message}",
+      "uploadReplace": "„{name}“ im eigenen Ordner durch die hochgeladene Datei ersetzen?",
+      "couldNotUpload": "Hochladen nicht möglich: {message}",
       "templatesDoNotRun": "Vorlagen werden nicht ausgeführt. Wechseln Sie in den Workflow-Modus, um einen Workflow auszuführen.",
       "saveWorkflowAs": "Workflow speichern unter",
       "paneIdle": "Öffnen Sie {mode, select, template {eine Vorlage} other {einen Workflow}} und wählen Sie einen Knoten zum Bearbeiten."
@@ -262,6 +264,8 @@
       "download": "Herunterladen",
       "downloadTitle": "Die gespeicherte Datei herunterladen",
       "saveFirst": "Zuerst speichern",
+      "upload": "Hochladen…",
+      "uploadTitle": "Eine Workflow- oder Vorlagendatei in den eigenen Ordner hochladen",
       "delete": "Löschen",
       "undo": "Rückgängig",
       "undoTitle": "Rückgängig ({shortcut})",
@@ -590,6 +594,22 @@
     },
     "download": {
       "unbundledRef": "{ref} (in {from}): {reason}"
+    },
+    "upload": {
+      "wrongSuffix": "„{name}“ ist keine .workflow.json- oder .step-template.json-Datei.",
+      "tooLarge": "„{name}“ ist größer als 1 MB.",
+      "badName": "Der Name von „{name}“ ist nicht zulässig. Ein Vorlagenname besteht aus Kleinbuchstaben, Ziffern und Bindestrichen; ein Workflow-Name darf nicht mit einem Punkt beginnen.",
+      "notJson": "„{name}“ ist kein JSON-Objekt.",
+      "kindMismatch": "Der Inhalt von „{name}“ passt nicht zum Dateityp.",
+      "nameTaken": "Im eigenen Ordner gibt es bereits eine Datei „{name}“. Wählen Sie einen anderen Namen.",
+      "noUserRoot": "Es gibt keinen eigenen Ordner zum Hochladen."
+    },
+    "uploadCopyDialog": {
+      "title": "Als Kopie hochladen",
+      "hint": "Eine andere Datei verwendet bereits die ID oder den Namen von „{name}“. Die Kopie erhält eine neue ID und den gewählten Namen.",
+      "name": "Name",
+      "upload": "Hochladen",
+      "cancel": "Abbrechen"
     },
     "openWorkflowDialog": {
       "title": "Workflow öffnen",

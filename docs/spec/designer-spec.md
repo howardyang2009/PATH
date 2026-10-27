@@ -349,9 +349,15 @@ The top bar shows a **Workflow | Template** switch right after the `PATH designe
 files; **Template** mode edits template sources (`*.step-template.json`) and new templates. The toolbar buttons keep the same plain labels in both modes, because the switch names
 the mode. The toolbar has four top-level controls: a **File** menu, then Undo, Redo and **Save**
 (also ⌘S / Ctrl+S, which runs only when the Save button is enabled). The File menu holds **New**,
-**Open…**, **Save as…**, **Download** and **Delete**, in three separated groups. A disabled item stays
+**Open…**, **Save as…**, **Download**, **Upload…** and **Delete**, in three separated groups. A disabled item stays
 visible. New and Open… act in the current mode (a new workflow or template; the workflow picker or the
-template picker). While a Delete runs, the top bar's centre slot says `Deleting…`. A template saves only as a template:
+template picker). Upload… acts by the picked file's suffix, in either mode: it puts one
+`*.workflow.json` or `*.step-template.json` (at most 1 MB) at the top of the requester's own user root
+through the existing write doors, then opens it. It writes nothing for a file whose content is not the
+kind its suffix names, and nothing the Server refuses. A re-upload of an own file with the same name and
+id replaces it after a confirm, and never while another session holds its edit lease. A file whose id
+or name another file in the requester's view holds goes in only as a copy: an "Upload as copy" dialog
+asks for a new name, prefilled `<stem>-copy`, and the copy gets a fresh `id` (#796). While a Delete runs, the top bar's centre slot says `Deleting…`. A template saves only as a template:
 template mode has no Save as workflow door. In workflow mode, Save as… writes a copy of the open workflow to
 a new `*.workflow.json` through the first-save dialog (titled "Save workflow as", prefilled
 `<name>-copy`) as an exclusive create. Its **Save to** picker chooses mine or shared, default mine,

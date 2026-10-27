@@ -205,6 +205,7 @@ export function EditingToolbar({
   onSaveAs,
   onDelete,
   onDownload,
+  onUpload,
   onTakeover,
   onReacquire,
 }: {
@@ -225,6 +226,8 @@ export function EditingToolbar({
   /** Download the active frame's saved file: a workflow (zipped with the files it refs) or a
    * template. */
   onDownload: () => void;
+  /** Pick a workflow or template file from the user's computer and put it in the user root. */
+  onUpload: () => void;
   onTakeover: () => void;
   onReacquire: () => void;
 }): JSX.Element {
@@ -248,6 +251,7 @@ export function EditingToolbar({
               disabled: !chrome.download,
               title: chrome.download ? t("downloadTitle") : t("saveFirst"),
             },
+            { label: t("upload"), onSelect: onUpload, title: t("uploadTitle") },
           ],
           [
             {

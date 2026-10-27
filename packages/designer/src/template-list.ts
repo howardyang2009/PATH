@@ -4,9 +4,9 @@ import { useCallback, useMemo } from "react";
 import { useScanOnSave } from "./scan-on-save.js";
 import type { SaveState } from "./session-reducer.js";
 
-/** The palette's template list: one scan at load and one after each save that lands. A failed scan
- * is its own phase, not an empty list, so the palette never claims the project has none (ADR
- * 0050). */
+/** The palette's template list: one scan at load, one after each save that lands, and one per new
+ * `rescanKey`. A failed scan is its own phase, not an empty list, so the palette never claims the
+ * project has none (ADR 0050). */
 export type TemplateListLoad =
   | { phase: "loading" }
   | { phase: "error"; message: Message }
@@ -15,8 +15,14 @@ export type TemplateListLoad =
 export function useTemplateList(
   client: PathApiClient,
   savePhase: SaveState["phase"],
+  rescanKey = 0,
 ): TemplateListLoad {
-  const listTemplates = useCallback(async () => (await client.listTemplates()).templates, [client]);
+  // A new `rescanKey` gives the read a new identity, which is what makes `useScanOnSave` re-scan.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: rescanKey is the re-scan trigger.
+  const listTemplates = useCallback(
+    async () => (await client.listTemplates()).templates,
+    [client, rescanKey],
+  );
   const load = useScanOnSave(listTemplates, savePhase, RESCAN_ON);
   // Mapped once per scan result, so a consumer keyed on this object does not re-run every render.
   return useMemo(() => {

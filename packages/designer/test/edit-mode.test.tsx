@@ -74,7 +74,7 @@ afterEach(() => {
 });
 
 describe("File menu", () => {
-  it("holds New, Open…, Save as…, Download and Delete, and closes on Escape back to File", async () => {
+  it("holds New, Open…, Save as…, Download, Upload… and Delete, and closes on Escape back to File", async () => {
     renderApp(WORKFLOW_PATH);
     await screen.findByText("alpha");
     const file = screen.getByRole("button", { name: /^File/ });
@@ -87,7 +87,7 @@ describe("File menu", () => {
       within(menu)
         .getAllByRole("menuitem")
         .map((item) => item.textContent),
-    ).toEqual(["New", "Open…", "Save as…", "Download", "Delete"]);
+    ).toEqual(["New", "Open…", "Save as…", "Download", "Upload…", "Delete"]);
     expect(within(menu).getByRole("menuitem", { name: "New" })).toHaveFocus();
     fireEvent.keyDown(menu, { key: "ArrowDown" });
     expect(within(menu).getByRole("menuitem", { name: "Open…" })).toHaveFocus();
@@ -111,8 +111,8 @@ describe("File menu", () => {
     fireEvent.keyDown(menu, { key: "ArrowDown" });
     fireEvent.keyDown(menu, { key: "ArrowDown" });
 
-    // Save as…, Download and Delete are all disabled for a never-saved buffer: focus wraps to New.
-    expect(within(menu).getByRole("menuitem", { name: "New" })).toHaveFocus();
+    // Save as… and Download are disabled for a never-saved buffer: focus skips them to Upload….
+    expect(within(menu).getByRole("menuitem", { name: "Upload…" })).toHaveFocus();
   });
 
   it("closes on a click outside", async () => {

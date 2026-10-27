@@ -224,6 +224,8 @@
       "deleteWorkflow": "Delete \"{path}\"? This removes it from disk and cannot be undone.{unsaved, select, true { Unsaved changes are lost too.} other {}}",
       "downloadDirty": "Unsaved edits are not included. Download the saved file?",
       "couldNotDownload": "Could not download: {message}",
+      "uploadReplace": "Replace \"{name}\" in your folder with the uploaded file?",
+      "couldNotUpload": "Could not upload: {message}",
       "templatesDoNotRun": "Templates do not run. Switch to Workflow mode to run a workflow.",
       "saveWorkflowAs": "Save workflow as",
       "paneIdle": "Open a {mode, select, template {template} other {workflow}} and select a node to edit it."
@@ -262,6 +264,8 @@
       "download": "Download",
       "downloadTitle": "Download the saved file",
       "saveFirst": "Save first",
+      "upload": "Upload…",
+      "uploadTitle": "Upload a workflow or template file into your own folder",
       "delete": "Delete",
       "undo": "Undo",
       "undoTitle": "Undo ({shortcut})",
@@ -590,6 +594,22 @@
     },
     "download": {
       "unbundledRef": "{ref} (in {from}): {reason}"
+    },
+    "upload": {
+      "wrongSuffix": "\"{name}\" is not a .workflow.json or .step-template.json file.",
+      "tooLarge": "\"{name}\" is larger than 1 MB.",
+      "badName": "The name of \"{name}\" cannot be used. A template name uses lower-case letters, digits and hyphens; a workflow name must not start with a dot.",
+      "notJson": "\"{name}\" is not a JSON object.",
+      "kindMismatch": "The content of \"{name}\" does not match its file type.",
+      "nameTaken": "Your folder already has a file named \"{name}\". Choose another name.",
+      "noUserRoot": "You have no folder of your own to upload into."
+    },
+    "uploadCopyDialog": {
+      "title": "Upload as copy",
+      "hint": "Another file already uses the id or the name of \"{name}\". The copy gets a new id and the name you choose.",
+      "name": "Name",
+      "upload": "Upload",
+      "cancel": "Cancel"
     },
     "openWorkflowDialog": {
       "title": "Open a workflow",
