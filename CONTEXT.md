@@ -682,6 +682,13 @@ Rule of thumb: **Config flows in from outside. Context is written from inside.**
   sits; discovery, the Template store and the workflow store scan through it, and discovery sends the
   writable workflow roots to clients, so no client carries the folder layout
   ([ADR 0087](https://github.com/howardyang2009/PATH/blob/main/docs/adr/0087-the-authored-layout-decides-where-a-file-lives-and-who-may-write-it.md)).
+- **User root** — one user's own writable folder of a kind: `users/<user-id>/workflow/` or
+  `users/<user-id>/template/`, origin `user`. Only that user sees or writes it. Avoid "user special
+  folder" and "personal folder".
+- **Upload** — the Designer action that puts one `*.workflow.json` or `*.step-template.json` file from
+  the user's computer into the top of the requester's **user root**, then opens it. It is the
+  counterpart of Download for one file; a zip never uploads. A file whose id another file in the
+  requester's view holds uploads only as a copy with a fresh id and a new name.
 - **Host layout** — where a project's per-user data and the Server's own files live on disk: each
   user's folder under `users/`, the directory their **store** opens at, and the host-level files in the
   project `.path` that never move with a user's store
