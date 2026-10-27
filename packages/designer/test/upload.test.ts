@@ -89,6 +89,7 @@ describe("readUpload", () => {
         stem: "flow",
         fileName: "flow.workflow.json",
         content: WORKFLOW_FILE,
+        folder: "",
       },
     });
   });
@@ -160,12 +161,14 @@ const workflowUpload: Upload = {
   stem: "flow",
   fileName: "flow.workflow.json",
   content: WORKFLOW_FILE,
+  folder: "",
 };
 const templateUpload: Upload = {
   kind: "template",
   stem: "gate",
   fileName: "gate.step-template.json",
   content: TEMPLATE_FILE,
+  folder: "",
 };
 const view = (over: Partial<UploadView>): UploadView => ({
   workflows: [],
@@ -178,6 +181,13 @@ const OTHER_ID = "99999999-5555-4555-8555-555555555555";
 describe("planUpload", () => {
   it("creates a new workflow at the top of the user root", () => {
     expect(planUpload(workflowUpload, view({}))).toEqual({ action: "create", path: OWN_PATH });
+  });
+
+  it("creates a new workflow in the picked folder of the user root", () => {
+    expect(planUpload({ ...workflowUpload, folder: "lib/drafts" }, view({}))).toEqual({
+      action: "create",
+      path: "users/local/workflow/lib/drafts/flow.workflow.json",
+    });
   });
 
   it("refuses a workflow when the requester has no user root", () => {
@@ -212,6 +222,14 @@ describe("planUpload", () => {
   it("replaces the own top-level template of the same name and id", () => {
     const templates = [templateRow("gate", TEMPLATE_ID)];
     expect(planUpload(templateUpload, view({ templates }))).toEqual({
+      action: "replace",
+      id: TEMPLATE_ID,
+    });
+  });
+
+  it("replaces the own template of the same name and id in the picked folder", () => {
+    const templates = [templateRow("gate", TEMPLATE_ID, "user", "lib")];
+    expect(planUpload({ ...templateUpload, folder: "lib" }, view({ templates }))).toEqual({
       action: "replace",
       id: TEMPLATE_ID,
     });

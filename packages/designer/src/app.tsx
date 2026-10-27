@@ -41,7 +41,8 @@ import { droppedWorkflowFields } from "./session-reducer.js";
 import { useTemplateList } from "./template-list.js";
 import type { Upload } from "./upload.js";
 import { UploadCopyDialog } from "./upload-copy-dialog.js";
-import { startUpload, type UploadOutcome, uploadCopy } from "./upload-file.js";
+import { UploadDialog } from "./upload-dialog.js";
+import { readPickedFile, startUpload, type UploadOutcome, uploadCopy } from "./upload-file.js";
 import { useArmed } from "./use-armed.js";
 import { useEditLeases } from "./use-edit-leases.js";
 import { useFileProblems } from "./use-file-problems.js";
@@ -215,11 +216,13 @@ export function App({
       ),
     );
   };
-  // Upload puts one picked file in the requester's user root and opens it. It replaces the stack, so
-  // unsaved edits are confirmed before anything is written.
+  // Upload puts one picked file in a folder of the requester's user root and opens it. It replaces
+  // the stack, so unsaved edits are confirmed before anything is written.
   const uploadInput = useRef<HTMLInputElement>(null);
+  const [uploadPicked, setUploadPicked] = useState<Upload | null>(null);
   const [uploadCopyOf, setUploadCopyOf] = useState<Upload | null>(null);
   const finishUpload = (outcome: UploadOutcome): void => {
+    setUploadPicked(null);
     setUploadCopyOf(outcome.status === "copy" ? outcome.upload : null);
     if (outcome.status === "refused") {
       window.alert(t("couldNotUpload", { message: renderMessage(outcome.message) }));
@@ -236,9 +239,15 @@ export function App({
   };
   const onUploadPicked = (file: File | undefined): void => {
     if (file === undefined || !confirmDiscard()) return;
+    void readPickedFile(file).then((read) => {
+      if (read.status === "read") setUploadPicked(read.upload);
+      else finishUpload(read);
+    });
+  };
+  const startPickedUpload = (upload: Upload, folder: string): Promise<UploadOutcome> => {
     const confirmReplace = (name: string): boolean => window.confirm(t("uploadReplace", { name }));
     const lease = { sessionId, heldPaths: leasedPaths };
-    void startUpload(client, file, { confirmReplace, lease }).then(finishUpload);
+    return startUpload(client, { ...upload, folder }, { confirmReplace, lease });
   };
   // What the open dialog is allowed to be, and what a Save opens: a from-scratch buffer (no path)
   // takes its first-save door rather than overwriting; a saved frame saves in place, and a template
@@ -453,6 +462,16 @@ export function App({
           event.target.value = "";
         }}
       />
+      {uploadPicked !== null ? (
+        <UploadDialog
+          upload={uploadPicked}
+          discovery={discovery}
+          templateList={templateList}
+          start={(folder) => startPickedUpload(uploadPicked, folder)}
+          onDone={finishUpload}
+          onCancel={() => setUploadPicked(null)}
+        />
+      ) : null}
       {uploadCopyOf !== null ? (
         <UploadCopyDialog
           upload={uploadCopyOf}

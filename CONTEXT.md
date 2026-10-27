@@ -686,7 +686,7 @@ Rule of thumb: **Config flows in from outside. Context is written from inside.**
   `users/<user-id>/template/`, origin `user`. Only that user sees or writes it. Avoid "user special
   folder" and "personal folder".
 - **Upload** — the Designer action that puts one `*.workflow.json` or `*.step-template.json` file from
-  the user's computer into the top of the requester's **user root**, then opens it. It is the
+  the user's computer into a folder the user picks in the requester's **user root**, then opens it. It is the
   counterpart of Download for one file; a zip never uploads. A file whose id another file in the
   requester's view holds uploads only as a copy with a fresh id and a new name.
 - **Host layout** — where a project's per-user data and the Server's own files live on disk: each

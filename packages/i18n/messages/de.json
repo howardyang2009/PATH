@@ -604,6 +604,18 @@
       "nameTaken": "Im eigenen Ordner gibt es bereits eine Datei „{name}“. Wählen Sie einen anderen Namen.",
       "noUserRoot": "Es gibt keinen eigenen Ordner zum Hochladen."
     },
+    "uploadDialog": {
+      "title": "In Ordner hochladen",
+      "hint": "Wählen Sie den Ordner in Ihrem eigenen Ordner, in den \"{name}\" kommt.",
+      "folder": "Ordner",
+      "top": "(oberste Ebene Ihres Ordners)",
+      "folderHint": "Wählen Sie einen Ordner oder geben Sie einen neuen ein. Mit <code>/</code> trennen Sie Unterordner. Fehlende Ordner werden angelegt.",
+      "uploadsTo": "Wird hochgeladen nach <code>{path}</code>",
+      "myTemplates": "(meine Vorlagen)",
+      "badFolder": "Ordnernamen dürfen nicht leer sein, nicht mit einem Punkt beginnen und keinen Backslash enthalten.",
+      "upload": "Hochladen",
+      "cancel": "Abbrechen"
+    },
     "uploadCopyDialog": {
       "title": "Als Kopie hochladen",
       "hint": "Eine andere Datei verwendet bereits die ID oder den Namen von „{name}“. Die Kopie erhält eine neue ID und den gewählten Namen.",
