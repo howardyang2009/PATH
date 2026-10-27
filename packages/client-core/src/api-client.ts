@@ -240,7 +240,10 @@ function getStepPlugins(http: HttpTransport): Promise<StepPluginsResponse> {
 
 async function getWorkflowFile(http: HttpTransport, path: string): Promise<WorkflowFileRaw> {
   const reply = await http.request(`/v0/workflows/file?path=${encodeURIComponent(path)}`);
-  return { text: reply.text, etag: reply.headers.get("ETag") };
+  // A compressing proxy (Cloudflare) weakens the strong ETag to `W/"…"`; the hash still names the
+  // same bytes, and the server's If-Match compare is strong, so drop the prefix.
+  const etag = reply.headers.get("ETag");
+  return { text: reply.text, etag: etag?.replace(/^W\//, "") ?? null };
 }
 
 async function putWorkflow(

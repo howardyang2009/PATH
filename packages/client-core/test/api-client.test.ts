@@ -672,6 +672,20 @@ describe("PathApiClient", () => {
     );
   });
 
+  it("getWorkflowFile strips a proxy's weak W/ prefix so the ETag still passes If-Match", async () => {
+    const stub = stubFetch(
+      () =>
+        new Response("{}", {
+          status: 200,
+          headers: { "Content-Type": "application/json", ETag: 'W/"abc123"' },
+        }),
+    );
+    const client = new PathApiClient({ baseUrl: "http://localhost:8080", fetch: stub.fetch });
+
+    const raw = await client.getWorkflowFile("flows/main.workflow.json");
+    expect(raw.etag).toBe('"abc123"');
+  });
+
   it("getWorkflowFile surfaces a 404 as a PathApiError with the server's message", async () => {
     const stub = stubFetch(() => json({ error: { message: "not found" } }, 404));
     const client = new PathApiClient({ baseUrl: "http://localhost:8080", fetch: stub.fetch });
