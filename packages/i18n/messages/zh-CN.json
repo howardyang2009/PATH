@@ -224,6 +224,8 @@
       "deleteWorkflow": "删除“{path}”？此操作会将其从磁盘移除，且无法撤销。{unsaved, select, true {未保存的更改也将丢失。} other {}}",
       "downloadDirty": "未保存的更改不会包含在内。要下载已保存的文件吗？",
       "couldNotDownload": "无法下载：{message}",
+      "uploadReplace": "要用上传的文件替换个人文件夹中的“{name}”吗？",
+      "couldNotUpload": "无法上传：{message}",
       "templatesDoNotRun": "模板不能运行。切换到工作流模式以运行工作流。",
       "saveWorkflowAs": "工作流另存为",
       "paneIdle": "打开一个{mode, select, template {模板} other {工作流}}，然后选择要编辑的节点。"
@@ -262,6 +264,8 @@
       "download": "下载",
       "downloadTitle": "下载已保存的文件",
       "saveFirst": "请先保存",
+      "upload": "上传…",
+      "uploadTitle": "把工作流或模板文件上传到个人文件夹",
       "delete": "删除",
       "undo": "撤销",
       "undoTitle": "撤销（{shortcut}）",
@@ -590,6 +594,22 @@
     },
     "download": {
       "unbundledRef": "{ref}（位于 {from}）：{reason}"
+    },
+    "upload": {
+      "wrongSuffix": "“{name}”不是 .workflow.json 或 .step-template.json 文件。",
+      "tooLarge": "“{name}”超过 1 MB。",
+      "badName": "“{name}”的名称不可用。模板名称只能使用小写字母、数字和连字符；工作流名称不能以点开头。",
+      "notJson": "“{name}”不是 JSON 对象。",
+      "kindMismatch": "“{name}”的内容与文件类型不符。",
+      "nameTaken": "个人文件夹中已有名为“{name}”的文件。请换一个名称。",
+      "noUserRoot": "没有可上传到的个人文件夹。"
+    },
+    "uploadCopyDialog": {
+      "title": "作为副本上传",
+      "hint": "另一个文件已使用“{name}”的 ID 或名称。副本会获得新的 ID 和你选择的名称。",
+      "name": "名称",
+      "upload": "上传",
+      "cancel": "取消"
     },
     "openWorkflowDialog": {
       "title": "打开工作流",

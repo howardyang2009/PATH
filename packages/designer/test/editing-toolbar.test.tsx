@@ -35,6 +35,7 @@ function toolbar(lease: EditorChrome["lease"]): void {
       onSaveAs={noop}
       onDelete={noop}
       onDownload={noop}
+      onUpload={noop}
       onTakeover={noop}
       onReacquire={noop}
     />,

@@ -853,6 +853,8 @@ neutral phrasing.
 | Config / Operator config | Konfiguration / Betreiberkonfiguration | 配置 / 运维配置 |
 | Secret / User secret | Secret _kept_ / Benutzer-Secret | 密钥 / 用户密钥 |
 | Project directory | Projektverzeichnis | 项目目录 |
+| User root | Eigener Ordner | 个人文件夹 |
+| Upload / Download | Hochladen / Herunterladen | 上传 / 下载 |
 | Creator | Ersteller | 创建者 |
 | Buffer | Entwurf | 草稿 |
 | Baseline / Save-point | Gespeicherter Stand / Speicherpunkt | 已保存版本 / 保存点 |

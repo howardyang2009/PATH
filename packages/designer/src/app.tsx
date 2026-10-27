@@ -39,6 +39,9 @@ import { SaveTemplateAsDialog } from "./save-template-as-dialog.js";
 import { SelectionProvider } from "./selection-context.js";
 import { droppedWorkflowFields } from "./session-reducer.js";
 import { useTemplateList } from "./template-list.js";
+import type { Upload } from "./upload.js";
+import { UploadCopyDialog } from "./upload-copy-dialog.js";
+import { startUpload, type UploadOutcome, uploadCopy } from "./upload-file.js";
 import { useArmed } from "./use-armed.js";
 import { useEditLeases } from "./use-edit-leases.js";
 import { useFileProblems } from "./use-file-problems.js";
@@ -113,8 +116,9 @@ export function App({
   // Bumped after a copy, which writes files outside a save, so discovery sees them.
   const [discoveryKey, setDiscoveryKey] = useState(0);
   const discovery = useWorkflowDiscovery(client, session.saveState.phase, discoveryKey);
-  // Re-listed after each save, so a Save-As template shows up in the palette.
-  const templateList = useTemplateList(client, session.saveState.phase);
+  // Re-listed after each save, so a Save-As template shows up in the palette, and after an upload.
+  const [templateKey, setTemplateKey] = useState(0);
+  const templateList = useTemplateList(client, session.saveState.phase, templateKey);
 
   // The active file's cross-node problem pass, behind one seam (`useFileProblems`), shared by its
   // two readers — the canvas markers/panel and the launch button's warning count — so they cannot
@@ -210,6 +214,31 @@ export function App({
         t("couldNotDownload", { message: downloadFailure(error).map(renderMessage).join("\n") }),
       ),
     );
+  };
+  // Upload puts one picked file in the requester's user root and opens it. It replaces the stack, so
+  // unsaved edits are confirmed before anything is written.
+  const uploadInput = useRef<HTMLInputElement>(null);
+  const [uploadCopyOf, setUploadCopyOf] = useState<Upload | null>(null);
+  const finishUpload = (outcome: UploadOutcome): void => {
+    setUploadCopyOf(outcome.status === "copy" ? outcome.upload : null);
+    if (outcome.status === "refused") {
+      window.alert(t("couldNotUpload", { message: renderMessage(outcome.message) }));
+    }
+    if (outcome.status !== "done") return;
+    setDiscoveryKey((key) => key + 1);
+    setTemplateKey((key) => key + 1);
+    if (outcome.target.kind === "workflow") {
+      session.apply({ type: "openLoading", path: outcome.target.path });
+    } else {
+      arming.arm(null);
+      session.apply({ type: "openTemplateLoading", template: outcome.target.template });
+    }
+  };
+  const onUploadPicked = (file: File | undefined): void => {
+    if (file === undefined || !confirmDiscard()) return;
+    const confirmReplace = (name: string): boolean => window.confirm(t("uploadReplace", { name }));
+    const lease = { sessionId, heldPaths: leasedPaths };
+    void startUpload(client, file, { confirmReplace, lease }).then(finishUpload);
   };
   // What the open dialog is allowed to be, and what a Save opens: a from-scratch buffer (no path)
   // takes its first-save door rather than overwriting; a saved frame saves in place, and a template
@@ -331,6 +360,7 @@ export function App({
               onReacquire={() => activePath && reacquire(activePath)}
               onDelete={onDelete}
               onDownload={onDownload}
+              onUpload={() => uploadInput.current?.click()}
             />
           ) : undefined
         }
@@ -411,6 +441,26 @@ export function App({
           />
         }
       />
+      <input
+        ref={uploadInput}
+        type="file"
+        accept=".json"
+        hidden
+        data-testid="upload-input"
+        onChange={(event) => {
+          onUploadPicked(event.target.files?.[0]);
+          // Cleared, so picking the same file again still fires a change.
+          event.target.value = "";
+        }}
+      />
+      {uploadCopyOf !== null ? (
+        <UploadCopyDialog
+          upload={uploadCopyOf}
+          create={(name) => uploadCopy(client, uploadCopyOf, name)}
+          onDone={finishUpload}
+          onCancel={() => setUploadCopyOf(null)}
+        />
+      ) : null}
       {/* The first-save dialog rides above the shell, shown only for a from-scratch buffer (no
         path) whose author asked to save. It decides the path; a successful create closes it and the
         frame is saved. */}
