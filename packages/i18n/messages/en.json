@@ -604,6 +604,18 @@
       "nameTaken": "Your folder already has a file named \"{name}\". Choose another name.",
       "noUserRoot": "You have no folder of your own to upload into."
     },
+    "uploadDialog": {
+      "title": "Upload to folder",
+      "hint": "Choose the folder in your own folder that \"{name}\" goes into.",
+      "folder": "Folder",
+      "top": "(top of your folder)",
+      "folderHint": "Pick a folder or type a new one. Use <code>/</code> for a subfolder. Missing folders are created.",
+      "uploadsTo": "Uploads to <code>{path}</code>",
+      "myTemplates": "(my templates)",
+      "badFolder": "Folder names cannot be empty or start with a dot, and cannot contain a backslash.",
+      "upload": "Upload",
+      "cancel": "Cancel"
+    },
     "uploadCopyDialog": {
       "title": "Upload as copy",
       "hint": "Another file already uses the id or the name of \"{name}\". The copy gets a new id and the name you choose.",

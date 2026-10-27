@@ -604,6 +604,18 @@
       "nameTaken": "个人文件夹中已有名为“{name}”的文件。请换一个名称。",
       "noUserRoot": "没有可上传到的个人文件夹。"
     },
+    "uploadDialog": {
+      "title": "上传到文件夹",
+      "hint": "选择把 \"{name}\" 放进个人文件夹里的哪个文件夹。",
+      "folder": "文件夹",
+      "top": "（个人文件夹顶层）",
+      "folderHint": "选择一个文件夹或输入新文件夹。用 <code>/</code> 分隔子文件夹。缺少的文件夹会自动创建。",
+      "uploadsTo": "上传到 <code>{path}</code>",
+      "myTemplates": "（我的模板）",
+      "badFolder": "文件夹名不能为空、不能以点开头，也不能包含反斜杠。",
+      "upload": "上传",
+      "cancel": "取消"
+    },
     "uploadCopyDialog": {
       "title": "作为副本上传",
       "hint": "另一个文件已使用“{name}”的 ID 或名称。副本会获得新的 ID 和你选择的名称。",

@@ -36,17 +36,23 @@ export interface UploadContext {
   lease: UploadLease;
 }
 
-/** Check, read and plan one picked file, then write it unless it must go in as a copy. */
-export async function startUpload(
-  client: PathApiClient,
+/** Check and read one picked file, before the user picks its folder. */
+export async function readPickedFile(
   file: File,
-  context: UploadContext,
-): Promise<UploadOutcome> {
+): Promise<{ status: "read"; upload: Upload } | { status: "refused"; message: Message }> {
   const checked = checkUploadFile(file);
   if (!checked.ok) return { status: "refused", message: checked.message };
   const read = readUpload(checked, await file.text());
   if (!read.ok) return { status: "refused", message: read.message };
-  const { upload } = read;
+  return { status: "read", upload: read.upload };
+}
+
+/** Plan a read file in its picked folder, then write it unless it must go in as a copy. */
+export async function startUpload(
+  client: PathApiClient,
+  upload: Upload,
+  context: UploadContext,
+): Promise<UploadOutcome> {
   try {
     const [{ workflows, roots }, { templates }] = await Promise.all([
       client.listWorkflows(),
@@ -64,7 +70,7 @@ export async function startUpload(
   }
 }
 
-/** Write `upload` as a new file named `name`, under a fresh id. */
+/** Write `upload` as a new file named `name` in its folder, under a fresh id. */
 export async function uploadCopy(
   client: PathApiClient,
   upload: Upload,
@@ -81,7 +87,8 @@ export async function uploadCopy(
   };
   try {
     if (copy.kind === "template") return await writeUpload(client, copy, { action: "create" });
-    const path = userWorkflowPath((await client.listWorkflows()).roots, copy.fileName);
+    const { roots } = await client.listWorkflows();
+    const path = userWorkflowPath(roots, copy.folder, copy.fileName);
     if (path === undefined) return { status: "refused", message: NO_USER_ROOT };
     return await writeUpload(client, copy, { action: "create", path });
   } catch (error) {
@@ -146,6 +153,7 @@ async function writeTemplate(
       : await client.createTemplate({
           kind: "step",
           name: upload.stem,
+          ...(upload.folder === "" ? {} : { folder: upload.folder }),
           description,
           body: upload.content,
         });

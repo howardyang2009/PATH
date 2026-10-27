@@ -352,8 +352,10 @@ the mode. The toolbar has four top-level controls: a **File** menu, then Undo, R
 **Open…**, **Save as…**, **Download**, **Upload…** and **Delete**, in three separated groups. A disabled item stays
 visible. New and Open… act in the current mode (a new workflow or template; the workflow picker or the
 template picker). Upload… acts by the picked file's suffix, in either mode: it puts one
-`*.workflow.json` or `*.step-template.json` (at most 1 MB) at the top of the requester's own user root
-through the existing write doors, then opens it. It writes nothing for a file whose content is not the
+`*.workflow.json` or `*.step-template.json` (at most 1 MB) into a folder of the requester's own user root
+through the existing write doors, then opens it. After the pick, an "Upload to folder" dialog asks for the
+folder: its field offers the user root's existing folders of the file's kind and takes a typed new one
+(`/` for a subfolder), which the write creates; empty means the top. It writes nothing for a file whose content is not the
 kind its suffix names, and nothing the Server refuses. A re-upload of an own file with the same name and
 id replaces it after a confirm, and never while another session holds its edit lease. A file whose id
 or name another file in the requester's view holds goes in only as a copy: an "Upload as copy" dialog

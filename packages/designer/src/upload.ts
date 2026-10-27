@@ -46,7 +46,13 @@ export function checkUploadFile(file: { name: string; size: number }): CheckedFi
 /** A picked file read and parsed, its content of the kind its suffix names. */
 export interface Upload extends Omit<CheckedFile, "ok"> {
   content: { [key: string]: JsonValue };
+  /** The subfolder of the user root it goes into, `""` for the top. */
+  folder: string;
 }
+
+/** A subfolder path of plain names, as the Server accepts it: no empty, dot-leading, or backslash
+ * segments. */
+export const FOLDER_PATTERN = /^[^\\./\0][^\\/\0]*(\/[^\\./\0][^\\/\0]*)*$/;
 
 /** Parse the file's text and check that its content is the kind its suffix names: a workflow file
  * carries a `name`, a template envelope never does. The schema is the Server's to check. */
@@ -68,7 +74,7 @@ export function readUpload(
     return { ok: false, message: { key: "designer.upload.kindMismatch", params } };
   }
   const { ok: _ok, ...file } = checked;
-  return { ok: true, upload: { ...file, content: content as Upload["content"] } };
+  return { ok: true, upload: { ...file, content: content as Upload["content"], folder: "" } };
 }
 
 /** What Upload checks a file against: the requester's discovered workflows, writable roots and
@@ -88,14 +94,16 @@ export type UploadPlan =
   | { action: "copy" }
   | { action: "refuse"; message: Message };
 
-/** The project path a workflow named `fileName` takes at the top of the requester's user root, or
- * `undefined` when the Server lists no user root. */
+/** The project path a workflow named `fileName` takes in `folder` of the requester's user root
+ * (`""` for its top), or `undefined` when the Server lists no user root. */
 export function userWorkflowPath(
   roots: readonly WorkflowRootSummary[],
+  folder: string,
   fileName: string,
 ): string | undefined {
   const root = roots.find((entry) => entry.origin === "user")?.relative_path;
-  return root === undefined ? undefined : `${root}/${fileName}`;
+  if (root === undefined) return undefined;
+  return [root, folder, fileName].filter((part) => part !== "").join("/");
 }
 
 export const NO_USER_ROOT: Message = { key: "designer.upload.noUserRoot" };
@@ -103,7 +111,7 @@ export const NO_USER_ROOT: Message = { key: "designer.upload.noUserRoot" };
 export function planUpload(upload: Upload, view: UploadView): UploadPlan {
   const id = upload.content.id;
   if (upload.kind === "workflow") {
-    const path = userWorkflowPath(view.roots, upload.fileName);
+    const path = userWorkflowPath(view.roots, upload.folder, upload.fileName);
     if (path === undefined) return { action: "refuse", message: NO_USER_ROOT };
     const holder = view.workflows.find((row) => row.id === id);
     const atPath = view.workflows.find((row) => row.relative_path === path);
@@ -112,7 +120,7 @@ export function planUpload(upload: Upload, view: UploadView): UploadPlan {
     return { action: "copy" };
   }
   const own = (row: TemplateSummary): boolean =>
-    row.origin === "user" && (row.folder ?? "") === "" && row.name === upload.stem;
+    row.origin === "user" && (row.folder ?? "") === upload.folder && row.name === upload.stem;
   const holder = view.templates.find((row) => row.id === id);
   const atName = view.templates.find(own);
   if (atName === undefined && holder === undefined) return { action: "create" };

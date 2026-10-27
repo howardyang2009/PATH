@@ -4,14 +4,11 @@ import { useMemo, useState } from "react";
 import { useFormatter, useTranslations } from "use-intl";
 import { TEMPLATE_SUFFIX } from "./session-reducer.js";
 import type { TemplateListLoad } from "./template-list.js";
+import { FOLDER_PATTERN } from "./upload.js";
 import type { SaveAsResult, TemplateSource } from "./use-open-file.js";
 
 /** A template name is its file stem, so it must match `NameSchema` (server-api-v0.md §10.3). */
 const NAME_PATTERN = /^[a-z][a-z0-9-]*$/;
-
-/** A subfolder path of plain names, as the Server accepts it: no empty, dot-leading, or backslash
- * segments. */
-const FOLDER_PATTERN = /^[^\\./\0][^\\/\0]*(\/[^\\./\0][^\\/\0]*)*$/;
 
 /** What the dialog hands back: the template's name, its optional subfolder, and description. */
 export interface TemplateSaveInput {

@@ -39,6 +39,11 @@ export function discoveredRoots(load: DiscoveryLoad): readonly string[] {
   return (scanOf(load)?.roots ?? []).map((root) => root.relative_path);
 }
 
+/** The user's own workflow root's project path, or `undefined` before a scan lands or without one. */
+export function discoveredUserRoot(load: DiscoveryLoad): string | undefined {
+  return scanOf(load)?.roots.find((root) => root.origin === "user")?.relative_path;
+}
+
 /** The shared workflow root's project path, or `undefined` before a scan lands. */
 export function discoveredSharedRoot(load: DiscoveryLoad): string | undefined {
   return scanOf(load)?.roots.find((root) => root.origin === "shared")?.relative_path;
