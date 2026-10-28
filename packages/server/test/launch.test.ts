@@ -20,6 +20,7 @@ describe("operatorConfigEnvError (ADR 0012)", () => {
 
   it("rejects a bare $env, naming the config key", async () => {
     expect(operatorConfigEnvError({ repo_path: { $env: "SECRET_X" } })).toEqual({
+      status: 400,
       code: "run.config-env",
       params: { paths: ['"repo_path"'] },
     });
@@ -27,6 +28,7 @@ describe("operatorConfigEnvError (ADR 0012)", () => {
 
   it("rejects the composed $secret-over-$env form at the config key, not key.$secret", async () => {
     expect(operatorConfigEnvError({ token: { $secret: { $env: "SECRET_X" } } })).toEqual({
+      status: 400,
       code: "run.config-env",
       params: { paths: ['"token"'] },
     });
@@ -82,7 +84,9 @@ describe("prepareLaunch", () => {
     if (prepared.ok) return;
     expect(prepared.refusal.status).toBe(400);
     expect(prepared.refusal.code).toBe("workflow.invalid");
-    expect(prepared.refusal.details?.length).toBeGreaterThan(0);
+    expect(Array.isArray(prepared.refusal.details) && prepared.refusal.details.length > 0).toBe(
+      true,
+    );
   });
 });
 

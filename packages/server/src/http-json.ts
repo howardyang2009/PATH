@@ -15,8 +15,13 @@ export interface RouteReply {
 
 export type { ErrorParams };
 
-/** A refusal PATH owns (ADR 0107): its code, the client's catalogue key, and the code's params. */
-export type Refusal = CodedError;
+/** A refusal PATH owns (ADR 0107): its HTTP status, its code, the client's catalogue key, and the
+ * code's params. The status is decided where the refusal is raised, so a door replies it without
+ * re-transcribing it (ADR 0094). */
+export interface Refusal extends CodedError {
+  status: number;
+  details?: unknown;
+}
 
 /** A refusal's English text, from the `en` catalogue: the wire's fallback, logs and the CLI. */
 export function refusalText({ code, params }: Refusal): string {
@@ -47,19 +52,8 @@ export function replyError(
   return { status, body: { error: wireError(code, params, details) } };
 }
 
-/** {@link replyError} for a refusal a helper module decided. */
-export function replyRefusal(status: number, refusal: Refusal, details?: unknown): RouteReply {
-  return replyError(status, refusal.code, refusal.params, details);
-}
-
-/** A refusal that names its own HTTP status, as a store, lookup or engine gate decides it. */
-export interface StatusRefusal extends Refusal {
-  status: number;
-  details?: unknown;
-}
-
-/** {@link replyError} for a refusal that carries its own status and details. */
-export function replyRefused(refusal: StatusRefusal): RouteReply {
+/** {@link replyError} for a refusal a helper module decided: it names its own status and details. */
+export function replyRefused(refusal: Refusal): RouteReply {
   return replyError(refusal.status, refusal.code, refusal.params, refusal.details);
 }
 

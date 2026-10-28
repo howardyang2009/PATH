@@ -40,7 +40,7 @@ function shallowIdentity(absPath: string): { id: string | null; name: string | n
 
 export type WorkflowWrite =
   | { ok: true; relativePath: string; id: string; etag: string; created: boolean }
-  | ({ ok: false; status: 400 | 403 | 404 | 412; details?: Message[] } & Refusal);
+  | ({ ok: false; status: 400 | 403 | 404 | 412 } & Refusal);
 
 export type WorkflowRemove =
   | { ok: true }

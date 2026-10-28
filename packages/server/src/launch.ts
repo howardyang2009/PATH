@@ -1,5 +1,4 @@
 import type { LoadedWorkflow } from "@path/engine";
-import type { Message } from "@path/i18n";
 import { type ConfigObject, type JsonValue, mapEnv, type RunRecord } from "@path/schema";
 import type { AuthoredLayout } from "./authored-layout.js";
 import { loadAuthoredWorkflow, locateAuthoredFile } from "./authored-read.js";
@@ -11,10 +10,8 @@ import type { Refusal } from "./http-json.js";
  * longer validates.
  */
 
-export interface WorkflowRefusal extends Refusal {
-  status: number;
-  details?: Message[];
-}
+/** A workflow-path refusal: a `Refusal` whose `details` may carry a load's issues. */
+export type WorkflowRefusal = Refusal;
 
 export type PreparedWorkflow =
   | { ok: true; workflow: LoadedWorkflow }
@@ -30,7 +27,11 @@ export function operatorConfigEnvError(config: ConfigObject): Refusal | undefine
     return null;
   });
   if (paths.length === 0) return undefined;
-  return { code: "run.config-env", params: { paths: paths.map((path) => `"${path}"`) } };
+  return {
+    status: 400,
+    code: "run.config-env",
+    params: { paths: paths.map((path) => `"${path}"`) },
+  };
 }
 
 /** An action on an existing run: which door asks, and the ids its refusals name. */
@@ -50,10 +51,7 @@ async function loadInView(
   // Another user's path reads as missing, so a refusal never confirms that it exists (ADR 0088).
   const read = locateAuthoredFile(layout, workflowPath);
   if (!read.ok) {
-    return {
-      ok: false,
-      refusal: { status: 404, ...(read.miss === "escapes-root" ? escapesRoot : notFound) },
-    };
+    return { ok: false, refusal: read.miss === "escapes-root" ? escapesRoot : notFound };
   }
   const refusal = layout.workflowRefusal(workflowPath, "run");
   if (refusal !== undefined) return { ok: false, refusal };
@@ -77,8 +75,8 @@ export function prepareLaunch(
   return loadInView(
     layout,
     workflowPath,
-    { code: "workflow.not-found", params },
-    { code: "workflow.escapes-root", params },
+    { status: 404, code: "workflow.not-found", params },
+    { status: 404, code: "workflow.escapes-root", params },
   );
 }
 
@@ -103,12 +101,16 @@ export async function prepareRunWorkflow(
   if (!layout.inView(workflowPath)) {
     const noRun: Refusal =
       action.kind === "resume"
-        ? { code: "run.not-found", params: { rootRunId } }
-        : { code: "run.step-not-found", params: { stepRunId: action.stepRunId } };
-    return { ok: false, refusal: { status: 404, ...noRun } };
+        ? { status: 404, code: "run.not-found", params: { rootRunId } }
+        : { status: 404, code: "run.step-not-found", params: { stepRunId: action.stepRunId } };
+    return { ok: false, refusal: noRun };
   }
   // The path came from our own row, so an escape reads as missing too.
-  const missing: Refusal = { code: "run.workflow-missing", params: { rootRunId, workflowPath } };
+  const missing: Refusal = {
+    status: 404,
+    code: "run.workflow-missing",
+    params: { rootRunId, workflowPath },
+  };
   const prepared = await loadInView(layout, workflowPath, missing, missing);
   if (!prepared.ok) return prepared;
   if (root.workflowId && prepared.workflow.rootFile.id !== root.workflowId) {

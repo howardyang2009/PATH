@@ -267,9 +267,14 @@ export function vmExecutor(store: Project, sandbox: SandboxOptions, owner: RunOw
         return {
           ok: false,
           reason: "lease-held",
+          status: 409,
           code: "run.complete.lease-held",
           params: { rootRunId },
-          message: refusalText({ code: "run.complete.lease-held", params: { rootRunId } }),
+          message: refusalText({
+            status: 409,
+            code: "run.complete.lease-held",
+            params: { rootRunId },
+          }),
         };
       }
       const job = vmJob(store, rootRunId, rootFile, workflowDir, options, {
