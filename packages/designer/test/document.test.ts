@@ -94,7 +94,6 @@ const NOT_SCANNED: DiscoveryLoad = { phase: "loading" };
 describe("documentPolicy", () => {
   it("saves a written workflow in place, leases its path, and offers Delete and Download", () => {
     expect(documentPolicy(session([openFrame()]), NOT_SCANNED)).toEqual({
-      saveDoor: "save",
       canSaveAs: true,
       readOnly: false,
       deletePlan: { kind: "workflow", path: "flow.workflow.json", ifMatch: "etag-open" },
@@ -105,15 +104,11 @@ describe("documentPolicy", () => {
 
   it("opens the first-save dialog of the mode for a from-scratch buffer, with no Save as… and no lease", () => {
     expect(documentPolicy(session([scratchFrame()]), NOT_SCANNED)).toEqual({
-      saveDoor: "new-workflow-dialog",
       canSaveAs: false,
       readOnly: false,
       deletePlan: null,
       downloadPlan: null,
       leasedPaths: [],
-    });
-    expect(documentPolicy(session([scratchFrame()], "template"), NOT_SCANNED)).toMatchObject({
-      saveDoor: "new-template-dialog",
     });
   });
 
@@ -121,7 +116,6 @@ describe("documentPolicy", () => {
     expect(
       documentPolicy(session([openFrame({ path: null, template })], "template"), NOT_SCANNED),
     ).toMatchObject({
-      saveDoor: "save",
       canSaveAs: true,
       readOnly: false,
       deletePlan: { kind: "template", id: template.id },
@@ -132,7 +126,6 @@ describe("documentPolicy", () => {
   it("saves a create-new child at its path but leases only written frames on the stack", () => {
     const child = scratchFrame("child.workflow.json", { depth: 0, nodeId: uuid(2) });
     expect(documentPolicy(session([openFrame(), child]), NOT_SCANNED)).toMatchObject({
-      saveDoor: "save",
       canSaveAs: true,
       leasedPaths: ["flow.workflow.json"],
     });
@@ -142,7 +135,6 @@ describe("documentPolicy", () => {
     expect(
       documentPolicy(session([loadingFrame("flow.workflow.json", undefined, 1)]), NOT_SCANNED),
     ).toEqual({
-      saveDoor: null,
       canSaveAs: false,
       readOnly: false,
       deletePlan: null,
@@ -172,7 +164,7 @@ describe("documentPolicy", () => {
         session([openFrame({ path: null, template: shipped })], "template"),
         NOT_SCANNED,
       ),
-    ).toMatchObject({ readOnly: "shipped", deletePlan: null, saveDoor: "save" });
+    ).toMatchObject({ readOnly: "shipped", deletePlan: null });
   });
 });
 

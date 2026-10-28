@@ -73,7 +73,7 @@ describe("template store — create", () => {
     expect(refused.ok).toBe(false);
     if (refused.ok) return;
     expect(refused.status).toBe(400);
-    expect("details" in refused && refused.details?.length).toBeTruthy();
+    expect(Array.isArray(refused.details) && refused.details.length > 0).toBe(true);
     expect(existsSync(join(projectDir, "users"))).toBe(false);
   });
 

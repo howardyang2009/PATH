@@ -1,9 +1,4 @@
-import {
-  EMPTY_RUN_FILE_SET,
-  type PathApiClient,
-  runFileSetFromDisk,
-  type WireStepPlugin,
-} from "@path/client-core";
+import type { PathApiClient, WireStepPlugin } from "@path/client-core";
 import type { WorkflowFile } from "@path/schema";
 import {
   NodeIo,
@@ -11,7 +6,7 @@ import {
   RunsList,
   useDragSize,
   usePaneWidths,
-  useResource,
+  useWatchedRunReading,
   type WatchedRun,
 } from "@path/viewer";
 import { useRef, useState } from "react";
@@ -68,17 +63,11 @@ export function RunDock(props: RunDockProps): JSX.Element {
   const [expanded, setOpen] = useState(false);
   const { client, workflowPath, watch } = props;
   const { load, selection } = watch;
-  // The files a run's node ids resolve against, read from the store by the open file's path: the
-  // awaiting surfaces must see the bytes the server will validate at Complete (ADR 0040), and a
-  // nested `ref`'d leaf does not live in the open buffer. A null path reads nothing (useResource's
-  // disabled read), so the empty set is the steady state, not a swallowed error.
-  const readRunFiles = useResource(
-    () => (workflowPath === null ? EMPTY_RUN_FILE_SET : runFileSetFromDisk(client, workflowPath)),
-    [client, workflowPath],
-    { enabled: workflowPath !== null },
-  );
-  const runFiles =
-    readRunFiles.load.phase === "ready" ? readRunFiles.load.value : EMPTY_RUN_FILE_SET;
+  // The files a run's node ids resolve against, read from the store by the watched run's own
+  // source path: the awaiting surfaces must see the bytes the server will validate at Complete
+  // (ADR 0040), and a nested `ref`'d leaf does not live in the open buffer. One reading, shared
+  // with the Viewer.
+  const { runFiles, selectedRun } = useWatchedRunReading(client, watch, workflowPath);
   // A disabled dock stays closed, and re-opens as it was when it is live again.
   const open = expanded && props.disabledReason === undefined;
   const bodyRef = useRef<HTMLDivElement | null>(null);
@@ -104,12 +93,6 @@ export function RunDock(props: RunDockProps): JSX.Element {
     containerRef: bodyRef,
     grow: [1, 1],
   });
-
-  // The selected run's record, taken from the same live snapshot the tree renders.
-  const selectedRun =
-    load.phase === "ready" && selection.selectedRunId !== null
-      ? load.value.runs.get(selection.selectedRunId)
-      : undefined;
 
   return (
     <section

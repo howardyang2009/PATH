@@ -1,9 +1,4 @@
-import {
-  EMPTY_RUN_FILE_SET,
-  type PathApiClient,
-  runFileSetFromDisk,
-  type UserMenuItem,
-} from "@path/client-core";
+import type { PathApiClient, UserMenuItem } from "@path/client-core";
 import { useTranslations } from "use-intl";
 import { AppShell, TopBar } from "./app-shell.js";
 import { useAuthMode } from "./auth-gate.js";
@@ -12,9 +7,8 @@ import { NodeIo } from "./node-io.js";
 import { RunDetail } from "./run-detail.js";
 import { RunsList } from "./runs-list.js";
 import { SecretsPage } from "./secrets-page.js";
-import { useResource } from "./use-resource.js";
 import { useViewerPage, viewerPath } from "./viewer-page.js";
-import { useWatchedRun } from "./watched-run.js";
+import { useWatchedRun, useWatchedRunReading } from "./watched-run.js";
 
 /**
  * The viewer app: the runs console, and in hosted mode the Secrets page at `/viewer/secrets`,
@@ -65,34 +59,9 @@ function RunsConsole({ client, menuItems }: { client: PathApiClient; menuItems: 
   const watch = useWatchedRun(client);
   const { selection, load } = watch;
   const selectedRootRunId = selection.rootRunId;
-  const selectedRunId = selection.selectedRunId;
-  // The watched root run's source file, as the live snapshot records it.
-  const rootWorkflowPath =
-    load.phase === "ready" && selectedRootRunId !== null
-      ? (load.value.runs.get(selectedRootRunId)?.workflowPath ?? null)
-      : null;
-
-  // The watched run's reachable workflow files (root + transitively-ref'd), read from disk (a GET,
-  // no lease — ADR 0017). The eager `Resume from …` legal-K check needs the root file; the awaiting
-  // surface needs the whole set, since a `person-activity` leaf can live in a nested file. Unresolved
-  // while loading or on a failed read: the checks fall back to run-tree-derivable reasons.
-  const readRunFiles = useResource(
-    () =>
-      rootWorkflowPath === null ? EMPTY_RUN_FILE_SET : runFileSetFromDisk(client, rootWorkflowPath),
-    [client, rootWorkflowPath],
-  );
-  const runFiles =
-    readRunFiles.load.phase === "ready" ? readRunFiles.load.value : EMPTY_RUN_FILE_SET;
-  const rootFile = runFiles.rootFile;
+  const { runFiles, rootFile, selectedRun } = useWatchedRunReading(client, watch);
 
   const handleLaunched = selection.watchNewRun;
-
-  // Taken from the same snapshot the tree renders, so refs and status stay current as the run
-  // executes.
-  const selectedRun =
-    load.phase === "ready" && selectedRunId !== null
-      ? load.value.runs.get(selectedRunId)
-      : undefined;
 
   return (
     <AppShell

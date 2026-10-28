@@ -1,4 +1,4 @@
-import { type RouteReply, replyError, replyRefusal } from "../http-json.js";
+import { type RouteReply, replyError, replyRefused } from "../http-json.js";
 import { secretNameRefusal } from "../secret-store.js";
 import type { ApiRequest } from "./route-context.js";
 
@@ -7,7 +7,7 @@ import type { ApiRequest } from "./route-context.js";
 export function handleDeleteSecret({ ctx, params: [name] }: ApiRequest<[string]>): RouteReply {
   if (ctx.secrets === undefined) return replyError(404, "request.not-found");
   const refusal = secretNameRefusal(name);
-  if (refusal !== undefined) return replyRefusal(400, refusal);
+  if (refusal !== undefined) return replyRefused(refusal);
   if (!ctx.secrets.remove(name)) return replyError(404, "secret.not-found", { name });
   return { status: 204 };
 }

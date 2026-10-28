@@ -34,7 +34,12 @@ export {
 export { type Resource, type ResourceOptions, useResource } from "./use-resource.js";
 export { type RunSelection, useRunSelection } from "./use-run-selection.js";
 export { type RunViewLoad, useRunView } from "./use-run-view.js";
-export { useWatchedRun, type WatchedRun } from "./watched-run.js";
+export {
+  useWatchedRun,
+  useWatchedRunReading,
+  type WatchedRun,
+  type WatchedRunReading,
+} from "./watched-run.js";
 // The one worker-default editor, shared by the Designer's file region and the launch form.
 export {
   WorkerDefaultsEditor,

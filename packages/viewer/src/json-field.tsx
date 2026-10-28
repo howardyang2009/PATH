@@ -1,4 +1,5 @@
-import type { parseJsonField } from "@path/client-core";
+import type { JsonFieldResult } from "@path/client-core";
+import { useMessage } from "@path/i18n/react";
 import { useTranslations } from "use-intl";
 
 /**
@@ -27,12 +28,14 @@ export function JsonField({
   labelledBy?: string;
   value: string;
   onChange: (next: string) => void;
-  result: ReturnType<typeof parseJsonField>;
+  /** The field's own lint result; a refusal is a `Message`, so the hint reads in the Locale. */
+  result: JsonFieldResult;
   rows: number;
   placeholder?: string;
 }) {
   const t = useTranslations("shared.jsonField");
-  const hint = result.ok ? (result.empty ? t("empty") : t("valid")) : result.message;
+  const renderMessage = useMessage();
+  const hint = result.ok ? (result.empty ? t("empty") : t("valid")) : renderMessage(result.message);
   return (
     <div className="launch-field">
       {label !== undefined && (

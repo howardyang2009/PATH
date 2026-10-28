@@ -1,4 +1,4 @@
-import type { RunStatus, WireStepPlugin } from "@path/client-core";
+import { type RunStatus, runStatusReading, type WireStepPlugin } from "@path/client-core";
 import { useMessage } from "@path/i18n/react";
 import type { WorkflowFile } from "@path/schema";
 import type { MouseEvent } from "react";
@@ -13,7 +13,6 @@ import { type Problem, problemMarks } from "./problems.js";
 import { ProblemsPanel } from "./problems-panel.js";
 import { basename } from "./resolve-ref.js";
 import { useRunProjection } from "./run/run-projection.js";
-import { RUN_STATUS_GLYPH } from "./run/run-status.js";
 import { useSelection } from "./selection-context.js";
 import type { Armed } from "./use-armed.js";
 import { type Frame, frameDirty, type OpenSession } from "./use-open-file.js";
@@ -235,13 +234,14 @@ function Breadcrumb({
  * on no canvas node; this is where its verdict shows. `data-run-status` tints it from the
  * stylesheet. */
 function WorkflowRunBadge({ status }: { status: RunStatus }): JSX.Element {
-  const t = useTranslations();
+  const renderMessage = useMessage();
+  const reading = runStatusReading(status);
   return (
     <span className="node-run-badge" data-run-status={status} data-testid="workflow-run-badge">
       <span className="node-run-badge-glyph" aria-hidden="true">
-        {RUN_STATUS_GLYPH[status]}
+        {reading.glyph}
       </span>
-      {t(`shared.status.${status}`)}
+      {renderMessage(reading.message)}
     </span>
   );
 }

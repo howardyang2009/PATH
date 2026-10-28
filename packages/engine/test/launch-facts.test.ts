@@ -123,7 +123,7 @@ describe("describeMissingLaunchSecrets", () => {
       'run failed before its first step: launch config secret "apiKey" was not supplied again',
     );
     expect(describeMissingLaunchSecrets(["a", "b"]).error).toBe(
-      'run failed before its first step: 2 launch config secrets were not supplied again: "a", "b"',
+      'run failed before its first step: 2 launch config secrets were not supplied again: "a" and "b"',
     );
   });
 });

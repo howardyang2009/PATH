@@ -75,7 +75,7 @@ describe("ConfigValueSchema", () => {
     expect(result.success).toBe(false);
     if (result.success) return;
     expect(formatIssues(result.error)).toEqual([
-      '"$evn" is a reserved key — a sole "$"-prefixed key names a config wrapper (known: "$secret", "$env")',
+      '"$evn" is a reserved key — a sole "$"-prefixed key names a config wrapper (known: "$secret" and "$env")',
     ]);
   });
 

@@ -4,15 +4,23 @@ import {
   type ErrorCode,
   type Message,
   type MessageKey,
+  type Rendering,
   renderMessage,
   type Translate,
 } from "./message.js";
 
 const translate = createTranslator({ locale: "en", messages: en }) as Translate;
+const englishList = new Intl.ListFormat("en", { type: "conjunction" });
+
+/** The English rendering, for text that must read without a client (the wire fallback, logs). */
+export const englishRendering: Rendering = {
+  t: translate,
+  list: (items) => englishList.format(items),
+};
 
 /** `message` in English, for text that must read without a client: the wire's `message` fallback. */
 export function englishText(message: Message): string {
-  return renderMessage(translate, message);
+  return renderMessage(englishRendering, message);
 }
 
 /** `key` names a message of the `en` catalogue (a leaf, not a branch). */

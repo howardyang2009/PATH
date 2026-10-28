@@ -61,7 +61,7 @@ interface LocatedTemplate extends TemplateEntry {
  * fails the registry-relative envelope is the `400`, its issues in `details`. */
 export type TemplateWrite =
   | { ok: true; id: string; relativePath: string; etag: string }
-  | ({ ok: false; status: 400; details?: Message[] } & Refusal)
+  | ({ ok: false; status: 400 } & Refusal)
   | ({ ok: false; status: 403 | 404 | 409 | 412 } & Refusal);
 
 export type TemplateRemove = { ok: true } | ({ ok: false; status: 403 | 404 } & Refusal);

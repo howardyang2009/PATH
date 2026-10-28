@@ -1,11 +1,16 @@
-import { isTerminal, type PathApiClient, type RunStatus, shortGuid } from "@path/client-core";
+import {
+  type PathApiClient,
+  RUN_STATUS_ORDER,
+  type RunStatus,
+  runRowActions,
+  shortGuid,
+} from "@path/client-core";
 import { useEffect, useRef, useState } from "react";
 import { useLocale, useTranslations } from "use-intl";
 import { DeleteButton } from "./delete-button.js";
 import { formatTimestamp } from "./format-time.js";
 import { PaneError, PaneLoading } from "./pane-note.js";
 import { ResumeActions, type ResumeFromAffordance } from "./resume-actions.js";
-import { ORDERED_RUN_STATUSES } from "./status-glyph.js";
 import { StatusPill } from "./status-pill.js";
 import { useResource } from "./use-resource.js";
 import type { WatchedRun } from "./watched-run.js";
@@ -24,19 +29,10 @@ export const RUNS_REFRESH_MS = 5000;
 
 /** The statuses a listed run can show: no run is stored `pending`, the engine writes a row
  * `running` when its step starts. */
-const FILTER_STATUSES = ORDERED_RUN_STATUSES.filter((status) => status !== "pending");
+const FILTER_STATUSES = RUN_STATUS_ORDER.filter((status) => status !== "pending");
 
 /** One `RunStatus`, or `"all"` for the unfiltered list. */
 type StatusFilter = RunStatus | "all";
-
-/** Stable empty affordance, so a rail that never opted in neither allocates per render nor
- * branches. */
-const EMPTY_RESUME_FROM: ResumeFromAffordance = {
-  runs: new Map(),
-  selectedRunId: null,
-  rootFile: null,
-  dirty: false,
-};
 
 export interface RunsListProps {
   client: PathApiClient;
@@ -66,11 +62,11 @@ export function RunsList({
   const selectedRootRunId = selection.rootRunId;
   const { selectRootRun: onSelectRootRun, watchNewRun: onResumed, onDeleted } = selection;
   const reloadNonce = selection.reloadNonce;
-  // `Resume from …` needs the watched tree loaded.
-  const resumeFrom: ResumeFromAffordance | undefined =
+  // `Resume from …` needs the watched tree loaded; per row, only the watched root reads it.
+  const watchedFacts =
     load.phase === "ready"
       ? { runs: load.value.runs, selectedRunId: selection.selectedRunId, rootFile, dirty }
-      : undefined;
+      : null;
   const t = useTranslations("shared");
   const locale = useLocale();
   // `null` (nothing open) never reaches a query — the effects short-circuit and the render is idle.
@@ -154,20 +150,16 @@ export function RunsList({
         ) : (
           <ul className="runs">
             {state.value.map((run) => {
-              // The server's display status: a root with a parked leaf reads `awaiting` (ADR 0038).
-              const rowStatus = run.display_status;
-              // A live run offers no action: it cannot be resumed, and the server 409s a delete on
-              // it.
-              const inFlight = rowStatus === "running" || rowStatus === "awaiting";
-              // Plain Resume stays visible but greyed on a `succeeded` run, so its pairing with
-              // `Resume from …` reads. The panel is a sibling of the row button, never inside it.
-              const canResume = run.status === "cancelled" || run.status === "failed";
-              const showResume = isTerminal(run.status);
+              // One reading of what the row offers, shared with the Designer's run dock.
+              const actions = runRowActions({
+                status: run.status,
+                displayStatus: run.display_status,
+                resumeFrom:
+                  watchedFacts !== null && run.run_id === selectedRootRunId
+                    ? { ...watchedFacts, rootRunId: run.run_id }
+                    : null,
+              });
               const open = openFor === run.run_id;
-              // `Resume from …` needs a loaded tree, so only the watched run offers it — the one
-              // way back into a succeeded run (rerun from a chosen boundary, ADR 0033).
-              const showResumeFrom =
-                resumeFrom !== undefined && run.run_id === selectedRootRunId && !inFlight;
               return (
                 <li key={run.run_id}>
                   <button
@@ -185,7 +177,7 @@ export function RunsList({
                     }}
                   >
                     <span className="run-workflow">{run.workflow_name ?? "—"}</span>
-                    <StatusPill status={rowStatus} />
+                    <StatusPill status={run.display_status} />
                     <span className="run-meta">
                       <span className="run-started">{formatTimestamp(run.started_at, locale)}</span>
                       <span className="run-id">{shortGuid(run.run_id)}</span>
@@ -193,18 +185,17 @@ export function RunsList({
                   </button>
                   {open && (
                     <div className="run-actions" data-testid={`run-actions-${run.run_id}`}>
-                      {inFlight ? (
+                      {actions.inFlight ? (
                         <p className="pane-note">{t("runsList.inFlight")}</p>
                       ) : (
                         <>
-                          {(showResume || showResumeFrom) && (
+                          {(actions.resume.show || actions.resumeFrom.show) && (
                             <ResumeActions
                               client={client}
                               rootRunId={run.run_id}
-                              showResume={showResume}
-                              plainResumable={canResume}
-                              showResumeFrom={showResumeFrom}
-                              resumeFrom={resumeFrom ?? EMPTY_RESUME_FROM}
+                              resume={actions.resume}
+                              resumeFrom={actions.resumeFrom}
+                              eligibility={actions.eligibility}
                               // Masked launch secrets (ADR 0046), asked for before submit rather
                               // than letting the engine refuse the resume.
                               launchSecretKeys={run.launch_secret_keys}
@@ -214,14 +205,16 @@ export function RunsList({
                               }}
                             />
                           )}
-                          <DeleteButton
-                            client={client}
-                            run={run}
-                            onDeleted={(deletedRootRunId) => {
-                              setOpenFor(null);
-                              onDeleted(deletedRootRunId);
-                            }}
-                          />
+                          {actions.delete.show && (
+                            <DeleteButton
+                              client={client}
+                              run={run}
+                              onDeleted={(deletedRootRunId) => {
+                                setOpenFor(null);
+                                onDeleted(deletedRootRunId);
+                              }}
+                            />
+                          )}
                         </>
                       )}
                     </div>

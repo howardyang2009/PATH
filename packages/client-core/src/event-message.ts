@@ -36,13 +36,18 @@ export function eventMessage(event: LogEvent): Message {
     case "branch-no-match":
       return { key: "events.narrative.branchNoMatch", params: { label } };
     case "join-applied": {
-      const branches = event.branches.join(", ");
+      // The list rides as items; the Locale's formatter joins them, so a German sentence reads
+      // "a und b" rather than an English comma list inside a translated frame (ADR 0107).
       return event.published_keys.length > 0
         ? {
             key: "events.narrative.joinAppliedPublished",
-            params: { label, branches, publishedKeys: event.published_keys.join(", ") },
+            params: {
+              label,
+              branches: event.branches,
+              publishedKeys: event.published_keys,
+            },
           }
-        : { key: "events.narrative.joinApplied", params: { label, branches } };
+        : { key: "events.narrative.joinApplied", params: { label, branches: event.branches } };
     }
     case "run-cancelled":
       // The operator cause carries no sibling run; naming one for it would print a lie.

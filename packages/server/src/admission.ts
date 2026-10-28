@@ -1,6 +1,6 @@
 import type { IncomingMessage } from "node:http";
 import type { CreatorTable } from "./creator-table.js";
-import { type RouteReply, refusalText, replyError, replyRefusal } from "./http-json.js";
+import { type RouteReply, refusalText, replyError, replyRefused } from "./http-json.js";
 import { type RequestBody, readBodyUnderCap } from "./request-body.js";
 import {
   createRateLimiter,
@@ -122,9 +122,9 @@ function textOf(refusal: RunRefusal | undefined): string | undefined {
 }
 
 function refusalReply(refusal: RunRefusal): RouteReply {
-  const { status, retryAfterSeconds } = refusal;
+  const { retryAfterSeconds } = refusal;
   return {
-    ...replyRefusal(status, refusal),
+    ...replyRefused(refusal),
     headers:
       retryAfterSeconds === undefined ? undefined : { "Retry-After": String(retryAfterSeconds) },
   };

@@ -11,7 +11,7 @@ import {
 } from "@path/engine";
 import type { ConfigObject, JsonValue, LogEvent, WorkflowFile } from "@path/schema";
 import { createDeferred } from "./deferred.js";
-import type { StatusRefusal } from "./http-json.js";
+import type { Refusal } from "./http-json.js";
 import { createLiveLogBackend } from "./live-log-backend.js";
 import { RunEventHub, streamRun } from "./run-event-hub.js";
 
@@ -130,12 +130,12 @@ export interface CompleteRunOptions {
 }
 
 /** What a Resume answers: the successor's ids, or why no successor started. */
-export type ResumeOutcome = ({ ok: true } & StartedRun) | { ok: false; refusal: StatusRefusal };
+export type ResumeOutcome = ({ ok: true } & StartedRun) | { ok: false; refusal: Refusal };
 
 /** Thrown by an executor's `resume` before the successor's root exists; `LiveRuns.resume` answers
  * it as a refusal. */
 export class ResumeRejected extends Error {
-  constructor(readonly refusal: StatusRefusal) {
+  constructor(readonly refusal: Refusal) {
     super(refusal.code);
     this.name = "ResumeRejected";
   }

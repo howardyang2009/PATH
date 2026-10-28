@@ -10,7 +10,7 @@ import {
   mapCompleteErrors,
   type PathApiClient,
   PathApiError,
-  resupplyGate,
+  readOverride,
   validateCompleteDraft,
 } from "@path/client-core";
 import { useMessage } from "@path/i18n/react";
@@ -82,13 +82,13 @@ export function CompleteForm({
     setValues((prev) => ({ ...prev, [key]: value }));
   };
 
-  // The shared secret-restore gate (ADR 0046, `@path/client-core`) — the same verdict the Resume
-  // card reads. A recorded launch secret is a credential the frozen config holds only as a mask
-  // token, so the form refuses one the operator left blank: the engine would otherwise fall through
-  // to the environment. Derived from the text, so the button is disabled from the moment the
-  // skeleton is on screen.
-  const gate = resupplyGate(secrets, configText, "completing");
-  const blankSecrets = gate.blankPaths;
+  // The shared secret-restore gate (ADR 0046, `@path/client-core`) — the same reading the Resume
+  // card takes of its config draft. A recorded launch secret is a credential the frozen config holds
+  // only as a mask token, so the form refuses one the operator left blank: the engine would
+  // otherwise fall through to the environment. Derived from the text, so the button is disabled from
+  // the moment the skeleton is on screen, and read once for both the render and the submit.
+  const override = readOverride({ text: configText, secretPaths: secrets, verb: "completing" });
+  const blankSecrets = override.blankPaths;
 
   const submit = (): void => {
     let output: JsonValue;
@@ -112,17 +112,16 @@ export function CompleteForm({
     // blank at a path the launch recorded as a secret, blocks the submit with no request spent.
     // Blank parses to `undefined`, so a run with no secrets sends the same `{ output }` body as
     // before.
-    const submitGate = resupplyGate(secrets, configText, "completing");
-    if (!submitGate.configResult.ok) {
-      setFormErrors([submitGate.configResult.message]);
+    if (!override.result.ok) {
+      setFormErrors([renderMessage(override.result.message)]);
       return;
     }
-    if (submitGate.blockMessage !== null) {
-      setFormErrors([renderMessage(submitGate.blockMessage)]);
+    if (override.blockMessage !== null) {
+      setFormErrors([renderMessage(override.blockMessage)]);
       return;
     }
     setPhase("sending");
-    client.completeStep(stepRunId, output, submitGate.configResult.value).then(
+    client.completeStep(stepRunId, output, override.result.value).then(
       () => {
         setPhase("idle");
         onCompleted();
@@ -172,13 +171,13 @@ export function CompleteForm({
 
       {showSecrets && <LaunchSecretsControl value={configText} onChange={setConfigText} />}
 
-      {gate.blockMessage !== null && (
+      {override.blockMessage !== null && (
         <p
           className="pane-note pane-error complete-form-error"
           role="alert"
           data-testid="complete-secret-error"
         >
-          {renderMessage(gate.blockMessage)}
+          {renderMessage(override.blockMessage)}
         </p>
       )}
 

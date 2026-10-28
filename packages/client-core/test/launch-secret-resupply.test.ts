@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   blankSecretPaths,
   launchSecretResupply,
-  resupplyGate,
+  readOverride,
   secretSkeletonJson,
 } from "../src/launch-secret-resupply.js";
 
@@ -33,43 +33,74 @@ describe("blankSecretPaths — the still-unusable recorded paths", () => {
   });
 });
 
-describe("resupplyGate — the one submit verdict both continuation doors read", () => {
+describe("readOverride — the one reading every override field takes", () => {
+  it("asks for nothing on a blank draft", () => {
+    const reading = readOverride({ text: "" });
+    expect(reading.isEmpty).toBe(true);
+    expect(reading.result.ok).toBe(true);
+    expect(reading.canSubmit).toBe(true);
+  });
+
+  it("treats a literal {} as no override", () => {
+    const reading = readOverride({ text: "{}" });
+    expect(reading.isEmpty).toBe(true);
+    expect(reading.result.ok && reading.result.value).toEqual({});
+  });
+
+  it("reads a draft with keys as an override", () => {
+    const reading = readOverride({ text: '{"model": "x"}' });
+    expect(reading.isEmpty).toBe(false);
+    expect(reading.canSubmit).toBe(true);
+  });
+
   it("blocks on a blank secret, wording the message for the verb", () => {
-    const gate = resupplyGate(["token"], secretSkeletonJson(["token"]), "resuming");
-    expect(gate.ok).toBe(false);
-    expect(gate.blankPaths).toEqual(["token"]);
-    expect(gate.blockMessage).toEqual({
+    const reading = readOverride({
+      text: secretSkeletonJson(["token"]),
+      secretPaths: ["token"],
+      verb: "resuming",
+    });
+    expect(reading.canSubmit).toBe(false);
+    expect(reading.blankPaths).toEqual(["token"]);
+    expect(reading.blockMessage).toEqual({
       key: "events.resupply.blankSecrets",
-      params: { count: 1, names: '"token"', verb: "resuming" },
+      params: { count: 1, names: ['"token"'], verb: "resuming" },
     });
   });
 
   it("names every blank secret, plural, for completing", () => {
-    const gate = resupplyGate(["a", "b"], "{}", "completing");
-    expect(gate.blockMessage).toEqual({
+    const reading = readOverride({ text: "{}", secretPaths: ["a", "b"], verb: "completing" });
+    expect(reading.blockMessage).toEqual({
       key: "events.resupply.blankSecrets",
-      params: { count: 2, names: '"a", "b"', verb: "completing" },
+      params: { count: 2, names: ['"a"', '"b"'], verb: "completing" },
     });
   });
 
   it("passes once every recorded secret has a value", () => {
-    const gate = resupplyGate(["token"], JSON.stringify({ token: "sk-live" }), "resuming");
-    expect(gate.ok).toBe(true);
-    expect(gate.blankPaths).toEqual([]);
-    expect(gate.blockMessage).toBeNull();
-    expect(gate.configResult.ok && gate.configResult.value).toEqual({ token: "sk-live" });
+    const reading = readOverride({
+      text: JSON.stringify({ token: "sk-live" }),
+      secretPaths: ["token"],
+      verb: "resuming",
+    });
+    expect(reading.canSubmit).toBe(true);
+    expect(reading.blankPaths).toEqual([]);
+    expect(reading.blockMessage).toBeNull();
+    expect(reading.result.ok && reading.result.value).toEqual({ token: "sk-live" });
   });
 
-  it("leaves an invalid config to the field's own lint — no secret-level block", () => {
-    const gate = resupplyGate(["token"], "{ not json", "completing");
-    expect(gate.ok).toBe(false);
-    expect(gate.configResult.ok).toBe(false);
-    expect(gate.blockMessage).toBeNull();
+  it("leaves an invalid draft to the field's own lint — no secret-level block", () => {
+    const reading = readOverride({
+      text: "{ not json",
+      secretPaths: ["token"],
+      verb: "completing",
+    });
+    expect(reading.canSubmit).toBe(false);
+    expect(reading.result.ok).toBe(false);
+    expect(reading.blockMessage).toBeNull();
   });
 
   it("passes with no recorded secrets and a blank draft (the plain continuation body)", () => {
-    const gate = resupplyGate([], "", "resuming");
-    expect(gate.ok).toBe(true);
-    expect(gate.configResult.ok && gate.configResult.value).toBeUndefined();
+    const reading = readOverride({ text: "", verb: "resuming" });
+    expect(reading.canSubmit).toBe(true);
+    expect(reading.result.ok && reading.result.value).toBeUndefined();
   });
 });

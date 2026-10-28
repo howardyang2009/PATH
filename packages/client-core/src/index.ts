@@ -109,16 +109,17 @@ export { eventOutcome, isRootRunFinished, runStatusAfter } from "./event-outcome
 // The framework-free run-logic seam the Viewer and the Designer both read: how a launch field is
 // gated, how one node is named, what one log event says, and what a missing blob means.
 export { type JsonFieldResult, type ParseJsonFieldOptions, parseJsonField } from "./launch-json.js";
-// The launch-facts secret-restore contract shared by Resume and Complete (ADR 0046): the config
-// field's show/skeleton state and the one submit-gate verdict.
+// The launch-facts secret-restore contract shared by Launch, Resume and Complete (ADR 0046): the
+// config field's show/skeleton state, and one reading of a raw-JSON override draft.
 export {
   blankSecretMessage,
   blankSecretPaths,
   type ContinuationVerb,
   type LaunchSecretResupply,
   launchSecretResupply,
-  type ResupplyGate,
-  resupplyGate,
+  type OverrideDraft,
+  type OverrideReading,
+  readOverride,
   secretSkeletonJson,
 } from "./launch-secret-resupply.js";
 // The page's Locale: `?lang=`, then the `RHEINWEG_LOCALE` cookie, then the browser.
@@ -135,12 +136,29 @@ export {
   resumeFromEligibility,
   shortRunId,
 } from "./resume-from-eligibility.js";
+// What a run row offers (resume, resume-from, delete) and the status predicates every surface
+// shares: one reading for the Viewer's rail and the Designer's run dock (ADR 0025, ADR 0033).
+export {
+  isAwaiting,
+  isCancellable,
+  isInFlight,
+  type RunResumeAction,
+  type RunResumeFromAction,
+  type RunRowActions,
+  type RunRowActionsInput,
+  runRowActions,
+} from "./run-affordances.js";
 export {
   EMPTY_RUN_FILE_SET,
   type RunFileSet,
   runFileSetFromDisk,
   runFileSetOf,
 } from "./run-file-set.js";
+export {
+  RUN_STATUS_ORDER,
+  type RunStatusReading,
+  runStatusReading,
+} from "./run-status.js";
 export { buildRunTree, type RunTreeNode } from "./run-tree.js";
 export {
   type RunEventSubscription,

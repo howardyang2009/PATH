@@ -1,6 +1,7 @@
 import type { AuthoredRootSummary, TemplateSummary, WorkflowSummary } from "@path/client-core";
 import type { Message } from "@path/i18n";
-import { AUTHORED_SUFFIX, type JsonValue, NAME_PATTERN } from "@path/schema";
+import { AUTHORED_SUFFIX, type JsonValue } from "@path/schema";
+import { readTemplatePlacement, readWorkflowStem, workflowPath } from "./authored-placement.js";
 
 export type UploadKind = "workflow" | "template";
 
@@ -34,9 +35,13 @@ export function checkUploadFile(
     return { ok: false, message: { key: "designer.upload.tooLarge", params: { name } } };
   }
   const stem = name.slice(0, -AUTHORED_SUFFIX[kind].length);
-  const plain =
-    kind === "template" ? NAME_PATTERN.test(stem) : stem !== "" && !/^\.|[\\/]/.test(stem);
-  if (!plain) {
+  // The same name/folder rules every placement uses: a template's stem is its name, a workflow's
+  // stem is a file name that must stay in its folder.
+  const legal =
+    kind === "template"
+      ? readTemplatePlacement(stem, "").problem === null
+      : readWorkflowStem(stem).problem === null && stem !== "";
+  if (!legal) {
     return { ok: false, message: { key: "designer.upload.badName", params: { name } } };
   }
   return { ok: true, kind, stem, fileName: name };
@@ -89,16 +94,16 @@ export type UploadPlan =
   | { action: "copy" }
   | { action: "refuse"; message: Message };
 
-/** The project path a workflow named `fileName` takes in `folder` of the requester's user root
+/** The project path a workflow whose stem is `stem` takes in `folder` of the requester's user root
  * (`""` for its top), or `undefined` when the Server lists no user root. */
 export function userWorkflowPath(
   roots: readonly AuthoredRootSummary[],
   folder: string,
-  fileName: string,
+  stem: string,
 ): string | undefined {
   const root = roots.find((entry) => entry.origin === "user")?.relative_path;
   if (root === undefined) return undefined;
-  return [root, folder, fileName].filter((part) => part !== "").join("/");
+  return workflowPath([root, folder].filter((part) => part !== "").join("/"), stem);
 }
 
 export const NO_USER_ROOT: Message = { key: "designer.upload.noUserRoot" };
@@ -106,7 +111,7 @@ export const NO_USER_ROOT: Message = { key: "designer.upload.noUserRoot" };
 export function planUpload(upload: Upload, view: UploadView): UploadPlan {
   const id = upload.content.id;
   if (upload.kind === "workflow") {
-    const path = userWorkflowPath(view.roots, upload.folder, upload.fileName);
+    const path = userWorkflowPath(view.roots, upload.folder, upload.stem);
     if (path === undefined) return { action: "refuse", message: NO_USER_ROOT };
     const holder = view.workflows.find((row) => row.id === id);
     const atPath = view.workflows.find((row) => row.relative_path === path);

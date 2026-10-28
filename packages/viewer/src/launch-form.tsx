@@ -1,9 +1,10 @@
 import {
   credentialPlaceholder,
   type PathApiClient,
-  parseJsonField,
+  readOverride,
   type WireStepPlugin,
 } from "@path/client-core";
+import type { Message } from "@path/i18n";
 import { useMessage } from "@path/i18n/react";
 import { useState } from "react";
 import { useTranslations } from "use-intl";
@@ -27,7 +28,7 @@ export interface LaunchFormProps {
   /** The outer container's `data-testid` (the Viewer keys it on the workflow path). */
   containerTestId: string;
   /** An external disable reason (the Designer's save-first gate); `null` means none. */
-  gate?: string | null;
+  gate?: Message | null;
   /** Soft cross-node warning count — badges the button and notes below; never blocks. */
   warningCount?: number;
   /** The config field's placeholder JSON hint. */
@@ -47,7 +48,7 @@ type Submit = { phase: "idle" } | { phase: "sending" } | { phase: "error"; messa
 /**
  * The inline launch form: optional raw-JSON `input` and `config` overrides, each behind its own
  * collapsed disclosure, plus the launch worker-default table when a plugin registry offers a
- * multi-worker type (ADR 0044). Client-side JSON is gated by {@link parseJsonField}; the server is
+ * multi-worker type (ADR 0044). Client-side JSON is gated by {@link readOverride}; the server is
  * still the validator, and its `400` lands back here as an alert **without collapsing the form**,
  * so the operator can retry.
  */
@@ -80,15 +81,15 @@ export function LaunchForm({
 
   // Both fields always parse from their own text, not gated on their disclosure being open: a value
   // the operator typed is a value they meant to send, and gating on visibility would silently drop
-  // it.
-  const inputResult = parseJsonField(input, { allowEmpty: true });
-  const configResult = parseJsonField(config, { allowEmpty: true });
+  // it. One reading per field: parse, then "does this ask for anything at all".
+  const inputReading = readOverride({ text: input });
+  const configReading = readOverride({ text: config });
+  const inputResult = inputReading.result;
+  const configResult = configReading.result;
   // An override needs at least one top-level key: a blank field or a literal `{}` is "no override",
   // so the server falls back to the workflow file's own `input` seed (else `{}`).
-  const inputOverride =
-    inputResult.ok && inputResult.value !== undefined && Object.keys(inputResult.value).length > 0
-      ? inputResult.value
-      : undefined;
+  const inputValue = inputResult.ok ? inputResult.value : undefined;
+  const inputOverride = inputReading.isEmpty ? undefined : inputValue;
   // An invalid value cannot hide behind a collapsed disclosure — that would disable launch with the
   // reason off-screen — so a bad value forces its own field open.
   const inputOpen = showInput || !inputResult.ok;
@@ -101,12 +102,18 @@ export function LaunchForm({
   const canLaunch =
     gate === null &&
     workflowPath !== null &&
-    inputResult.ok &&
-    configResult.ok &&
+    inputReading.canSubmit &&
+    configReading.canSubmit &&
     submit.phase !== "sending";
 
   const launch = (): void => {
-    if (gate !== null || workflowPath === null || !inputResult.ok || !configResult.ok) return;
+    if (
+      gate !== null ||
+      workflowPath === null ||
+      !inputReading.canSubmit ||
+      !configReading.canSubmit
+    )
+      return;
     setSubmit({ phase: "sending" });
     client
       .startRun({
@@ -114,7 +121,7 @@ export function LaunchForm({
         // An empty override is omitted, never sent as `{}` — the server then seeds the run from the
         // workflow file's own `input`.
         input: inputOverride,
-        config: configResult.value,
+        config: configResult.ok ? configResult.value : undefined,
         // An unset table is omitted, never sent as `{}`, matching the file channel's
         // `worker_defaults`.
         workerDefaults: workerDefaultCount > 0 ? workerDefaults : undefined,
@@ -235,7 +242,7 @@ export function LaunchForm({
 
       {gate !== null && (
         <p className="pane-note run-gate" data-testid={`${testIdPrefix}-gate`}>
-          {gate}
+          {renderMessage(gate)}
         </p>
       )}
       {submit.phase === "error" && (

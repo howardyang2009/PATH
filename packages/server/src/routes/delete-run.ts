@@ -25,7 +25,8 @@ export function handleDeleteRun({
 
   const blockers = ctx.store.archive.blockingSuccessors(rootRunId);
   if (blockers.length > 0 && !force) {
-    return replyError(409, "run.delete.reused", { rootRunId, blockers: blockers.join(", ") });
+    // The run ids ride as a list; the client's Locale joins them in its own sentence (ADR 0107).
+    return replyError(409, "run.delete.reused", { rootRunId, blockers });
   }
 
   if (!ctx.store.archive.remove(rootRunId)) {

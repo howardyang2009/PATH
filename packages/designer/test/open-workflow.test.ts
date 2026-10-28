@@ -1,7 +1,6 @@
 import { DEFAULT_PLUGINS } from "@path/client-core/test-utils";
-import { loadMessages, renderMessage } from "@path/i18n";
+import { englishText } from "@path/i18n";
 import { FORMAT_VERSION } from "@path/schema";
-import { createTranslator } from "use-intl/core";
 import { describe, expect, it } from "vitest";
 import { openWorkflowFile } from "../src/open-workflow.js";
 
@@ -220,10 +219,9 @@ describe("openWorkflowFile", () => {
 });
 
 describe("openWorkflowFile refusals in en", () => {
-  async function english(result: ReturnType<typeof openWorkflowFile>): Promise<string> {
+  function english(result: ReturnType<typeof openWorkflowFile>): string {
     if (result.status === "opened") throw new Error("expected a refusal");
-    const t = createTranslator({ locale: "en", messages: await loadMessages("en") });
-    return [result.message, ...result.details].map((m) => renderMessage(t, m)).join("\n");
+    return [result.message, ...result.details].map(englishText).join("\n");
   }
 
   it("reads an absent type and a duplicate id as before", async () => {

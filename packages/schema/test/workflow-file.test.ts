@@ -727,7 +727,7 @@ describe("safeParseWorkflowFile — actionable errors", () => {
     expect(result.success).toBe(false);
     if (!result.success) {
       expect(result.issues.map(englishText)).toEqual([
-        'config.token: "$evn" is a reserved key — a sole "$"-prefixed key names a config wrapper (known: "$secret", "$env")',
+        'config.token: "$evn" is a reserved key — a sole "$"-prefixed key names a config wrapper (known: "$secret" and "$env")',
       ]);
     }
   });

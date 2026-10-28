@@ -1,8 +1,8 @@
 import type { Message } from "@path/i18n";
 import { useMessage } from "@path/i18n/react";
-import { FOLDER_PATTERN, NAME_PATTERN } from "@path/schema";
 import { useMemo, useState } from "react";
 import { useFormatter, useTranslations } from "use-intl";
+import { readTemplatePlacement } from "./authored-placement.js";
 import { TEMPLATE_SUFFIX } from "./session-reducer.js";
 import { type TemplateListLoad, templateFolders } from "./template-list.js";
 import type { SaveAsResult, TemplateSource } from "./use-open-file.js";
@@ -60,18 +60,12 @@ export function SaveTemplateAsDialog({
   const [error, setError] = useState<Message | null>(null);
 
   const suffix = TEMPLATE_SUFFIX;
-  const trimmed = name.trim();
-  const path = trimmed.toLowerCase().endsWith(suffix) ? trimmed.slice(0, -suffix.length) : trimmed;
-  // `folder1/name`: the last segment is the template's name, the rest its subfolder.
-  const cut = path.lastIndexOf("/");
-  const typedFolder = cut === -1 ? "" : path.slice(0, cut);
-  const clean = path.slice(cut + 1);
-  const legal = NAME_PATTERN.test(clean);
-  const folderLegal = typedFolder === "" || FOLDER_PATTERN.test(typedFolder);
   const pickedOrigin = picked.startsWith("shared:") ? "shared" : "user";
   const pickedDir = picked.slice(picked.indexOf(":") + 1);
-  const joined = [pickedDir, typedFolder].filter((part) => part !== "").join("/");
-  const folder = joined === "" ? undefined : joined;
+  // `folder1/name`: the last segment is the template's name, the rest a subfolder of the picked one.
+  const placement = readTemplatePlacement(name, pickedDir);
+  const clean = placement.name;
+  const folder = placement.folder;
   const myTemplates = t("saveTemplateAsDialog.myTemplates");
   const sharedTemplates = t("saveTemplateAsDialog.sharedTemplates");
   const folders = useMemo(
@@ -79,7 +73,7 @@ export function SaveTemplateAsDialog({
     [templateList, myTemplates, sharedTemplates],
   );
   const described = description.trim() !== "";
-  const canSubmit = legal && folderLegal && described && !submitting;
+  const canSubmit = placement.problem === null && described && !submitting;
   const title = fromWorkflow
     ? t("saveTemplateAsDialog.titleFromWorkflow")
     : source
@@ -163,10 +157,10 @@ export function SaveTemplateAsDialog({
           />
         </label>
 
-        {!folderLegal ? (
+        {placement.problem === "folder" ? (
           <p className="new-file-error">{t("saveTemplateAsDialog.badFolder")}</p>
         ) : null}
-        {!legal && clean !== "" ? (
+        {placement.problem === "name" && clean !== "" ? (
           <p className="new-file-error">{t("saveTemplateAsDialog.badName")}</p>
         ) : null}
         <p className="dialog-hint">

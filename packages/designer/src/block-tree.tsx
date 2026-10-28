@@ -1,3 +1,5 @@
+import { runStatusReading } from "@path/client-core";
+import { useMessage } from "@path/i18n/react";
 import type { WorkflowNode } from "@path/schema";
 import type { CSSProperties, KeyboardEvent, MouseEvent, ReactNode } from "react";
 import { useTranslations } from "use-intl";
@@ -8,7 +10,6 @@ import type { EditorApi } from "./editor-api.js";
 import { IncomingBadge, useGotoChip, useIsGotoTarget } from "./goto-context.js";
 import { nodeKind } from "./node-kind.js";
 import { useGotoJumpsSpent, useNodeRunStatus } from "./run/run-projection.js";
-import { RUN_STATUS_GLYPH } from "./run/run-status.js";
 import { useSelection } from "./selection-context.js";
 
 /**
@@ -204,15 +205,16 @@ function useSelectable(node: WorkflowNode): {
  * badge.
  */
 function NodeRunBadge({ id }: { id: string }): JSX.Element | null {
-  const t = useTranslations();
+  const renderMessage = useMessage();
   const status = useNodeRunStatus(id);
   if (status === null) return null;
+  const reading = runStatusReading(status);
   return (
     <span className="node-run-badge" data-run-status={status} data-testid={`node-run-badge-${id}`}>
       <span className="node-run-badge-glyph" aria-hidden="true">
-        {RUN_STATUS_GLYPH[status]}
+        {reading.glyph}
       </span>
-      {t(`shared.status.${status}`)}
+      {renderMessage(reading.message)}
     </span>
   );
 }

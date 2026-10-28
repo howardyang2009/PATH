@@ -55,10 +55,10 @@ export function parseSecretsKey(raw: string, variable = "PATH_SECRETS_KEY"): Sec
 /** Why `name` may not be stored, or `undefined` when it may. */
 export function secretNameRefusal(name: string): Refusal | undefined {
   if (!SECRET_NAME.test(name) || name.length > MAX_SECRET_NAME_LENGTH) {
-    return { code: "secret.bad-name", params: { name, max: MAX_SECRET_NAME_LENGTH } };
+    return { status: 400, code: "secret.bad-name", params: { name, max: MAX_SECRET_NAME_LENGTH } };
   }
   if (RESERVED_NAMES.has(name) || RESERVED_PREFIXES.some((prefix) => name.startsWith(prefix))) {
-    return { code: "secret.reserved", params: { name } };
+    return { status: 400, code: "secret.reserved", params: { name } };
   }
   return undefined;
 }
@@ -140,13 +140,19 @@ export function openSecretStore(
       if (Buffer.byteLength(value, "utf8") > MAX_SECRET_VALUE_BYTES) {
         return {
           ok: false,
+          status: 400,
           code: "secret.too-large",
           params: { name, kib: MAX_SECRET_VALUE_BYTES / 1024 },
         };
       }
       const isNew = exists.get(name) === undefined;
       if (isNew && (count.get()?.n ?? 0) >= MAX_SECRETS_PER_USER) {
-        return { ok: false, code: "secret.too-many", params: { max: MAX_SECRETS_PER_USER } };
+        return {
+          ok: false,
+          status: 400,
+          code: "secret.too-many",
+          params: { max: MAX_SECRETS_PER_USER },
+        };
       }
       const { nonce, ciphertext } = encrypt(name, value);
       const summary = { name, updated_at: new Date().toISOString() };

@@ -97,7 +97,7 @@ export async function uploadCopy(
   try {
     if (copy.kind === "template") return await writeUpload(client, copy, { action: "create" });
     const { roots } = await client.listWorkflows();
-    const path = userWorkflowPath(roots, copy.folder, copy.fileName);
+    const path = userWorkflowPath(roots, copy.folder, copy.stem);
     if (path === undefined) return { status: "refused", message: NO_USER_ROOT };
     return await writeUpload(client, copy, { action: "create", path });
   } catch (error) {

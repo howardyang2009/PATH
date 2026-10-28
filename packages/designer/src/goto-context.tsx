@@ -1,3 +1,4 @@
+import { useMessage } from "@path/i18n/react";
 import type { WorkflowFile, WorkflowNode } from "@path/schema";
 import { createContext, type ReactNode, useContext, useMemo, useState } from "react";
 import { useTranslations } from "use-intl";
@@ -60,7 +61,7 @@ export function useIsGotoTarget(node: WorkflowNode): boolean {
 
 /** The `← N` badge on a first-level node that gotos target; its title lists them. */
 export function IncomingBadge({ node }: { node: WorkflowNode }): JSX.Element | null {
-  const t = useTranslations();
+  const renderMessage = useMessage();
   const view = useContext(GotoContext);
   if (!view?.firstLevel.has(node.id)) return null;
   const sources = view.incoming.get(node.name);
@@ -68,7 +69,7 @@ export function IncomingBadge({ node }: { node: WorkflowNode }): JSX.Element | n
   return (
     <span
       className="goto-incoming"
-      title={t("designer.goto.targetedBy", { sources: sources.join(", ") })}
+      title={renderMessage({ key: "designer.goto.targetedBy", params: { sources } })}
     >
       ← {sources.length}
     </span>
