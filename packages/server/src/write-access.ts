@@ -1,4 +1,10 @@
 import { existsSync } from "node:fs";
+import {
+  conditionalWrite,
+  PRECONDITION_FAILED,
+  type PreconditionRule,
+  serializeArtifact,
+} from "./artifact-file.js";
 import type {
   AuthoredKind,
   AuthoredLayout,
@@ -20,6 +26,12 @@ export interface WriteRefusal extends Refusal {
   status: 400 | 403 | 404;
 }
 
+/** A validated payload written, or why not: the requester's shared-item limit or file size (`403`),
+ * or a failed `If-Match` precondition (`412`). */
+export type AuthoredWrite =
+  | { ok: true; etag: string; created: boolean }
+  | ({ ok: false; status: 403 | 412 } & Refusal);
+
 /** Where a workflow door may act: the confined file, and whether it exists yet. */
 export type WorkflowWriteVerdict =
   | { ok: true; absPath: string; exists: boolean }
@@ -31,10 +43,20 @@ export interface WriteAccess {
   readonly maxFileBytes: number | undefined;
   /** Whether the requester may change the workflow at `path`: in view, not shipped or a template,
    * inside the project, and for an existing shared file only its creator. A missing file passes,
-   * so a door that creates asks {@link createRefusal} next. */
+   * so a door that creates it runs {@link write}, which checks the shared-item limit. */
   workflow(path: string): WorkflowWriteVerdict;
-  /** Why the requester may not create a new item under `origin`: their shared-item limit. */
-  createRefusal(origin: AuthoredOrigin): AuthoredRefusal | undefined;
+  /**
+   * Write a validated `payload` to the authored file at `absPath`, the one write sequence every
+   * store runs: a create under `shared` within the requester's shared-item limit, a payload within
+   * their file size, the conditional write (ADR 0016), and the creator stamp of a created shared
+   * file. The caller has already decided the requester may change the path.
+   */
+  write(
+    absPath: string,
+    kind: AuthoredKind,
+    payload: unknown,
+    precondition: { ifMatch: string | undefined; rule: PreconditionRule },
+  ): AuthoredWrite;
   /** Why an authored file of `bytes` is over the requester's file size. */
   sizeRefusal(bytes: number): AuthoredRefusal | undefined;
   /** Whether the scanned file at `absPath` under `root` is read-only for the requester: a shipped
@@ -56,6 +78,23 @@ export function writeAccess(
   const isCreator = (path: string, kind: AuthoredKind): boolean =>
     creators.creatorOf(projectPathOf(layout, path), kind) === layout.userId;
 
+  const createRefusal = (origin: AuthoredOrigin | undefined): AuthoredRefusal | undefined => {
+    if (origin !== "shared" || limits === undefined) return undefined;
+    if (creators.countBy(layout.userId) < limits.maxSharedItems) return undefined;
+    return { status: 403, code: "authored.shared-limit", params: { max: limits.maxSharedItems } };
+  };
+  const sizeRefusal = (bytes: number): AuthoredRefusal | undefined => {
+    if (limits === undefined || bytes <= limits.maxFileBytes) return undefined;
+    return {
+      status: 403,
+      code: "authored.file-too-large",
+      params: { limit: megabytes(limits.maxFileBytes) },
+    };
+  };
+  const created = (path: string, kind: AuthoredKind): void => {
+    if (shared(path)) creators.stamp(projectPathOf(layout, path), kind, layout.userId);
+  };
+
   return {
     layout,
     maxFileBytes: limits?.maxFileBytes,
@@ -72,30 +111,24 @@ export function writeAccess(
       }
       return { ok: true, absPath, exists };
     },
-    createRefusal(origin) {
-      if (origin !== "shared" || limits === undefined) return undefined;
-      if (creators.countBy(layout.userId) < limits.maxSharedItems) return undefined;
-      return {
-        status: 403,
-        code: "authored.shared-limit",
-        params: { max: limits.maxSharedItems },
-      };
+    write(absPath, kind, payload, precondition) {
+      const creates = precondition.ifMatch === undefined && !existsSync(absPath);
+      const refusal =
+        (creates ? createRefusal(layout.classify(absPath)?.origin) : undefined) ??
+        sizeRefusal(Buffer.byteLength(serializeArtifact(payload)));
+      if (refusal !== undefined) return { ok: false, ...refusal, status: 403 };
+      const written = conditionalWrite(absPath, { ...precondition, payload });
+      if (!written.ok)
+        return { ok: false, status: 412, code: PRECONDITION_FAILED[written.conflict] };
+      if (written.created) created(absPath, kind);
+      return written;
     },
-    sizeRefusal(bytes) {
-      if (limits === undefined || bytes <= limits.maxFileBytes) return undefined;
-      return {
-        status: 403,
-        code: "authored.file-too-large",
-        params: { limit: megabytes(limits.maxFileBytes) },
-      };
-    },
+    sizeRefusal,
     readOnly({ absPath, root }) {
       if (!root.writable) return true;
       return root.origin === "shared" && !isCreator(absPath, root.kind);
     },
-    created(path, kind) {
-      if (shared(path)) creators.stamp(projectPathOf(layout, path), kind, layout.userId);
-    },
+    created,
     removed(path, kind) {
       if (shared(path)) creators.forget(projectPathOf(layout, path), kind);
     },

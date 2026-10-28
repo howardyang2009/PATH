@@ -15,7 +15,7 @@ export async function handlePostWorkflowCopy({ body, ctx }: ApiRequest): Promise
   const parsed = readRequestBody(body, CopyWorkflowBodySchema);
   if (!parsed.ok) return parsed.reply;
 
-  const copied = copyShippedWorkflow(ctx.layout, parsed.data.shipped_path);
+  const copied = copyShippedWorkflow(ctx.access, parsed.data.shipped_path);
   if (!copied.ok) return replyRefused(copied);
   const reply: WireCopyWorkflowResponse = {
     relative_path: copied.relativePath,

@@ -9,13 +9,7 @@ import {
   type TemplateSummary,
   type WireError,
 } from "@path/schema";
-import {
-  conditionalWrite,
-  PRECONDITION_FAILED,
-  readArtifact,
-  removeArtifact,
-  serializeArtifact,
-} from "./artifact-file.js";
+import { readArtifact, removeArtifact } from "./artifact-file.js";
 import { AUTHORED_SUFFIX, type AuthoredOrigin, writableRoots } from "./authored-layout.js";
 import { SHARED_ITEM_READ_ONLY } from "./creator-table.js";
 import { strongEtag } from "./etag.js";
@@ -222,12 +216,8 @@ export function discoverTemplates(
     payload: unknown,
     precondition: { ifMatch: string | undefined; rule: "create-or-overwrite" | "overwrite" },
   ): TemplateWrite => {
-    const tooLarge = access.sizeRefusal(Buffer.byteLength(serializeArtifact(payload)));
-    if (tooLarge !== undefined) return { ok: false, ...tooLarge, status: 403 };
-    const written = conditionalWrite(absPath, { ...precondition, payload });
-    if (!written.ok) {
-      return { ok: false, status: 412, code: PRECONDITION_FAILED[written.conflict] };
-    }
+    const written = access.write(absPath, "template", payload, precondition);
+    if (!written.ok) return written;
     return { ok: true, id, relativePath: relative(projectDir, absPath), etag: written.etag };
   };
 
@@ -249,8 +239,6 @@ export function discoverTemplates(
     create(kind, name, payload, folder, origin = "user") {
       const valid = validate(payload);
       if (!valid.ok) return valid;
-      const refusal = access.createRefusal(origin);
-      if (refusal !== undefined) return { ok: false, ...refusal, status: 403 };
       // A taken id would make the scan flag one of the two entries invalid.
       const holder = byId.get(valid.id);
       if (holder !== undefined) {
@@ -275,7 +263,6 @@ export function discoverTemplates(
           params: { kind, name },
         };
       }
-      if (written.ok) access.created(absPath, "template");
       return written;
     },
     update(id, payload, ifMatch) {

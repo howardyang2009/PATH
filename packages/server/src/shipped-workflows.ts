@@ -10,16 +10,16 @@ import {
 } from "node:fs";
 import { dirname, join, relative, sep } from "node:path";
 import { AUTHORED_SUFFIX, instantiateWorkflow, type WorkflowFile } from "@path/schema";
-import type { AuthoredLayout } from "./authored-layout.js";
 import { confineToProjectRoot } from "./confine.js";
 import type { Refusal } from "./http-json.js";
+import type { WriteAccess } from "./write-access.js";
 
 // Shipped workflows (ADR 0086): read-only starting points in the shipped workflow root. A user never
 // runs one in place; Copy puts it in their own folder first.
 
 export type ShippedCopy =
   | { ok: true; relativePath: string; rootPath: string }
-  | ({ ok: false; status: 400 | 404 } & Refusal);
+  | ({ ok: false; status: 400 | 403 | 404 } & Refusal);
 
 /** A workflow file's bytes with fresh ids: two workflows must not share an identity (ADR 0006).
  * `suffix` is appended to the workflow's `name` when the copy took a numbered target. */
@@ -53,8 +53,11 @@ function filesUnder(dir: string): string[] {
  * (`instantiateWorkflow`); other files are copied verbatim. An existing target is not overwritten:
  * the copy takes the first free `<top>-<n>`, and the chosen workflow's `name` gets the same `-<n>`.
  * All or nothing: the copy is staged in a dot-folder discovery skips, then renamed into place.
+ * The copy lands in the user's own root, so the shared-item limit never applies; each file must fit
+ * the requester's file size.
  */
-export function copyShippedWorkflow(layout: AuthoredLayout, shippedPath: string): ShippedCopy {
+export function copyShippedWorkflow(access: WriteAccess, shippedPath: string): ShippedCopy {
+  const { layout } = access;
   const shippedDir = layout.root("shipped", "workflow").dir;
   const source = confineToProjectRoot(shippedDir, shippedPath);
   if (source === undefined || !source.endsWith(WORKFLOW_SUFFIX)) {
@@ -83,6 +86,10 @@ export function copyShippedWorkflow(layout: AuthoredLayout, shippedPath: string)
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
     return { ok: false, status: 400, code: "workflow.copy-failed", params: { message: reason } };
+  }
+  for (const { content } of contents) {
+    const tooLarge = access.sizeRefusal(Buffer.byteLength(content));
+    if (tooLarge !== undefined) return { ok: false, ...tooLarge, status: 403 };
   }
 
   mkdirSync(userRoot, { recursive: true });

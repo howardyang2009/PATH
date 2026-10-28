@@ -8,6 +8,7 @@ import { DEFAULT_LIMITS } from "../src/request-limits.js";
 import { type WriteAccess, writeAccess } from "../src/write-access.js";
 
 const SHARED = "shared/workflow/a.workflow.json";
+const CREATE = { ifMatch: undefined, rule: "create-or-overwrite" } as const;
 
 let projectDir: string;
 let creators: CreatorTable;
@@ -45,14 +46,32 @@ describe("write access", () => {
     expect(accessOf("user_alice").workflow(SHARED)).toMatchObject({ ok: false, status: 403 });
   });
 
-  it("passes a missing shared workflow, so a door that creates it asks for the limit", () => {
+  it("passes a missing shared workflow, and its write checks the shared-item limit", () => {
     const access = accessOf("user_bob", { ...DEFAULT_LIMITS, maxSharedItems: 1 });
     expect(access.workflow(SHARED)).toMatchObject({ ok: true, exists: false });
-    expect(access.createRefusal("shared")).toBeUndefined();
 
     creators.stamp("shared/workflow/other.workflow.json", "workflow", "user_bob");
-    expect(access.createRefusal("shared")).toMatchObject({ status: 403 });
-    expect(access.createRefusal("user")).toBeUndefined();
+    expect(access.write(join(projectDir, SHARED), "workflow", {}, CREATE)).toEqual({
+      ok: false,
+      status: 403,
+      code: "authored.shared-limit",
+      params: { max: 1 },
+    });
+    const own = join(projectDir, "users/user_bob/workflow/mine.workflow.json");
+    expect(access.write(own, "workflow", {}, CREATE)).toMatchObject({ ok: true, created: true });
+  });
+
+  it("writes a created shared file, stamps its creator, and refuses a stale overwrite", () => {
+    const access = accessOf("user_alice");
+    const path = join(projectDir, SHARED);
+    const written = access.write(path, "workflow", { a: 1 }, CREATE);
+    expect(written).toMatchObject({ ok: true, created: true });
+    expect(creators.creatorOf(SHARED, "workflow")).toBe("user_alice");
+    expect(access.write(path, "workflow", {}, { ifMatch: '"stale"', rule: "overwrite" })).toEqual({
+      ok: false,
+      status: 412,
+      code: "file.precondition.changed",
+    });
   });
 
   it("answers 404 for another user's path, and refuses a template path", () => {
@@ -82,11 +101,20 @@ describe("write access", () => {
   });
 
   it("refuses a file over the file size only under limits", () => {
+    const own = join(projectDir, "users/user_a/workflow/big.workflow.json");
+    const big = { text: "x".repeat(20) };
     expect(
-      accessOf("user_a", { ...DEFAULT_LIMITS, maxFileBytes: 10 }).sizeRefusal(11),
-    ).toMatchObject({ status: 403 });
+      accessOf("user_a", { ...DEFAULT_LIMITS, maxFileBytes: 10 }).write(
+        own,
+        "workflow",
+        big,
+        CREATE,
+      ),
+    ).toMatchObject({ ok: false, status: 403, code: "authored.file-too-large" });
     const local = writeAccess(authoredLayout({ projectDir }), creators);
     expect(local.sizeRefusal(Number.MAX_SAFE_INTEGER)).toBeUndefined();
-    expect(local.createRefusal("shared")).toBeUndefined();
+    expect(local.write(join(projectDir, SHARED), "workflow", big, CREATE)).toMatchObject({
+      ok: true,
+    });
   });
 });
