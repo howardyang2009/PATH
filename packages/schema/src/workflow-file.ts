@@ -2,7 +2,6 @@ import { englishText, type Message } from "@path/i18n";
 import { z } from "zod";
 import { codedIssue, codedMessage, issueMessages, messageIssue } from "./coded-issue.js";
 import { ConfigObjectSchema } from "./config.js";
-import { formatIssues } from "./format-issues.js";
 import { gotoIssues } from "./goto.js";
 import { IdSchema, NameSchema } from "./ids.js";
 import { interpolatedJsonValue } from "./interpolation.js";
@@ -121,14 +120,12 @@ export interface WorkflowFileParseSuccess {
 
 export interface WorkflowFileParseFailure {
   success: false;
-  /** One English line per issue, for the CLI and logs. */
-  errors: string[];
-  /** The same issues as `Message`s, for a client to render in its Locale. */
+  /** One `Message` per issue: a client renders it in its Locale, the CLI and logs in English. */
   issues: Message[];
 }
 
 function formatFailure(message: Message): WorkflowFileParseFailure {
-  return { success: false, errors: [englishText(message)], issues: [message] };
+  return { success: false, issues: [message] };
 }
 
 // A file carrying a superseded `format` string gets a targeted error naming the codemod, not a
@@ -175,7 +172,6 @@ export function safeParseWorkflowFileWith(
   }
   return {
     success: false,
-    errors: formatIssues(result.error),
     issues: issueMessages(result.error),
   };
 }
@@ -193,7 +189,7 @@ export function safeParseWorkflowFile(
 export function parseWorkflowFile(json: unknown, registry: StepPluginRegistry): WorkflowFile {
   const result = safeParseWorkflowFile(json, registry);
   if (!result.success) {
-    throw new Error(`invalid workflow file:\n${result.errors.join("\n")}`);
+    throw new Error(`invalid workflow file:\n${result.issues.map(englishText).join("\n")}`);
   }
   return result.data;
 }

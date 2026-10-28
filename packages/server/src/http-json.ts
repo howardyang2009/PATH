@@ -1,6 +1,6 @@
 import type { ServerResponse } from "node:http";
 import { type CodedError, type ErrorCode, type ErrorParams, errorText } from "@path/i18n";
-import { formatIssues } from "@path/schema";
+import { formatIssues, type JsonValue, type WireError } from "@path/schema";
 import type { z } from "zod";
 import type { RequestBody } from "./request-body.js";
 
@@ -23,6 +23,19 @@ export function refusalText({ code, params }: Refusal): string {
   return errorText(code, params);
 }
 
+/** The shared error envelope's `error` (server-api-v0.md §1, ADR 0107): the code and params the
+ * client renders, plus `message` in English for `curl`, an old client and an unknown code. */
+export function wireError(
+  code: ErrorCode,
+  params: ErrorParams = {},
+  details?: unknown,
+  message = errorText(code, params),
+): WireError["error"] {
+  // `details` is JSON by construction: issues, ajv errors or plain strings.
+  const error = { code, params, message };
+  return details === undefined ? error : { ...error, details: details as JsonValue };
+}
+
 /** A refusal in the shared error envelope (server-api-v0.md §1, ADR 0107): the code and params
  * the client renders, plus `message` in English for `curl`, an old client and an unknown code. */
 export function replyError(
@@ -31,8 +44,7 @@ export function replyError(
   params: ErrorParams = {},
   details?: unknown,
 ): RouteReply {
-  const error = { code, params, message: refusalText({ code, params }) };
-  return { status, body: { error: details === undefined ? error : { ...error, details } } };
+  return { status, body: { error: wireError(code, params, details) } };
 }
 
 /** {@link replyError} for a refusal a helper module decided. */

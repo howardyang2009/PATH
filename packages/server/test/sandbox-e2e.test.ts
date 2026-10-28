@@ -4,6 +4,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadWorkflowTree, openProject, type Project } from "@path/engine";
+import { englishText } from "@path/i18n";
 import type { LogEvent, WorkflowFile } from "@path/schema";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { LiveRuns, StartRunOptions } from "../src/live-runs.js";
@@ -76,7 +77,7 @@ async function workflow(
     JSON.stringify({ format: "path/workflow@6", id: idFor(name), name, body, ...extra }),
   );
   const loaded = await loadWorkflowTree(path);
-  if (!loaded.success) throw new Error(loaded.errors.join("\n"));
+  if (!loaded.success) throw new Error(loaded.issues.map(englishText).join("\n"));
   const { rootFile, workflowDir, files, registry } = loaded.workflow;
   return [rootFile, workflowDir, { files, registry, userSecrets: { API_TOKEN: "sk-alice" } }];
 }

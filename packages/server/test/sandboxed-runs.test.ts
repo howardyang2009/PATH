@@ -11,6 +11,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadWorkflowTree, openProject, type Project, rootRunTreeDir } from "@path/engine";
+import { englishText } from "@path/i18n";
 import type { LogEvent, WorkflowFile } from "@path/schema";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { type LiveRuns, ResumeNotFound, type StartRunOptions } from "../src/live-runs.js";
@@ -88,7 +89,7 @@ async function writeWorkflow(
     JSON.stringify({ format: "path/workflow@6", id: idFor("workflow"), name, body }),
   );
   const loaded = await loadWorkflowTree(path);
-  if (!loaded.success) throw new Error(loaded.errors.join("\n"));
+  if (!loaded.success) throw new Error(loaded.issues.map(englishText).join("\n"));
   const { rootFile, workflowDir, files, registry } = loaded.workflow;
   return [rootFile, workflowDir, { files, registry, sourceWorkflowPath: `workflow/${name}` }];
 }
@@ -142,7 +143,7 @@ async function workflow(
     }),
   );
   const loaded = await loadWorkflowTree(path);
-  if (!loaded.success) throw new Error(loaded.errors.join("\n"));
+  if (!loaded.success) throw new Error(loaded.issues.map(englishText).join("\n"));
   const { rootFile, workflowDir, files, registry } = loaded.workflow;
   return [rootFile, workflowDir, { files, registry, sourceWorkflowPath: "workflow/echo" }];
 }

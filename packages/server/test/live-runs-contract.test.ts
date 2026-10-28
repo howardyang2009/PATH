@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { type LoadedWorkflow, loadWorkflowTree, openProject, type Project } from "@path/engine";
+import { englishText } from "@path/i18n";
 import type { LogEvent, RunStatus } from "@path/schema";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createLiveRuns, type LiveRuns, ResumeNotFound } from "../src/live-runs.js";
@@ -54,7 +55,7 @@ afterEach(() => {
 
 async function load(name: string): Promise<LoadedWorkflow> {
   const loaded = await loadWorkflowTree(join(FIXTURES, name));
-  if (!loaded.success) throw new Error(loaded.errors.join("\n"));
+  if (!loaded.success) throw new Error(loaded.issues.map(englishText).join("\n"));
   return loaded.workflow;
 }
 

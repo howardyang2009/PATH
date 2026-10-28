@@ -1,3 +1,4 @@
+import { englishText } from "@path/i18n";
 import { describe, expect, it } from "vitest";
 import {
   makeStepTemplateSchema,
@@ -115,8 +116,10 @@ describe("StepTemplateSchema — format stamp", () => {
     const result = safeParseStepTemplate({ ...minimal, format: "path/workflow@2" });
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.errors.join("\n")).toMatch(/path\/workflow@2 is no longer read/);
-      expect(result.errors.join("\n")).toMatch(/migrate-workflow-format-v3\.ts/);
+      expect(result.issues.map(englishText).join("\n")).toMatch(
+        /path\/workflow@2 is no longer read/,
+      );
+      expect(result.issues.map(englishText).join("\n")).toMatch(/migrate-workflow-format-v3\.ts/);
     }
   });
 
@@ -129,7 +132,8 @@ describe("StepTemplateSchema — format stamp", () => {
     ]) {
       const result = safeParseStepTemplate({ ...minimal, format });
       expect(result.success).toBe(false);
-      if (!result.success) expect(result.errors.join("\n")).toMatch(/is no longer read/);
+      if (!result.success)
+        expect(result.issues.map(englishText).join("\n")).toMatch(/is no longer read/);
     }
   });
 
@@ -137,7 +141,9 @@ describe("StepTemplateSchema — format stamp", () => {
     const result = safeParseStepTemplate({ ...minimal, format: "path/workflow@7" });
     expect(result.success).toBe(false);
     if (!result.success)
-      expect(result.errors.join("\n")).toMatch(/path\/workflow@7 is newer than this engine reads/);
+      expect(result.issues.map(englishText).join("\n")).toMatch(
+        /path\/workflow@7 is newer than this engine reads/,
+      );
   });
 });
 

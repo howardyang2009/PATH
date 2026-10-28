@@ -811,7 +811,12 @@
       "copy-failed": "shipped workflow cannot be copied: {message}",
       "bundle-failed": "workflow refs could not be bundled",
       "download-origin": "origin must be \"shipped\" when present",
-      "output-interpolation": "workflow output: {reason}"
+      "output-interpolation": "workflow output: {reason}",
+      "load": {
+        "ref-cycle": "ref cycle: {chain}",
+        "ref-outside": "ref \"{ref}\" is outside the files this load may read",
+        "entry-missing": "internal error: entry file missing from the loaded tree"
+      }
     },
     "lease": {
       "held": "workflow is being edited in another session",
@@ -837,7 +842,8 @@
       "invalid": "template validation failed",
       "id-taken": "template id \"{id}\" is already used by {origin, select, shipped {shipped} shared {shared} other {user}} template \"{name}\"",
       "name-taken": "a {kind, select, other {step}} template named \"{name}\" already exists",
-      "id-mismatch": "template id in body must match the URL id"
+      "id-mismatch": "template id in body must match the URL id",
+      "invalid-json": "invalid JSON"
     },
     "secret": {
       "not-found": "no User secret named \"{name}\"",

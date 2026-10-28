@@ -615,7 +615,12 @@ Response `200 OK`:
       "name": null,
       "valid": false,
       "is_root": null,
-      "error": { "message": "unexpected token in JSON at position 12", "details": "..." }
+      "error": {
+        "code": "workflow.invalid",
+        "params": {},
+        "message": "users/local/workflow/broken.workflow.json: unexpected token in JSON at position 12",
+        "details": [{ "key": "shared.issueAtPath", "params": { "path": "…", "issue": { "key": "shared.verbatim", "params": { "text": "unexpected token in JSON at position 12" } } } }]
+      }
     }
   ],
   "roots": [
@@ -636,7 +641,7 @@ Response `200 OK`:
 | `name` | string \| null | The workflow's human `name` (same best-effort rule as `id`). |
 | `valid` | boolean | `loadWorkflowTree(f).success` — a static load + schema/ref/cycle validate that never executes a step. It is **registry-relative**: a file naming a step type this tree holds no plugin for is `false`. |
 | `is_root` | boolean \| null | `true` unreferenced; `false` reachable as another discovered workflow's nested ref; `null` when `valid: false`. |
-| `error` | object \| null | The shared error shape (§1) when `valid: false` (bad JSON, schema violation, missing ref, cycle, unknown step type, broken plugin folder); `null` otherwise. |
+| `error` | object \| null | The shared error shape (§1) when `valid: false` (bad JSON, schema violation, missing ref, cycle, unknown step type, broken plugin folder); `null` otherwise. Its `code` is `workflow.invalid`, `details` holds one `Message` per load issue (the same shape as a `PUT` refusal's), and `message` is the first issue in English. |
 
 `roots` lists the writable workflow roots by project path, the user's own first: where a new workflow
 may land. A client reads them here instead of carrying the folder layout itself.
@@ -1023,7 +1028,12 @@ Response `200 OK`:
       "origin": "user",
       "read_only": false,
       "valid": false,
-      "error": { "message": "unregistered step type \"api-call\"", "details": ["…"] }
+      "error": {
+        "code": "template.invalid",
+        "params": {},
+        "message": "body.0.type: unregistered step type \"api-call\"",
+        "details": [{ "key": "shared.issueAtPath", "params": { "path": "body.0.type", "issue": { "key": "…" } } }]
+      }
     }
   ]
 }

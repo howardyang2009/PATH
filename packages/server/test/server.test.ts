@@ -11,6 +11,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { dbFilePath, openDb, readNdjsonLog, rootRunTreeDir } from "@path/engine";
+import { englishText, type Message } from "@path/i18n";
 import { createEventFrameDecoder, type EventFrame, type LogEvent } from "@path/schema";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { type PathServerHandle, startPathServer } from "../src/create-server.js";
@@ -248,8 +249,8 @@ describe("POST /v0/runs + GET /v0/runs/:root_run_id — end to end", () => {
   it("400s with validation details when the workflow file fails schema validation", async () => {
     const res = await postRun({ workflow_path: "invalid-schema.workflow.json" });
     expect(res.status).toBe(400);
-    const body = (await res.json()) as { error: { message: string; details: string[] } };
-    expect(body.error.details.join("\n")).toContain("bogus_field");
+    const body = (await res.json()) as { error: { message: string; details: Message[] } };
+    expect(body.error.details.map(englishText).join("\n")).toContain("bogus_field");
   });
 
   // #280 / workflow-format-v2.md §1 — the server reads `@2` only, same as the CLI. A pre-migration
@@ -276,8 +277,8 @@ describe("POST /v0/runs + GET /v0/runs/:root_run_id — end to end", () => {
 
     const res = await postRun({ workflow_path: "superseded.workflow.json" });
     expect(res.status).toBe(400);
-    const body = (await res.json()) as { error: { message: string; details: string[] } };
-    expect(body.error.details).toEqual([
+    const body = (await res.json()) as { error: { message: string; details: Message[] } };
+    expect(body.error.details.map(englishText)).toEqual([
       `${join(projectDir, "superseded.workflow.json")}: path/workflow@1 is no longer read — run scripts/archive/migrate-workflow-format-v2.ts then scripts/archive/migrate-workflow-format-v3.ts then scripts/archive/migrate-workflow-format-v4.ts then scripts/archive/migrate-workflow-format-v5.ts then scripts/migrate-workflow-format-v6.ts to migrate this file to path/workflow@6`,
     ]);
 
@@ -1386,8 +1387,8 @@ describe("POST /v0/runs/:root_run_id/resume — resume a finished-but-unsuccessf
 
     const res = await resumeRun(root_run_id);
     expect(res.status).toBe(400);
-    const body = (await res.json()) as { error: { details: string[] } };
-    expect(body.error.details).toEqual([
+    const body = (await res.json()) as { error: { details: Message[] } };
+    expect(body.error.details.map(englishText)).toEqual([
       `${join(projectDir, "failing-step.workflow.json")}: path/workflow@1 is no longer read — run scripts/archive/migrate-workflow-format-v2.ts then scripts/archive/migrate-workflow-format-v3.ts then scripts/archive/migrate-workflow-format-v4.ts then scripts/archive/migrate-workflow-format-v5.ts then scripts/migrate-workflow-format-v6.ts to migrate this file to path/workflow@6`,
     ]);
   });

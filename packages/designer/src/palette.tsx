@@ -1,4 +1,4 @@
-import type { TemplateSummary, WireStepPlugin } from "@path/client-core";
+import { type TemplateSummary, type WireStepPlugin, wireErrorMessage } from "@path/client-core";
 import type { MessageKey } from "@path/i18n";
 import { useMessage } from "@path/i18n/react";
 import { must } from "@path/schema";
@@ -332,6 +332,7 @@ function TemplateCard({
   onEdit: () => void;
 }) {
   const t = useTranslations();
+  const renderMessage = useMessage();
   const style = {
     "--card-fg": "var(--k-template)",
     "--card-bg": "var(--k-template-bg)",
@@ -358,7 +359,9 @@ function TemplateCard({
           <span className="palette-card-blurb">{template.description}</span>
           {template.valid ? null : (
             <span className="palette-card-error">
-              {template.error?.message ?? t("designer.palette.invalidTemplate")}
+              {template.error
+                ? renderMessage(wireErrorMessage(template.error))
+                : t("designer.palette.invalidTemplate")}
             </span>
           )}
         </span>

@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { basename, dirname, join, relative, sep } from "node:path";
-import type { Message } from "@path/i18n";
+import { englishText, type Message } from "@path/i18n";
 import {
   makeStepTemplateSchema,
   type StepPluginRegistry,
@@ -18,7 +18,7 @@ import {
 import { AUTHORED_SUFFIX, type AuthoredOrigin } from "./authored-layout.js";
 import { SHARED_ITEM_READ_ONLY } from "./creator-table.js";
 import { strongEtag } from "./etag.js";
-import type { Refusal } from "./http-json.js";
+import { type Refusal, wireError } from "./http-json.js";
 import type { WriteAccess } from "./write-access.js";
 
 // The Template store (ADR 0050, ADR 0084): Server-owned, engine-blind discovery of
@@ -132,7 +132,7 @@ function classify(
       format: null,
       body: null,
       valid: false,
-      error: { message: "invalid JSON" },
+      error: wireError("template.invalid-json"),
     };
   }
 
@@ -146,7 +146,12 @@ function classify(
   const parsed = safeParseStepTemplateWith(stepSchema, raw);
   const error = parsed.success
     ? null
-    : { message: parsed.errors[0] ?? "invalid template", details: parsed.errors };
+    : wireError(
+        "template.invalid",
+        {},
+        parsed.issues,
+        parsed.issues[0] && englishText(parsed.issues[0]),
+      );
 
   return { id, description, format, body, valid: parsed.success, error };
 }

@@ -10,6 +10,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { englishText } from "@path/i18n";
 import { toWireRunRecord, type WorkflowFile } from "@path/schema";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { loadWorkflowTree } from "../src/load-workflow-tree.js";
@@ -642,7 +643,7 @@ describe("Project.resume — nested Resume-from-K (#445)", () => {
     const project = open();
     try {
       const loaded = await loadWorkflowTree(join(dir, "parent.workflow.json"));
-      if (!loaded.success) throw new Error(loaded.errors.join("\n"));
+      if (!loaded.success) throw new Error(loaded.issues.map(englishText).join("\n"));
       const { rootFile, files, workflowDir } = loaded.workflow;
 
       const first = await project.run(rootFile, workflowDir, { files });
@@ -688,7 +689,7 @@ describe("Project.resume — nested Resume-from-K (#445)", () => {
     const project = open();
     try {
       const loaded = await loadWorkflowTree(join(dir, "parent.workflow.json"));
-      if (!loaded.success) throw new Error(loaded.errors.join("\n"));
+      if (!loaded.success) throw new Error(loaded.issues.map(englishText).join("\n"));
       const { rootFile, files, workflowDir } = loaded.workflow;
 
       await project.run(rootFile, workflowDir, { files });
@@ -989,7 +990,7 @@ describe("Project — the projectDir / workflowDir distinction (#59)", () => {
     const project = open();
     try {
       const loaded = await loadWorkflowTree(join(sub, "parent.workflow.json"));
-      if (!loaded.success) throw new Error(loaded.errors.join("\n"));
+      if (!loaded.success) throw new Error(loaded.issues.map(englishText).join("\n"));
 
       // `dir` is the project (where `.path/` is); `sub` is the workflow's own directory.
       const result = await project.run(loaded.workflow.rootFile, sub, {

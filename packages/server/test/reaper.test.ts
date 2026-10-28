@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadWorkflowTree, openProject, type Project } from "@path/engine";
+import { englishText } from "@path/i18n";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { reapSandboxes } from "../src/sandbox/reaper.js";
 import { createSandboxedRuns, SANDBOX_LIMITS, stagingDir } from "../src/sandbox/sandboxed-runs.js";
@@ -55,7 +56,7 @@ describe("reapSandboxes", () => {
       }),
     );
     const loaded = await loadWorkflowTree(path);
-    if (!loaded.success) throw new Error(loaded.errors.join("\n"));
+    if (!loaded.success) throw new Error(loaded.issues.map(englishText).join("\n"));
     const { rootFile, workflowDir, files, registry } = loaded.workflow;
 
     // The Server dies while the VM, its run parked in the VM's store, is still up.

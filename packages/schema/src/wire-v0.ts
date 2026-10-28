@@ -1,3 +1,4 @@
+import type { ErrorParams } from "@path/i18n";
 import type { ConfigObject } from "./config-value-type.js";
 import type { JsonValue } from "./json-value.js";
 import type { LaunchFacts } from "./launch-facts.js";
@@ -193,7 +194,7 @@ export interface WireError {
   error: {
     /** The ADR 0107 error code, the client's `errors.<code>` key; absent from an older server. */
     code?: string;
-    params?: { [name: string]: string | number };
+    params?: ErrorParams;
     /** English, for `curl`, an older client and a code the client does not know. */
     message: string;
     details?: JsonValue;

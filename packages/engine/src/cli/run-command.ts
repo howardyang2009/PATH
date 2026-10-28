@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { englishText } from "@path/i18n";
 import {
   type ConfigObject,
   type JsonValue,
@@ -169,7 +170,7 @@ export async function runRunCommand(
 
   const loadResult = await loadWorkflowTree(invocation.workflowPath);
   if (!loadResult.success) {
-    io.error(loadResult.errors.join("\n"));
+    io.error(loadResult.issues.map(englishText).join("\n"));
     return 1;
   }
 

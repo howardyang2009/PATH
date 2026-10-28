@@ -3,6 +3,7 @@ import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } 
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { englishText } from "@path/i18n";
 import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type CliIo, main } from "../../src/cli.js";
@@ -557,7 +558,7 @@ async function killMidFirstRevise(): Promise<{ rootRunId: string; worker: Script
   });
 
   const loaded = await loadWorkflowTree(join(harness.projectDir, "release-notes.workflow.json"));
-  if (!loaded.success) throw new Error(loaded.errors.join("\n"));
+  if (!loaded.success) throw new Error(loaded.issues.map(englishText).join("\n"));
   const rootFile = loaded.workflow.rootFile;
   const opened = openProject(harness.projectDir);
   if (!opened.success) throw new Error(opened.error);

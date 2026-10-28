@@ -1,9 +1,15 @@
 import { readFileSync } from "node:fs";
 import { relative } from "node:path";
 import { loadWorkflowTree } from "@path/engine";
+import { englishText, type Message } from "@path/i18n";
 import type { ListWorkflowsResponse, WorkflowSummary } from "@path/schema";
-import type { RouteReply } from "../http-json.js";
+import { type RouteReply, wireError } from "../http-json.js";
 import type { ApiRequest } from "./route-context.js";
+
+/** The first issue in English, the row's `message` for `curl` and an old client. */
+function firstText(issues: Message[]): string | undefined {
+  return issues[0] && englishText(issues[0]);
+}
 
 /** Best-effort top-level `id`/`name` so an invalid entry stays human-legible in the list; `null`
  * when the shallow parse cannot recover either field. */
@@ -74,7 +80,7 @@ export async function handleGetWorkflows({ ctx }: ApiRequest): Promise<RouteRepl
       name,
       valid: false,
       is_root: null,
-      error: { message: result.errors[0] ?? "workflow load failed", details: result.errors },
+      error: wireError("workflow.invalid", {}, result.issues, firstText(result.issues)),
     };
   });
 

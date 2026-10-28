@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
 import { type LoadedWorkflow, loadWorkflowTree } from "@path/engine";
+import type { Message } from "@path/i18n";
 import { type ConfigObject, type JsonValue, mapEnv, type RunRecord } from "@path/schema";
 import type { AuthoredLayout } from "./authored-layout.js";
 import { confineToProjectRoot } from "./confine.js";
@@ -13,7 +14,7 @@ import type { Refusal } from "./http-json.js";
 
 export interface WorkflowRefusal extends Refusal {
   status: number;
-  details?: string[];
+  details?: Message[];
 }
 
 export type PreparedWorkflow =
@@ -69,7 +70,7 @@ export async function prepareWorkflow(
   if (!loadResult.success) {
     return {
       ok: false,
-      refusal: { status: 400, code: "workflow.invalid", details: loadResult.errors },
+      refusal: { status: 400, code: "workflow.invalid", details: loadResult.issues },
     };
   }
   return { ok: true, workflow: loadResult.workflow };

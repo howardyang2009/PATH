@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadWorkflowTree, openProject, type Project } from "@path/engine";
+import { englishText } from "@path/i18n";
 import type { LogEvent } from "@path/schema";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createLiveRuns, type LiveRuns, type StartedRun } from "../src/live-runs.js";
@@ -36,7 +37,7 @@ afterEach(() => {
 
 async function startFixture(filename: string, runs = live): Promise<StartedRun> {
   const loaded = await loadWorkflowTree(join(projectDir, filename));
-  if (!loaded.success) throw new Error(loaded.errors.join("\n"));
+  if (!loaded.success) throw new Error(loaded.issues.map(englishText).join("\n"));
   const { workflow } = loaded;
   return runs.start(workflow.rootFile, workflow.workflowDir, {
     files: workflow.files,
@@ -102,7 +103,7 @@ describe("LiveRuns — start resolves on run-started, not on finish", () => {
       },
     };
     const loaded = await loadWorkflowTree(join(projectDir, "slow-step.workflow.json"));
-    if (!loaded.success) throw new Error(loaded.errors.join("\n"));
+    if (!loaded.success) throw new Error(loaded.issues.map(englishText).join("\n"));
     const { workflow } = loaded;
 
     // Fire-and-forget: `start`'s promise stays pending (no `run-started`), which is why it is not

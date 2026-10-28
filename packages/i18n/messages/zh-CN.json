@@ -815,7 +815,12 @@
       "copy-failed": "无法复制内置工作流：{message}",
       "bundle-failed": "无法打包工作流引用",
       "download-origin": "若提供 origin，必须为“shipped”",
-      "output-interpolation": "工作流输出：{reason}"
+      "output-interpolation": "工作流输出：{reason}",
+      "load": {
+        "ref-cycle": "ref 循环：{chain}",
+        "ref-outside": "ref“{ref}”超出本次加载可读取的文件范围",
+        "entry-missing": "内部错误：加载树中缺少入口文件"
+      }
     },
     "lease": {
       "held": "工作流正在另一个会话中编辑",
@@ -841,7 +846,8 @@
       "invalid": "模板校验失败",
       "id-taken": "模板 ID“{id}”已被 {origin, select, shipped {内置} shared {共享} other {用户}} 模板“{name}”使用",
       "name-taken": "名为“{name}”的 {kind, select, other {步骤}} 模板已存在",
-      "id-mismatch": "请求体中的模板 ID 必须与 URL 中的 ID 一致"
+      "id-mismatch": "请求体中的模板 ID 必须与 URL 中的 ID 一致",
+      "invalid-json": "JSON 无效"
     },
     "secret": {
       "not-found": "没有名为“{name}”的用户密钥",

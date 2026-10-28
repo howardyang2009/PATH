@@ -1,3 +1,4 @@
+import { englishText } from "@path/i18n";
 import { describe, expect, it } from "vitest";
 import {
   makeWorkflowFileSchema,
@@ -146,7 +147,7 @@ describe("WorkflowFileSchema — the file-level input seed", () => {
   it("rejects an interpolated input value (nothing resolves the root seed)", () => {
     const result = safeParseWorkflowFile({ ...minimal, input: { ticket: "${context.x}" } });
     expect(result.success).toBe(false);
-    if (!result.success) expect(result.errors.join("\n")).toMatch(/root/i);
+    if (!result.success) expect(result.issues.map(englishText).join("\n")).toMatch(/root/i);
   });
 });
 
@@ -289,7 +290,7 @@ describe("WorkflowFileSchema — duplicate publish keys across parallel siblings
     if (!result.success) {
       // `body.0.branches.1` — the second branch — not `body.0.branches` (the @1→@2 path-shape
       // regression that `.slice(0, -1)` would have reintroduced).
-      expect(result.errors.join("\n")).toMatch(/body\.0\.branches\.1:/);
+      expect(result.issues.map(englishText).join("\n")).toMatch(/body\.0\.branches\.1:/);
     }
   });
 
@@ -582,7 +583,7 @@ describe("WorkflowFileSchema — do-not-wait branch may not publish", () => {
     });
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.errors.join("\n")).toMatch(/do-not-wait/);
+      expect(result.issues.map(englishText).join("\n")).toMatch(/do-not-wait/);
     }
   });
 
@@ -651,7 +652,7 @@ describe("WorkflowFileSchema — do-not-wait branch may not publish", () => {
     expect(result.success).toBe(false);
     if (!result.success) {
       // Named, so the test cannot pass on some unrelated rejection of the file.
-      expect(result.errors.join("\n")).toMatch(/do-not-wait/);
+      expect(result.issues.map(englishText).join("\n")).toMatch(/do-not-wait/);
     }
   });
 
@@ -700,7 +701,7 @@ describe("safeParseWorkflowFile — actionable errors", () => {
     const result = safeParseWorkflowFile({ ...minimal, bogus: true });
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.errors.join("\n")).toMatch(/bogus/);
+      expect(result.issues.map(englishText).join("\n")).toMatch(/bogus/);
     }
   });
 
@@ -714,8 +715,8 @@ describe("safeParseWorkflowFile — actionable errors", () => {
     });
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.errors.join("\n")).toMatch(/dup/);
-      expect(result.errors.join("\n")).toMatch(/duplicate/i);
+      expect(result.issues.map(englishText).join("\n")).toMatch(/dup/);
+      expect(result.issues.map(englishText).join("\n")).toMatch(/duplicate/i);
     }
   });
 
@@ -725,7 +726,7 @@ describe("safeParseWorkflowFile — actionable errors", () => {
     const result = safeParseWorkflowFile({ ...minimal, config: { token: { $evn: "TOKEN" } } });
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.errors).toEqual([
+      expect(result.issues.map(englishText)).toEqual([
         'config.token: "$evn" is a reserved key — a sole "$"-prefixed key names a config wrapper (known: "$secret", "$env")',
       ]);
     }
@@ -738,7 +739,7 @@ describe("safeParseWorkflowFile — actionable errors", () => {
     const result = safeParseWorkflowFile({ ...minimal, format: "path/workflow@0" });
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.errors).toEqual([
+      expect(result.issues.map(englishText)).toEqual([
         "path/workflow@0 is no longer read — run scripts/archive/migrate-workflow-format-v1.ts then scripts/archive/migrate-workflow-format-v2.ts then scripts/archive/migrate-workflow-format-v3.ts then scripts/archive/migrate-workflow-format-v4.ts then scripts/archive/migrate-workflow-format-v5.ts then scripts/migrate-workflow-format-v6.ts to migrate this file to path/workflow@6",
       ]);
     }
@@ -748,7 +749,7 @@ describe("safeParseWorkflowFile — actionable errors", () => {
     const result = safeParseWorkflowFile({ ...minimal, format: "path/workflow@1" });
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.errors).toEqual([
+      expect(result.issues.map(englishText)).toEqual([
         "path/workflow@1 is no longer read — run scripts/archive/migrate-workflow-format-v2.ts then scripts/archive/migrate-workflow-format-v3.ts then scripts/archive/migrate-workflow-format-v4.ts then scripts/archive/migrate-workflow-format-v5.ts then scripts/migrate-workflow-format-v6.ts to migrate this file to path/workflow@6",
       ]);
     }
@@ -758,7 +759,7 @@ describe("safeParseWorkflowFile — actionable errors", () => {
     const result = safeParseWorkflowFile({ ...minimal, format: "path/workflow@2" });
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.errors).toEqual([
+      expect(result.issues.map(englishText)).toEqual([
         "path/workflow@2 is no longer read — run scripts/archive/migrate-workflow-format-v3.ts then scripts/archive/migrate-workflow-format-v4.ts then scripts/archive/migrate-workflow-format-v5.ts then scripts/migrate-workflow-format-v6.ts to migrate this file to path/workflow@6",
       ]);
     }
@@ -768,7 +769,7 @@ describe("safeParseWorkflowFile — actionable errors", () => {
     const result = safeParseWorkflowFile({ ...minimal, format: "path/workflow@3" });
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.errors).toEqual([
+      expect(result.issues.map(englishText)).toEqual([
         "path/workflow@3 is no longer read — run scripts/archive/migrate-workflow-format-v4.ts then scripts/archive/migrate-workflow-format-v5.ts then scripts/migrate-workflow-format-v6.ts to migrate this file to path/workflow@6",
       ]);
     }
@@ -778,7 +779,7 @@ describe("safeParseWorkflowFile — actionable errors", () => {
     const result = safeParseWorkflowFile({ ...minimal, format: "path/workflow@4" });
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.errors).toEqual([
+      expect(result.issues.map(englishText)).toEqual([
         "path/workflow@4 is no longer read — run scripts/archive/migrate-workflow-format-v5.ts then scripts/migrate-workflow-format-v6.ts to migrate this file to path/workflow@6",
       ]);
     }
@@ -788,7 +789,7 @@ describe("safeParseWorkflowFile — actionable errors", () => {
     const result = safeParseWorkflowFile({ ...minimal, format: "path/workflow@5" });
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.errors).toEqual([
+      expect(result.issues.map(englishText)).toEqual([
         "path/workflow@5 is no longer read — run scripts/migrate-workflow-format-v6.ts to migrate this file to path/workflow@6",
       ]);
     }
@@ -800,7 +801,7 @@ describe("safeParseWorkflowFile — actionable errors", () => {
     const result = safeParseWorkflowFile({ ...minimal, format: "path/workflow@7" });
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.errors).toEqual([
+      expect(result.issues.map(englishText)).toEqual([
         "path/workflow@7 is newer than this engine reads (path/workflow@6) — upgrade PATH to read it",
       ]);
     }
@@ -816,8 +817,10 @@ describe("safeParseWorkflowFile — actionable errors", () => {
       const result = safeParseWorkflowFile({ ...minimal, format });
       expect(result.success, format).toBe(false);
       if (!result.success) {
-        expect(result.errors.join("\n"), format).not.toMatch(/newer|no longer read/);
-        expect(result.errors.join("\n"), format).toMatch(/^format:/);
+        expect(result.issues.map(englishText).join("\n"), format).not.toMatch(
+          /newer|no longer read/,
+        );
+        expect(result.issues.map(englishText).join("\n"), format).toMatch(/^format:/);
       }
     }
   });
@@ -831,7 +834,7 @@ describe("safeParseWorkflowFile — actionable errors", () => {
     });
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.errors.join("\n")).toMatch(/root/i);
+      expect(result.issues.map(englishText).join("\n")).toMatch(/root/i);
     }
   });
 
@@ -864,7 +867,7 @@ describe("WorkflowFileSchema — worker_defaults registry validation (ADR 0044, 
     const result = safeParseWorkflowFile({ ...minimal, worker_defaults: { nope: "anthropic" } });
     expect(result.success).toBe(false);
     if (!result.success) {
-      const joined = result.errors.join("\n");
+      const joined = result.issues.map(englishText).join("\n");
       expect(joined).toMatch(/unknown step type "nope"/);
       // The installed list, the unknown-`type` node-error shape.
       expect(joined).toMatch(/binary/);
@@ -879,7 +882,7 @@ describe("WorkflowFileSchema — worker_defaults registry validation (ADR 0044, 
     const result = safeParseWorkflowFile({ ...minimal, worker_defaults: { prompt: "deepseek" } });
     expect(result.success).toBe(false);
     if (!result.success) {
-      const joined = result.errors.join("\n");
+      const joined = result.issues.map(englishText).join("\n");
       expect(joined).toMatch(/unknown worker "deepseek"/);
       expect(joined).toMatch(/"prompt" ships "anthropic"/);
       expect(joined).toMatch(/worker_defaults\.prompt/);
@@ -893,7 +896,7 @@ describe("WorkflowFileSchema — worker_defaults registry validation (ADR 0044, 
     });
     expect(result.success).toBe(false);
     if (!result.success) {
-      const joined = result.errors.join("\n");
+      const joined = result.issues.map(englishText).join("\n");
       expect(joined).toMatch(/unknown step type "nope"/);
       expect(joined).toMatch(/unknown worker "deepseek"/);
     }

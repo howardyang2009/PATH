@@ -144,7 +144,16 @@ describe("GET /v0/workflows", () => {
     expect(old.error?.message).toBe(
       `${join(projectDir, u("old.workflow.json"))}: path/workflow@1 is no longer read — run scripts/archive/migrate-workflow-format-v2.ts then scripts/archive/migrate-workflow-format-v3.ts then scripts/archive/migrate-workflow-format-v4.ts then scripts/archive/migrate-workflow-format-v5.ts then scripts/migrate-workflow-format-v6.ts to migrate this file to path/workflow@6`,
     );
-    expect(old.error?.details).toHaveLength(1);
+    expect(old.error?.code).toBe("workflow.invalid");
+    expect(old.error?.details).toEqual([
+      {
+        key: "shared.issueAtPath",
+        params: {
+          path: join(projectDir, u("old.workflow.json")),
+          issue: expect.objectContaining({ key: "errors.schema.format.superseded" }),
+        },
+      },
+    ]);
   });
 
   it("yields null id/name for a syntactically broken file", async () => {
