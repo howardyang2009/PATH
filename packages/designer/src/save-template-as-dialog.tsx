@@ -1,14 +1,11 @@
 import type { Message } from "@path/i18n";
 import { useMessage } from "@path/i18n/react";
-import { FOLDER_PATTERN } from "@path/schema";
+import { FOLDER_PATTERN, NAME_PATTERN } from "@path/schema";
 import { useMemo, useState } from "react";
 import { useFormatter, useTranslations } from "use-intl";
 import { TEMPLATE_SUFFIX } from "./session-reducer.js";
-import type { TemplateListLoad } from "./template-list.js";
+import { type TemplateListLoad, templateFolders } from "./template-list.js";
 import type { SaveAsResult, TemplateSource } from "./use-open-file.js";
-
-/** A template name is its file stem, so it must match `NameSchema` (server-api-v0.md §10.3). */
-const NAME_PATTERN = /^[a-z][a-z0-9-]*$/;
 
 /** What the dialog hands back: the template's name, its optional subfolder, and description. */
 export interface TemplateSaveInput {
@@ -207,8 +204,7 @@ export function SaveTemplateAsDialog({
 }
 
 /** The folders a template can be saved into: the user's own and the shared template folder, each
- * with every subfolder (ancestors included) found by the last scan. `tops` labels each origin's
- * top folder. */
+ * with every subfolder the Server lists. `tops` labels each origin's top folder. */
 function writableFolders(
   list: TemplateListLoad,
   tops: { user: string; shared: string },
@@ -217,21 +213,10 @@ function writableFolders(
     { origin: "user", top: tops.user, prefix: "" },
     { origin: "shared", top: tops.shared, prefix: "shared/" },
   ] as const;
-  return origins.flatMap(({ origin, top, prefix }) => {
-    const dirs = new Set<string>([""]);
-    if (list.phase === "ready") {
-      for (const template of list.templates) {
-        if (template.origin !== origin) continue;
-        let dir = template.folder ?? "";
-        while (dir !== "" && !dirs.has(dir)) {
-          dirs.add(dir);
-          dir = dir.includes("/") ? dir.slice(0, dir.lastIndexOf("/")) : "";
-        }
-      }
-    }
-    return [...dirs].sort().map((dir) => ({
+  return origins.flatMap(({ origin, top, prefix }) =>
+    ["", ...templateFolders(list, origin)].map((dir) => ({
       value: `${origin}:${dir}`,
       label: dir === "" ? top : `${prefix}${dir}`,
-    }));
-  });
+    })),
+  );
 }

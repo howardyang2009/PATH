@@ -247,6 +247,7 @@ export {
   type WireStepPlugin,
 } from "./wire-step-plugins.js";
 export {
+  type AuthoredRootSummary,
   type BlobName,
   type CompleteRunRequest,
   type CompleteRunResponse,
@@ -281,7 +282,6 @@ export {
   type WireTemplateWriteResponse,
   type WireWorkflowFileResponse,
   type WireWorkflowLease,
-  type WorkflowRootSummary,
   type WorkflowSummary,
 } from "./wire-v0.js";
 // The launch channel of ADR 0044's registry-relative `worker_defaults` validation: the operator

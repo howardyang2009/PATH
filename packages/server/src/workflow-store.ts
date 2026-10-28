@@ -15,7 +15,7 @@ import {
   PRECONDITION_FAILED,
   serializeArtifact,
 } from "./artifact-file.js";
-import { scanFolders } from "./authored-layout.js";
+import { writableRoots } from "./authored-layout.js";
 import { editLease } from "./edit-lease.js";
 import { type Refusal, wireError } from "./http-json.js";
 import type { WriteAccess } from "./write-access.js";
@@ -130,20 +130,7 @@ export function workflowsOf(ctx: {
         };
       });
 
-      const roots = layout
-        .roots("workflow")
-        .flatMap((root) =>
-          root.origin === "shipped"
-            ? []
-            : [
-                {
-                  origin: root.origin,
-                  relative_path: relative(layout.projectDir, root.dir),
-                  folders: scanFolders(root.dir),
-                },
-              ],
-        )
-        .reverse();
+      const roots = writableRoots(layout, "workflow");
       return { workflows, roots, max_file_bytes: access.maxFileBytes ?? null };
     },
 

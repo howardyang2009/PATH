@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { basename, dirname, join, relative, sep } from "node:path";
 import { englishText, type Message } from "@path/i18n";
 import {
+  type ListTemplatesResponse,
   makeStepTemplateSchema,
   type StepPluginRegistry,
   safeParseStepTemplateWith,
@@ -15,7 +16,7 @@ import {
   removeArtifact,
   serializeArtifact,
 } from "./artifact-file.js";
-import { AUTHORED_SUFFIX, type AuthoredOrigin } from "./authored-layout.js";
+import { AUTHORED_SUFFIX, type AuthoredOrigin, writableRoots } from "./authored-layout.js";
 import { SHARED_ITEM_READ_ONLY } from "./creator-table.js";
 import { strongEtag } from "./etag.js";
 import { type Refusal, wireError } from "./http-json.js";
@@ -62,12 +63,6 @@ interface LocatedTemplate extends TemplateEntry {
   absPath: string;
 }
 
-/** The user template `id` names, or the refusal: unknown → `404`, shipped → `403` (read-only,
- * ADR 0050 decision 9). */
-export type WritableTemplate =
-  | { ok: true; entry: TemplateEntry }
-  | ({ ok: false; status: 403 | 404 } & Refusal);
-
 /** A write that landed, addressed by the project-relative path the reply carries. A payload that
  * fails the registry-relative envelope is the `400`, its issues in `details`. */
 export type TemplateWrite =
@@ -89,6 +84,9 @@ export type TemplateRemove = { ok: true } | ({ ok: false; status: 403 | 404 } & 
 export interface TemplateStore {
   /** Every discovered entry, in scan order: shipped before user, files sorted. */
   readonly entries: readonly TemplateEntry[];
+  /** The requester's template Discovery (§10.1): every summary of `kind` (all when absent), and
+   * the roots it may write. */
+  list(kind?: TemplateKind): ListTemplatesResponse;
   /** The entry `id` names, or `undefined`. First-seen wins — shipped is scanned before user, so a
    * user hand-copy of a shipped id resolves to the shipped entry. Malformed, id-less entries are
    * absent. */
@@ -96,8 +94,6 @@ export interface TemplateStore {
   /** The on-disk bytes of the template `id` names, shipped included, and the file name they save
    * as; `undefined` for an unknown id. */
   download(id: string): { fileName: string; bytes: Buffer } | undefined;
-  /** The user entry `id` names, for a door that changes one. */
-  writable(id: string): WritableTemplate;
   /** Create a template under `name`, in the optional `folder` below the `origin` template folder
    * (the user's by default); the name is the file stem, so this door never renames.
    * The payload must be a valid envelope whose `id` no entry holds; an existing name or id is the
@@ -237,6 +233,11 @@ export function discoverTemplates(
 
   return {
     entries: located,
+    list: (kind) => ({
+      templates: located.filter((e) => kind === undefined || e.kind === kind).map(templateSummary),
+      roots: writableRoots(layout, "template"),
+      max_file_bytes: access.maxFileBytes ?? null,
+    }),
     find: (id) => byId.get(id),
     download(id) {
       const entry = byId.get(id);
@@ -244,10 +245,6 @@ export function discoverTemplates(
       return entry === undefined || bytes === undefined
         ? undefined
         : { fileName: `${entry.name}${SUFFIX}`, bytes };
-    },
-    writable(id) {
-      const found = locate(id);
-      return found.ok ? { ok: true, entry: found.entry } : found;
     },
     create(kind, name, payload, folder, origin = "user") {
       const valid = validate(payload);

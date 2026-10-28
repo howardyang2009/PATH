@@ -995,7 +995,12 @@ unregistered-type template invalidates *that one entry* and never the Server sta
 ### 10.1 `GET /v0/templates?kind=step` — list the union
 
 Ungated read (§2.1). `kind` is an **optional** filter; `step` is the only kind, so it changes nothing. The list is **thin** — one summary per entry, **no `body`** — mirroring
-workflow discovery (§6). Registry-relative validity rides each entry.
+workflow discovery (§6). Registry-relative validity rides each entry. Beside `templates`, the
+response carries `roots` (the writable template roots, the user's own first, each `{ origin,
+relative_path, folders }` with every subfolder, empty ones included) and `max_file_bytes` (the
+largest authored file the requester may write, `null` when unlimited), the same shapes as §6.
+
+Each entry in `templates`:
 
 | Field | Type | Meaning |
 | --- | --- | --- |
@@ -1039,7 +1044,12 @@ Response `200 OK`:
         "details": [{ "key": "shared.issueAtPath", "params": { "path": "body.0.type", "issue": { "key": "…" } } }]
       }
     }
-  ]
+  ],
+  "roots": [
+    { "origin": "user", "relative_path": "users/local/template", "folders": [] },
+    { "origin": "shared", "relative_path": "shared/template", "folders": ["team"] }
+  ],
+  "max_file_bytes": null
 }
 ```
 

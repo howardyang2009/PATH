@@ -1,4 +1,4 @@
-import type { PathApiClient, TemplateSummary } from "@path/client-core";
+import type { AuthoredRootSummary, PathApiClient, TemplateSummary } from "@path/client-core";
 import type { Message } from "@path/i18n";
 import { useCallback, useMemo } from "react";
 import { useScanOnSave } from "./scan-on-save.js";
@@ -10,7 +10,20 @@ import type { SaveState } from "./session-reducer.js";
 export type TemplateListLoad =
   | { phase: "loading" }
   | { phase: "error"; message: Message }
-  | { phase: "ready"; templates: readonly TemplateSummary[] };
+  | {
+      phase: "ready";
+      templates: readonly TemplateSummary[];
+      /** The writable template roots, the user's own first, each with its folders. */
+      roots: readonly AuthoredRootSummary[];
+      /** The largest file the requester may write, in bytes; `null` when unlimited. */
+      maxFileBytes: number | null;
+    };
+
+/** The subfolders of the `origin` template root, relative to it; `[]` before a scan lands. */
+export function templateFolders(load: TemplateListLoad, origin: "user" | "shared"): string[] {
+  if (load.phase !== "ready") return [];
+  return [...(load.roots.find((root) => root.origin === origin)?.folders ?? [])];
+}
 
 export function useTemplateList(
   client: PathApiClient,
@@ -19,14 +32,14 @@ export function useTemplateList(
 ): TemplateListLoad {
   // A new `rescanKey` gives the read a new identity, which is what makes `useScanOnSave` re-scan.
   // biome-ignore lint/correctness/useExhaustiveDependencies: rescanKey is the re-scan trigger.
-  const listTemplates = useCallback(
-    async () => (await client.listTemplates()).templates,
-    [client, rescanKey],
-  );
+  const listTemplates = useCallback(async () => {
+    const { templates, roots, max_file_bytes } = await client.listTemplates();
+    return { templates, roots, maxFileBytes: max_file_bytes };
+  }, [client, rescanKey]);
   const load = useScanOnSave(listTemplates, savePhase, RESCAN_ON);
   // Mapped once per scan result, so a consumer keyed on this object does not re-run every render.
   return useMemo(() => {
-    if (load.phase === "ready") return { phase: "ready", templates: load.value };
+    if (load.phase === "ready") return { phase: "ready", ...load.value };
     if (load.phase === "error") return { phase: "error", message: load.message };
     return load;
   }, [load]);

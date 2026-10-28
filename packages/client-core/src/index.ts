@@ -6,6 +6,7 @@
 // Surfaces name the domain through this one seam; everything below originates in `@path/schema`, so
 // this package depends on no engine and a browser never sits one import from SQLite.
 export {
+  type AuthoredRootSummary,
   AWAITING_STEP_TYPE,
   type BlobName,
   type CompleteRunRequest,
@@ -37,7 +38,6 @@ export {
   type WireSecretSummary,
   type WireStepPlugin,
   type WorkflowFile,
-  type WorkflowRootSummary,
   type WorkflowSummary,
 } from "@path/schema";
 

@@ -28,6 +28,31 @@ async function droppedNote(locale: Locale, droppedFields: string[]): Promise<HTM
 }
 
 describe("SaveTemplateAsDialog", () => {
+  it("offers every folder the Server lists, an empty one included", async () => {
+    const messages = await loadMessages("en");
+    render(
+      <IntlProvider locale="en" messages={messages}>
+        <SaveTemplateAsDialog
+          source={null}
+          templateList={{
+            phase: "ready",
+            templates: [],
+            roots: [
+              { origin: "user", relative_path: "users/local/template", folders: ["empty"] },
+              { origin: "shared", relative_path: "shared/template", folders: ["team"] },
+            ],
+            maxFileBytes: null,
+          }}
+          create={async () => ({ status: "created", path: null })}
+          onCreated={() => {}}
+          onCancel={() => {}}
+        />
+      </IntlProvider>,
+    );
+    const options = screen.getAllByRole("option").map((option) => option.textContent);
+    expect(options).toEqual(["(my templates)", "empty", "(shared templates)", "shared/team"]);
+  });
+
   it.each([
     ["en", ["config"], "A template keeps only the body. config will be dropped."],
     [

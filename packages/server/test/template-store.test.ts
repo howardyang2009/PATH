@@ -102,17 +102,39 @@ describe("template store — create", () => {
   });
 });
 
+describe("template store — list", () => {
+  it("lists every summary and the writable roots with their folders, the user's first", async () => {
+    store.create("step", "mine", USER_TEMPLATE, "team/gates");
+    mkdirSync(join(projectDir, "users", "local", "template", "empty"), { recursive: true });
+    const listed = (await openStore()).list();
+
+    expect(listed.templates.find((t) => t.origin === "user")).toMatchObject({
+      name: "mine",
+      folder: "team/gates",
+      read_only: false,
+    });
+    expect(listed.templates.some((t) => t.origin === "shipped")).toBe(true);
+    expect(listed.roots).toEqual([
+      {
+        origin: "user",
+        relative_path: join("users", "local", "template"),
+        folders: ["empty", "team", "team/gates"],
+      },
+      { origin: "shared", relative_path: join("shared", "template"), folders: [] },
+    ]);
+    expect(listed.max_file_bytes).toBeNull();
+  });
+});
+
 describe("template store — resolve and update", () => {
   it("resolves the created id, and its entry etag is the bytes' own", async () => {
     const created = store.create("step", "mine", USER_TEMPLATE);
     if (!created.ok) throw new Error("create failed");
     const reopened = await openStore();
 
-    const found = reopened.writable(USER_TEMPLATE.id);
-    expect(found.ok).toBe(true);
-    if (!found.ok) return;
-    expect(found.entry.name).toBe("mine");
-    expect(found.entry.etag).toBe(strongEtag(readFileSync(join(projectDir, created.relativePath))));
+    const found = reopened.find(USER_TEMPLATE.id);
+    expect(found?.name).toBe("mine");
+    expect(found?.etag).toBe(strongEtag(readFileSync(join(projectDir, created.relativePath))));
   });
 
   it("requires an If-Match, and refuses a stale one", async () => {
@@ -162,12 +184,14 @@ describe("template store — resolve and update", () => {
   });
 
   it("refuses an unknown id as 404 and a shipped id as 403", async () => {
-    expect(store.writable("22222222-2222-4222-8222-222222222222")).toEqual({
+    const unknown = { ...USER_TEMPLATE, id: "22222222-2222-4222-8222-222222222222" };
+    expect(store.update(unknown.id, unknown, "etag")).toEqual({
       ok: false,
       status: 404,
       code: "request.not-found",
     });
-    expect(store.writable(shippedId(store))).toEqual({
+    const shipped = shippedId(store);
+    expect(store.update(shipped, { ...USER_TEMPLATE, id: shipped }, "etag")).toEqual({
       ok: false,
       status: 403,
       code: "template.read-only",

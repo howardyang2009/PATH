@@ -1,7 +1,7 @@
 import { type Dirent, lstatSync, readdirSync } from "node:fs";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { AUTHORED_SUFFIX } from "@path/schema";
+import { AUTHORED_SUFFIX, type AuthoredRootSummary } from "@path/schema";
 import type { Refusal } from "./http-json.js";
 
 // Where authored files live (ADR 0084): a read-only shipped root in the PATH install, then a
@@ -180,6 +180,25 @@ export function scanFolders(root: string): string[] {
   };
   walk(root, "");
   return found.sort();
+}
+
+/** The writable roots of `kind`, the user's own first, each with its folders: where a new file
+ * may land. */
+export function writableRoots(layout: AuthoredLayout, kind: AuthoredKind): AuthoredRootSummary[] {
+  return layout
+    .roots(kind)
+    .flatMap((root) =>
+      root.origin === "shipped"
+        ? []
+        : [
+            {
+              origin: root.origin,
+              relative_path: relative(layout.projectDir, root.dir),
+              folders: scanFolders(root.dir),
+            },
+          ],
+    )
+    .reverse();
 }
 
 /** Every file under `root` ending with `suffix`, as sorted absolute paths; `[]` when `root` is
