@@ -3,6 +3,7 @@ import { useMessage } from "@path/i18n/react";
 import { FOLDER_PATTERN } from "@path/schema";
 import { useId, useMemo, useState } from "react";
 import { useTranslations } from "use-intl";
+import { workflowPath } from "./authored-placement.js";
 import { type DiscoveryLoad, discoveredUserFolders, discoveredUserRoot } from "./discovery.js";
 import { type TemplateListLoad, templateFolders } from "./template-list.js";
 import type { Upload } from "./upload.js";
@@ -47,7 +48,9 @@ export function UploadDialog({
   const target =
     top === undefined
       ? undefined
-      : [top, folder, upload.fileName].filter((part) => part !== "").join("/");
+      : upload.kind === "workflow"
+        ? workflowPath([top, folder].filter((part) => part !== "").join("/"), upload.stem)
+        : [top, folder, upload.fileName].filter((part) => part !== "").join("/");
 
   const submit = (): void => {
     if (!canSubmit) return;
