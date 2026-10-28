@@ -168,10 +168,13 @@ describe("first-save placement dialog", () => {
     // The server rejects a no-precondition create against an existing path with a 412 (ADR 0016).
     const onPut = (_b: unknown, ifMatch: string | null): Response =>
       ifMatch === null
-        ? new Response(JSON.stringify({ error: { message: "exists" } }), {
-            status: 412,
-            headers: { "Content-Type": "application/json" },
-          })
+        ? new Response(
+            JSON.stringify({ error: { code: "file.precondition.exists", message: "exists" } }),
+            {
+              status: 412,
+              headers: { "Content-Type": "application/json" },
+            },
+          )
         : new Response(JSON.stringify({ relative_path: "x", id: "i", etag: '"e"' }), {
             status: 200,
             headers: { "Content-Type": "application/json" },

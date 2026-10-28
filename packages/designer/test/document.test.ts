@@ -1,4 +1,4 @@
-import { type PathApiClient, PathApiError } from "@path/client-core";
+import { apiErrorMessage, type PathApiClient, PathApiError } from "@path/client-core";
 import { verbatim } from "@path/i18n";
 import { FORMAT_VERSION, type WorkflowFile, type WorkflowNode } from "@path/schema";
 import { describe, expect, it } from "vitest";
@@ -183,8 +183,11 @@ describe("writeDocument", () => {
     });
   });
 
-  it("reads an overwrite's 412 as stale on both doors", async () => {
-    const { client } = fakeClient(new PathApiError(412, "changed"));
+  const refusal = (status: number, code: string): PathApiError =>
+    new PathApiError(status, code, undefined, code);
+
+  it("reads an overwrite's changed precondition as stale on both doors", async () => {
+    const { client } = fakeClient(refusal(412, "file.precondition.changed"));
     expect(await writeDocument(client, overwrite)).toMatchObject({ ok: false, conflict: "stale" });
     expect(await writeDocument(client, templatePut)).toMatchObject({
       ok: false,
@@ -192,26 +195,39 @@ describe("writeDocument", () => {
     });
   });
 
-  it("reads a workflow create's 412 and a template create's 409 both as exists", async () => {
+  it("reads a taken workflow path and a taken template name both as exists", async () => {
     expect(
-      await writeDocument(fakeClient(new PathApiError(412, "taken")).client, create),
+      await writeDocument(fakeClient(refusal(412, "file.precondition.exists")).client, create),
     ).toMatchObject({ ok: false, conflict: "exists" });
     expect(
-      await writeDocument(fakeClient(new PathApiError(409, "taken")).client, templatePost),
+      await writeDocument(fakeClient(refusal(409, "template.name-taken")).client, templatePost),
     ).toMatchObject({ ok: false, conflict: "exists" });
   });
 
-  it("reads an in-place save's late 403 and 404 in the spec's words", async () => {
+  it("reads a late read-only refusal and a vanished file in the spec's words", async () => {
     expect(
-      await writeDocument(fakeClient(new PathApiError(403, "read-only")).client, templatePut),
+      await writeDocument(
+        fakeClient(refusal(403, "authored.shared-read-only")).client,
+        templatePut,
+      ),
     ).toEqual({
       ok: false,
       conflict: null,
       message: { key: "designer.document.readOnly" },
     });
     expect(
-      await writeDocument(fakeClient(new PathApiError(404, "not found")).client, overwrite),
+      await writeDocument(fakeClient(refusal(412, "file.precondition.missing")).client, overwrite),
     ).toEqual({ ok: false, conflict: null, message: { key: "designer.document.gone" } });
+  });
+
+  it("keeps a refusal it does not name as the Server's own message", async () => {
+    // A size-limit 403 is not read-only: the Server's own message says why.
+    const tooLarge = refusal(403, "authored.file-too-large");
+    expect(await writeDocument(fakeClient(tooLarge).client, templatePut)).toEqual({
+      ok: false,
+      conflict: null,
+      message: apiErrorMessage(tooLarge),
+    });
   });
 
   it("reads any other failure as an error with its message", async () => {

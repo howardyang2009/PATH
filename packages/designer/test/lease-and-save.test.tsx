@@ -232,10 +232,18 @@ describe("Designer save through the write route", () => {
     const idless = rootFile();
     delete idless.id;
     const onPut = (): Response =>
-      new Response(JSON.stringify({ error: { message: "the file changed since it was read" } }), {
-        status: 412,
-        headers: { "Content-Type": "application/json" },
-      });
+      new Response(
+        JSON.stringify({
+          error: {
+            code: "file.precondition.changed",
+            message: "the file changed since it was read",
+          },
+        }),
+        {
+          status: 412,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
     render(
       <App
         client={stubClient({ files: filesWith(idless), calls, onPut })}
@@ -267,7 +275,12 @@ describe("Designer save through the write route", () => {
       putCount += 1;
       if (putCount === 1) {
         return new Response(
-          JSON.stringify({ error: { message: "the file changed since it was read" } }),
+          JSON.stringify({
+            error: {
+              code: "file.precondition.changed",
+              message: "the file changed since it was read",
+            },
+          }),
           {
             status: 412,
             headers: { "Content-Type": "application/json" },
