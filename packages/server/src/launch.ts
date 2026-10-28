@@ -30,7 +30,7 @@ export function operatorConfigEnvError(config: ConfigObject): Refusal | undefine
     return null;
   });
   if (paths.length === 0) return undefined;
-  return { code: "run.config-env", params: { paths: paths.map((p) => `"${p}"`).join(", ") } };
+  return { code: "run.config-env", params: { paths: paths.map((path) => `"${path}"`) } };
 }
 
 /** An action on an existing run: which door asks, and the ids its refusals name. */

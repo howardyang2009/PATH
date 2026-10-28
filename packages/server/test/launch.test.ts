@@ -21,14 +21,14 @@ describe("operatorConfigEnvError (ADR 0012)", () => {
   it("rejects a bare $env, naming the config key", async () => {
     expect(operatorConfigEnvError({ repo_path: { $env: "SECRET_X" } })).toEqual({
       code: "run.config-env",
-      params: { paths: '"repo_path"' },
+      params: { paths: ['"repo_path"'] },
     });
   });
 
   it("rejects the composed $secret-over-$env form at the config key, not key.$secret", async () => {
     expect(operatorConfigEnvError({ token: { $secret: { $env: "SECRET_X" } } })).toEqual({
       code: "run.config-env",
-      params: { paths: '"token"' },
+      params: { paths: ['"token"'] },
     });
   });
 });

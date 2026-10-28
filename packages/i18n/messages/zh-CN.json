@@ -680,6 +680,7 @@
   },
   "events": {
     "nodeLabel": {
+      "named": "{name}（{shortId}）",
       "root": "根"
     },
     "narrative": {

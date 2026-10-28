@@ -63,7 +63,7 @@ describe("readOverride — the one reading every override field takes", () => {
     expect(reading.blankPaths).toEqual(["token"]);
     expect(reading.blockMessage).toEqual({
       key: "events.resupply.blankSecrets",
-      params: { count: 1, names: '"token"', verb: "resuming" },
+      params: { count: 1, names: ['"token"'], verb: "resuming" },
     });
   });
 
@@ -71,7 +71,7 @@ describe("readOverride — the one reading every override field takes", () => {
     const reading = readOverride({ text: "{}", secretPaths: ["a", "b"], verb: "completing" });
     expect(reading.blockMessage).toEqual({
       key: "events.resupply.blankSecrets",
-      params: { count: 2, names: '"a", "b"', verb: "completing" },
+      params: { count: 2, names: ['"a"', '"b"'], verb: "completing" },
     });
   });
 

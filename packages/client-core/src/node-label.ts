@@ -1,4 +1,4 @@
-import type { MessageParam } from "@path/i18n";
+import { type Message, verbatim } from "@path/i18n";
 
 /** A run and every log event is labelled by its node; the top-level workflow's implicit root step
  * has no node id, so a null `node_id` reads as "root" (CONTEXT.md, "Core execution model").
@@ -13,15 +13,19 @@ export function shortGuid(guid: string): string {
   return guid.slice(0, 8);
 }
 
-/** A narrative row names its node by both the human `node_name` and the short GUID `node_id`; both
+/**
+ * A narrative row names its node by both the human `node_name` and the short GUID `node_id`; both
  * are nullable together for the implicit root step, which reads as "root", and a name-less row
- * falls back to the full id alone.
+ * falls back to the full id alone. Both the name and the id are data, not PATH's prose, so each
+ * rides `verbatim` inside the one catalogue sentence that joins them.
  */
 export function nodeEventLabel(
   nodeId: string | null,
   nodeName: string | null | undefined,
-): MessageParam {
-  if (nodeName === null || nodeName === undefined)
-    return nodeId ?? { key: "events.nodeLabel.root" };
-  return nodeId === null ? nodeName : `${nodeName} (${shortGuid(nodeId)})`;
+): Message {
+  if (nodeName === null || nodeName === undefined) {
+    return nodeId === null ? { key: "events.nodeLabel.root" } : verbatim(nodeId);
+  }
+  if (nodeId === null) return verbatim(nodeName);
+  return { key: "events.nodeLabel.named", params: { name: nodeName, shortId: shortGuid(nodeId) } };
 }

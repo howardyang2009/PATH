@@ -211,7 +211,7 @@ describe("Narrative lines in en", () => {
     [{ ...base, type: "branch-no-match", traces: [trace] }, "branch s (n1) matched no arm"],
     [
       { ...base, type: "join-applied", branches: ["a", "b"], published_keys: ["k"] },
-      "join s (n1) applied · branches a, b · published k",
+      "join s (n1) applied · branches a and b · published k",
     ],
     [
       { ...base, type: "join-applied", branches: ["a"], published_keys: [] },
@@ -268,7 +268,10 @@ describe("Narrative lines in en", () => {
       },
     });
     for (const [event, english] of lines) {
-      const text = renderMessage(t, eventMessage(event));
+      const text = renderMessage(
+        { t, list: (items) => new Intl.ListFormat(locale).format(items) },
+        eventMessage(event),
+      );
       expect(text).not.toBe(english);
       expect(text).not.toMatch(/events\./);
     }

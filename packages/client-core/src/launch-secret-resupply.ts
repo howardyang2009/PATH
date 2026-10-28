@@ -106,9 +106,12 @@ export function blankSecretPaths(
 }
 
 /** The operator-facing reason a continuation waits while a recorded secret path is blank: names
- * each one, singular or plural, with the verb making the sentence read in place.
+ * each one, singular or plural, with the verb making the sentence read in place. The paths ride as
+ * a list, so the Locale joins them its own way.
  */
 export function blankSecretMessage(paths: readonly string[], verb: ContinuationVerb): Message {
-  const names = paths.map((path) => `"${path}"`).join(", ");
-  return { key: "events.resupply.blankSecrets", params: { count: paths.length, names, verb } };
+  return {
+    key: "events.resupply.blankSecrets",
+    params: { count: paths.length, names: paths.map((path) => `"${path}"`), verb },
+  };
 }

@@ -94,7 +94,10 @@ describe("validateCondition rejects an ill-typed condition", () => {
 async function inGerman(condition: Condition): Promise<string> {
   z.config(z.locales.de());
   const t = createTranslator({ locale: "de", messages: await loadMessages("de") }) as Translate;
-  return renderMessage(t, validateCondition(condition) as Message);
+  return renderMessage(
+    { t, list: (items) => new Intl.ListFormat("de").format(items) },
+    validateCondition(condition) as Message,
+  );
 }
 
 afterEach(() => {
