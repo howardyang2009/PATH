@@ -1,4 +1,4 @@
-import { isMessageKey, type Message, verbatim } from "@path/i18n";
+import { decodeError, type Message, verbatim } from "@path/i18n";
 import type { JsonValue, WireError } from "@path/schema";
 
 /** A minimal `fetch` shape — injectable so browser/React Native/tests can supply their own. */
@@ -78,12 +78,9 @@ export class PathApiError extends Error {
 
 /** A failure as the UI shows it: a known code from the catalogue, else the English text as is. */
 export function apiErrorMessage(error: unknown): Message {
-  if (error instanceof PathApiError && error.code !== undefined) {
-    const key = `errors.${error.code}`;
-    if (isMessageKey(key))
-      return error.params === undefined ? { key } : { key, params: error.params };
-  }
-  return verbatim(error instanceof Error ? error.message : String(error));
+  const text = error instanceof Error ? error.message : String(error);
+  if (!(error instanceof PathApiError)) return verbatim(text);
+  return decodeError(error.code, error.params, text);
 }
 
 export interface RequestOptions {

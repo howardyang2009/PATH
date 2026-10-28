@@ -1,10 +1,16 @@
-import { type ErrorCode, englishText, type Message, type MessageParam, verbatim } from "@path/i18n";
+import {
+  codedMessage,
+  decodeError,
+  type ErrorCode,
+  type ErrorParams,
+  errorCodeOf,
+  errorText,
+  type Message,
+  type MessageParam,
+} from "@path/i18n";
 import type { z } from "zod";
 
-/** The `Message` of a load error PATH owns: `errors.<code>` with its values. */
-export function codedMessage(code: ErrorCode, params?: Record<string, MessageParam>): Message {
-  return { key: `errors.${code}`, ...(params ? { params } : {}) };
-}
+export { codedMessage };
 
 /**
  * The body of a zod issue PATH owns (ADR 0107 point 7): `message` in English for the CLI and logs,
@@ -12,18 +18,16 @@ export function codedMessage(code: ErrorCode, params?: Record<string, MessagePar
  */
 export function codedIssue(
   code: ErrorCode,
-  params?: Record<string, MessageParam>,
-): { message: string; params: { code: ErrorCode } & Record<string, MessageParam> } {
-  return {
-    message: englishText(codedMessage(code, params)),
-    params: { code, ...params },
-  };
+  params?: ErrorParams,
+): { message: string; params: { code: ErrorCode } & ErrorParams } {
+  return { message: errorText(code, params), params: { code, ...params } };
 }
 
 /** {@link codedIssue} for a `codedMessage` a shared check returned. */
 export function messageIssue(message: Message): ReturnType<typeof codedIssue> {
-  if (!message.key.startsWith("errors.")) throw new Error(`not an error code: ${message.key}`);
-  return codedIssue(message.key.slice("errors.".length) as ErrorCode, message.params);
+  const coded = errorCodeOf(message);
+  if (coded === undefined) throw new Error(`not an error code: ${message.key}`);
+  return codedIssue(coded.code, coded.params);
 }
 
 /**
@@ -38,10 +42,8 @@ export function codedErrorMap(rawIssue: object, message: Message): string {
 
 /** A zod issue as a `Message`: a PATH refinement by its code, a built-in issue by zod's own text. */
 export function zodIssueMessage(issue: z.core.$ZodIssue): Message {
-  const params = (issue as { params?: Record<string, MessageParam> }).params;
-  if (typeof params?.code !== "string") return verbatim(issue.message);
-  const { code, ...values } = params;
-  return codedMessage(code as ErrorCode, Object.keys(values).length > 0 ? values : undefined);
+  const { code, ...values } = (issue as { params?: Record<string, MessageParam> }).params ?? {};
+  return decodeError(code, Object.keys(values).length > 0 ? values : undefined, issue.message);
 }
 
 /** One `Message` per issue, prefixed with the dot-path of the offending field. */

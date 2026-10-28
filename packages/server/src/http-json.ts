@@ -1,5 +1,5 @@
 import type { ServerResponse } from "node:http";
-import { type ErrorCode, englishText } from "@path/i18n";
+import { type CodedError, type ErrorCode, type ErrorParams, errorText } from "@path/i18n";
 import { formatIssues } from "@path/schema";
 import type { z } from "zod";
 import type { RequestBody } from "./request-body.js";
@@ -13,17 +13,14 @@ export interface RouteReply {
   headers?: Record<string, string>;
 }
 
-export type ErrorParams = Record<string, string | number>;
+export type { ErrorParams };
 
 /** A refusal PATH owns (ADR 0107): its code, the client's catalogue key, and the code's params. */
-export interface Refusal {
-  code: ErrorCode;
-  params?: ErrorParams;
-}
+export type Refusal = CodedError;
 
 /** A refusal's English text, from the `en` catalogue: the wire's fallback, logs and the CLI. */
 export function refusalText({ code, params }: Refusal): string {
-  return englishText({ key: `errors.${code}`, params });
+  return errorText(code, params);
 }
 
 /** A refusal in the shared error envelope (server-api-v0.md §1, ADR 0107): the code and params

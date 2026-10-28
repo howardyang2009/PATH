@@ -1,4 +1,4 @@
-import { isMessageKey, type Message, type MessageParam, verbatim } from "@path/i18n";
+import { decodeError, type Message } from "@path/i18n";
 import type { LogEvent, StepFinishedEvent } from "@path/schema";
 import { nodeEventLabel } from "./node-label.js";
 
@@ -110,9 +110,5 @@ export function eventMessage(event: LogEvent): Message {
  * catalogue, else the stored English, as for an event written before codes. */
 export function stepFinishedError(event: StepFinishedEvent): Message | undefined {
   if (event.error === undefined) return undefined;
-  const key = `errors.${event.error_code}`;
-  if (event.error_code === undefined || !isMessageKey(key)) return verbatim(event.error);
-  // The engine wrote these params from a `Message`; JSON is how they crossed the store.
-  const params = event.error_params as Record<string, MessageParam> | undefined;
-  return params === undefined ? { key } : { key, params };
+  return decodeError(event.error_code, event.error_params, event.error);
 }

@@ -1,3 +1,11 @@
+export {
+  type CodedError,
+  codedMessage,
+  decodeError,
+  type ErrorParams,
+  errorCodeOf,
+  errorText,
+} from "./coded-error.js";
 export { englishErrorTemplates, englishText, isMessageKey } from "./english.js";
 export { isLocale, LOCALES, type Locale, localeCookie, pickLocale } from "./locale.js";
 export {

@@ -1,4 +1,4 @@
-import { isMessageKey, type Message, type MessageParam, verbatim } from "@path/i18n";
+import { decodeError, type Message } from "@path/i18n";
 import {
   holdsPlaceholder,
   isPlainObject,
@@ -159,14 +159,8 @@ export function mapCompleteErrors(details: JsonValue | undefined): MappedComplet
 }
 
 function issueMessage(issue: { [key: string]: JsonValue }): Message {
-  const key = `errors.${String(issue.code)}`;
-  if (typeof issue.code === "string" && isMessageKey(key)) {
-    const params = isPlainObject(issue.params)
-      ? { params: issue.params as Record<string, MessageParam> }
-      : {};
-    return { key, ...params };
-  }
-  return verbatim(typeof issue.message === "string" ? issue.message : "Invalid value.");
+  const fallback = typeof issue.message === "string" ? issue.message : "Invalid value.";
+  return decodeError(issue.code, isPlainObject(issue.params) ? issue.params : undefined, fallback);
 }
 
 /** The field an ajv issue is about, or `null` for a form-level one. */

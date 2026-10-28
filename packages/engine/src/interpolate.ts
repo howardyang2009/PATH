@@ -1,4 +1,10 @@
-import { type ErrorCode, englishText, type Message, type MessageParam } from "@path/i18n";
+import {
+  codedMessage,
+  type ErrorCode,
+  englishText,
+  type Message,
+  type MessageParam,
+} from "@path/i18n";
 import {
   type JsonValue,
   mapSecrets,
@@ -17,7 +23,7 @@ export type InterpolationScope = { [root: string]: JsonValue };
 export class InterpolationError extends Error {
   readonly reason: Message;
   constructor(code: ErrorCode, params: Record<string, MessageParam>) {
-    const reason: Message = { key: `errors.${code}`, params };
+    const reason = codedMessage(code, params);
     super(englishText(reason));
     this.reason = reason;
   }

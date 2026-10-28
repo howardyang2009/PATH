@@ -1,5 +1,5 @@
 import { type MessageFormatElement, parse, TYPE } from "@formatjs/icu-messageformat-parser";
-import { type ErrorCode, englishErrorTemplates, type MessageParam } from "@path/i18n";
+import { codedMessage, type ErrorCode, englishErrorTemplates, type MessageParam } from "@path/i18n";
 import type { LogEvent, StepFinishedEvent } from "@path/schema";
 
 /** What one capture group yields: an argument's text, a plural's `#`, or a chosen option's value. */
@@ -91,7 +91,7 @@ function textParam(name: string, text: string): MessageParam {
   const nested = name === "error" ? oldErrorCode(text) : undefined;
   if (nested === undefined) return text;
   const { code, params } = nested;
-  return { key: `errors.${code}`, ...(Object.keys(params).length > 0 ? { params } : {}) };
+  return codedMessage(code, Object.keys(params).length > 0 ? params : undefined);
 }
 
 /** `event` with the code of its old error, if it has one; the stored event is not changed. */
