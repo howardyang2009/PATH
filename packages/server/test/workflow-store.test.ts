@@ -146,7 +146,21 @@ describe("workflow store list", () => {
         ["sample.workflow.json", "shipped", "copy"],
       ]),
     );
-    expect(roots[0]).toEqual({ origin: "user", relative_path: join("users", "local", "workflow") });
+    expect(roots[0]).toEqual({
+      origin: "user",
+      relative_path: join("users", "local", "workflow"),
+      folders: [],
+    });
+  });
+
+  it("lists each writable root's folders, empty and hidden-staging ones apart, and no limit locally", async () => {
+    const root = join(projectDir, "users", "local", "workflow");
+    mkdirSync(join(root, "team", "empty"), { recursive: true });
+    mkdirSync(join(root, ".staging"), { recursive: true });
+
+    const listed = await store.list();
+    expect(listed.roots[0]?.folders).toEqual(["team", "team/empty"]);
+    expect(listed.max_file_bytes).toBeNull();
   });
 
   it("lists an invalid file with its coded load error", async () => {

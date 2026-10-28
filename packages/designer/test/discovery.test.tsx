@@ -56,6 +56,7 @@ describe("discoveredWorkflows", () => {
           { relative_path: "b.workflow.json", action: "copy" },
         ] as never[],
         roots: [],
+        maxFileBytes: null,
       },
     };
     expect(discoveredWorkflows(load)?.map((w) => w.relative_path)).toEqual([

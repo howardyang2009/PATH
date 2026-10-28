@@ -1,5 +1,5 @@
 import type { Message } from "@path/i18n";
-import { FORMAT_VERSION, type WorkflowFile } from "@path/schema";
+import { AUTHORED_SUFFIX, FORMAT_VERSION, type WorkflowFile } from "@path/schema";
 import type { EditKey } from "../edit-key.js";
 import type { OpenResult } from "../open-workflow.js";
 import type { ReadOnlyReason } from "../read-only.js";
@@ -63,7 +63,7 @@ export interface Frame {
 }
 
 /** The file suffix a template carries on disk: `*.step-template.json`, one kind only (ADR 0063). */
-export const TEMPLATE_SUFFIX = ".step-template.json";
+export const TEMPLATE_SUFFIX = AUTHORED_SUFFIX.template;
 
 /** The template an author-mode frame edits: its id (the route key), kind, file stem, and origin. */
 export interface TemplateSource {

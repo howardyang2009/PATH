@@ -1,4 +1,4 @@
-import { NameSchema, type WireTemplateWriteResponse } from "@path/schema";
+import { FOLDER_PATTERN, NameSchema, type WireTemplateWriteResponse } from "@path/schema";
 import { z } from "zod";
 import { type RouteReply, readRequestBody, replyRefused } from "../http-json.js";
 import { templatesOf } from "../template-store.js";
@@ -8,10 +8,7 @@ import type { ApiRequest } from "./route-context.js";
  * the user's template folder. */
 const FolderSchema = z
   .string()
-  .regex(
-    /^[^\\./\0][^\\/\0]*(\/[^\\./\0][^\\/\0]*)*$/,
-    "folder must be a relative path of plain names",
-  );
+  .regex(FOLDER_PATTERN, "folder must be a relative path of plain names");
 
 /**
  * The save-as envelope (§10.3): `kind` is always `"step"`, `name` is the file stem, and `body` is

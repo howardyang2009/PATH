@@ -624,9 +624,10 @@ Response `200 OK`:
     }
   ],
   "roots": [
-    { "origin": "user", "relative_path": "users/local/workflow" },
-    { "origin": "shared", "relative_path": "shared/workflow" }
-  ]
+    { "origin": "user", "relative_path": "users/local/workflow", "folders": ["team"] },
+    { "origin": "shared", "relative_path": "shared/workflow", "folders": [] }
+  ],
+  "max_file_bytes": null
 }
 ```
 
@@ -644,7 +645,10 @@ Response `200 OK`:
 | `error` | object \| null | The shared error shape (§1) when `valid: false` (bad JSON, schema violation, missing ref, cycle, unknown step type, broken plugin folder); `null` otherwise. Its `code` is `workflow.invalid`, `details` holds one `Message` per load issue (the same shape as a `PUT` refusal's), and `message` is the first issue in English. |
 
 `roots` lists the writable workflow roots by project path, the user's own first: where a new workflow
-may land. A client reads them here instead of carrying the folder layout itself.
+may land. Each root's `folders` lists its subfolders relative to it, sorted, empty ones included
+(dot-folders are skipped). `max_file_bytes` is the largest authored file the requester may write, or
+`null` when unlimited (local mode). A client reads these here instead of carrying the folder layout or
+the limit itself.
 
 - **A file whose step-type plugin is absent is `valid: false`, not valid-but-unlaunchable**
   ([#315](https://github.com/howardyang2009/PATH/issues/315)). The set of valid leaf step types is a fact

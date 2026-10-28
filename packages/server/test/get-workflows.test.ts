@@ -257,9 +257,10 @@ describe("GET /v0/workflows", () => {
   it("lists the writable workflow roots, the user's own first", async () => {
     const { body } = await listWorkflows();
     expect(body.roots).toEqual([
-      { origin: "user", relative_path: join("users", "local", "workflow") },
-      { origin: "shared", relative_path: join("shared", "workflow") },
+      { origin: "user", relative_path: join("users", "local", "workflow"), folders: [] },
+      { origin: "shared", relative_path: join("shared", "workflow"), folders: [] },
     ]);
+    expect(body.max_file_bytes).toBeNull();
   });
 
   it("lists shipped workflows relative to the shipped root, flagging their nested refs", async () => {

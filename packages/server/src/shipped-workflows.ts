@@ -9,7 +9,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { dirname, join, relative, sep } from "node:path";
-import { instantiateWorkflow, type WorkflowFile } from "@path/schema";
+import { AUTHORED_SUFFIX, instantiateWorkflow, type WorkflowFile } from "@path/schema";
 import type { AuthoredLayout } from "./authored-layout.js";
 import { confineToProjectRoot } from "./confine.js";
 import type { Refusal } from "./http-json.js";
@@ -28,7 +28,7 @@ function freshCopy(bytes: Buffer, suffix: string): string {
   return `${JSON.stringify({ ...file, name: `${file.name}${suffix}` }, null, 2)}\n`;
 }
 
-const WORKFLOW_SUFFIX = ".workflow.json";
+const WORKFLOW_SUFFIX = AUTHORED_SUFFIX.workflow;
 
 /** `top` with `-<n>` before its `.workflow.json` suffix (a file) or at its end (a folder); `top`
  * itself for `n` 0. */

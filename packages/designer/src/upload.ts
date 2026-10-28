@@ -1,11 +1,6 @@
 import type { TemplateSummary, WorkflowRootSummary, WorkflowSummary } from "@path/client-core";
 import type { Message } from "@path/i18n";
-import { type JsonValue, NAME_PATTERN } from "@path/schema";
-import { TEMPLATE_SUFFIX } from "./session-reducer.js";
-
-const WORKFLOW_SUFFIX = ".workflow.json";
-/** The hosted authored-file limit; a bigger file is refused before the browser parses it. */
-const MAX_BYTES = 1024 * 1024;
+import { AUTHORED_SUFFIX, type JsonValue, NAME_PATTERN } from "@path/schema";
 
 export type UploadKind = "workflow" | "template";
 
@@ -19,22 +14,26 @@ export interface CheckedFile {
   fileName: string;
 }
 
-/** The checks Upload runs before it reads the file: the suffix picks the kind. A template's stem is
- * its name, so it must be a plain name; a workflow's stem only must not hide or leave its folder. */
-export function checkUploadFile(file: { name: string; size: number }): CheckedFile | UploadRefusal {
+/** The checks Upload runs before it reads the file: the suffix picks the kind, and a file over the
+ * Server's `maxBytes` is refused before the browser parses it. A template's stem is its name, so it
+ * must be a plain name; a workflow's stem only must not hide or leave its folder. */
+export function checkUploadFile(
+  file: { name: string; size: number },
+  maxBytes: number | null,
+): CheckedFile | UploadRefusal {
   const { name } = file;
-  const kind = name.endsWith(TEMPLATE_SUFFIX)
+  const kind = name.endsWith(AUTHORED_SUFFIX.template)
     ? "template"
-    : name.endsWith(WORKFLOW_SUFFIX)
+    : name.endsWith(AUTHORED_SUFFIX.workflow)
       ? "workflow"
       : undefined;
   if (kind === undefined) {
     return { ok: false, message: { key: "designer.upload.wrongSuffix", params: { name } } };
   }
-  if (file.size > MAX_BYTES) {
+  if (maxBytes !== null && file.size > maxBytes) {
     return { ok: false, message: { key: "designer.upload.tooLarge", params: { name } } };
   }
-  const stem = name.slice(0, -(kind === "template" ? TEMPLATE_SUFFIX : WORKFLOW_SUFFIX).length);
+  const stem = name.slice(0, -AUTHORED_SUFFIX[kind].length);
   const plain =
     kind === "template" ? NAME_PATTERN.test(stem) : stem !== "" && !/^\.|[\\/]/.test(stem);
   if (!plain) {
@@ -49,10 +48,6 @@ export interface Upload extends Omit<CheckedFile, "ok"> {
   /** The subfolder of the user root it goes into, `""` for the top. */
   folder: string;
 }
-
-/** A subfolder path of plain names, as the Server accepts it: no empty, dot-leading, or backslash
- * segments. */
-export const FOLDER_PATTERN = /^[^\\./\0][^\\/\0]*(\/[^\\./\0][^\\/\0]*)*$/;
 
 /** Parse the file's text and check that its content is the kind its suffix names: a workflow file
  * carries a `name`, a template envelope never does. The schema is the Server's to check. */

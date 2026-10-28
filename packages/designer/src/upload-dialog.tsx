@@ -1,11 +1,12 @@
 import type { Message } from "@path/i18n";
 import { useMessage } from "@path/i18n/react";
+import { FOLDER_PATTERN } from "@path/schema";
 import { useId, useMemo, useState } from "react";
 import { useTranslations } from "use-intl";
-import { type DiscoveryLoad, discoveredUserRoot, discoveredWorkflows } from "./discovery.js";
+import { type DiscoveryLoad, discoveredUserFolders, discoveredUserRoot } from "./discovery.js";
 import { dirnameOf } from "./new-file-dialog.js";
 import type { TemplateListLoad } from "./template-list.js";
-import { FOLDER_PATTERN, type Upload } from "./upload.js";
+import type { Upload } from "./upload.js";
 import type { UploadOutcome } from "./upload-file.js";
 
 /**
@@ -132,12 +133,7 @@ function userFolders(
       for (const row of templateList.templates) if (row.origin === "user") add(row.folder ?? "");
     }
   } else {
-    const root = discoveredUserRoot(discovery);
-    for (const row of discoveredWorkflows(discovery) ?? []) {
-      if (root !== undefined && row.relative_path.startsWith(`${root}/`)) {
-        add(dirnameOf(row.relative_path.slice(root.length + 1)));
-      }
-    }
+    for (const folder of discoveredUserFolders(discovery)) add(folder);
   }
   return [...dirs].sort();
 }

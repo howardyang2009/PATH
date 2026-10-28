@@ -15,9 +15,28 @@ import { displayStatusByRun, fromWireRunRecord, type WireRunRecord } from "@path
 /** The built-in registry leaf types the Designer ships editors for: `prompt` and `binary`. */
 /** The writable workflow roots a real Server lists for the default user. */
 export const DEFAULT_ROOTS: WorkflowRootSummary[] = [
-  { origin: "user", relative_path: "users/local/workflow" },
-  { origin: "shared", relative_path: "shared/workflow" },
+  { origin: "user", relative_path: "users/local/workflow", folders: [] },
+  { origin: "shared", relative_path: "shared/workflow", folders: [] },
 ];
+
+/** `roots` with each root's folders as a real Server scans them: every folder a listed row sits in. */
+function withFolders(
+  roots: WorkflowRootSummary[],
+  rows: readonly { relative_path: string }[],
+): WorkflowRootSummary[] {
+  return roots.map((root) => {
+    const folders = new Set(root.folders);
+    for (const { relative_path } of rows) {
+      if (!relative_path.startsWith(`${root.relative_path}/`)) continue;
+      const parts = relative_path
+        .slice(root.relative_path.length + 1)
+        .split("/")
+        .slice(0, -1);
+      for (let i = 1; i <= parts.length; i++) folders.add(parts.slice(0, i).join("/"));
+    }
+    return { ...root, folders: [...folders].sort() };
+  });
+}
 
 export const DEFAULT_PLUGINS: WireStepPlugin[] = [
   {
@@ -345,8 +364,18 @@ export function stubClient(options: StubServerOptions = {}): PathApiClient {
           );
     }
     if (input === "/v0/workflows" && (init?.method ?? "GET") === "GET") {
-      const discovery = (options.workflows ?? { workflows: [] }) as Record<string, unknown>;
-      return json({ roots: DEFAULT_ROOTS, ...discovery }, 200);
+      const discovery = (options.workflows ?? { workflows: [] }) as {
+        workflows: { relative_path: string }[];
+        roots?: WorkflowRootSummary[];
+      };
+      const roots = withFolders(
+        (discovery.roots ?? DEFAULT_ROOTS).map((root) => ({
+          ...root,
+          folders: root.folders ?? [],
+        })),
+        discovery.workflows,
+      );
+      return json({ max_file_bytes: null, ...discovery, roots }, 200);
     }
     if (input === "/v0/workflows" && init?.method === "PUT") {
       const ifMatch = (init.headers as Record<string, string>)?.["If-Match"] ?? null;

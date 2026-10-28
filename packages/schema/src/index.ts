@@ -15,6 +15,7 @@
 // This barrel is the package's one interface: no consumer imports a schema module by path, so a
 // named subpath export would be a seam with no second adapter. A new name reaches consumers here.
 
+export { AUTHORED_SUFFIX, FOLDER_PATTERN } from "./authored-file.js";
 export { issueMessages, zodIssueMessage } from "./coded-issue.js";
 export type {
   AllCondition,

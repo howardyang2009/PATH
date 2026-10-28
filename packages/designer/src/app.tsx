@@ -14,6 +14,7 @@ import {
   resolvedDialog,
   saveAsDialog,
 } from "./dialog-flow.js";
+import { discoveredMaxFileBytes } from "./discovery.js";
 import { documentPolicy } from "./document.js";
 import { downloadFailure, downloadFile } from "./download-file.js";
 import {
@@ -234,7 +235,7 @@ export function App({
   };
   const onUploadPicked = (file: File | undefined): void => {
     if (file === undefined || !confirmDiscard()) return;
-    void readPickedFile(file).then((read) => {
+    void readPickedFile(file, discoveredMaxFileBytes(discovery)).then((read) => {
       if (read.status === "read") setUploadPicked(read.upload);
       else finishUpload(read);
     });

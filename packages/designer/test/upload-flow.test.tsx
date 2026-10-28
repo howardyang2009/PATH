@@ -189,8 +189,14 @@ describe("Upload", () => {
     await waitFor(() => expect(calls.put).toHaveLength(1));
     const written = calls.put[0]!.body;
     expect(written.workflow_path).toBe(copyPath);
+    // A copy re-stamps every id, the file's and each node's, as Save as does.
     expect(written.workflow.id).not.toBe(WORKFLOW_ID);
-    expect({ ...written.workflow, id: WORKFLOW_ID }).toEqual(WORKFLOW_FILE);
+    const [node] = written.workflow.body as { id: string }[];
+    expect(node?.id).not.toBe(WORKFLOW_FILE.body[0]!.id);
+    expect(node).toMatchObject({
+      ...WORKFLOW_FILE.body[0],
+      id: expect.any(String),
+    });
     await waitFor(() =>
       expect(screen.queryByRole("dialog", { name: "Upload as copy" })).toBeNull(),
     );

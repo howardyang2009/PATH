@@ -229,12 +229,16 @@ export interface WorkflowSummary {
 export interface WorkflowRootSummary {
   origin: "shared" | "user";
   relative_path: string;
+  /** The root's subfolders, relative to it and sorted, empty ones included. */
+  folders: string[];
 }
 
 export interface ListWorkflowsResponse {
   workflows: WorkflowSummary[];
   /** The writable workflow roots, the user's own first: where a new workflow may land. */
   roots: WorkflowRootSummary[];
+  /** The largest authored file the requester may write, in bytes; `null` when unlimited. */
+  max_file_bytes: number | null;
 }
 
 /**

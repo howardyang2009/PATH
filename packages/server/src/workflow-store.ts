@@ -15,6 +15,7 @@ import {
   PRECONDITION_FAILED,
   serializeArtifact,
 } from "./artifact-file.js";
+import { scanFolders } from "./authored-layout.js";
 import { editLease } from "./edit-lease.js";
 import { type Refusal, wireError } from "./http-json.js";
 import type { WriteAccess } from "./write-access.js";
@@ -134,10 +135,16 @@ export function workflowsOf(ctx: {
         .flatMap((root) =>
           root.origin === "shipped"
             ? []
-            : [{ origin: root.origin, relative_path: relative(layout.projectDir, root.dir) }],
+            : [
+                {
+                  origin: root.origin,
+                  relative_path: relative(layout.projectDir, root.dir),
+                  folders: scanFolders(root.dir),
+                },
+              ],
         )
         .reverse();
-      return { workflows, roots };
+      return { workflows, roots, max_file_bytes: access.maxFileBytes ?? null };
     },
 
     write(workflowPath, payload, ifMatch) {

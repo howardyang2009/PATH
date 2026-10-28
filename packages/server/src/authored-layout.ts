@@ -1,6 +1,7 @@
 import { type Dirent, lstatSync, readdirSync } from "node:fs";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { AUTHORED_SUFFIX } from "@path/schema";
 import type { Refusal } from "./http-json.js";
 
 // Where authored files live (ADR 0084): a read-only shipped root in the PATH install, then a
@@ -33,10 +34,7 @@ export interface AuthoredRefusal extends Refusal {
 }
 
 /** The file suffix that types an authored file by its kind. */
-export const AUTHORED_SUFFIX: Record<AuthoredKind, string> = {
-  workflow: ".workflow.json",
-  template: ".step-template.json",
-};
+export { AUTHORED_SUFFIX };
 
 export const DEFAULT_SHIPPED_DIR: Record<AuthoredKind, string> = {
   workflow: fileURLToPath(new URL("../shipped/workflow", import.meta.url)),
@@ -158,6 +156,30 @@ function crossesSymlink(dir: string, abs: string): boolean {
     }
   }
   return false;
+}
+
+/** Every subfolder under `root`, relative to it and sorted, by the same skips as {@link scanFiles}:
+ * the folders a new file may land in. */
+export function scanFolders(root: string): string[] {
+  const found: string[] = [];
+  const walk = (dir: string, prefix: string): void => {
+    let entries: Dirent[];
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (!entry.isDirectory() || entry.name === "node_modules" || entry.name.startsWith(".")) {
+        continue;
+      }
+      const folder = prefix === "" ? entry.name : `${prefix}/${entry.name}`;
+      found.push(folder);
+      walk(join(dir, entry.name), folder);
+    }
+  };
+  walk(root, "");
+  return found.sort();
 }
 
 /** Every file under `root` ending with `suffix`, as sorted absolute paths; `[]` when `root` is

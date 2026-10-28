@@ -13,13 +13,13 @@ import {
 
 describe("checkUploadFile", () => {
   it("takes the kind from the suffix", () => {
-    expect(checkUploadFile({ name: "flow.workflow.json", size: 10 })).toEqual({
+    expect(checkUploadFile({ name: "flow.workflow.json", size: 10 }, null)).toEqual({
       ok: true,
       kind: "workflow",
       stem: "flow",
       fileName: "flow.workflow.json",
     });
-    expect(checkUploadFile({ name: "gate.step-template.json", size: 10 })).toEqual({
+    expect(checkUploadFile({ name: "gate.step-template.json", size: 10 }, null)).toEqual({
       ok: true,
       kind: "template",
       stem: "gate",
@@ -28,35 +28,39 @@ describe("checkUploadFile", () => {
   });
 
   it("refuses another suffix", () => {
-    expect(checkUploadFile({ name: "notes.json", size: 10 })).toEqual({
+    expect(checkUploadFile({ name: "notes.json", size: 10 }, null)).toEqual({
       ok: false,
       message: { key: "designer.upload.wrongSuffix", params: { name: "notes.json" } },
     });
   });
 
-  it("refuses a file over 1 MB before it is read", () => {
-    expect(checkUploadFile({ name: "big.workflow.json", size: 1024 * 1024 })).toMatchObject({
+  it("refuses a file over the Server's limit before it is read, and none without a limit", () => {
+    const limit = 1024 * 1024;
+    expect(checkUploadFile({ name: "big.workflow.json", size: limit }, limit)).toMatchObject({
       ok: true,
     });
-    expect(checkUploadFile({ name: "big.workflow.json", size: 1024 * 1024 + 1 })).toEqual({
+    expect(checkUploadFile({ name: "big.workflow.json", size: limit + 1 }, null)).toMatchObject({
+      ok: true,
+    });
+    expect(checkUploadFile({ name: "big.workflow.json", size: limit + 1 }, limit)).toEqual({
       ok: false,
       message: { key: "designer.upload.tooLarge", params: { name: "big.workflow.json" } },
     });
   });
 
   it("refuses a template name that is not a plain lower-case name", () => {
-    expect(checkUploadFile({ name: "My Gate.step-template.json", size: 10 })).toEqual({
+    expect(checkUploadFile({ name: "My Gate.step-template.json", size: 10 }, null)).toEqual({
       ok: false,
       message: { key: "designer.upload.badName", params: { name: "My Gate.step-template.json" } },
     });
   });
 
   it("keeps a workflow name as is, but refuses a dot-leading one", () => {
-    expect(checkUploadFile({ name: "My Flow.workflow.json", size: 10 })).toMatchObject({
+    expect(checkUploadFile({ name: "My Flow.workflow.json", size: 10 }, null)).toMatchObject({
       ok: true,
       stem: "My Flow",
     });
-    expect(checkUploadFile({ name: ".hidden.workflow.json", size: 10 })).toEqual({
+    expect(checkUploadFile({ name: ".hidden.workflow.json", size: 10 }, null)).toEqual({
       ok: false,
       message: { key: "designer.upload.badName", params: { name: ".hidden.workflow.json" } },
     });
@@ -116,8 +120,8 @@ describe("readUpload", () => {
 });
 
 const ROOTS = [
-  { origin: "user" as const, relative_path: "users/local/workflow" },
-  { origin: "shared" as const, relative_path: "shared/workflow" },
+  { origin: "user" as const, relative_path: "users/local/workflow", folders: [] },
+  { origin: "shared" as const, relative_path: "shared/workflow", folders: [] },
 ];
 const OWN_PATH = "users/local/workflow/flow.workflow.json";
 
