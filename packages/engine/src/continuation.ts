@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import {
   type ConfigObject,
   findRootRun,
@@ -24,7 +25,7 @@ import { pickReusedWaitOneWinner, planReuse, type ReusePlan, recordedChild } fro
 import type { ChildRunKey, ContinueState, RunIdentity } from "./run-context.js";
 import type { RunHistory } from "./run-history.js";
 import type { RunObserver } from "./run-observer.js";
-import type { ResumeInput } from "./run-workflow.js";
+import type { ContinuationInput, ResumeInput } from "./run-workflow.js";
 
 export type { RecordedScopeKey } from "./plan-reuse.js";
 
@@ -588,9 +589,65 @@ function readExistingOutput(state: ContinueState, run: RunRecord): JsonValue {
   return run.outputRef ? state.history.blob(run, RUN_BLOB_FILE.output) : {};
 }
 
+/** How the root run of one engine invocation starts (ADR 0103): its run id, its continuation, and
+ * the two facts a Resume records on its fresh root. */
+export interface RootRunStart {
+  runId: string;
+  continuation: Continuation;
+  /** K's descent path, denormalized for the root row; `undefined` unless a Resume from K. */
+  rerunFromNodePath: RerunFromNodePathEntry[] | undefined;
+  /** The predecessor tree's root run id, on a Resume. */
+  resumedFromRootRunId: string | undefined;
+}
+
+/**
+ * The root run's start for `continuation`: a launch records nothing and runs under `rootRunId` (or
+ * a fresh id); a Resume pairs a fresh root with the original tree's root (ADR 0036); a Complete
+ * re-enters this tree's root in place, skipping its start (ADR 0041).
+ */
+export function rootRunStart(
+  file: WorkflowFile,
+  fileDir: string,
+  files: Map<string, WorkflowFile> | undefined,
+  continuation: ContinuationInput | undefined,
+  rootRunId: string | undefined,
+): RootRunStart {
+  if (continuation?.kind === "complete") {
+    const runId = continuation.rootRunId;
+    return {
+      runId,
+      continuation: completeContinuation(continuation, file, runId),
+      rerunFromNodePath: undefined,
+      resumedFromRootRunId: undefined,
+    };
+  }
+  const runId = rootRunId ?? randomUUID();
+  if (continuation === undefined) {
+    return {
+      runId,
+      continuation: noContinuation(),
+      rerunFromNodePath: undefined,
+      resumedFromRootRunId: undefined,
+    };
+  }
+  const entry = rootResumeEntry(continuation);
+  return {
+    runId,
+    continuation: resumeContinuation(entry, file, true),
+    rerunFromNodePath: resolveRerunFromNodePath(
+      file,
+      fileDir,
+      files,
+      continuation.rerunFromNodePath,
+      continuation.rerunFromPasses,
+    ),
+    resumedFromRootRunId: entry.counterpart?.runId,
+  };
+}
+
 /** The persisted denormalization of the rerun boundary path: each node id with its human name at
  * its own level. */
-export function resolveRerunFromNodePath(
+function resolveRerunFromNodePath(
   rootFile: WorkflowFile,
   rootDir: string,
   files: Map<string, WorkflowFile> | undefined,

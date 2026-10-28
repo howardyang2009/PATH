@@ -21,6 +21,7 @@ import {
   recordedPasses,
   resumeContinuation,
   rootResumeEntry,
+  rootRunStart,
   successorCapture,
 } from "../src/continuation.js";
 import { openDb } from "../src/persistence/db.js";
@@ -741,5 +742,54 @@ describe("enter — one operation per scope kind", () => {
     expect(
       c.enter({ owner: { id: "g", name: "g" }, pass: 3 }, file, identity).disposition(node("a")),
     ).toEqual({ kind: "run" });
+  });
+});
+
+describe("rootRunStart — the root run of one engine invocation", () => {
+  const history = runHistory(
+    [record("orig-root", null, "root-1", { nodeId: null, status: "failed" })],
+    () => ({}),
+  );
+  const file = binaryFile("a");
+
+  it("runs a launch under the caller's id, or a fresh one, and records nothing", () => {
+    const named = rootRunStart(file, dir, undefined, undefined, "launch-1");
+    expect(named).toMatchObject({
+      runId: "launch-1",
+      rerunFromNodePath: undefined,
+      resumedFromRootRunId: undefined,
+    });
+    expect(named.continuation.start()).toBeUndefined();
+    expect(rootRunStart(file, dir, undefined, undefined, undefined).runId).toMatch(
+      /^[0-9a-f-]{36}$/,
+    );
+  });
+
+  it("pairs a Resume's fresh root with the original root, and names K at each level", () => {
+    const start = rootRunStart(
+      file,
+      dir,
+      undefined,
+      { kind: "resume", history, rerunFromNodePath: ["a"] },
+      "succ-1",
+    );
+    expect(start).toMatchObject({
+      runId: "succ-1",
+      resumedFromRootRunId: "orig-root",
+      rerunFromNodePath: [{ nodeId: "a", nodeName: "a" }],
+    });
+    expect(start.continuation.disposition(node("a"))).toEqual({ kind: "run" });
+  });
+
+  it("re-enters a Complete's own root, whatever id the caller passed", () => {
+    const state = continueState([record("root-1", null, "root-1", { nodeId: null })], "none");
+    const start = rootRunStart(
+      file,
+      dir,
+      undefined,
+      { kind: "complete", ...state, rootRunId: "root-1" },
+      "ignored",
+    );
+    expect(start).toMatchObject({ runId: "root-1", resumedFromRootRunId: undefined });
   });
 });
