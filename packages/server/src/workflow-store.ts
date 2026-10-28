@@ -1,6 +1,5 @@
 import { readFileSync } from "node:fs";
 import { relative } from "node:path";
-import { loadWorkflowTree } from "@path/engine";
 import { englishText, type Message } from "@path/i18n";
 import {
   duplicateIdIssues,
@@ -11,6 +10,7 @@ import {
 } from "@path/schema";
 import { conditionalDelete, PRECONDITION_FAILED } from "./artifact-file.js";
 import { writableRoots } from "./authored-layout.js";
+import { loadAuthoredWorkflow } from "./authored-read.js";
 import { editLease } from "./edit-lease.js";
 import { type Refusal, wireError } from "./http-json.js";
 import type { WriteAccess } from "./write-access.js";
@@ -79,7 +79,7 @@ export function workflowsOf(ctx: {
         scanned.map(async ({ absPath, root }) => ({
           absPath,
           root,
-          result: await loadWorkflowTree(absPath, { refAllowed: layout.inView }),
+          result: await loadAuthoredWorkflow(layout, absPath),
         })),
       );
 

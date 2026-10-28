@@ -1,9 +1,8 @@
-import { existsSync } from "node:fs";
-import { type LoadedWorkflow, loadWorkflowTree } from "@path/engine";
+import type { LoadedWorkflow } from "@path/engine";
 import type { Message } from "@path/i18n";
 import { type ConfigObject, type JsonValue, mapEnv, type RunRecord } from "@path/schema";
 import type { AuthoredLayout } from "./authored-layout.js";
-import { confineToProjectRoot } from "./confine.js";
+import { loadAuthoredWorkflow, locateAuthoredFile } from "./authored-read.js";
 import type { Refusal } from "./http-json.js";
 
 /**
@@ -48,17 +47,18 @@ async function loadInView(
   notFound: Refusal,
   escapesRoot: Refusal,
 ): Promise<PreparedWorkflow> {
-  // Another user's path reads as missing, so a refusal never confirms that it exists.
-  if (!layout.inView(workflowPath)) return { ok: false, refusal: { status: 404, ...notFound } };
-  const absPath = confineToProjectRoot(layout.projectDir, workflowPath, {
-    allowMissingTail: true,
-  });
-  if (!absPath) return { ok: false, refusal: { status: 404, ...escapesRoot } };
+  // Another user's path reads as missing, so a refusal never confirms that it exists (ADR 0088).
+  const read = locateAuthoredFile(layout, workflowPath);
+  if (!read.ok) {
+    return {
+      ok: false,
+      refusal: { status: 404, ...(read.miss === "escapes-root" ? escapesRoot : notFound) },
+    };
+  }
   const refusal = layout.workflowRefusal(workflowPath, "run");
   if (refusal !== undefined) return { ok: false, refusal };
-  if (!existsSync(absPath)) return { ok: false, refusal: { status: 404, ...notFound } };
 
-  const loadResult = await loadWorkflowTree(absPath, { refAllowed: layout.inView });
+  const loadResult = await loadAuthoredWorkflow(layout, read.file.absPath);
   if (!loadResult.success) {
     return {
       ok: false,
