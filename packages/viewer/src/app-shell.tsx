@@ -73,13 +73,14 @@ export function AppShell({ workflows, runs, detail, nodeIo, menuItems }: AppShel
 
 /** The Viewer's top bar: the brand and `sub`, then the hosted user menu at the right end. */
 export function TopBar({ sub, menuItems }: { sub: string; menuItems?: UserMenuItem[] }) {
+  const t = useTranslations("shared.brand");
   return (
     <header className="topbar">
       <a className="brand" href="/">
         PATH
       </a>
       <a className="brand-by" href="https://rheinwegde.de/">
-        by RheinWeg
+        {t("by")}
       </a>
       <span className="brand-sub">{sub}</span>
       <UserMenu items={menuItems} />

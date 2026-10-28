@@ -54,6 +54,9 @@
     }
   },
   "shared": {
+    "brand": {
+      "by": "RheinWeg 出品"
+    },
     "assigneeChip": {
       "title": "已分配给 {assignee}"
     },

@@ -4,6 +4,7 @@ import { render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { IntlProvider } from "use-intl";
 import { describe, expect, it } from "vitest";
+import { TopBar } from "../src/app-shell.js";
 import { CancelButton } from "../src/cancel-button.js";
 import { LaunchForm } from "../src/launch-form.js";
 
@@ -21,6 +22,18 @@ async function renderIn(locale: Locale, ui: ReactNode): Promise<void> {
 }
 
 describe("the Viewer in each Locale", () => {
+  it.each([
+    ["en", "by RheinWeg"],
+    ["de", "von RheinWeg"],
+    ["zh-CN", "RheinWeg 出品"],
+  ] as const)("%s names RheinWeg beside the brand as %s", async (locale, text) => {
+    await renderIn(locale, <TopBar sub="viewer" />);
+    expect(screen.getByRole("link", { name: text })).toHaveAttribute(
+      "href",
+      "https://rheinwegde.de/",
+    );
+  });
+
   it.each([
     ["de", "Lauf abbrechen"],
     ["zh-CN", "取消运行"],

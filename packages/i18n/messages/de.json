@@ -54,6 +54,9 @@
     }
   },
   "shared": {
+    "brand": {
+      "by": "von RheinWeg"
+    },
     "assigneeChip": {
       "title": "Zugewiesen an {assignee}"
     },

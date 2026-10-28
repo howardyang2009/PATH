@@ -57,7 +57,7 @@ export function AppShell({
           PATH
         </a>
         <a className="brand-by" href="https://rheinwegde.de/">
-          by RheinWeg
+          {t("shared.brand.by")}
         </a>
         <span className="brand-sub">designer</span>
         {modeSwitch ?? null}
