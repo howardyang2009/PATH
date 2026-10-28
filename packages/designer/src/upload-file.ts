@@ -1,6 +1,7 @@
-import { apiErrorMessage, type PathApiClient, PathApiError } from "@path/client-core";
+import type { PathApiClient } from "@path/client-core";
 import type { Message } from "@path/i18n";
 import { instantiateWorkflow, type WorkflowFile } from "@path/schema";
+import { writeRefusal } from "./document.js";
 import type { TemplateSource } from "./session-reducer.js";
 import {
   checkUploadFile,
@@ -68,7 +69,7 @@ export async function startUpload(
     }
     return await writeUpload(client, upload, plan, context.lease);
   } catch (error) {
-    return { status: "refused", message: apiErrorMessage(error) };
+    return refused(upload, error);
   }
 }
 
@@ -100,8 +101,17 @@ export async function uploadCopy(
     if (path === undefined) return { status: "refused", message: NO_USER_ROOT };
     return await writeUpload(client, copy, { action: "create", path });
   } catch (error) {
-    return { status: "refused", message: apiErrorMessage(error) };
+    return refused(copy, error);
   }
+}
+
+/** A failed upload as the dialog shows it: a create whose name is taken since the plan, or the
+ * write's own refusal. */
+function refused(upload: Upload, error: unknown): UploadOutcome {
+  const refusal = writeRefusal(error);
+  if (refusal.conflict !== "exists") return { status: "refused", message: refusal.message };
+  const params = { name: upload.fileName };
+  return { status: "refused", message: { key: "designer.upload.nameTaken", params } };
 }
 
 /** Write `upload` as `plan` says. Only a workflow replace takes a lease, so only it needs `lease`. */
@@ -114,14 +124,7 @@ async function writeUpload(
   if (!("path" in plan)) return writeTemplate(client, upload, plan);
   const { path } = plan;
   if (plan.action === "create") {
-    try {
-      await client.putWorkflow({ workflowPath: path, workflow: upload.content });
-    } catch (error) {
-      // A create-only write's one conflict: a file appeared at the path since the plan.
-      if (!(error instanceof PathApiError && error.status === 412)) throw error;
-      const params = { name: upload.fileName };
-      return { status: "refused", message: { key: "designer.upload.nameTaken", params } };
-    }
+    await client.putWorkflow({ workflowPath: path, workflow: upload.content });
     return { status: "done", target: { kind: "workflow", path } };
   }
   // The lease is politeness the write door does not check (ADR 0017), so ask for it first: an

@@ -4,8 +4,7 @@ import { FOLDER_PATTERN } from "@path/schema";
 import { useId, useMemo, useState } from "react";
 import { useTranslations } from "use-intl";
 import { type DiscoveryLoad, discoveredUserFolders, discoveredUserRoot } from "./discovery.js";
-import { dirnameOf } from "./new-file-dialog.js";
-import type { TemplateListLoad } from "./template-list.js";
+import { type TemplateListLoad, templateFolders } from "./template-list.js";
 import type { Upload } from "./upload.js";
 import type { UploadOutcome } from "./upload-file.js";
 
@@ -116,24 +115,13 @@ export function UploadDialog({
   );
 }
 
-/** The folders the user root of `kind` already has, relative to it, ancestors included. */
+/** The folders the user root of `kind` already has, relative to it. */
 function userFolders(
   kind: Upload["kind"],
   discovery: DiscoveryLoad,
   templateList: TemplateListLoad,
-): string[] {
-  const dirs = new Set<string>();
-  const add = (dir: string): void => {
-    for (let current = dir; current !== "" && !dirs.has(current); current = dirnameOf(current)) {
-      dirs.add(current);
-    }
-  };
-  if (kind === "template") {
-    if (templateList.phase === "ready") {
-      for (const row of templateList.templates) if (row.origin === "user") add(row.folder ?? "");
-    }
-  } else {
-    for (const folder of discoveredUserFolders(discovery)) add(folder);
-  }
-  return [...dirs].sort();
+): readonly string[] {
+  return kind === "template"
+    ? templateFolders(templateList, "user")
+    : discoveredUserFolders(discovery);
 }

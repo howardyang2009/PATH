@@ -8,6 +8,7 @@ import { ResumeActions, type ResumeFromAffordance } from "./resume-actions.js";
 import { ORDERED_RUN_STATUSES } from "./status-glyph.js";
 import { StatusPill } from "./status-pill.js";
 import { useResource } from "./use-resource.js";
+import type { WatchedRun } from "./watched-run.js";
 
 /**
  * Root runs the pane asks for. `GET /v0/runs` is most-recent-first (server-api-v0.md §3), so this
@@ -44,35 +45,32 @@ export interface RunsListProps {
    * string scopes to one workflow's history; `null` is a scoped surface with nothing open yet.
    */
   workflowId?: string | null;
-  /** The run the app currently has selected — owned above, so the detail pane sees the same id. */
-  selectedRootRunId: string | null;
-  onSelectRootRun: (rootRunId: string) => void;
-  /**
-   * Switches the app to watch the successor of a resumed run — the same transition a launch makes.
-   * The Resume affordance lives under the selected run's row.
-   */
-  onResumed: (successorRootRunId: string) => void;
-  /**
-   * Called after a run is deleted, so the app can drop the selection if it was watching that run
-   * and force an immediate re-read.
-   */
-  onDeleted: (rootRunId: string) => void;
-  reloadNonce?: number;
-  /** The `Resume from …` K-selection affordance; omitted, the panel offers only Resume/Delete. */
-  resumeFrom?: ResumeFromAffordance;
+  /** The console's watched run, owned above so the detail pane reads the same selection. A row
+   * click watches its run; a Resume watches the successor; a delete drops a watched run. */
+  watch: WatchedRun;
+  /** The watched run's root file, for the `Resume from …` legal-K check; `null` while unread. */
+  rootFile?: ResumeFromAffordance["rootFile"];
+  /** The open buffer has unsaved edits, which gates `Resume from …`; a Viewer never edits. */
+  dirty?: boolean;
 }
 
 /** The runs-list read surface: root runs with status, read-only and formatting-only. */
 export function RunsList({
   client,
   workflowId,
-  selectedRootRunId,
-  onSelectRootRun,
-  onResumed,
-  onDeleted,
-  reloadNonce,
-  resumeFrom,
+  watch,
+  rootFile = null,
+  dirty = false,
 }: RunsListProps) {
+  const { selection, load } = watch;
+  const selectedRootRunId = selection.rootRunId;
+  const { selectRootRun: onSelectRootRun, watchNewRun: onResumed, onDeleted } = selection;
+  const reloadNonce = selection.reloadNonce;
+  // `Resume from …` needs the watched tree loaded.
+  const resumeFrom: ResumeFromAffordance | undefined =
+    load.phase === "ready"
+      ? { runs: load.value.runs, selectedRunId: selection.selectedRunId, rootFile, dirty }
+      : undefined;
   const t = useTranslations("shared");
   const locale = useLocale();
   // `null` (nothing open) never reaches a query — the effects short-circuit and the render is idle.

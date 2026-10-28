@@ -4,6 +4,7 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import { describe, expect, it, vi } from "vitest";
 import { ARM_TIMEOUT_MS } from "../src/cancel-button.js";
 import { RunDetail } from "../src/run-detail.js";
+import type { RunSelection } from "../src/use-run-selection.js";
 import { useRunView } from "../src/use-run-view.js";
 
 const ROOT = "run_root";
@@ -52,6 +53,17 @@ const TREE = {
  * The pane is a view over a snapshot the app owns (one connection feeds the detail and node-I/O
  * panes), so the tests connect it the way the app does rather than reaching past `useRunView`.
  */
+/** A selection watching nothing, its transitions inert; a test sets the ids it needs. */
+const FIXED_SELECTION: RunSelection = {
+  rootRunId: null,
+  selectedRunId: null,
+  reloadNonce: 0,
+  selectRootRun: () => {},
+  selectRun: () => {},
+  watchNewRun: () => {},
+  onDeleted: () => {},
+};
+
 function ConnectedDetail({
   client,
   onSelectRun,
@@ -60,15 +72,8 @@ function ConnectedDetail({
   onSelectRun: () => void;
 }) {
   const load = useRunView(client, ROOT);
-  return (
-    <RunDetail
-      client={client}
-      load={load}
-      rootRunId={ROOT}
-      selectedRunId={null}
-      onSelectRun={onSelectRun}
-    />
-  );
+  const selection = { ...FIXED_SELECTION, rootRunId: ROOT, selectRun: onSelectRun };
+  return <RunDetail client={client} watch={{ selection, load }} />;
 }
 
 function renderDetail(client: PathApiClient, onSelectRun = vi.fn()) {

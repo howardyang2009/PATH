@@ -5,9 +5,9 @@ import {
   type TemplateSummary,
 } from "@path/client-core";
 import { useMessage } from "@path/i18n/react";
+import { FolderRow, indent } from "@path/viewer";
 import { useMemo, useState } from "react";
 import { useTranslations } from "use-intl";
-import { FolderRow, indent } from "./open-existing-dialog.js";
 import { READ_ONLY_TITLE } from "./read-only.js";
 import { TEMPLATE_SUFFIX } from "./session-reducer.js";
 import type { TemplateListLoad } from "./template-list.js";
@@ -153,6 +153,7 @@ function TemplateTree({
           <li key={`dir:${node.path}`}>
             <FolderRow
               name={node.name}
+              path={node.path}
               count={countFiles(node)}
               depth={depth}
               open={isFolderOnOpenChain(openFolder, node.path)}

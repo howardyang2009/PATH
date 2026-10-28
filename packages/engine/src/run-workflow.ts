@@ -1,14 +1,6 @@
-import { randomUUID } from "node:crypto";
-import { findRootRun, type WorkflowFile } from "@path/schema";
+import type { WorkflowFile } from "@path/schema";
 import { rootCancellation } from "./cancellation.js";
-import {
-  type Continuation,
-  completeContinuation,
-  noContinuation,
-  resolveRerunFromNodePath,
-  resumeContinuation,
-  rootResumeEntry,
-} from "./continuation.js";
+import { rootRunStart } from "./continuation.js";
 import { buildLaunchFacts } from "./launch-facts.js";
 import { createProcessorSemaphore, DEFAULT_PROCESSOR_CONCURRENCY } from "./processor-semaphore.js";
 import type { EnvSource } from "./resolve-env.js";
@@ -42,12 +34,14 @@ export async function runWorkflow(
   fileDir: string,
   options: RunOptions = {},
 ): Promise<RunResult> {
-  const continuationInput = options.continuation;
-  const resumeInput = continuationInput?.kind === "resume" ? continuationInput : undefined;
-  const completeInput = continuationInput?.kind === "complete" ? continuationInput : undefined;
-
   // A Complete keeps the tree's own root id; a launch or Resume takes the caller's or mints one.
-  const runId = completeInput?.rootRunId ?? options.rootRunId ?? randomUUID();
+  const { runId, continuation, rerunFromNodePath, resumedFromRootRunId } = rootRunStart(
+    file,
+    fileDir,
+    options.files,
+    options.continuation,
+    options.rootRunId,
+  );
 
   // One snapshot for the whole run, read here and nowhere else, so a mid-run env change cannot
   // desync the masker. User secrets replace the host environment entirely, never merge with it.
@@ -80,8 +74,6 @@ export async function runWorkflow(
 
   const { observer } = options;
 
-  // The original tree's root run — the predecessor fact stamped on this fresh root's start.
-  const originalRoot = findRootRun(resumeInput?.history.rows ?? []);
   const emit: Emit = observer
     ? async (o) => {
         await observer.observe(masker.isEmpty ? o : maskRunEvent(masker, o));
@@ -100,13 +92,6 @@ export async function runWorkflow(
   // The tree's root cancellation authority: the operator's signal is its only outside cause
   // (`cancellation.ts`).
   const rootAuthority = rootCancellation(options.signal);
-  // The root's continuation: a Resume pairs with the original tree's root (ADR 0036); a Complete
-  // re-enters this tree's root in place, skipping its start (ADR 0041); a launch records nothing.
-  const continuation: Continuation = resumeInput
-    ? resumeContinuation(rootResumeEntry(resumeInput), file, true)
-    : completeInput
-      ? completeContinuation(completeInput, file, runId)
-      : noContinuation();
   let result: WorkflowRunResult;
   try {
     result = await executeWorkflowRun({
@@ -133,18 +118,8 @@ export async function runWorkflow(
         launchWorkerDefaults: options.launchWorkerDefaults,
       },
       continuation,
-      // K's descent path, denormalized for the root row; undefined on plain Resume (ADR 0032).
-      rerunFromNodePath: resumeInput
-        ? resolveRerunFromNodePath(
-            file,
-            fileDir,
-            options.files,
-            resumeInput.rerunFromNodePath,
-            resumeInput.rerunFromPasses,
-          )
-        : undefined,
-      // This fresh root resumes the original tree, so its predecessor is that tree's root run id.
-      resumedFromRootRunId: originalRoot?.runId,
+      rerunFromNodePath,
+      resumedFromRootRunId,
       // Root-only provenance: the root file's store-relative path, recorded on the root row.
       sourceWorkflowPath: options.sourceWorkflowPath,
     });

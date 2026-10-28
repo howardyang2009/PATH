@@ -1,8 +1,8 @@
 import {
+  type AuthoredRootSummary,
   type FetchLike,
   PathApiClient,
   type WireStepPlugin,
-  type WorkflowRootSummary,
 } from "@path/client-core";
 import { displayStatusByRun, fromWireRunRecord, type WireRunRecord } from "@path/schema";
 
@@ -14,16 +14,22 @@ import { displayStatusByRun, fromWireRunRecord, type WireRunRecord } from "@path
 
 /** The built-in registry leaf types the Designer ships editors for: `prompt` and `binary`. */
 /** The writable workflow roots a real Server lists for the default user. */
-export const DEFAULT_ROOTS: WorkflowRootSummary[] = [
+export const DEFAULT_ROOTS: AuthoredRootSummary[] = [
   { origin: "user", relative_path: "users/local/workflow", folders: [] },
   { origin: "shared", relative_path: "shared/workflow", folders: [] },
 ];
 
+/** The writable template roots a real Server lists for the default user. */
+export const DEFAULT_TEMPLATE_ROOTS: AuthoredRootSummary[] = [
+  { origin: "user", relative_path: "users/local/template", folders: [] },
+  { origin: "shared", relative_path: "shared/template", folders: [] },
+];
+
 /** `roots` with each root's folders as a real Server scans them: every folder a listed row sits in. */
 function withFolders(
-  roots: WorkflowRootSummary[],
+  roots: AuthoredRootSummary[],
   rows: readonly { relative_path: string }[],
-): WorkflowRootSummary[] {
+): AuthoredRootSummary[] {
   return roots.map((root) => {
     const folders = new Set(root.folders);
     for (const { relative_path } of rows) {
@@ -345,7 +351,21 @@ export function stubClient(options: StubServerOptions = {}): PathApiClient {
     }
     if (input === "/v0/secrets") return json(options.secrets ?? { secrets: [] }, 200);
     if (input === "/v0/templates") {
-      return json(options.templates ?? { templates: [] }, options.templatesStatus ?? 200);
+      const status = options.templatesStatus ?? 200;
+      if (status !== 200) return json(options.templates, status);
+      const list = (options.templates ?? { templates: [] }) as {
+        templates: { origin: string; folder?: string }[];
+        roots?: AuthoredRootSummary[];
+      };
+      const roots = (list.roots ?? DEFAULT_TEMPLATE_ROOTS).map((root) => {
+        const folders = new Set(root.folders);
+        for (const row of list.templates) {
+          const parts = row.origin === root.origin && row.folder ? row.folder.split("/") : [];
+          for (let i = 1; i <= parts.length; i++) folders.add(parts.slice(0, i).join("/"));
+        }
+        return { ...root, folders: [...folders].sort() };
+      });
+      return json({ max_file_bytes: null, ...list, roots }, 200);
     }
     const templateMatch = /^\/v0\/templates\/([^/?]+)$/.exec(input);
     if (templateMatch) {
@@ -366,7 +386,7 @@ export function stubClient(options: StubServerOptions = {}): PathApiClient {
     if (input === "/v0/workflows" && (init?.method ?? "GET") === "GET") {
       const discovery = (options.workflows ?? { workflows: [] }) as {
         workflows: { relative_path: string }[];
-        roots?: WorkflowRootSummary[];
+        roots?: AuthoredRootSummary[];
       };
       const roots = withFolders(
         (discovery.roots ?? DEFAULT_ROOTS).map((root) => ({

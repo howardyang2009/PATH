@@ -225,8 +225,8 @@ export interface WorkflowSummary {
   error: WireError["error"] | null;
 }
 
-/** A writable workflow root (ADR 0084), by its project path. */
-export interface WorkflowRootSummary {
+/** A writable workflow or template root (ADR 0084), by its project path. */
+export interface AuthoredRootSummary {
   origin: "shared" | "user";
   relative_path: string;
   /** The root's subfolders, relative to it and sorted, empty ones included. */
@@ -236,7 +236,7 @@ export interface WorkflowRootSummary {
 export interface ListWorkflowsResponse {
   workflows: WorkflowSummary[];
   /** The writable workflow roots, the user's own first: where a new workflow may land. */
-  roots: WorkflowRootSummary[];
+  roots: AuthoredRootSummary[];
   /** The largest authored file the requester may write, in bytes; `null` when unlimited. */
   max_file_bytes: number | null;
 }
@@ -260,6 +260,10 @@ export interface TemplateSummary {
 
 export interface ListTemplatesResponse {
   templates: TemplateSummary[];
+  /** The writable template roots, the user's own first: where a new template may land. */
+  roots: AuthoredRootSummary[];
+  /** The largest authored file the requester may write, in bytes; `null` when unlimited. */
+  max_file_bytes: number | null;
 }
 
 /**

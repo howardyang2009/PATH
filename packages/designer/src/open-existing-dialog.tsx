@@ -1,15 +1,15 @@
-import type { WorkflowTreeNode } from "@path/client-core";
+import type { WorkflowSummary, WorkflowTreeNode } from "@path/client-core";
 import {
   buildWorkflowTree,
   countWorkflowLeaves,
   isFolderOnOpenChain,
   nextOpenFolder,
   ORIGIN_FOLDER,
-  wireErrorMessage,
   workflowBaseName,
+  workflowRowAction,
 } from "@path/client-core";
 import { useMessage } from "@path/i18n/react";
-import { errorMessage } from "@path/viewer";
+import { errorMessage, FolderRow, indent } from "@path/viewer";
 import { useMemo, useState } from "react";
 import { useTranslations } from "use-intl";
 import { type DiscoveryLoad, discoveredWorkflows } from "./discovery.js";
@@ -103,12 +103,6 @@ export function OpenWorkflowDialog({
   );
 }
 
-/** The left indent of one tree row at `depth`, in px — a folder step per level, over the row's base
- * pad. */
-export function indent(depth: number): React.CSSProperties {
-  return { paddingLeft: 8 + depth * 14 };
-}
-
 /**
  * One level of the folder tree: its folders first (each a navigation step that expands the next
  * level below it), then its workflow files (each opens that workflow). Recurses into an open
@@ -132,8 +126,6 @@ function WorkflowTree({
   onOpen: (path: string) => void;
   onCopy: (shippedPath: string) => void;
 }): JSX.Element {
-  const t = useTranslations();
-  const renderMessage = useMessage();
   return (
     <ul className="workflows" aria-label={label}>
       {nodes.map((node) =>
@@ -141,6 +133,7 @@ function WorkflowTree({
           <li key={`dir:${node.path}`}>
             <FolderRow
               name={node.name}
+              path={node.path}
               count={countWorkflowLeaves(node)}
               depth={depth}
               open={isFolderOnOpenChain(openFolder, node.path)}
@@ -157,90 +150,78 @@ function WorkflowTree({
               />
             )}
           </li>
-        ) : node.workflow.action === "none" ? (
-          <li key={`shipped:${node.workflow.relative_path}`}>
-            <div className="workflow-row workflow-row--shipped" style={indent(depth)}>
-              <span className="workflow-file-name">
-                {workflowBaseName(node.workflow.relative_path)}
-              </span>
-              <span className="pane-note pane-error">
-                {node.workflow.error
-                  ? renderMessage(wireErrorMessage(node.workflow.error))
-                  : t("designer.openWorkflowDialog.notLoaded")}
-              </span>
-            </div>
-          </li>
-        ) : node.workflow.action === "copy" ? (
-          <li key={`shipped:${node.workflow.relative_path}`}>
-            <div className="workflow-row workflow-row--shipped" style={indent(depth)}>
-              <span className="workflow-file-name">
-                {workflowBaseName(node.workflow.relative_path)}
-              </span>
-              <button
-                type="button"
-                aria-label={t("designer.openWorkflowDialog.copyNamed", {
-                  name: workflowBaseName(node.workflow.relative_path),
-                })}
-                onClick={() => onCopy(node.workflow.relative_path)}
-              >
-                {t("designer.openWorkflowDialog.copy")}
-              </button>
-            </div>
-          </li>
         ) : (
-          <li key={node.workflow.relative_path}>
-            <button
-              type="button"
-              className="workflow-row"
-              onClick={() => onOpen(node.workflow.relative_path)}
-              style={indent(depth)}
-            >
-              <span className="workflow-file-name">
-                {workflowBaseName(node.workflow.relative_path)}
-              </span>
-              {node.workflow.read_only ? (
-                <span className="workflow-tag" title={t(READ_ONLY_TITLE.shared)}>
-                  <span aria-hidden="true">🔒</span>
-                  {t("designer.readOnly.tag")}
-                </span>
-              ) : null}
-            </button>
-          </li>
+          <WorkflowLeaf
+            key={node.workflow.relative_path}
+            workflow={node.workflow}
+            depth={depth}
+            onOpen={onOpen}
+            onCopy={onCopy}
+          />
         ),
       )}
     </ul>
   );
 }
 
-/** One folder in the tree: a navigation step. Clicking it walks in (expands its level) or back
- * out. */
-export function FolderRow({
-  name,
-  count,
+/** One workflow file in the picker, as its row action reads (ADR 0086): a file to open (an invalid
+ * one too, so the author can repair it), a shipped file to copy first, or only its load error. */
+function WorkflowLeaf({
+  workflow,
   depth,
-  open,
-  onToggle,
+  onOpen,
+  onCopy,
 }: {
-  name: string;
-  /** The number of files anywhere under the folder. */
-  count: number;
+  workflow: WorkflowSummary;
   depth: number;
-  open: boolean;
-  onToggle: () => void;
+  onOpen: (path: string) => void;
+  onCopy: (shippedPath: string) => void;
 }): JSX.Element {
+  const t = useTranslations();
+  const renderMessage = useMessage();
+  const action = workflowRowAction(workflow, "edit");
+  const path = workflow.relative_path;
+  const name = workflowBaseName(path);
+  if (action.kind === "open") {
+    return (
+      <li>
+        <button
+          type="button"
+          className="workflow-row"
+          onClick={() => onOpen(path)}
+          style={indent(depth)}
+        >
+          <span className="workflow-file-name">{name}</span>
+          {action.readOnly ? (
+            <span className="workflow-tag" title={t(READ_ONLY_TITLE.shared)}>
+              <span aria-hidden="true">🔒</span>
+              {t("designer.readOnly.tag")}
+            </span>
+          ) : null}
+        </button>
+      </li>
+    );
+  }
   return (
-    <button
-      type="button"
-      className="workflow-folder-row"
-      aria-expanded={open}
-      onClick={onToggle}
-      style={indent(depth)}
-    >
-      <span className="workflow-folder-chevron" aria-hidden="true">
-        {open ? "▾" : "▸"}
-      </span>
-      <span className="workflow-folder-name">{name}</span>
-      <span className="workflow-folder-count">{count}</span>
-    </button>
+    <li>
+      <div className="workflow-row workflow-row--shipped" style={indent(depth)}>
+        <span className="workflow-file-name">{name}</span>
+        {action.kind === "copy" ? (
+          <button
+            type="button"
+            aria-label={t("designer.openWorkflowDialog.copyNamed", { name })}
+            onClick={() => onCopy(path)}
+          >
+            {t("designer.openWorkflowDialog.copy")}
+          </button>
+        ) : (
+          <span className="pane-note pane-error">
+            {action.error
+              ? renderMessage(action.error)
+              : t("designer.openWorkflowDialog.notLoaded")}
+          </span>
+        )}
+      </div>
+    </li>
   );
 }

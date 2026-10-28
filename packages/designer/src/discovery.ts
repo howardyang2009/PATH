@@ -1,4 +1,4 @@
-import type { PathApiClient, WorkflowRootSummary, WorkflowSummary } from "@path/client-core";
+import type { AuthoredRootSummary, PathApiClient, WorkflowSummary } from "@path/client-core";
 import type { Message } from "@path/i18n";
 import { useCallback, useMemo } from "react";
 import { useScanOnSave } from "./scan-on-save.js";
@@ -7,7 +7,7 @@ import type { SaveState } from "./session-reducer.js";
 /** One landed discovery scan: the workflows, and the writable roots a new one may land in. */
 export interface DiscoveryScan {
   workflows: readonly WorkflowSummary[];
-  roots: readonly WorkflowRootSummary[];
+  roots: readonly AuthoredRootSummary[];
   /** The largest file the requester may write, in bytes; `null` when unlimited. */
   maxFileBytes: number | null;
 }

@@ -1,4 +1,4 @@
-import type { TemplateSummary, WorkflowRootSummary, WorkflowSummary } from "@path/client-core";
+import type { AuthoredRootSummary, TemplateSummary, WorkflowSummary } from "@path/client-core";
 import type { Message } from "@path/i18n";
 import { AUTHORED_SUFFIX, type JsonValue, NAME_PATTERN } from "@path/schema";
 
@@ -76,7 +76,7 @@ export function readUpload(
  * templates. */
 export interface UploadView {
   workflows: readonly WorkflowSummary[];
-  roots: readonly WorkflowRootSummary[];
+  roots: readonly AuthoredRootSummary[];
   templates: readonly TemplateSummary[];
 }
 
@@ -92,7 +92,7 @@ export type UploadPlan =
 /** The project path a workflow named `fileName` takes in `folder` of the requester's user root
  * (`""` for its top), or `undefined` when the Server lists no user root. */
 export function userWorkflowPath(
-  roots: readonly WorkflowRootSummary[],
+  roots: readonly AuthoredRootSummary[],
   folder: string,
   fileName: string,
 ): string | undefined {

@@ -10,6 +10,7 @@ import {
 import { useTranslations } from "use-intl";
 import type { EditorChrome } from "./editor-chrome.js";
 import type { LeaseState } from "./lease-client.js";
+import { READ_ONLY_TITLE } from "./read-only.js";
 import { canonicalSerialize } from "./serialize.js";
 import {
   type Frame,
@@ -233,6 +234,9 @@ export function EditingToolbar({
 }): JSX.Element {
   const t = useTranslations("designer.editingToolbar");
   const renderMessage = useMessage();
+  const readOnlyTitle = chrome.readOnly
+    ? renderMessage({ key: READ_ONLY_TITLE[chrome.readOnly] })
+    : undefined;
   return (
     <div className="editing-toolbar">
       {/* The rare whole-file actions sit behind File: New and Open… discard the current stack, and
@@ -258,7 +262,7 @@ export function EditingToolbar({
               label: t("delete"),
               onSelect: onDelete,
               disabled: chrome.busy || !chrome.remove,
-              title: chrome.readOnlyTitle,
+              title: readOnlyTitle,
               danger: true,
             },
           ],
@@ -294,7 +298,7 @@ export function EditingToolbar({
         className="save-btn"
         onClick={onSave}
         disabled={!chrome.save}
-        title={chrome.readOnlyTitle ?? t("saveTitle", { shortcut: SAVE_SHORTCUT })}
+        title={readOnlyTitle ?? t("saveTitle", { shortcut: SAVE_SHORTCUT })}
       >
         {renderMessage(chrome.saveLabel)}
       </button>

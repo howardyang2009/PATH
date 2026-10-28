@@ -45,9 +45,9 @@ function row(path: string, readOnly: boolean): Record<string, unknown> {
 const WORKFLOWS = { workflows: [row(THEIRS, true), row(OURS, false)] };
 const FILES = { [THEIRS]: idlessFile("their-step"), [OURS]: idlessFile("our-step") };
 
-function refuse(status: number, message: string): () => Response {
+function refuse(status: number, code: string, message: string): () => Response {
   return () =>
-    new Response(JSON.stringify({ error: { message } }), {
+    new Response(JSON.stringify({ error: { code, message } }), {
       status,
       headers: { "Content-Type": "application/json" },
     });
@@ -114,7 +114,7 @@ describe("read-only shared workflows", () => {
   });
 
   it("reads a late 403 on save as read-only, pointing to Save as", async () => {
-    const onPut = refuse(403, "only the creator edits a shared item");
+    const onPut = refuse(403, "authored.shared-read-only", "only the creator edits a shared item");
     render(
       <App client={stubClient({ files: FILES, workflows: WORKFLOWS, onPut })} initialPath={OURS} />,
     );
@@ -127,7 +127,7 @@ describe("read-only shared workflows", () => {
   });
 
   it("reads a late 404 on save as no longer available", async () => {
-    const onPut = refuse(404, "not found");
+    const onPut = refuse(404, "request.not-found", "not found");
     render(
       <App client={stubClient({ files: FILES, workflows: WORKFLOWS, onPut })} initialPath={OURS} />,
     );

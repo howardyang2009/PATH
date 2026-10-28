@@ -3,10 +3,13 @@ import {
   PathApiClient,
   PathApiError,
   type RootRunSummary,
+  type RunViewState,
 } from "@path/client-core";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { ResumeFromAffordance } from "../src/resume-actions.js";
 import { RUNS_REFRESH_MS, RunsList } from "../src/runs-list.js";
+import type { WatchedRun } from "../src/watched-run.js";
 
 /**
  * A client over a recording `fetch` stub — the injected seam the surface is tested through
@@ -69,20 +72,53 @@ const FAILED: RootRunSummary = {
   finished_at: "2026-07-25T09:30:12.000Z",
 };
 
-function renderList(
-  client: PathApiClient,
-  overrides: Partial<Parameters<typeof RunsList>[0]> = {},
-) {
-  return render(
+/** What a test sets on the list: the watched run's selection pieces, spelled as the list once took
+ * them, plus the `Resume from …` facts. */
+interface ListOverrides {
+  workflowId?: string | null;
+  selectedRootRunId?: string | null;
+  onSelectRootRun?: (rootRunId: string) => void;
+  onResumed?: (rootRunId: string) => void;
+  onDeleted?: (rootRunId: string) => void;
+  reloadNonce?: number;
+  /** A loaded watched tree; absent, the tree is not loaded and `Resume from …` is not offered. */
+  resumeFrom?: ResumeFromAffordance;
+}
+
+/** The watched run a console would hand the list, built from `overrides`. */
+function watchOf(overrides: ListOverrides): WatchedRun {
+  const { resumeFrom } = overrides;
+  return {
+    selection: {
+      rootRunId: overrides.selectedRootRunId ?? null,
+      selectedRunId: resumeFrom?.selectedRunId ?? null,
+      reloadNonce: overrides.reloadNonce ?? 0,
+      selectRootRun: overrides.onSelectRootRun ?? (() => {}),
+      selectRun: () => {},
+      watchNewRun: overrides.onResumed ?? (() => {}),
+      onDeleted: overrides.onDeleted ?? (() => {}),
+    },
+    load:
+      resumeFrom === undefined
+        ? { phase: "idle" }
+        : { phase: "ready", value: { runs: resumeFrom.runs } as unknown as RunViewState },
+  };
+}
+
+function listOf(client: PathApiClient, overrides: ListOverrides = {}): JSX.Element {
+  return (
     <RunsList
       client={client}
-      selectedRootRunId={null}
-      onSelectRootRun={() => {}}
-      onResumed={() => {}}
-      onDeleted={() => {}}
-      {...overrides}
-    />,
+      workflowId={overrides.workflowId}
+      watch={watchOf(overrides)}
+      rootFile={overrides.resumeFrom?.rootFile ?? null}
+      dirty={overrides.resumeFrom?.dirty ?? false}
+    />
   );
+}
+
+function renderList(client: PathApiClient, overrides: ListOverrides = {}) {
+  return render(listOf(client, overrides));
 }
 
 /** The status pill inside one run's row — reached through the row, as a reader reaches it. */
@@ -192,15 +228,7 @@ describe("RunsList", () => {
 
     expect(onSelect).toHaveBeenCalledWith("run_alpha");
 
-    rerender(
-      <RunsList
-        client={client}
-        selectedRootRunId="run_alpha"
-        onSelectRootRun={onSelect}
-        onResumed={() => {}}
-        onDeleted={() => {}}
-      />,
-    );
+    rerender(listOf(client, { selectedRootRunId: "run_alpha", onSelectRootRun: onSelect }));
     expect(screen.getByTestId("run-row-run_alpha")).toHaveAttribute("aria-current", "true");
     expect(screen.getByTestId("run-row-run_beta")).not.toHaveAttribute("aria-current");
   });
@@ -243,16 +271,7 @@ describe("RunsList", () => {
     await screen.findByTestId(`run-row-${RUNNING.run_id}`);
     expect(urls).toHaveLength(1);
 
-    rerender(
-      <RunsList
-        client={client}
-        selectedRootRunId={null}
-        onSelectRootRun={() => {}}
-        onResumed={() => {}}
-        onDeleted={() => {}}
-        reloadNonce={1}
-      />,
-    );
+    rerender(listOf(client, { reloadNonce: 1 }));
 
     await waitFor(() => expect(urls).toHaveLength(2));
     expect(screen.queryByText("Loading runs…")).toBeNull();

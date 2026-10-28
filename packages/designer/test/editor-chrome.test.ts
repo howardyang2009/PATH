@@ -1,7 +1,9 @@
 import { verbatim } from "@path/i18n";
 import type { WorkflowFile } from "@path/schema";
 import { describe, expect, it } from "vitest";
-import { type EditorChromeInput, editorChrome } from "../src/editor-chrome.js";
+import type { DocumentPolicy } from "../src/document.js";
+import { editorChrome } from "../src/editor-chrome.js";
+import type { LeaseState } from "../src/lease-client.js";
 import { canonicalSerialize } from "../src/serialize.js";
 import {
   type Frame,
@@ -29,21 +31,18 @@ function dirtyFrame(): Frame {
   return scratchFrame();
 }
 
-/** The capability value over one active frame, at the phase and plans a test names. */
+/** The capability value over one active frame, at the phase, policy and lease a test names. */
 function chrome(
   frame: Frame,
-  overrides: Partial<Omit<EditorChromeInput, "session">> = {},
+  overrides: Partial<DocumentPolicy> & { lease?: LeaseState } = {},
   session: Partial<SessionState> = {},
 ) {
-  return editorChrome({
-    session: { ...initialSessionState, frames: [frame], activeIndex: 0, ...session },
-    policy: { canSaveAs: true },
-    deletePlan: null,
-    downloadPlan: null,
-    readOnlyTitle: undefined,
-    lease: undefined,
-    ...overrides,
-  });
+  const { lease, ...policy } = overrides;
+  return editorChrome(
+    { ...initialSessionState, frames: [frame], activeIndex: 0, ...session },
+    { canSaveAs: true, readOnly: false, deletePlan: null, downloadPlan: null, ...policy },
+    lease,
+  );
 }
 
 describe("editorChrome — the toolbar's one capability value", () => {
@@ -72,15 +71,13 @@ describe("editorChrome — the toolbar's one capability value", () => {
   });
 
   it("keeps Save and Delete off a read-only document, while Save as… stays", () => {
-    const readOnly = chrome(dirtyFrame(), {
-      readOnlyTitle: "shipped: read-only",
-      deletePlan: { kind: "template", id: "t", name: "nightly" },
-    });
+    // The policy drops a read-only document's delete plan, so Delete is off with it.
+    const readOnly = chrome(dirtyFrame(), { readOnly: "shipped" });
     expect(readOnly).toMatchObject({
       save: false,
       remove: false,
       saveAs: true,
-      readOnlyTitle: "shipped: read-only",
+      readOnly: "shipped",
     });
   });
 

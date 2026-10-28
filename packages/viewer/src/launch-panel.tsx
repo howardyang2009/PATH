@@ -2,7 +2,6 @@ import type {
   PathApiClient,
   WireStepPlugin,
   WorkflowSummary,
-  WorkflowTreeFolder,
   WorkflowTreeNode,
 } from "@path/client-core";
 import {
@@ -12,8 +11,8 @@ import {
   nextOpenFolder,
   ORIGIN_FOLDER,
   parentFolderPath,
-  wireErrorMessage,
   workflowBaseName,
+  workflowRowAction,
   workflowTreePath,
 } from "@path/client-core";
 import { useMessage } from "@path/i18n/react";
@@ -22,6 +21,7 @@ import { useTranslations } from "use-intl";
 import { LaunchForm } from "./launch-form.js";
 import { errorMessage } from "./load-state.js";
 import { PaneError, PaneLoading } from "./pane-note.js";
+import { FolderRow, indent } from "./tree-rows.js";
 import { useResource } from "./use-resource.js";
 
 export interface LaunchPanelProps {
@@ -158,12 +158,6 @@ export function LaunchPanel({ client, onLaunched }: LaunchPanelProps) {
   );
 }
 
-/** The left indent of one tree row at `depth`, in px — a folder step per level, over the row's base
- * pad. */
-function indent(depth: number): React.CSSProperties {
-  return { paddingLeft: 8 + depth * 14 };
-}
-
 /**
  * One level of the folder tree: its folders first (each expands the next level below it), then its
  * workflow files (each a launch trigger that expands its form). Recurses into an open folder's
@@ -192,15 +186,15 @@ function WorkflowTree({
   isFolderOpen: (path: string) => boolean;
   onToggleFolder: (path: string) => void;
 }) {
-  const t = useTranslations("viewer.launchPanel");
-  const renderMessage = useMessage();
   return (
     <ul className="workflows">
       {nodes.map((node) =>
         node.kind === "folder" ? (
           <li key={`dir:${node.path}`}>
             <FolderRow
-              folder={node}
+              name={node.name}
+              path={node.path}
+              count={countWorkflowLeaves(node)}
               depth={depth}
               open={isFolderOpen(node.path)}
               onToggle={() => onToggleFolder(node.path)}
@@ -221,51 +215,86 @@ function WorkflowTree({
             )}
           </li>
         ) : (
-          <li key={node.workflow.relative_path}>
-            <WorkflowRow
-              workflow={node.workflow}
-              depth={depth}
-              expanded={expanded === node.workflow.relative_path}
-              onToggle={() => onToggleFile(node.workflow.relative_path)}
-            />
-            {expanded === node.workflow.relative_path &&
-              (node.workflow.action === "copy" ? (
-                <CopyShipped client={client} workflow={node.workflow} onCopied={onCopied} />
-              ) : node.workflow.action === "open" && node.workflow.valid ? (
-                <LaunchForm
-                  key={node.workflow.relative_path}
-                  client={client}
-                  plugins={plugins}
-                  workflowPath={node.workflow.relative_path}
-                  submitLabel={
-                    node.workflow.name === null
-                      ? t("launchWorkflow")
-                      : t("launch", { name: node.workflow.name })
-                  }
-                  idBase={`launch-${node.workflow.relative_path}`}
-                  testIdPrefix="launch"
-                  containerTestId={`launch-form-${node.workflow.relative_path}`}
-                  onLaunched={(rootRunId) => {
-                    onToggleFile(node.workflow.relative_path);
-                    onLaunched(rootRunId);
-                  }}
-                />
-              ) : (
-                // The invalid file's load error, revealed only while its row is expanded — the
-                // triage detail, off the row until asked for.
-                <p
-                  className="workflow-error-detail"
-                  data-testid={`workflow-error-${node.workflow.relative_path}`}
-                >
-                  {node.workflow.error
-                    ? renderMessage(wireErrorMessage(node.workflow.error))
-                    : t("loadFailed")}
-                </p>
-              ))}
-          </li>
+          <WorkflowLeaf
+            key={node.workflow.relative_path}
+            workflow={node.workflow}
+            depth={depth}
+            client={client}
+            plugins={plugins}
+            expanded={expanded === node.workflow.relative_path}
+            onToggleFile={onToggleFile}
+            onLaunched={onLaunched}
+            onCopied={onCopied}
+          />
         ),
       )}
     </ul>
+  );
+}
+
+/** One workflow file in the tree: its row, and below it while expanded what the row offers — a
+ * launch form, a copy of a shipped file, or the load error of a file that cannot launch. */
+function WorkflowLeaf({
+  workflow,
+  depth,
+  client,
+  plugins,
+  expanded,
+  onToggleFile,
+  onLaunched,
+  onCopied,
+}: {
+  workflow: WorkflowSummary;
+  depth: number;
+  client: PathApiClient;
+  plugins: readonly WireStepPlugin[];
+  expanded: boolean;
+  onToggleFile: (path: string) => void;
+  onLaunched: (rootRunId: string) => void;
+  onCopied: (copy: { relativePath: string; rootPath: string }) => void;
+}) {
+  const t = useTranslations("viewer.launchPanel");
+  const renderMessage = useMessage();
+  const action = workflowRowAction(workflow, "launch");
+  const path = workflow.relative_path;
+  return (
+    <li>
+      <WorkflowRow
+        workflow={workflow}
+        broken={action.kind === "broken"}
+        readOnly={action.kind === "open" && action.readOnly}
+        depth={depth}
+        expanded={expanded}
+        onToggle={() => onToggleFile(path)}
+      />
+      {expanded &&
+        (action.kind === "copy" ? (
+          <CopyShipped client={client} workflow={workflow} onCopied={onCopied} />
+        ) : action.kind === "open" ? (
+          <LaunchForm
+            key={path}
+            client={client}
+            plugins={plugins}
+            workflowPath={path}
+            submitLabel={
+              workflow.name === null ? t("launchWorkflow") : t("launch", { name: workflow.name })
+            }
+            idBase={`launch-${path}`}
+            testIdPrefix="launch"
+            containerTestId={`launch-form-${path}`}
+            onLaunched={(rootRunId) => {
+              onToggleFile(path);
+              onLaunched(rootRunId);
+            }}
+          />
+        ) : (
+          // The load error, revealed only while its row is expanded — the triage detail, off the
+          // row until asked for.
+          <p className="workflow-error-detail" data-testid={`workflow-error-${path}`}>
+            {action.error ? renderMessage(action.error) : t("loadFailed")}
+          </p>
+        ))}
+    </li>
   );
 }
 
@@ -320,101 +349,48 @@ function CopyShipped({
   );
 }
 
-/** One folder in the tree: a navigation step. Clicking it walks in (expands its level) or back
- * out. */
-function FolderRow({
-  folder,
-  depth,
-  open,
-  onToggle,
-}: {
-  folder: WorkflowTreeFolder;
-  depth: number;
-  open: boolean;
-  onToggle: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      className="workflow-folder-row"
-      data-testid={`workflow-folder-${folder.path}`}
-      aria-expanded={open}
-      onClick={onToggle}
-      style={indent(depth)}
-    >
-      <span className="workflow-folder-chevron" aria-hidden="true">
-        {open ? "▾" : "▸"}
-      </span>
-      <span className="workflow-folder-name">{folder.name}</span>
-      <span className="workflow-folder-count">{countWorkflowLeaves(folder)}</span>
-    </button>
-  );
-}
-
-/** One workflow in the tree: a launch trigger when valid, a labelled dead row (with its load error)
- * when not. */
+/** One workflow in the tree: a launch trigger, or a labelled dead row (with its load error) for a
+ * file that cannot launch — still a toggle, expanding that error below the row. */
 function WorkflowRow({
   workflow,
+  broken,
+  readOnly,
   depth,
   expanded,
   onToggle,
 }: {
   workflow: WorkflowSummary;
+  /** The file cannot launch: a launch would 400 on the same load (§6). */
+  broken: boolean;
+  /** A shared file another user created (ADR 0088): it runs in place; only its creator edits it. */
+  readOnly: boolean;
   depth: number;
   expanded: boolean;
   onToggle: () => void;
 }) {
-  // The row shows only the file name — the folders already sit above it, and the workflow's own
-  // `name` shows on the Launch button and in the run detail.
-  const label = (
-    <span className="workflow-file-name">{workflowBaseName(workflow.relative_path)}</span>
-  );
-
-  // An invalid file cannot be launched (§6: `valid` is a load result, and a launch would 400 on the
-  // same load), so it opens no launch form — but it is still a toggle, expanding its load error
-  // below the row.
-  if (!workflow.valid) {
-    return (
-      <button
-        type="button"
-        className="workflow-row workflow-row--invalid"
-        data-testid={`workflow-row-${workflow.relative_path}`}
-        aria-expanded={expanded}
-        onClick={onToggle}
-        style={indent(depth)}
-      >
-        <span className="workflow-label">{label}</span>
-        <RootTag workflow={workflow} />
-      </button>
-    );
-  }
-
+  const t = useTranslations("viewer.launchPanel");
   return (
     <button
       type="button"
-      className="workflow-row"
+      className={broken ? "workflow-row workflow-row--invalid" : "workflow-row"}
       data-testid={`workflow-row-${workflow.relative_path}`}
       aria-expanded={expanded}
       onClick={onToggle}
       style={indent(depth)}
     >
-      <span className="workflow-label">{label}</span>
-      <ReadOnlyTag workflow={workflow} />
+      {/* Only the file name: the folders sit above it, and the workflow's own `name` shows on the
+          Launch button and in the run detail. */}
+      <span className="workflow-label">
+        <span className="workflow-file-name">{workflowBaseName(workflow.relative_path)}</span>
+      </span>
+      {readOnly ? (
+        <span className="workflow-tag" title={t("readOnlyTitle")}>
+          <span aria-hidden="true">🔒</span>
+          {t("readOnly")}
+        </span>
+      ) : null}
       <RootTag workflow={workflow} />
     </button>
-  );
-}
-
-/** The lock on a row the Server marks read-only but still opens: a shared workflow another user
- * created (ADR 0088). It runs in place; only its creator edits it. */
-function ReadOnlyTag({ workflow }: { workflow: WorkflowSummary }) {
-  const t = useTranslations("viewer.launchPanel");
-  if (!workflow.read_only || workflow.action !== "open") return null;
-  return (
-    <span className="workflow-tag" title={t("readOnlyTitle")}>
-      <span aria-hidden="true">🔒</span>
-      {t("readOnly")}
-    </span>
   );
 }
 

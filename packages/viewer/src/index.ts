@@ -23,6 +23,7 @@ export {
 } from "./resume-actions.js";
 export { RunDetail, type RunDetailProps } from "./run-detail.js";
 export { RUNS_REFRESH_MS, RunsList, type RunsListProps } from "./runs-list.js";
+export { FolderRow, indent } from "./tree-rows.js";
 export {
   type PaneHandleProps,
   type PaneWidths,
@@ -33,6 +34,7 @@ export {
 export { type Resource, type ResourceOptions, useResource } from "./use-resource.js";
 export { type RunSelection, useRunSelection } from "./use-run-selection.js";
 export { type RunViewLoad, useRunView } from "./use-run-view.js";
+export { useWatchedRun, type WatchedRun } from "./watched-run.js";
 // The one worker-default editor, shared by the Designer's file region and the launch form.
 export {
   WorkerDefaultsEditor,

@@ -3,7 +3,9 @@
 // level is one folder per origin (ADR 0085). A level shows only its own children; folders open one
 // per level as an accordion.
 
+import type { Message } from "@path/i18n";
 import type { WorkflowSummary } from "@path/schema";
+import { wireErrorMessage } from "./transport.js";
 
 /** A folder node: a navigation step that groups the workflows (and folders) under one path
  * prefix. */
@@ -104,4 +106,26 @@ export function isFolderOnOpenChain(openFolder: string | null, folderPath: strin
 
 export function nextOpenFolder(openFolder: string | null, folderPath: string): string | null {
   return isFolderOnOpenChain(openFolder, folderPath) ? parentFolderPath(folderPath) : folderPath;
+}
+
+/**
+ * What one Discovery row offers a picker (ADR 0086): `open` in place (a launch, or an edit), with
+ * the lock of a shared file another user created; `copy` a shipped file into the user's folder;
+ * or only its load error, `null` when the Server sent none. A launch refuses an invalid file, since
+ * its load would fail; an edit opens it so the author can repair it.
+ */
+export type WorkflowRowAction =
+  | { kind: "open"; readOnly: boolean }
+  | { kind: "copy" }
+  | { kind: "broken"; error: Message | null };
+
+export function workflowRowAction(
+  workflow: WorkflowSummary,
+  purpose: "launch" | "edit",
+): WorkflowRowAction {
+  if (workflow.action === "copy") return { kind: "copy" };
+  if (workflow.action === "open" && (workflow.valid || purpose === "edit")) {
+    return { kind: "open", readOnly: workflow.read_only };
+  }
+  return { kind: "broken", error: workflow.error ? wireErrorMessage(workflow.error) : null };
 }

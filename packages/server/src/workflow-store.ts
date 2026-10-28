@@ -9,13 +9,8 @@ import {
   safeParseWorkflowFile,
   type WorkflowSummary,
 } from "@path/schema";
-import {
-  conditionalDelete,
-  conditionalWrite,
-  PRECONDITION_FAILED,
-  serializeArtifact,
-} from "./artifact-file.js";
-import { scanFolders } from "./authored-layout.js";
+import { conditionalDelete, PRECONDITION_FAILED } from "./artifact-file.js";
+import { writableRoots } from "./authored-layout.js";
 import { editLease } from "./edit-lease.js";
 import { type Refusal, wireError } from "./http-json.js";
 import type { WriteAccess } from "./write-access.js";
@@ -130,32 +125,16 @@ export function workflowsOf(ctx: {
         };
       });
 
-      const roots = layout
-        .roots("workflow")
-        .flatMap((root) =>
-          root.origin === "shipped"
-            ? []
-            : [
-                {
-                  origin: root.origin,
-                  relative_path: relative(layout.projectDir, root.dir),
-                  folders: scanFolders(root.dir),
-                },
-              ],
-        )
-        .reverse();
+      const roots = writableRoots(layout, "workflow");
       return { workflows, roots, max_file_bytes: access.maxFileBytes ?? null };
     },
 
     write(workflowPath, payload, ifMatch) {
       // Path and access (404, 403) before schema (400): a path the requester may not change is
-      // refused regardless of the payload.
+      // refused regardless of the payload. The write's own limits come after the schema.
       const target = access.workflow(workflowPath);
       if (!target.ok) return target;
       const { absPath } = target;
-      const origin = access.layout.classify(workflowPath)?.origin ?? "user";
-      const createRefusal = target.exists ? undefined : access.createRefusal(origin);
-      if (createRefusal !== undefined) return { ok: false, ...createRefusal };
 
       // Parsed against the registry frozen at server start (ADR 0018), like every other door that
       // validates a file.
@@ -177,14 +156,11 @@ export function workflowsOf(ctx: {
           details: duplicates,
         };
       }
-      const tooLarge = access.sizeRefusal(Buffer.byteLength(serializeArtifact(payload)));
-      if (tooLarge !== undefined) return { ok: false, ...tooLarge };
-
-      const written = conditionalWrite(absPath, { ifMatch, rule: "create-or-overwrite", payload });
-      if (!written.ok) {
-        return { ok: false, status: 412, code: PRECONDITION_FAILED[written.conflict] };
-      }
-      if (written.created) access.created(workflowPath, "workflow");
+      const written = access.write(absPath, "workflow", payload, {
+        ifMatch,
+        rule: "create-or-overwrite",
+      });
+      if (!written.ok) return written;
       return {
         ok: true,
         relativePath: relative(projectDir, absPath),

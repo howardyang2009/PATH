@@ -10,6 +10,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { describe, expect, it, vi } from "vitest";
 import { NodeIo } from "../src/node-io.js";
 import { RunDetail } from "../src/run-detail.js";
+import type { RunSelection } from "../src/use-run-selection.js";
 import { useRunView } from "../src/use-run-view.js";
 
 const ROOT = "run_root";
@@ -113,17 +114,22 @@ const SUB_FILE = {
   ] as unknown as WorkflowFile["body"],
 } satisfies WorkflowFile;
 
+/** A selection watching nothing, its transitions inert; a test sets the ids it needs. */
+const FIXED_SELECTION: RunSelection = {
+  rootRunId: null,
+  selectedRunId: null,
+  reloadNonce: 0,
+  selectRootRun: () => {},
+  selectRun: () => {},
+  watchNewRun: () => {},
+  onDeleted: () => {},
+};
+
 function ConnectedDetail({ client }: { client: PathApiClient }) {
   const load = useRunView(client, ROOT);
+  const selection = { ...FIXED_SELECTION, rootRunId: ROOT, selectRun: vi.fn() };
   return (
-    <RunDetail
-      client={client}
-      load={load}
-      rootRunId={ROOT}
-      selectedRunId={null}
-      onSelectRun={vi.fn()}
-      runFiles={runFileSetOf([ROOT_FILE])}
-    />
+    <RunDetail client={client} watch={{ selection, load }} runFiles={runFileSetOf([ROOT_FILE])} />
   );
 }
 

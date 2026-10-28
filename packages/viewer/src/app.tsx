@@ -13,9 +13,8 @@ import { RunDetail } from "./run-detail.js";
 import { RunsList } from "./runs-list.js";
 import { SecretsPage } from "./secrets-page.js";
 import { useResource } from "./use-resource.js";
-import { useRunSelection } from "./use-run-selection.js";
-import { useRunView } from "./use-run-view.js";
 import { useViewerPage, viewerPath } from "./viewer-page.js";
+import { useWatchedRun } from "./watched-run.js";
 
 /**
  * The viewer app: the runs console, and in hosted mode the Secrets page at `/viewer/secrets`,
@@ -61,10 +60,12 @@ function RunsConsole({ client, menuItems }: { client: PathApiClient; menuItems: 
   const t = useTranslations("viewer.app");
   // The watched root run, the selected node run and the list's reload nudge: one selection the
   // Viewer shares with the Designer's dock (use-run-selection.ts).
-  const selection = useRunSelection();
+  // The watched root run, the selected node run and the list's reload nudge, over one connection:
+  // the watched run the Viewer shares with the Designer's dock (watched-run.ts).
+  const watch = useWatchedRun(client);
+  const { selection, load } = watch;
   const selectedRootRunId = selection.rootRunId;
   const selectedRunId = selection.selectedRunId;
-  const load = useRunView(client, selectedRootRunId);
   // The watched root run's source file, as the live snapshot records it.
   const rootWorkflowPath =
     load.phase === "ready" && selectedRootRunId !== null
@@ -84,7 +85,7 @@ function RunsConsole({ client, menuItems }: { client: PathApiClient; menuItems: 
     readRunFiles.load.phase === "ready" ? readRunFiles.load.value : EMPTY_RUN_FILE_SET;
   const rootFile = runFiles.rootFile;
 
-  const { selectRootRun, watchNewRun: handleLaunched, onDeleted: handleDeleted } = selection;
+  const handleLaunched = selection.watchNewRun;
 
   // Taken from the same snapshot the tree renders, so refs and status stay current as the run
   // executes.
@@ -100,33 +101,17 @@ function RunsConsole({ client, menuItems }: { client: PathApiClient; menuItems: 
       runs={
         <RunsList
           client={client}
-          selectedRootRunId={selectedRootRunId}
-          onSelectRootRun={selectRootRun}
-          onResumed={handleLaunched}
-          onDeleted={handleDeleted}
-          reloadNonce={selection.reloadNonce}
-          // The `Resume from …` action lives in the selected row's action panel, below plain
-          // Resume. It reads the watched run's root file so the eager legal-K check greys the
-          // button like the Designer's; the Viewer never edits, so `dirty` stays false.
-          resumeFrom={
-            load.phase === "ready"
-              ? { runs: load.value.runs, selectedRunId, rootFile, dirty: false }
-              : undefined
-          }
+          watch={watch}
+          // The `Resume from …` action reads the watched run's root file so the eager legal-K
+          // check greys the button like the Designer's; the Viewer never edits.
+          rootFile={rootFile}
         />
       }
       detail={
         selectedRootRunId === null ? (
           <p className="pane-note">{t("selectRun")}</p>
         ) : (
-          <RunDetail
-            client={client}
-            load={load}
-            rootRunId={selectedRootRunId}
-            selectedRunId={selectedRunId}
-            onSelectRun={selection.selectRun}
-            runFiles={runFiles}
-          />
+          <RunDetail client={client} watch={watch} runFiles={runFiles} />
         )
       }
       nodeIo={

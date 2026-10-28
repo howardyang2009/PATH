@@ -31,13 +31,14 @@ export function AuthGate({ auth, children }: AuthGateProps) {
 
 function SignInScreen({ auth }: { auth: AuthSession }) {
   const t = useTranslations("viewer.authGate");
+  const brand = useTranslations("shared.brand");
   useEffect(() => {
     void auth.signIn();
   }, [auth]);
   return (
     <main className="sign-in-screen">
       <span className="brand">PATH</span>
-      <span className="brand-by">by RheinWeg</span>
+      <span className="brand-by">{brand("by")}</span>
       <p>{t("prompt")}</p>
       <button type="button" onClick={() => void auth.signIn()}>
         {t("signIn")}
