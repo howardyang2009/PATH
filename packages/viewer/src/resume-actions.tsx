@@ -1,8 +1,10 @@
 import {
   launchSecretResupply,
   type PathApiClient,
+  type ResumeFromEligibility,
   type RunNodeState,
-  resumeFromEligibility,
+  type RunResumeAction,
+  type RunResumeFromAction,
   resupplyGate,
   type WorkflowFile,
 } from "@path/client-core";
@@ -32,17 +34,12 @@ export interface ResumeActionsProps {
   client: PathApiClient;
   /** The selected root run — the run being resumed / reran. */
   rootRunId: string;
-  /** Show the plain **`Resume run`** button; a still-running run gets no plain Resume at all. */
-  showResume: boolean;
-  /**
-   * The run's status permits a plain resume — `true` only for `cancelled`/`failed`. A `succeeded`
-   * run stays visible but greyed, with its reason inline.
-   */
-  plainResumable: boolean;
-  /** Show **`Resume from …`**; only the watched run's own panel, with a loaded tree, opts in. */
-  showResumeFrom: boolean;
-  /** Everything the eager legal-K check reads. Required: the panel is only built with it. */
-  resumeFrom: ResumeFromAffordance;
+  /** Plain **`Resume run`**: shown on every finished row, enabled only where its status allows. */
+  resume: RunResumeAction;
+  /** **`Resume from …`**: shown only for the watched run, enabled only when its K is legal. */
+  resumeFrom: RunResumeFromAction;
+  /** The eager legal-K verdict both verbs read (ADR 0033); render its message when it refuses. */
+  eligibility: ResumeFromEligibility | null;
   /**
    * The root summary's `$secret`-masked config dot-paths (ADR 0046). Non-empty, the config field
    * opens prefilled: a masked `[secret:<key>]` token cannot continue the run.
@@ -65,10 +62,9 @@ type ErrorState = { source: "resume" | "resume-from"; message: string } | null;
 export function ResumeActions({
   client,
   rootRunId,
-  showResume,
-  plainResumable,
-  showResumeFrom,
+  resume,
   resumeFrom,
+  eligibility,
   launchSecretKeys,
   onResumed,
 }: ResumeActionsProps): JSX.Element {
@@ -85,12 +81,12 @@ export function ResumeActions({
   const [showConfig, setShowConfig] = useState(showSecrets);
   const [error, setError] = useState<ErrorState>(null);
 
-  // A new K-selection makes a prior action's refusal alert stale, so clear it on change.
-  const selectedRunId = resumeFrom.selectedRunId;
+  // A new K makes a prior action's refusal alert stale, so clear it when the chosen run changes.
+  const selectedK = eligibility?.ok === true ? eligibility.runId : null;
   // biome-ignore lint/correctness/useExhaustiveDependencies: the effect's whole purpose is this reset.
   useEffect(() => {
     setError(null);
-  }, [selectedRunId]);
+  }, [selectedK]);
 
   // The shared secret-restore gate (ADR 0046): a recorded secret is a credential the frozen config
   // holds only as a mask token, so both verbs stay disabled while one is blank — the engine would
@@ -100,13 +96,9 @@ export function ResumeActions({
   const configResult = gate.configResult;
   const blankSecrets = gate.blankPaths;
 
-  // `Resume from …` legality — computed only when the button is shown (only then is a tree behind
-  // it).
-  const eligibility = showResumeFrom ? resumeFromEligibility({ rootRunId, ...resumeFrom }) : null;
-
   // Enabled by status/K alone, not config validity — a bad config must not lock the field it lives
   // in.
-  const resumeEnabledByStatus = showResume && plainResumable;
+  const resumeEnabledByStatus = resume.enabled;
   const resumeFromEnabledByStatus = eligibility?.ok === true;
   const configDisabled = !resumeEnabledByStatus && !resumeFromEnabledByStatus;
   // Collapsed while disabled; otherwise open on demand, and forced open on an invalid value.
@@ -157,7 +149,7 @@ export function ResumeActions({
   };
 
   // The greyed plain-Resume's inline reason: a succeeded run reruns from a chosen boundary instead.
-  const resumeReason = showResume && !plainResumable ? t("resumeActions.succeededReason") : null;
+  const resumeReason = resume.reason === null ? null : renderMessage(resume.reason);
 
   return (
     <div className="launch-form resume-form" data-testid="resume-form">
@@ -204,7 +196,7 @@ export function ResumeActions({
         </p>
       )}
 
-      {showResume && (
+      {resume.show && (
         <div className="resume-line">
           <button
             type="button"
@@ -223,7 +215,7 @@ export function ResumeActions({
         </div>
       )}
 
-      {showResumeFrom && eligibility !== null && (
+      {resumeFrom.show && eligibility !== null && (
         <div className="resume-line">
           <button
             type="button"

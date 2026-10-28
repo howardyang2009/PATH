@@ -1,5 +1,6 @@
 import {
   EMPTY_RUN_FILE_SET,
+  isAwaiting,
   isReuseRow,
   isRootRun,
   isTerminal,
@@ -121,7 +122,7 @@ export function NodeIo({ client, run, view, runFiles = EMPTY_RUN_FILE_SET }: Nod
         <span className="run-id">{run.runId}</span>
       </p>
 
-      {run.status === "awaiting" && (
+      {isAwaiting(run.status) && (
         <AwaitingActions
           client={client}
           run={run}

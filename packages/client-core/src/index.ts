@@ -135,6 +135,18 @@ export {
   resumeFromEligibility,
   shortRunId,
 } from "./resume-from-eligibility.js";
+// What a run row offers (resume, resume-from, delete) and the status predicates every surface
+// shares: one reading for the Viewer's rail and the Designer's run dock (ADR 0025, ADR 0033).
+export {
+  isAwaiting,
+  isCancellable,
+  isInFlight,
+  type RunResumeAction,
+  type RunResumeFromAction,
+  type RunRowActions,
+  type RunRowActionsInput,
+  runRowActions,
+} from "./run-affordances.js";
 export {
   EMPTY_RUN_FILE_SET,
   type RunFileSet,

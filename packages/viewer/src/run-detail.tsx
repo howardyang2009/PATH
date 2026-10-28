@@ -1,6 +1,6 @@
 import {
   EMPTY_RUN_FILE_SET,
-  isTerminal,
+  isCancellable,
   narrativeRows,
   type PathApiClient,
   type RunFileSet,
@@ -76,7 +76,7 @@ export function RunDetail({ client, watch, runFiles = EMPTY_RUN_FILE_SET }: RunD
   const awaitingCount = state.awaitingRunIds.size;
   // A terminal run has nothing to cancel — the button is absent, not disabled-and-explaining. The
   // finished-side mirror, Resume, lives in the runs rail (under the selected row), not here.
-  const cancellable = !isTerminal(state.status);
+  const cancellable = isCancellable(state.status);
 
   return (
     <div className="run-detail" ref={detailRef}>
