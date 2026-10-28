@@ -133,3 +133,28 @@ describe("workflow store — shared items", () => {
     expect(existsSync(join(projectDir, SHARED))).toBe(true);
   });
 });
+
+describe("workflow store list", () => {
+  it("lists the user's workflow to open, the shipped one to copy, and the writable roots", async () => {
+    const mine = join("users", "local", "workflow", "draft.workflow.json");
+    expect(store.write(mine, workflow(), undefined).ok).toBe(true);
+
+    const { workflows, roots } = await store.list();
+    expect(workflows.map((w) => [w.relative_path, w.origin, w.action])).toEqual(
+      expect.arrayContaining([
+        [mine, "user", "open"],
+        ["sample.workflow.json", "shipped", "copy"],
+      ]),
+    );
+    expect(roots[0]).toEqual({ origin: "user", relative_path: join("users", "local", "workflow") });
+  });
+
+  it("lists an invalid file with its coded load error", async () => {
+    const broken = join("users", "local", "workflow", "broken.workflow.json");
+    mkdirSync(join(projectDir, "users", "local", "workflow"), { recursive: true });
+    writeFileSync(join(projectDir, broken), "{ not json");
+
+    const row = (await store.list()).workflows.find((w) => w.relative_path === broken);
+    expect(row).toMatchObject({ valid: false, is_root: null, error: { code: "workflow.invalid" } });
+  });
+});

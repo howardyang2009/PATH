@@ -3,6 +3,7 @@ import { useMessage } from "@path/i18n/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslations } from "use-intl";
 import { AppShell } from "./app-shell.js";
+import { useAuthoredFiles } from "./authored-files.js";
 import { Canvas } from "./canvas.js";
 import {
   type Dialog,
@@ -13,7 +14,6 @@ import {
   resolvedDialog,
   saveAsDialog,
 } from "./dialog-flow.js";
-import { useWorkflowDiscovery } from "./discovery.js";
 import { documentPolicy } from "./document.js";
 import { downloadFailure, downloadFile } from "./download-file.js";
 import {
@@ -38,7 +38,6 @@ import { SaveAsChoiceDialog } from "./save-as-choice-dialog.js";
 import { SaveTemplateAsDialog } from "./save-template-as-dialog.js";
 import { SelectionProvider } from "./selection-context.js";
 import { droppedWorkflowFields } from "./session-reducer.js";
-import { useTemplateList } from "./template-list.js";
 import type { Upload } from "./upload.js";
 import { UploadCopyDialog } from "./upload-copy-dialog.js";
 import { UploadDialog } from "./upload-dialog.js";
@@ -114,12 +113,9 @@ export function App({
   // Workflow discovery, loaded once for the whole surface: the problems pass, the open-existing
   // picker, the first-save directory list, and the ref-target picker all project this one snapshot,
   // so a save that writes a file (or a scan landing mid-dialog) reads the same everywhere.
-  // Bumped after a copy, which writes files outside a save, so discovery sees them.
-  const [discoveryKey, setDiscoveryKey] = useState(0);
-  const discovery = useWorkflowDiscovery(client, session.saveState.phase, discoveryKey);
-  // Re-listed after each save, so a Save-As template shows up in the palette, and after an upload.
-  const [templateKey, setTemplateKey] = useState(0);
-  const templateList = useTemplateList(client, session.saveState.phase, templateKey);
+  // The template list rides the same scans, so a Save-As template shows up in the palette.
+  const authored = useAuthoredFiles(client, session.saveState.phase);
+  const { discovery, templateList } = authored;
 
   // The active file's cross-node problem pass, behind one seam (`useFileProblems`), shared by its
   // two readers — the canvas markers/panel and the launch button's warning count — so they cannot
@@ -171,7 +167,7 @@ export function App({
   // rejects, and the picker shows it.
   const copyShipped = async (shippedPath: string): Promise<void> => {
     const { relativePath } = await client.copyShippedWorkflow(shippedPath);
-    setDiscoveryKey((key) => key + 1);
+    authored.rescan();
     openExisting(relativePath);
   };
 
@@ -228,8 +224,7 @@ export function App({
       window.alert(t("couldNotUpload", { message: renderMessage(outcome.message) }));
     }
     if (outcome.status !== "done") return;
-    setDiscoveryKey((key) => key + 1);
-    setTemplateKey((key) => key + 1);
+    authored.rescan();
     if (outcome.target.kind === "workflow") {
       session.apply({ type: "openLoading", path: outcome.target.path });
     } else {
