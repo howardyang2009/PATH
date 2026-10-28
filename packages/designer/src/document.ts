@@ -6,11 +6,17 @@ import {
 } from "@path/client-core";
 import { FORMAT_VERSION, type WorkflowFile, type WorkflowNode } from "@path/schema";
 import { errorMessage } from "@path/viewer";
+import type { DiscoveryLoad } from "./discovery.js";
 import { openWorkflowFile } from "./open-workflow.js";
+import { type ReadOnlyReason, workflowReadOnly } from "./read-only.js";
 import { canonicalSerialize } from "./serialize.js";
 import {
+  type DeletePlan,
   type DocumentWrite,
+  type DownloadPlan,
   type PlanState,
+  planDelete,
+  planDownload,
   planWrite,
   type WriteOutcome,
   type WriteSuccess,
@@ -150,23 +156,37 @@ export function writeRefusal(error: unknown): Exclude<WriteOutcome, { ok: true }
  */
 export type SaveDoor = "save" | "new-workflow-dialog" | "new-template-dialog";
 
-/** The session policy the surfaces read, derived from the session state alone. */
+/** The document policy the surfaces read: which doors the active document offers, whether the
+ * Server will let the requester write it, and which paths hold an edit lease. */
 export interface DocumentPolicy {
   saveDoor: SaveDoor | null;
   /** Save as… is offered for an opened document that already has an identity (a path or a
    * template). */
   canSaveAs: boolean;
+  /** Why the Server will refuse a write to the active document (ADR 0088); `false` while it is
+   * writable or not yet discovered. A read-only document keeps Save as… only. */
+  readOnly: ReadOnlyReason | false;
+  /** The root file Delete removes; `null` when nothing deletable is open, or it is read-only. */
+  deletePlan: DeletePlan | null;
+  /** The saved file Download fetches; `null` when nothing saved is open. */
+  downloadPlan: DownloadPlan | null;
   /**
-   * The paths that hold an edit lease: every opened, written, path-bearing frame on the stack. A
-   * frame that failed to open, an unwritten buffer, and a template (id-addressed) take none.
+   * The paths that hold an edit lease: every opened, written, path-bearing frame on the stack that
+   * the requester may write. A frame that failed to open, an unwritten buffer, a template
+   * (id-addressed) and a read-only file take none: the Server leases only to a file's writer.
    */
   leasedPaths: string[];
 }
 
-export function documentPolicy(state: PlanState): DocumentPolicy {
+/** The policy of `state`'s active document, read against the last workflow Discovery: a template's
+ * read-only reason rides its frame, a workflow's its Discovery row. */
+export function documentPolicy(state: PlanState, discovery: DiscoveryLoad): DocumentPolicy {
   const active = state.frames[state.activeIndex];
   const isOpen = openedResultOf(active) !== null;
   const hasIdentity = Boolean(active?.path || active?.template);
+  const readOnly = active?.template
+    ? active.template.readOnly
+    : workflowReadOnly(discovery, active?.path ?? undefined);
   // The door is the write plan's own answer: a plan means Save writes this buffer, and a refusal
   // names the surface that must ask for the missing identity first.
   const door = planWrite(state, { kind: "save" });
@@ -179,8 +199,12 @@ export function documentPolicy(state: PlanState): DocumentPolicy {
           ? "new-workflow-dialog"
           : null,
     canSaveAs: isOpen && hasIdentity,
+    readOnly,
+    deletePlan: readOnly ? null : planDelete(state),
+    downloadPlan: planDownload(state),
     leasedPaths: state.frames
       .filter((frame) => openedResultOf(frame) !== null && frame.written && frame.path !== null)
-      .map((frame) => frame.path as string),
+      .map((frame) => frame.path as string)
+      .filter((path) => !workflowReadOnly(discovery, path)),
   };
 }

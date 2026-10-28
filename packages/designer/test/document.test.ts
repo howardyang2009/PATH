@@ -1,7 +1,13 @@
-import { apiErrorMessage, type PathApiClient, PathApiError } from "@path/client-core";
+import {
+  apiErrorMessage,
+  type PathApiClient,
+  PathApiError,
+  type WorkflowSummary,
+} from "@path/client-core";
 import { verbatim } from "@path/i18n";
 import { FORMAT_VERSION, type WorkflowFile, type WorkflowNode } from "@path/schema";
 import { describe, expect, it } from "vitest";
+import type { DiscoveryLoad } from "../src/discovery.js";
 import {
   type DocumentWrite,
   documentPolicy,
@@ -65,37 +71,67 @@ function session(
   return { frames, activeIndex, mode };
 }
 
+/** A Discovery scan holding `rows`, each a writable user file unless it says otherwise. */
+function discovery(rows: Partial<WorkflowSummary>[] = []): DiscoveryLoad {
+  const workflows = rows.map((row) => ({
+    relative_path: "flow.workflow.json",
+    origin: "user" as const,
+    root_path: "flow.workflow.json",
+    action: "open" as const,
+    read_only: false,
+    id: uuid(1),
+    name: "flow",
+    valid: true,
+    is_root: true,
+    error: null,
+    ...row,
+  }));
+  return { phase: "ready", scan: { workflows, roots: [], maxFileBytes: null } };
+}
+
+const NOT_SCANNED: DiscoveryLoad = { phase: "loading" };
+
 describe("documentPolicy", () => {
-  it("saves a written workflow in place and leases its path", () => {
-    expect(documentPolicy(session([openFrame()]))).toEqual({
+  it("saves a written workflow in place, leases its path, and offers Delete and Download", () => {
+    expect(documentPolicy(session([openFrame()]), NOT_SCANNED)).toEqual({
       saveDoor: "save",
       canSaveAs: true,
+      readOnly: false,
+      deletePlan: { kind: "workflow", path: "flow.workflow.json", ifMatch: "etag-open" },
+      downloadPlan: { kind: "workflow", path: "flow.workflow.json" },
       leasedPaths: ["flow.workflow.json"],
     });
   });
 
   it("opens the first-save dialog of the mode for a from-scratch buffer, with no Save as… and no lease", () => {
-    expect(documentPolicy(session([scratchFrame()]))).toEqual({
+    expect(documentPolicy(session([scratchFrame()]), NOT_SCANNED)).toEqual({
       saveDoor: "new-workflow-dialog",
       canSaveAs: false,
+      readOnly: false,
+      deletePlan: null,
+      downloadPlan: null,
       leasedPaths: [],
     });
-    expect(documentPolicy(session([scratchFrame()], "template"))).toMatchObject({
+    expect(documentPolicy(session([scratchFrame()], "template"), NOT_SCANNED)).toMatchObject({
       saveDoor: "new-template-dialog",
     });
   });
 
   it("saves a template source in place by id, with no lease", () => {
-    expect(documentPolicy(session([openFrame({ path: null, template })], "template"))).toEqual({
+    expect(
+      documentPolicy(session([openFrame({ path: null, template })], "template"), NOT_SCANNED),
+    ).toMatchObject({
       saveDoor: "save",
       canSaveAs: true,
+      readOnly: false,
+      deletePlan: { kind: "template", id: template.id },
       leasedPaths: [],
     });
   });
 
   it("saves a create-new child at its path but leases only written frames on the stack", () => {
     const child = scratchFrame("child.workflow.json", { depth: 0, nodeId: uuid(2) });
-    expect(documentPolicy(session([openFrame(), child]))).toEqual({
+    expect(documentPolicy(session([openFrame(), child]), NOT_SCANNED)).toMatchObject({
       saveDoor: "save",
       canSaveAs: true,
       leasedPaths: ["flow.workflow.json"],
@@ -103,11 +139,40 @@ describe("documentPolicy", () => {
   });
 
   it("offers nothing while the active frame is still loading", () => {
-    expect(documentPolicy(session([loadingFrame("flow.workflow.json", undefined, 1)]))).toEqual({
+    expect(
+      documentPolicy(session([loadingFrame("flow.workflow.json", undefined, 1)]), NOT_SCANNED),
+    ).toEqual({
       saveDoor: null,
       canSaveAs: false,
+      readOnly: false,
+      deletePlan: null,
+      downloadPlan: null,
       leasedPaths: [],
     });
+  });
+
+  it("reads a workflow's read-only reason off its Discovery row: no lease, no Delete", () => {
+    const shared = discovery([{ origin: "shared", read_only: true }]);
+    expect(documentPolicy(session([openFrame()]), shared)).toMatchObject({
+      readOnly: "shared",
+      deletePlan: null,
+      downloadPlan: { kind: "workflow", path: "flow.workflow.json" },
+      leasedPaths: [],
+    });
+    expect(documentPolicy(session([openFrame()]), discovery([{}]))).toMatchObject({
+      readOnly: false,
+      leasedPaths: ["flow.workflow.json"],
+    });
+  });
+
+  it("reads a template's read-only reason off its frame", () => {
+    const shipped = { ...template, readOnly: "shipped" as const };
+    expect(
+      documentPolicy(
+        session([openFrame({ path: null, template: shipped })], "template"),
+        NOT_SCANNED,
+      ),
+    ).toMatchObject({ readOnly: "shipped", deletePlan: null, saveDoor: "save" });
   });
 });
 

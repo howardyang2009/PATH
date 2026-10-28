@@ -30,7 +30,6 @@ import { OpenWorkflowDialog } from "./open-existing-dialog.js";
 import { OpenTemplateDialog } from "./open-template-dialog.js";
 import { Palette } from "./palette.js";
 import { PropertiesPane } from "./pane/properties-pane.js";
-import { READ_ONLY_TITLE, workflowReadOnly } from "./read-only.js";
 import { RefTargetDialog } from "./ref-target-dialog.js";
 import { RunDock } from "./run/run-dock.js";
 import { RunProjectionProvider } from "./run/run-projection.js";
@@ -46,14 +45,7 @@ import { readPickedFile, startUpload, type UploadOutcome, uploadCopy } from "./u
 import { useArmed } from "./use-armed.js";
 import { useEditLeases } from "./use-edit-leases.js";
 import { useFileProblems } from "./use-file-problems.js";
-import {
-  frameDirty,
-  frameHasUnsavedWork,
-  openedResultOf,
-  planDelete,
-  planDownload,
-  useOpenFile,
-} from "./use-open-file.js";
+import { frameDirty, frameHasUnsavedWork, openedResultOf, useOpenFile } from "./use-open-file.js";
 import { useRefAuthoring } from "./use-ref-authoring.js";
 
 /** The Designer app: palette rail, canvas, and properties pane. `initialPath` is the deep-link
@@ -184,12 +176,10 @@ export function App({
   // descent holds a second, independently-beating lease; a frame that only failed to open or a
   // never-saved buffer takes none. The document policy below picks the doors and the leased paths
   // from the session alone. A read-only file takes none: the Server leases only to its writer.
-  const policy = documentPolicy(session);
-  const leasedPaths = policy.leasedPaths.filter((path) => !workflowReadOnly(discovery, path));
+  const policy = documentPolicy(session, discovery);
+  const { deletePlan, downloadPlan, leasedPaths } = policy;
   const { sessionId, leases, takeover, reacquire } = useEditLeases(client, leasedPaths);
-  // Delete removes the root file from disk (`planDelete`): always confirmed, since it cannot be
-  // undone.
-  const deletePlan = planDelete(session);
+  // Delete removes the root file from disk: always confirmed, since it cannot be undone.
   const onDelete = (): void => {
     if (!deletePlan) return;
     const unsaved = String(session.frames.some((frame) => frameHasUnsavedWork(frame)));
@@ -203,7 +193,6 @@ export function App({
   // gate on — not a mutation flag. `active` is the frame the buffer and its baseline live on.
   const dirty = frameDirty(active);
   // Download saves the active frame's file as it is on disk, so a dirty buffer is confirmed first.
-  const downloadPlan = planDownload(session);
   const onDownload = (): void => {
     if (!downloadPlan) return;
     if (dirty && !window.confirm(t("downloadDirty"))) return;
@@ -262,22 +251,9 @@ export function App({
     if (firstSave.kind === "none") session.save();
     else setDialog(firstSave);
   }, [policy.saveDoor, session.save]);
-  // A read-only document (a shipped file, or a shared one another user created) keeps Save as…
-  // only; Save and Delete would answer `403`.
-  const readOnly = inTemplateMode
-    ? (activeTemplate?.readOnly ?? false)
-    : workflowReadOnly(discovery, activePath);
-  const readOnlyTitle = readOnly ? renderMessage({ key: READ_ONLY_TITLE[readOnly] }) : undefined;
   // The toolbar's whole capability surface, derived once: the Save button, ⌘S and the two keyboard
   // peers below all read this one value.
-  const chrome = editorChrome({
-    session,
-    policy,
-    deletePlan,
-    downloadPlan,
-    readOnlyTitle,
-    lease: activePath ? leases.get(activePath) : undefined,
-  });
+  const chrome = editorChrome(session, policy, activePath ? leases.get(activePath) : undefined);
   useEffect(() => {
     // ⌘/Ctrl+S runs the Save button, from any focus. It always blocks the browser's own Save Page.
     const onKeyDown = (event: KeyboardEvent): void => {

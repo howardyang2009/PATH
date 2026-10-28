@@ -22,6 +22,7 @@ function toolbar(lease: EditorChrome["lease"]): void {
     redo: true,
     remove: true,
     download: true,
+    readOnly: false,
     lease,
   };
   render(
