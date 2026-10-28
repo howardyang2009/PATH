@@ -63,7 +63,7 @@ describe("migrate-workflow-format-v5 — the no-op format stamp", () => {
     // `@5` is superseded now, so lift to the read format before loading.
     runCodemod([file], dir, V6);
     const result = safeParseWorkflowFile(read(file), builtinRegistry);
-    expect(result.success, result.success ? "" : result.errors.join("\n")).toBe(true);
+    expect(result.success, result.success ? "" : JSON.stringify(result.issues)).toBe(true);
   });
 
   it("G-S-10: a @4 Step-Template is byte-identical except `format`, and loads", () => {
@@ -80,7 +80,7 @@ describe("migrate-workflow-format-v5 — the no-op format stamp", () => {
     expect(bytes(file)).toBe(before.replace("path/workflow@4", "path/workflow@5"));
     runCodemod([file], dir, V6);
     const result = safeParseStepTemplate(read(file), builtinRegistry);
-    expect(result.success, result.success ? "" : result.errors.join("\n")).toBe(true);
+    expect(result.success, result.success ? "" : JSON.stringify(result.issues)).toBe(true);
   });
 
   it("is idempotent — an already-@5 file is left byte-unchanged", () => {
