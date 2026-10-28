@@ -20,7 +20,10 @@ function stubClient(files: Record<string, unknown | string>): {
       return new Response(JSON.stringify({ error: { message: "not found" } }), { status: 404 });
     const entry = files[path];
     const text = typeof entry === "string" ? entry : JSON.stringify(entry);
-    return new Response(text, { status: 200, headers: { "Content-Type": "application/json" } });
+    return new Response(JSON.stringify({ text, etag: '"e"' }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
   };
   return { client: new PathApiClient({ baseUrl: "http://localhost:8080", fetch }), paths };
 }

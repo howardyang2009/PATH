@@ -128,7 +128,7 @@ async function writeUpload(
     await client.putWorkflow({
       workflowPath: path,
       workflow: upload.content,
-      ifMatch: etag ?? undefined,
+      ifMatch: etag,
     });
   } finally {
     if (!lease?.heldPaths.includes(path))

@@ -756,7 +756,9 @@ This is the read side the precondition needs, and the ADR 0015 handoff the Desig
 carries no body, so the path rides a query param. It is still an opaque `/`-bearing string, no `%2F`
 router split.
 
-**Always raw.** It streams the file bytes verbatim and returns a strong `ETag` (sha256 of those bytes).
+**Always raw.** It returns the file bytes verbatim as `text`, with their strong ETag (sha256 of those
+bytes) as `etag` in the same body. The ETag rides the body because a compressing proxy may weaken a
+response header to `W/"…"`, which the strong `If-Match` compare then refuses.
 It **never runs the loader**. That is deliberate. (a) The ETag must hash the exact on-disk bytes anyway.
 (b) The Designer needs the raw body to preserve unknown fields and to receive an **id-less** file, so it
 can stamp ids on import (ADR 0015). (c) Validation already has homes: discovery reports `valid`/`error`
@@ -771,8 +773,8 @@ contradiction: discovery reports launch-validity, and this route reports bytes.
 
 Responses:
 
-- `200 OK` — `Content-Type: application/json`, the body is the file's raw bytes, the `ETag` header is
-  set.
+- `200 OK` — `{ "text": "<the file's raw bytes>", "etag": "\"<sha256>\"" }`. The `ETag` header carries
+  the same value for HTTP caches; a client reads the body's `etag`.
 - `404 Not Found` — the file does not exist, `path` escapes the project root, or a path component is a
   symlink (same confinement as §7).
 - `403 Forbidden` — a `GET` is ungated (§2.1), so this arises only if a future auth layer lands. It is

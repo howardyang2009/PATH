@@ -283,10 +283,7 @@ export function stubClient(options: StubServerOptions = {}): PathApiClient {
     if (fileMatch) {
       const path = decodeURIComponent(fileMatch[1]!);
       if (!(path in files)) return json({ error: { message: `not found: ${path}` } }, 404);
-      return new Response(files[path], {
-        status: 200,
-        headers: { "Content-Type": "application/json", ETag: '"stub"' },
-      });
+      return json({ text: files[path], etag: '"stub"' }, 200);
     }
     const body = init?.body ? (JSON.parse(init.body as string) as Record<string, unknown>) : {};
     if (input === "/v0/workflows/lock") {

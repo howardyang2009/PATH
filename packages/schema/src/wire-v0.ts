@@ -181,6 +181,13 @@ export interface WireCopyWorkflowResponse {
   root_path: string;
 }
 
+/** `GET /v0/workflows/file` reply (server-api-v0.md §7.1): the file's exact bytes and their strong
+ * ETag, the Baseline a later `If-Match` names. */
+export interface WireWorkflowFileResponse {
+  text: string;
+  etag: string;
+}
+
 /** The shared error envelope for every non-2xx response (server-api-v0.md §1). */
 export interface WireError {
   error: {

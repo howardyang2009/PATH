@@ -654,14 +654,8 @@ describe("PathApiClient", () => {
     expect(stub.urls[0]).toBe("http://localhost:8080/v0/step-plugins");
   });
 
-  it("GET /v0/workflows/file returns the raw text plus the ETag and encodes the path query", async () => {
-    const stub = stubFetch(
-      () =>
-        new Response('{"format":"path/workflow@6"}', {
-          status: 200,
-          headers: { "Content-Type": "application/json", ETag: '"abc123"' },
-        }),
-    );
+  it("GET /v0/workflows/file returns the raw text plus the body's ETag and encodes the path query", async () => {
+    const stub = stubFetch(() => json({ text: '{"format":"path/workflow@6"}', etag: '"abc123"' }));
     const client = new PathApiClient({ baseUrl: "http://localhost:8080", fetch: stub.fetch });
 
     const raw = await client.getWorkflowFile("flows/main.workflow.json");
@@ -670,20 +664,6 @@ describe("PathApiClient", () => {
     expect(stub.urls[0]).toBe(
       "http://localhost:8080/v0/workflows/file?path=flows%2Fmain.workflow.json",
     );
-  });
-
-  it("getWorkflowFile strips a proxy's weak W/ prefix so the ETag still passes If-Match", async () => {
-    const stub = stubFetch(
-      () =>
-        new Response("{}", {
-          status: 200,
-          headers: { "Content-Type": "application/json", ETag: 'W/"abc123"' },
-        }),
-    );
-    const client = new PathApiClient({ baseUrl: "http://localhost:8080", fetch: stub.fetch });
-
-    const raw = await client.getWorkflowFile("flows/main.workflow.json");
-    expect(raw.etag).toBe('"abc123"');
   });
 
   it("getWorkflowFile surfaces a 404 as a PathApiError with the server's message", async () => {

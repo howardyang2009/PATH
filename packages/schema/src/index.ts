@@ -278,6 +278,7 @@ export {
   type WireSecretList,
   type WireSecretSummary,
   type WireTemplateWriteResponse,
+  type WireWorkflowFileResponse,
   type WireWorkflowLease,
   type WorkflowRootSummary,
   type WorkflowSummary,
