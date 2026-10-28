@@ -109,16 +109,17 @@ export { eventOutcome, isRootRunFinished, runStatusAfter } from "./event-outcome
 // The framework-free run-logic seam the Viewer and the Designer both read: how a launch field is
 // gated, how one node is named, what one log event says, and what a missing blob means.
 export { type JsonFieldResult, type ParseJsonFieldOptions, parseJsonField } from "./launch-json.js";
-// The launch-facts secret-restore contract shared by Resume and Complete (ADR 0046): the config
-// field's show/skeleton state and the one submit-gate verdict.
+// The launch-facts secret-restore contract shared by Launch, Resume and Complete (ADR 0046): the
+// config field's show/skeleton state, and one reading of a raw-JSON override draft.
 export {
   blankSecretMessage,
   blankSecretPaths,
   type ContinuationVerb,
   type LaunchSecretResupply,
   launchSecretResupply,
-  type ResupplyGate,
-  resupplyGate,
+  type OverrideDraft,
+  type OverrideReading,
+  readOverride,
   secretSkeletonJson,
 } from "./launch-secret-resupply.js";
 // The page's Locale: `?lang=`, then the `RHEINWEG_LOCALE` cookie, then the browser.

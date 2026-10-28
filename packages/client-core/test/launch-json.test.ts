@@ -6,7 +6,8 @@ import { parseJsonField } from "../src/launch-json.js";
  * component test can stay about wiring, not about every empty/parse/shape case. The server stays
  * the real validator (a rejected `$env` config is left to it, ADR 0012); this only catches what is
  * not even valid JSON, or not the object the wire declares (`input` is `record`, `config` is
- * `ConfigObject`), before a request is spent.
+ * `ConfigObject`), before a request is spent. A refusal is a `Message`, so the lint travels through
+ * the catalogue (ADR 0107).
  */
 describe("parseJsonField", () => {
   it("accepts a parsed object and returns its value", () => {
@@ -25,20 +26,22 @@ describe("parseJsonField", () => {
   it("rejects blank text when empty is not allowed", () => {
     const r = parseJsonField("", { allowEmpty: false });
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.message).toMatch(/required/i);
+    if (!r.ok) expect(r.message).toEqual({ key: "shared.jsonField.required" });
   });
 
-  it("rejects text that is not valid JSON, surfacing the parser message", () => {
+  it("rejects text that is not valid JSON, carrying the parser text verbatim", () => {
     const r = parseJsonField("{ not json", { allowEmpty: true });
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.message.length).toBeGreaterThan(0);
+    if (r.ok) return;
+    expect(r.message.key).toBe("shared.jsonField.invalidJson");
+    expect(r.message.params?.error).toMatchObject({ key: "shared.verbatim" });
   });
 
   it("rejects valid JSON that is not an object (the wire declares a record)", () => {
     for (const text of ["[1, 2]", '"a string"', "42", "true", "null"]) {
       const r = parseJsonField(text, { allowEmpty: true });
       expect(r.ok, `${text} should be rejected`).toBe(false);
-      if (!r.ok) expect(r.message).toMatch(/object/i);
+      if (!r.ok) expect(r.message).toEqual({ key: "shared.jsonField.notAnObject" });
     }
   });
 

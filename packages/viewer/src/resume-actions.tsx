@@ -5,7 +5,7 @@ import {
   type RunNodeState,
   type RunResumeAction,
   type RunResumeFromAction,
-  resupplyGate,
+  readOverride,
   type WorkflowFile,
 } from "@path/client-core";
 import { useMessage } from "@path/i18n/react";
@@ -92,8 +92,8 @@ export function ResumeActions({
   // holds only as a mask token, so both verbs stay disabled while one is blank — the engine would
   // otherwise continue with a key the operator did not choose. Derived from the text, not gated on
   // a keystroke.
-  const gate = resupplyGate(secrets, config, "resuming");
-  const configResult = gate.configResult;
+  const gate = readOverride({ text: config, secretPaths: secrets, verb: "resuming" });
+  const configResult = gate.result;
   const blankSecrets = gate.blankPaths;
 
   // Enabled by status/K alone, not config validity — a bad config must not lock the field it lives

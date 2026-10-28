@@ -90,6 +90,9 @@
     },
     "jsonField": {
       "empty": "空，省略此字段",
+      "invalidJson": "JSON 无效：{error}",
+      "notAnObject": "必须是 JSON 对象，例如空对象",
+      "required": "必填，输入空对象表示不发送",
       "valid": "有效的 JSON"
     },
     "launchForm": {

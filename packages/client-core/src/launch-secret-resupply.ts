@@ -26,31 +26,41 @@ export function launchSecretResupply(keys: readonly string[]): LaunchSecretResup
     : { required: false, skeleton: "" };
 }
 
-/** The one verdict a continuation surface gates its submit on: `configResult` is the JSON parse (an
- * invalid draft is the field's own lint, so `blockMessage` stays `null` for it), `blankPaths` the
- * recorded secret paths still blank, and `ok` true only when the draft parses with no blank secret.
+/** The one reading every surface gates an `Override config` draft on: the JSON parse (an invalid
+ * draft is the field's own lint, so `blockMessage` stays `null` for it), whether the draft asks for
+ * anything at all, the recorded secret paths still blank, and whether the verb may submit.
  */
-export interface ResupplyGate {
-  configResult: JsonFieldResult;
+export interface OverrideReading {
+  result: JsonFieldResult;
+  /** The draft asks for nothing: blank text, or a literal `{}` — no keys to override with. */
+  isEmpty: boolean;
   blankPaths: readonly string[];
-  ok: boolean;
+  canSubmit: boolean;
   blockMessage: Message | null;
 }
 
-/** Compute the {@link ResupplyGate} for one continuation's config draft against its recorded
- * secrets. */
-export function resupplyGate(
-  keys: readonly string[],
-  configText: string,
-  verb: ContinuationVerb,
-): ResupplyGate {
-  const configResult = parseJsonField(configText, { allowEmpty: true });
-  const blankPaths = configResult.ok ? blankSecretPaths(keys, configResult.value) : [];
+/** The draft one surface is reading: the text, the launch-secret dot-paths a continuation must
+ * re-supply (empty for a launch), and the verb the blank-secret sentence reads in. */
+export interface OverrideDraft {
+  text: string;
+  secretPaths?: readonly string[];
+  verb?: ContinuationVerb;
+}
+
+/** Read one `Override config` draft: parse it, then gate it on the recorded launch secrets. */
+export function readOverride(draft: OverrideDraft): OverrideReading {
+  const secretPaths = draft.secretPaths ?? [];
+  const result = parseJsonField(draft.text, { allowEmpty: true });
+  const blankPaths = result.ok ? blankSecretPaths(secretPaths, result.value) : [];
   return {
-    configResult,
+    result,
+    isEmpty: result.ok && Object.keys(result.value ?? {}).length === 0,
     blankPaths,
-    ok: configResult.ok && blankPaths.length === 0,
-    blockMessage: blankPaths.length > 0 ? blankSecretMessage(blankPaths, verb) : null,
+    canSubmit: result.ok && blankPaths.length === 0,
+    blockMessage:
+      blankPaths.length > 0
+        ? blankSecretMessage(blankPaths, must(draft.verb, "a verb when a recorded secret is blank"))
+        : null,
   };
 }
 

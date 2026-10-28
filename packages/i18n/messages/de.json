@@ -90,6 +90,9 @@
     },
     "jsonField": {
       "empty": "leer – Feld wird weggelassen",
+      "invalidJson": "kein gültiges JSON: {error}",
+      "notAnObject": "muss ein JSON-Objekt sein, z. B. ein leeres Objekt",
+      "required": "erforderlich – ein leeres Objekt eingeben, um nichts zu senden",
       "valid": "gültiges JSON"
     },
     "launchForm": {

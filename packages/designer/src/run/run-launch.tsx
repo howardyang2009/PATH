@@ -1,4 +1,5 @@
 import type { PathApiClient, WireStepPlugin } from "@path/client-core";
+import type { Message } from "@path/i18n";
 import type { WorkflowFile } from "@path/schema";
 import { LaunchForm } from "@path/viewer";
 import { useTranslations } from "use-intl";
@@ -33,11 +34,11 @@ export function RunLaunch({
   onLaunched,
 }: RunLaunchProps): JSX.Element {
   const t = useTranslations();
-  const gate =
+  const gate: Message | null =
     workflowPath === null
-      ? t("designer.runLaunch.saveNew")
+      ? { key: "designer.runLaunch.saveNew" }
       : dirty
-        ? t("designer.runLaunch.saveEdits")
+        ? { key: "designer.runLaunch.saveEdits" }
         : null;
 
   return (

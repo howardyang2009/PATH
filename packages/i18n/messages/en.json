@@ -90,6 +90,9 @@
     },
     "jsonField": {
       "empty": "empty — field omitted",
+      "invalidJson": "not valid JSON: {error}",
+      "notAnObject": "must be a JSON object, e.g. an empty object",
+      "required": "required — enter an empty object to send none",
       "valid": "valid JSON"
     },
     "launchForm": {
