@@ -163,9 +163,11 @@ export {
   nextOpenFolder,
   ORIGIN_FOLDER,
   parentFolderPath,
+  type WorkflowRowAction,
   type WorkflowTreeFolder,
   type WorkflowTreeLeaf,
   type WorkflowTreeNode,
   workflowBaseName,
+  workflowRowAction,
   workflowTreePath,
 } from "./workflow-tree.js";

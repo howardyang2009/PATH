@@ -9,6 +9,7 @@ import {
   type WorkflowTreeFolder,
   type WorkflowTreeNode,
   workflowBaseName,
+  workflowRowAction,
 } from "../src/workflow-tree.js";
 
 /** A discovery row where `origin` and the path inside its root steer the tree; the rest is filled to
@@ -125,5 +126,37 @@ describe("accordion open-state", () => {
     expect(nextOpenFolder("a/b", "a")).toBeNull();
     // Toggling a top-level open folder collapses to nothing.
     expect(nextOpenFolder("a", "a")).toBeNull();
+  });
+});
+
+describe("workflowRowAction", () => {
+  const broken = {
+    ...wf("users/local/workflow/bad.workflow.json"),
+    valid: false,
+    error: { code: "workflow.invalid", params: {}, message: "bad" },
+  };
+
+  it("opens a valid own file, with the lock of a read-only shared one", () => {
+    expect(workflowRowAction(wf("users/local/workflow/a.workflow.json"), "launch")).toEqual({
+      kind: "open",
+      readOnly: false,
+    });
+    const theirs = { ...wf("shared/workflow/b.workflow.json", "shared"), read_only: true };
+    expect(workflowRowAction(theirs, "edit")).toEqual({ kind: "open", readOnly: true });
+  });
+
+  it("refuses to launch an invalid file but opens it for repair", () => {
+    expect(workflowRowAction(broken, "launch")).toEqual({
+      kind: "broken",
+      error: { key: "errors.workflow.invalid", params: {} },
+    });
+    expect(workflowRowAction(broken, "edit")).toEqual({ kind: "open", readOnly: false });
+  });
+
+  it("copies a valid shipped file, and shows a broken shipped one's error on both surfaces", () => {
+    const shipped = wf("lib/x.workflow.json", "shipped");
+    expect(workflowRowAction(shipped, "launch")).toEqual({ kind: "copy" });
+    const dead = { ...shipped, action: "none" as const, valid: false, error: null };
+    expect(workflowRowAction(dead, "edit")).toEqual({ kind: "broken", error: null });
   });
 });

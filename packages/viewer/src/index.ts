@@ -23,6 +23,7 @@ export {
 } from "./resume-actions.js";
 export { RunDetail, type RunDetailProps } from "./run-detail.js";
 export { RUNS_REFRESH_MS, RunsList, type RunsListProps } from "./runs-list.js";
+export { FolderRow, indent } from "./tree-rows.js";
 export {
   type PaneHandleProps,
   type PaneWidths,
