@@ -366,15 +366,7 @@ export function App({
             rootFile={openedFile}
             dirty={dirty}
             warningCount={warningCount}
-            load={run.load}
-            rootRunId={run.rootRunId}
-            selectedRunId={run.selectedRunId}
-            onSelectRootRun={run.selectRootRun}
-            onSelectRun={run.selectRun}
-            onLaunched={run.watchNewRun}
-            onResumed={run.watchNewRun}
-            onDeleted={run.onDeleted}
-            reloadNonce={run.reloadNonce}
+            watch={run.watch}
           />
         }
       />

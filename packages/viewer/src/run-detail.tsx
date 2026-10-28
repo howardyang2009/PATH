@@ -13,7 +13,7 @@ import { Narrative } from "./narrative.js";
 import { PaneError, PaneLoading } from "./pane-note.js";
 import { RunTree } from "./run-tree.js";
 import { StatusPill } from "./status-pill.js";
-import type { RunViewLoad } from "./use-run-view.js";
+import type { WatchedRun } from "./watched-run.js";
 
 /** Persisted run-tree height, in px. The narrative below takes whatever is left. */
 const TREE_HEIGHT_KEY = "path.viewer.tree-height";
@@ -24,13 +24,9 @@ const MIN_NARRATIVE = 120;
 
 export interface RunDetailProps {
   client: PathApiClient;
-  /** The live snapshot of the watched root run, owned by the app: one connection feeds two
-   * panes. */
-  load: RunViewLoad;
-  rootRunId: string;
-  /** The run the node-I/O pane is showing, owned above so both panes agree on it. */
-  selectedRunId: string | null;
-  onSelectRun: (runId: string) => void;
+  /** The console's watched run, owned by the app: one connection feeds this pane and the node-I/O
+   * pane, and both read one selected node run. Nothing renders while no root run is watched. */
+  watch: WatchedRun;
   /**
    * The files a run's node ids resolve against, for an awaiting leaf's assignee chip in the rail —
    * the node may sit in a nested file, not only the root.
@@ -45,14 +41,9 @@ export interface RunDetailProps {
  * connection is held by the app rather than by this pane, because the node-I/O pane reads the same
  * snapshot.
  */
-export function RunDetail({
-  client,
-  load,
-  rootRunId,
-  selectedRunId,
-  onSelectRun,
-  runFiles = EMPTY_RUN_FILE_SET,
-}: RunDetailProps) {
+export function RunDetail({ client, watch, runFiles = EMPTY_RUN_FILE_SET }: RunDetailProps) {
+  const { load } = watch;
+  const { rootRunId, selectedRunId, selectRun: onSelectRun } = watch.selection;
   const t = useTranslations("shared");
   const detailRef = useRef<HTMLDivElement>(null);
   // The tree/narrative split: the handle sits below the tree, so dragging down (+1) grows it, and
@@ -68,6 +59,7 @@ export function RunDetail({
     ariaOrientation: "horizontal",
   });
 
+  if (rootRunId === null) return null;
   if (load.phase === "idle" || load.phase === "loading") return <PaneLoading what="run" />;
   if (load.phase === "error") return <PaneError what="run" message={load.message} />;
 

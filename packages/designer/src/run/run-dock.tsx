@@ -9,10 +9,10 @@ import {
   NodeIo,
   RunDetail,
   RunsList,
-  type RunViewLoad,
   useDragSize,
   usePaneWidths,
   useResource,
+  type WatchedRun,
 } from "@path/viewer";
 import { useRef, useState } from "react";
 import { useTranslations } from "use-intl";
@@ -52,16 +52,8 @@ export interface RunDockProps {
   dirty: boolean;
   /** The open file's soft cross-node warning count — badges launch, never blocks it. */
   warningCount: number;
-  load: RunViewLoad;
-  rootRunId: string | null;
-  selectedRunId: string | null;
-  onSelectRootRun: (rootRunId: string) => void;
-  onSelectRun: (runId: string) => void;
-  onLaunched: (rootRunId: string) => void;
-  onResumed: (successorRootRunId: string) => void;
-  /** Drops the watched run if it was the one deleted, then forces the list to re-read. */
-  onDeleted: (rootRunId: string) => void;
-  reloadNonce: number;
+  /** The watched run the three panels read; a launch watches its new root. */
+  watch: WatchedRun;
 }
 
 /**
@@ -74,7 +66,8 @@ export interface RunDockProps {
 export function RunDock(props: RunDockProps): JSX.Element {
   const t = useTranslations();
   const [expanded, setOpen] = useState(false);
-  const { client, workflowPath } = props;
+  const { client, workflowPath, watch } = props;
+  const { load, selection } = watch;
   // The files a run's node ids resolve against, read from the store by the open file's path: the
   // awaiting surfaces must see the bytes the server will validate at Complete (ADR 0040), and a
   // nested `ref`'d leaf does not live in the open buffer. A null path reads nothing (useResource's
@@ -114,8 +107,8 @@ export function RunDock(props: RunDockProps): JSX.Element {
 
   // The selected run's record, taken from the same live snapshot the tree renders.
   const selectedRun =
-    props.load.phase === "ready" && props.selectedRunId !== null
-      ? props.load.value.runs.get(props.selectedRunId)
+    load.phase === "ready" && selection.selectedRunId !== null
+      ? load.value.runs.get(selection.selectedRunId)
       : undefined;
 
   return (
@@ -163,7 +156,7 @@ export function RunDock(props: RunDockProps): JSX.Element {
                 rootFile={props.rootFile}
                 dirty={props.dirty}
                 warningCount={props.warningCount}
-                onLaunched={props.onLaunched}
+                onLaunched={selection.watchNewRun}
               />
             </div>
             <hr className="run-dock-sep" />
@@ -171,24 +164,11 @@ export function RunDock(props: RunDockProps): JSX.Element {
             <RunsList
               client={props.client}
               workflowId={props.workflowId}
-              selectedRootRunId={props.rootRunId}
-              onSelectRootRun={props.onSelectRootRun}
-              onResumed={props.onResumed}
-              onDeleted={props.onDeleted}
-              reloadNonce={props.reloadNonce}
+              watch={watch}
               // The `Resume from …` K-selection action rides in the selected row's action panel
-              // below plain Resume (ADR 0033), fed the watched tree and the open buffer for the
-              // legal-K check.
-              resumeFrom={
-                props.load.phase === "ready"
-                  ? {
-                      runs: props.load.value.runs,
-                      selectedRunId: props.selectedRunId,
-                      rootFile: props.rootFile,
-                      dirty: props.dirty,
-                    }
-                  : undefined
-              }
+              // below plain Resume (ADR 0033), fed the open buffer for the legal-K check.
+              rootFile={props.rootFile}
+              dirty={props.dirty}
             />
           </div>
           <hr
@@ -199,16 +179,13 @@ export function RunDock(props: RunDockProps): JSX.Element {
           />
           <div className="run-dock-col run-dock-detail" style={{ width: `${cols.widths[1]}px` }}>
             <h3 className="run-dock-heading">{t("designer.runDock.runDetail")}</h3>
-            {props.rootRunId === null ? (
+            {selection.rootRunId === null ? (
               <p className="pane-note">{t("designer.runDock.selectRun")}</p>
             ) : (
               // The run tree here drives K for the `Resume from …` action in the runs rail.
               <RunDetail
                 client={props.client}
-                load={props.load}
-                rootRunId={props.rootRunId}
-                selectedRunId={props.selectedRunId}
-                onSelectRun={props.onSelectRun}
+                watch={watch}
                 // The same reachable set the Viewer reads, so an awaiting leaf's assignee chip
                 // resolves by node id across nested files (ADR 0031).
                 runFiles={runFiles}
@@ -233,7 +210,7 @@ export function RunDock(props: RunDockProps): JSX.Element {
                 run={selectedRun}
                 // One snapshot feeds the pane: it reads this run's status and error off the view
                 // (ADR 0025/0031).
-                view={props.load.phase === "ready" ? props.load.value : undefined}
+                view={load.phase === "ready" ? load.value : undefined}
                 runFiles={runFiles}
               />
             )}
