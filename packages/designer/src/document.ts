@@ -17,7 +17,6 @@ import {
   type PlanState,
   planDelete,
   planDownload,
-  planWrite,
   type WriteOutcome,
   type WriteSuccess,
 } from "./session/save-plan.js";
@@ -149,17 +148,9 @@ export function writeRefusal(error: unknown): Exclude<WriteOutcome, { ok: true }
   return { ok: false, conflict: null, message: errorMessage(error) };
 }
 
-/**
- * The door the toolbar's Save opens for the active frame: `save` in place (a written file, a
- * create-new child at its pre-assigned path, or a template source by id), or the first-save dialog
- * of a new buffer. `null` when nothing is open.
- */
-export type SaveDoor = "save" | "new-workflow-dialog" | "new-template-dialog";
-
-/** The document policy the surfaces read: which doors the active document offers, whether the
- * Server will let the requester write it, and which paths hold an edit lease. */
+/** The document policy the surfaces read: whether the Server will let the requester write the
+ * active document, which paths hold an edit lease, and the Delete and Download plans. */
 export interface DocumentPolicy {
-  saveDoor: SaveDoor | null;
   /** Save as… is offered for an opened document that already has an identity (a path or a
    * template). */
   canSaveAs: boolean;
@@ -187,17 +178,7 @@ export function documentPolicy(state: PlanState, discovery: DiscoveryLoad): Docu
   const readOnly = active?.template
     ? active.template.readOnly
     : workflowReadOnly(discovery, active?.path ?? undefined);
-  // The door is the write plan's own answer: a plan means Save writes this buffer, and a refusal
-  // names the surface that must ask for the missing identity first.
-  const door = planWrite(state, { kind: "save" });
   return {
-    saveDoor: door.ok
-      ? "save"
-      : door.reason === "needs-template-name"
-        ? "new-template-dialog"
-        : door.reason === "needs-workflow-path"
-          ? "new-workflow-dialog"
-          : null,
     canSaveAs: isOpen && hasIdentity,
     readOnly,
     deletePlan: readOnly ? null : planDelete(state),

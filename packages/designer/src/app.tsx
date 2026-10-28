@@ -8,11 +8,9 @@ import { Canvas } from "./canvas.js";
 import {
   type Dialog,
   type DialogView,
-  dialogOnSave,
   NO_DIALOG,
   openSaveAs,
   resolvedDialog,
-  saveAsDialog,
 } from "./dialog-flow.js";
 import { discoveredMaxFileBytes } from "./discovery.js";
 import { documentPolicy } from "./document.js";
@@ -36,6 +34,7 @@ import { RunDock } from "./run/run-dock.js";
 import { RunProjectionProvider } from "./run/run-projection.js";
 import { useRunWatch } from "./run/use-run-watch.js";
 import { SaveAsChoiceDialog } from "./save-as-choice-dialog.js";
+import { saveDialog, templateSaveDoor } from "./save-door.js";
 import { SaveTemplateAsDialog } from "./save-template-as-dialog.js";
 import { SelectionProvider } from "./selection-context.js";
 import { droppedWorkflowFields } from "./session-reducer.js";
@@ -188,25 +187,16 @@ export function App({
     scratch: activePath === undefined,
   };
   const openDialog = resolvedDialog(dialog, dialogView);
-  // The save-as intent behind each template save door; the dialog's resolution already checked
-  // the active frame fits it.
-  const templateSave =
-    openDialog.kind !== "save-as"
-      ? null
-      : openDialog.dialog.kind === "new-template"
-        ? ({ kind: "new-template" } as const)
-        : openDialog.dialog.kind === "template-copy"
-          ? ({ kind: "template-copy" } as const)
-          : openDialog.dialog.kind === "workflow-template"
-            ? ({ kind: "workflow-as-template" } as const)
-            : null;
+  // The save-as template intent behind each resolved dialog; the dialog's resolution already
+  // checked the active frame fits it.
+  const templateSave = templateSaveDoor(openDialog);
   // A first-save door holds the identity the write needs; a buffer that already has one saves in
-  // place. Memoized so the ⌘S listener re-subscribes only when the gate or the door flips.
+  // place. Memoized so the ⌘S listener re-subscribes only when the door flips.
   const onSave = useCallback((): void => {
-    const firstSave = dialogOnSave(policy.saveDoor);
-    if (firstSave.kind === "none") session.save();
-    else setDialog(firstSave);
-  }, [policy.saveDoor, session.save]);
+    const door = saveDialog("save", session, session.mode);
+    if (door.kind === "none") session.save();
+    else setDialog(door);
+  }, [session]);
   // The toolbar's whole capability surface, derived once: the Save button, ⌘S and the two keyboard
   // peers below all read this one value.
   const chrome = editorChrome(session, policy, activePath ? leases.get(activePath) : undefined);
@@ -292,7 +282,7 @@ export function App({
               // Save as…: in template mode a copy to a new template; in workflow mode first a
               // choice between a copy to a new workflow file and a new template made from the
               // workflow's body.
-              onSaveAs={() => setDialog(saveAsDialog(session.mode))}
+              onSaveAs={() => setDialog(saveDialog("save-as", session, session.mode))}
               onTakeover={() => activePath && takeover(activePath)}
               onReacquire={() => activePath && reacquire(activePath)}
               onDelete={onDelete}

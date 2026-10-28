@@ -2,11 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   type Dialog,
   type DialogView,
-  dialogOnSave,
   NO_DIALOG,
   resolvedDialog,
   type SaveAsDialog,
-  saveAsDialog,
 } from "../src/dialog-flow.js";
 
 const view = (overrides: Partial<DialogView> = {}): DialogView => ({
@@ -20,18 +18,6 @@ const view = (overrides: Partial<DialogView> = {}): DialogView => ({
 const saveAs = (kind: SaveAsDialog["kind"]): Dialog => ({ kind: "save-as", dialog: { kind } });
 
 describe("dialog-flow — which dialog may be open", () => {
-  it("opens the mode's Save as… door", () => {
-    expect(saveAsDialog("template")).toEqual(saveAs("template-copy"));
-    expect(saveAsDialog("workflow")).toEqual(saveAs("workflow-choice"));
-  });
-
-  it("opens a first-save door only for a buffer that has no identity", () => {
-    expect(dialogOnSave("new-template-dialog")).toEqual(saveAs("new-template"));
-    expect(dialogOnSave("new-workflow-dialog")).toEqual({ kind: "new-file" });
-    expect(dialogOnSave("save")).toEqual(NO_DIALOG);
-    expect(dialogOnSave(null)).toEqual(NO_DIALOG);
-  });
-
   it("closes a first-save dialog once the buffer has a path or a template source", () => {
     const open = { kind: "new-file" } as Dialog;
     expect(resolvedDialog(open, view({ scratch: true }))).toEqual(open);
