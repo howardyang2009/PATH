@@ -123,6 +123,7 @@ export function wrapSecretsAtPaths(config: ConfigObject, paths: readonly string[
 export function describeMissingLaunchSecrets(paths: readonly string[]): Failure {
   return failure("run-start.secrets-missing", {
     count: paths.length,
-    paths: paths.map((path) => `"${path}"`).join(", "),
+    // The paths ride as items; the Locale joins them (ADR 0107).
+    paths: paths.map((path) => `"${path}"`),
   });
 }

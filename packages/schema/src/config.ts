@@ -37,7 +37,8 @@ const PlainConfigObjectSchema = z.lazy(() =>
       const key = soleKey(obj);
       if (key === undefined || !key.startsWith("$") || knownWrapperKeys.includes(key)) return;
       // A reserved key, not an unknown wrapper: a literal `$`-prefixed key is unexpressible.
-      const known = knownWrapperKeys.map((each) => `"${each}"`).join(", ");
+      // The known wrappers ride as items; the Locale joins them (ADR 0107).
+      const known = knownWrapperKeys.map((each) => `"${each}"`);
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         ...codedIssue("schema.config.reserved-key", { key, known }),
