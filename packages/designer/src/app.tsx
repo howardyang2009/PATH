@@ -1,4 +1,4 @@
-import type { PathApiClient, TemplateSummary, WireStepPlugin } from "@path/client-core";
+import type { PathApiClient, WireStepPlugin } from "@path/client-core";
 import { useMessage } from "@path/i18n/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslations } from "use-intl";
@@ -16,6 +16,7 @@ import {
 } from "./dialog-flow.js";
 import { discoveredMaxFileBytes } from "./discovery.js";
 import { documentPolicy } from "./document.js";
+import { useDocumentDoors } from "./document-doors.js";
 import { downloadFailure, downloadFile } from "./download-file.js";
 import {
   EditingToolbar,
@@ -38,10 +39,8 @@ import { SaveAsChoiceDialog } from "./save-as-choice-dialog.js";
 import { SaveTemplateAsDialog } from "./save-template-as-dialog.js";
 import { SelectionProvider } from "./selection-context.js";
 import { droppedWorkflowFields } from "./session-reducer.js";
-import type { Upload } from "./upload.js";
 import { UploadCopyDialog } from "./upload-copy-dialog.js";
 import { UploadDialog } from "./upload-dialog.js";
-import { readPickedFile, startUpload, type UploadOutcome, uploadCopy } from "./upload-file.js";
 import { useArmed } from "./use-armed.js";
 import { useEditLeases } from "./use-edit-leases.js";
 import { useFileProblems } from "./use-file-problems.js";
@@ -118,51 +117,9 @@ export function App({
   // knowingly.
   const warningCount = problems.length;
 
-  // Every door that replaces the stack asks first when any frame on the stack has unsaved edits; an
-  // untouched New buffer has none, so it goes quietly.
-  const confirmDiscard = (): boolean =>
-    !session.frames.some((frame) => frameHasUnsavedWork(frame)) ||
-    window.confirm(t("discardUnsaved"));
   const inTemplateMode = session.mode === "template";
-  const onNew = (): void => {
-    if (!confirmDiscard()) return;
-    if (inTemplateMode) session.apply({ type: "newTemplate" });
-    else session.apply({ type: "newFile" });
-  };
   const onOpen = (): void =>
     setDialog(inTemplateMode ? { kind: "open-template" } : { kind: "open-workflow" });
-  // Open a template's own source in template mode, from a palette-card double-click or the picker.
-  const openTemplate = (template: TemplateSummary): void => {
-    if (template.id === null || !confirmDiscard()) return;
-    // The double-click's own single clicks armed this card; disarm so an in-flight template read is
-    // dropped instead of landing after the open.
-    arming.arm(null);
-    session.apply({
-      type: "openTemplateLoading",
-      template: {
-        id: template.id,
-        kind: template.kind,
-        name: template.name,
-        description: template.description,
-        readOnly: template.read_only && (template.origin === "shipped" ? "shipped" : "shared"),
-      },
-    });
-  };
-
-  // Open a discovered workflow as a fresh root; `session.open` discards the stack and its per-file
-  // leases, so the selection resets through the active-frame effect above. Close the picker.
-  const openExisting = (path: string): void => {
-    closeDialog();
-    if (confirmDiscard()) session.apply({ type: "openLoading", path });
-  };
-
-  // Copy a shipped workflow into the user's folder (ADR 0086), then open the copy. A refusal
-  // rejects, and the picker shows it.
-  const copyShipped = async (shippedPath: string): Promise<void> => {
-    const { relativePath } = await client.copyShippedWorkflow(shippedPath);
-    authored.rescan();
-    openExisting(relativePath);
-  };
 
   // The run surfaces, gathered into one module (`useRunWatch`); the App reads its derived values
   // and wires its transitions onto the run dock. Key the run-watch on the **root** frame's workflow
@@ -202,38 +159,25 @@ export function App({
       ),
     );
   };
-  // Upload puts one picked file in a folder of the requester's user root and opens it. It replaces
-  // the stack, so unsaved edits are confirmed before anything is written.
+  // Every door that replaces the stack (New, Open, Copy, the mode switch, Upload) asks first when
+  // a frame has unsaved edits, and disarms the palette before it opens.
+  const doors = useDocumentDoors(
+    {
+      client,
+      session,
+      disarm: () => arming.arm(null),
+      rescan: authored.rescan,
+      prompts: {
+        discardUnsaved: () => window.confirm(t("discardUnsaved")),
+        replaceUpload: (name) => window.confirm(t("uploadReplace", { name })),
+        uploadRefused: (message) =>
+          window.alert(t("couldNotUpload", { message: renderMessage(message) })),
+      },
+    },
+    { sessionId, heldPaths: leasedPaths },
+  );
+  const { upload } = doors;
   const uploadInput = useRef<HTMLInputElement>(null);
-  const [uploadPicked, setUploadPicked] = useState<Upload | null>(null);
-  const [uploadCopyOf, setUploadCopyOf] = useState<Upload | null>(null);
-  const finishUpload = (outcome: UploadOutcome): void => {
-    setUploadPicked(null);
-    setUploadCopyOf(outcome.status === "copy" ? outcome.upload : null);
-    if (outcome.status === "refused") {
-      window.alert(t("couldNotUpload", { message: renderMessage(outcome.message) }));
-    }
-    if (outcome.status !== "done") return;
-    authored.rescan();
-    if (outcome.target.kind === "workflow") {
-      session.apply({ type: "openLoading", path: outcome.target.path });
-    } else {
-      arming.arm(null);
-      session.apply({ type: "openTemplateLoading", template: outcome.target.template });
-    }
-  };
-  const onUploadPicked = (file: File | undefined): void => {
-    if (file === undefined || !confirmDiscard()) return;
-    void readPickedFile(file, discoveredMaxFileBytes(discovery)).then((read) => {
-      if (read.status === "read") setUploadPicked(read.upload);
-      else finishUpload(read);
-    });
-  };
-  const startPickedUpload = (upload: Upload, folder: string): Promise<UploadOutcome> => {
-    const confirmReplace = (name: string): boolean => window.confirm(t("uploadReplace", { name }));
-    const lease = { sessionId, heldPaths: leasedPaths };
-    return startUpload(client, { ...upload, folder }, { confirmReplace, lease });
-  };
   // What the open dialog is allowed to be, and what a Save opens: a from-scratch buffer (no path)
   // takes its first-save door rather than overwriting; a saved frame saves in place, and a template
   // source writes back to its template by id.
@@ -244,6 +188,18 @@ export function App({
     scratch: activePath === undefined,
   };
   const openDialog = resolvedDialog(dialog, dialogView);
+  // The save-as intent behind each template save door; the dialog's resolution already checked
+  // the active frame fits it.
+  const templateSave =
+    openDialog.kind !== "save-as"
+      ? null
+      : openDialog.dialog.kind === "new-template"
+        ? ({ kind: "new-template" } as const)
+        : openDialog.dialog.kind === "template-copy"
+          ? ({ kind: "template-copy" } as const)
+          : openDialog.dialog.kind === "workflow-template"
+            ? ({ kind: "workflow-as-template" } as const)
+            : null;
   // A first-save door holds the identity the write needs; a buffer that already has one saves in
   // place. Memoized so the ⌘S listener re-subscribes only when the gate or the door flips.
   const onSave = useCallback((): void => {
@@ -302,7 +258,7 @@ export function App({
           <ModeSwitch
             mode={session.mode}
             onSwitch={(mode) => {
-              if (confirmDiscard()) session.apply({ type: "switchMode", mode });
+              doors.switchMode(mode);
             }}
           />
         }
@@ -328,7 +284,7 @@ export function App({
           session.registry.phase === "ready" ? (
             <EditingToolbar
               chrome={chrome}
-              onNew={onNew}
+              onNew={doors.newDocument}
               onOpen={onOpen}
               onUndo={() => apply({ type: "undo" })}
               onRedo={() => apply({ type: "redo" })}
@@ -352,7 +308,7 @@ export function App({
             arming={arming}
             // In template mode, a double-click opens the template source, discarding the current
             // stack.
-            onEditTemplate={openTemplate}
+            onEditTemplate={doors.openTemplate}
             canEditTemplates={inTemplateMode}
           />
         }
@@ -365,7 +321,7 @@ export function App({
                 armed={arming.armed}
                 onArm={arming.arm}
                 problems={problems}
-                onNew={onNew}
+                onNew={doors.newDocument}
                 onOpenExisting={onOpen}
                 // Double-click an unset `workflow` block to author its target — the same chooser
                 // the pane's "Add a workflow reference" opens, offered only when the parent has a
@@ -429,27 +385,27 @@ export function App({
         hidden
         data-testid="upload-input"
         onChange={(event) => {
-          onUploadPicked(event.target.files?.[0]);
+          upload.pick(event.target.files?.[0], discoveredMaxFileBytes(discovery));
           // Cleared, so picking the same file again still fires a change.
           event.target.value = "";
         }}
       />
-      {uploadPicked !== null ? (
+      {upload.picked !== null ? (
         <UploadDialog
-          upload={uploadPicked}
+          upload={upload.picked}
           discovery={discovery}
           templateList={templateList}
-          start={(folder) => startPickedUpload(uploadPicked, folder)}
-          onDone={finishUpload}
-          onCancel={() => setUploadPicked(null)}
+          start={upload.start}
+          onDone={upload.finish}
+          onCancel={upload.cancel}
         />
       ) : null}
-      {uploadCopyOf !== null ? (
+      {upload.copyOf !== null ? (
         <UploadCopyDialog
-          upload={uploadCopyOf}
-          create={(name) => uploadCopy(client, uploadCopyOf, name)}
-          onDone={finishUpload}
-          onCancel={() => setUploadCopyOf(null)}
+          upload={upload.copyOf}
+          create={upload.copy}
+          onDone={upload.finish}
+          onCancel={upload.cancel}
         />
       ) : null}
       {/* The first-save dialog rides above the shell, shown only for a from-scratch buffer (no
@@ -464,32 +420,17 @@ export function App({
           onCancel={closeDialog}
         />
       ) : null}
-      {/* Template mode's save doors. A new template's first save picks its name and description;
-        Save as… names a copy of the opened template. A template saves only as a template. */}
-      {openDialog.kind === "save-as" &&
-      openDialog.dialog.kind === "new-template" &&
-      openedFile &&
-      !activeTemplate ? (
+      {/* The three doors that save a new template: a new template's first save, a copy of the
+        opened template, and a workflow's body as a template. Each picks its name and description. */}
+      {templateSave !== null && openedFile ? (
         <SaveTemplateAsDialog
-          source={null}
-          templateList={templateList}
-          create={({ name, folder, origin, description }) =>
-            session.saveAs({ kind: "new-template", name, folder, origin, description })
+          source={templateSave.kind === "template-copy" ? (activeTemplate ?? null) : null}
+          workflowName={templateSave.kind === "workflow-as-template" ? openedFile.name : undefined}
+          droppedFields={
+            templateSave.kind === "new-template" ? [] : droppedWorkflowFields(openedFile)
           }
-          onCreated={closeDialog}
-          onCancel={closeDialog}
-        />
-      ) : null}
-      {openDialog.kind === "save-as" &&
-      openDialog.dialog.kind === "template-copy" &&
-      activeTemplate ? (
-        <SaveTemplateAsDialog
-          source={activeTemplate}
-          droppedFields={openedFile ? droppedWorkflowFields(openedFile) : []}
           templateList={templateList}
-          create={({ name, folder, origin, description }) =>
-            session.saveAs({ kind: "template-copy", name, folder, origin, description })
-          }
+          create={(input) => session.saveAs({ kind: templateSave.kind, ...input })}
           onCreated={closeDialog}
           onCancel={closeDialog}
         />
@@ -500,21 +441,6 @@ export function App({
         <SaveAsChoiceDialog
           onWorkflow={() => setDialog(openSaveAs({ kind: "workflow-copy" }))}
           onTemplate={() => setDialog(openSaveAs({ kind: "workflow-template" }))}
-          onCancel={closeDialog}
-        />
-      ) : null}
-      {openDialog.kind === "save-as" &&
-      openDialog.dialog.kind === "workflow-template" &&
-      openedFile ? (
-        <SaveTemplateAsDialog
-          source={null}
-          workflowName={openedFile.name}
-          droppedFields={droppedWorkflowFields(openedFile)}
-          templateList={templateList}
-          create={({ name, folder, origin, description }) =>
-            session.saveAs({ kind: "workflow-as-template", name, folder, origin, description })
-          }
-          onCreated={closeDialog}
           onCancel={closeDialog}
         />
       ) : null}
@@ -535,8 +461,14 @@ export function App({
       {openDialog.kind === "open-workflow" ? (
         <OpenWorkflowDialog
           discovery={discovery}
-          onOpen={openExisting}
-          onCopy={copyShipped}
+          onOpen={(path) => {
+            closeDialog();
+            doors.openWorkflow(path);
+          }}
+          onCopy={async (path) => {
+            await doors.copyShipped(path);
+            closeDialog();
+          }}
           onCancel={closeDialog}
         />
       ) : null}
@@ -545,7 +477,7 @@ export function App({
           templateList={templateList}
           onOpen={(template) => {
             closeDialog();
-            openTemplate(template);
+            doors.openTemplate(template);
           }}
           onCancel={closeDialog}
         />
