@@ -1,6 +1,6 @@
-import { NameSchema, type WireTemplateWriteResponse } from "@path/schema";
+import { FOLDER_PATTERN, NameSchema, type WireTemplateWriteResponse } from "@path/schema";
 import { z } from "zod";
-import { type RouteReply, readRequestBody, replyRefusal } from "../http-json.js";
+import { type RouteReply, readRequestBody, replyRefused } from "../http-json.js";
 import { templatesOf } from "../template-store.js";
 import type { ApiRequest } from "./route-context.js";
 
@@ -8,10 +8,7 @@ import type { ApiRequest } from "./route-context.js";
  * the user's template folder. */
 const FolderSchema = z
   .string()
-  .regex(
-    /^[^\\./\0][^\\/\0]*(\/[^\\./\0][^\\/\0]*)*$/,
-    "folder must be a relative path of plain names",
-  );
+  .regex(FOLDER_PATTERN, "folder must be a relative path of plain names");
 
 /**
  * The save-as envelope (§10.3): `kind` is always `"step"`, `name` is the file stem, and `body` is
@@ -43,11 +40,7 @@ export async function handlePostTemplates({ body, ctx }: ApiRequest): Promise<Ro
   // The store validates the envelope, refuses a taken name or id, and writes.
   const written = templatesOf(ctx).create(kind, name, rawBody, folder, origin);
   if (!written.ok) {
-    return replyRefusal(
-      written.status,
-      written,
-      "details" in written ? written.details : undefined,
-    );
+    return replyRefused(written);
   }
   const reply: WireTemplateWriteResponse = {
     id: written.id,

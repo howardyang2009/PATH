@@ -1,6 +1,12 @@
 import { type ConfigObject, ConfigObjectSchema, type JsonValue } from "@path/schema";
 import { z } from "zod";
-import { type RouteReply, readRequestBody, replyError, replyRefusal } from "../http-json.js";
+import {
+  type RouteReply,
+  readRequestBody,
+  replyError,
+  replyRefusal,
+  replyRefused,
+} from "../http-json.js";
 import { operatorConfigEnvError, prepareRunWorkflow } from "../launch.js";
 import { resolveLeaf } from "./resolve-run.js";
 import type { ApiRequest } from "./route-context.js";
@@ -37,7 +43,7 @@ export async function handleCompleteRun({
 
   // Resolve the leaf's tree from one read; unknown id is a 404 before any file work.
   const address = resolveLeaf(ctx, stepRunId);
-  if (!address.ok) return replyRefusal(address.status, address);
+  if (!address.ok) return replyRefused(address);
   const { rootRunId, leaf } = address;
 
   // The compare half of the leaf CAS, checked before reload/lease so an ordinary double-submit
@@ -54,20 +60,11 @@ export async function handleCompleteRun({
   // Recover and re-validate the workflow as it stands now: the node lookup below must be a lookup
   // in *this run's* file (matching id, ADR 0006), not merely one sharing the node's id.
   const prepared = await prepareRunWorkflow(ctx.layout, root, {
-    notFound: () => ({
-      code: "run.workflow-missing",
-      params: { rootRunId, workflowPath: root.workflowPath ?? "" },
-    }),
-    noRun: () => ({ code: "run.step-not-found", params: { stepRunId } }),
-    noPath: () => ({ code: "run.complete.no-path", params: { rootRunId } }),
-    swapped: (workflowPath) => ({
-      code: "run.complete.swapped",
-      params: { workflowPath, rootRunId },
-    }),
+    kind: "complete",
+    rootRunId,
+    stepRunId,
   });
-  if (!prepared.ok) {
-    return replyRefusal(prepared.refusal.status, prepared.refusal, prepared.refusal.details);
-  }
+  if (!prepared.ok) return replyRefused(prepared.refusal);
   const { workflow } = prepared;
 
   const result = await ctx.live.complete(

@@ -25,6 +25,7 @@ import type {
   WireSecretList,
   WireSecretSummary,
   WireTemplateWriteResponse,
+  WireWorkflowFileResponse,
   WireWorkflowLease,
 } from "@path/schema";
 import {
@@ -39,7 +40,13 @@ import {
   trimBaseUrl,
 } from "./transport.js";
 
-export { apiErrorMessage, defaultFetch, type FetchLike, PathApiError } from "./transport.js";
+export {
+  apiErrorMessage,
+  defaultFetch,
+  type FetchLike,
+  PathApiError,
+  wireErrorMessage,
+} from "./transport.js";
 
 // The v0 API client, in one module: `PathApiClient` is the interface a surface holds, and the
 // endpoint functions below are its implementation. They live here rather than in per-group files
@@ -184,7 +191,7 @@ export interface PutWorkflowResult {
  */
 export interface WorkflowFileRaw {
   text: string;
-  etag: string | null;
+  etag: string;
 }
 
 function listWorkflows(http: HttpTransport): Promise<ListWorkflowsResponse> {
@@ -239,11 +246,9 @@ function getStepPlugins(http: HttpTransport): Promise<StepPluginsResponse> {
 }
 
 async function getWorkflowFile(http: HttpTransport, path: string): Promise<WorkflowFileRaw> {
-  const reply = await http.request(`/v0/workflows/file?path=${encodeURIComponent(path)}`);
-  // A compressing proxy (Cloudflare) weakens the strong ETag to `W/"…"`; the hash still names the
-  // same bytes, and the server's If-Match compare is strong, so drop the prefix.
-  const etag = reply.headers.get("ETag");
-  return { text: reply.text, etag: etag?.replace(/^W\//, "") ?? null };
+  return http.requestJson<WireWorkflowFileResponse>(
+    `/v0/workflows/file?path=${encodeURIComponent(path)}`,
+  );
 }
 
 async function putWorkflow(

@@ -1,5 +1,5 @@
 import { isTerminal } from "@path/schema";
-import { type RouteReply, replyError, replyRefusal } from "../http-json.js";
+import { type RouteReply, replyError, replyRefused } from "../http-json.js";
 import { resolveRun } from "./resolve-run.js";
 import type { ApiRequest } from "./route-context.js";
 
@@ -9,7 +9,7 @@ export function handleCancelRun({ ctx, params: [rootRunId] }: ApiRequest<[string
   // The tree's own root row answers: a child can read `succeeded` while the tree is still running,
   // and a 409 taken from it would refuse a live cancel.
   const address = resolveRun(ctx, rootRunId);
-  if (!address.ok) return replyRefusal(address.status, address);
+  if (!address.ok) return replyRefused(address);
 
   if (isTerminal(address.root.status)) {
     return replyError(409, "run.cancel.finished", { rootRunId, status: address.root.status });

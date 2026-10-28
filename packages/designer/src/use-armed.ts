@@ -1,5 +1,10 @@
-import type { GetTemplateResponse, PathApiClient, TemplateSummary } from "@path/client-core";
-import { type Message, verbatim } from "@path/i18n";
+import {
+  type GetTemplateResponse,
+  type PathApiClient,
+  type TemplateSummary,
+  wireErrorMessage,
+} from "@path/client-core";
+import type { Message } from "@path/i18n";
 import type { WorkflowNode } from "@path/schema";
 import { errorMessage } from "@path/viewer";
 import { useCallback, useRef, useState } from "react";
@@ -71,15 +76,15 @@ export function useArmed(client: PathApiClient): ArmedState {
         // `valid` is the server's registry-relative check; `kind` guards a file that changed kind
         // since the list read.
         if (!envelope.valid || envelope.kind !== "step" || !Array.isArray(envelope.body)) {
-          const error = envelope.error?.message;
+          const error = envelope.error;
           return {
             key: "designer.useArmed.insertFailed",
             params: {
               name: template.name,
               error:
-                error === undefined
+                error == null
                   ? { key: "designer.useArmed.invalidTemplate" }
-                  : verbatim(error),
+                  : wireErrorMessage(error),
             },
           };
         }

@@ -8,6 +8,8 @@ import type { SaveState } from "./session-reducer.js";
 export interface DiscoveryScan {
   workflows: readonly WorkflowSummary[];
   roots: readonly WorkflowRootSummary[];
+  /** The largest file the requester may write, in bytes; `null` when unlimited. */
+  maxFileBytes: number | null;
 }
 
 /** The Designer's workflow discovery: one `GET /v0/workflows` scan for the whole surface. `null`
@@ -44,6 +46,16 @@ export function discoveredUserRoot(load: DiscoveryLoad): string | undefined {
   return scanOf(load)?.roots.find((root) => root.origin === "user")?.relative_path;
 }
 
+/** The user's own workflow root's subfolders, relative to it; `[]` before a scan lands. */
+export function discoveredUserFolders(load: DiscoveryLoad): readonly string[] {
+  return scanOf(load)?.roots.find((root) => root.origin === "user")?.folders ?? [];
+}
+
+/** The largest file the requester may write, in bytes; `null` when unlimited or before a scan. */
+export function discoveredMaxFileBytes(load: DiscoveryLoad): number | null {
+  return scanOf(load)?.maxFileBytes ?? null;
+}
+
 /** The shared workflow root's project path, or `undefined` before a scan lands. */
 export function discoveredSharedRoot(load: DiscoveryLoad): string | undefined {
   return scanOf(load)?.roots.find((root) => root.origin === "shared")?.relative_path;
@@ -60,8 +72,8 @@ export function useWorkflowDiscovery(
   // A new `rescanKey` gives the read a new identity, which is what makes `useScanOnSave` re-scan.
   // biome-ignore lint/correctness/useExhaustiveDependencies: rescanKey is the re-scan trigger.
   const listWorkflows = useCallback(async (): Promise<DiscoveryScan> => {
-    const { workflows, roots } = await client.listWorkflows();
-    return { workflows, roots };
+    const { workflows, roots, max_file_bytes } = await client.listWorkflows();
+    return { workflows, roots, maxFileBytes: max_file_bytes };
   }, [client, rescanKey]);
   const load = useScanOnSave(listWorkflows, savePhase, RESCAN_ON);
   // Mapped once per scan result, so a consumer keyed on this object does not re-run every render.

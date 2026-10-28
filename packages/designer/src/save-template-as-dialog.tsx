@@ -1,10 +1,10 @@
 import type { Message } from "@path/i18n";
 import { useMessage } from "@path/i18n/react";
+import { FOLDER_PATTERN } from "@path/schema";
 import { useMemo, useState } from "react";
 import { useFormatter, useTranslations } from "use-intl";
 import { TEMPLATE_SUFFIX } from "./session-reducer.js";
 import type { TemplateListLoad } from "./template-list.js";
-import { FOLDER_PATTERN } from "./upload.js";
 import type { SaveAsResult, TemplateSource } from "./use-open-file.js";
 
 /** A template name is its file stem, so it must match `NameSchema` (server-api-v0.md §10.3). */

@@ -77,7 +77,7 @@ function expectSchemaValid(file: string): void {
   runCodemod([copy], scriptsRoot, "migrate-workflow-format-v6.ts");
   const result = safeParseWorkflowFile(JSON.parse(readFileSync(copy, "utf8")), builtinRegistry);
   if (!result.success)
-    throw new Error(`migrated file is not schema-valid @6:\n${result.errors.join("\n")}`);
+    throw new Error(`migrated file is not schema-valid @6:\n${JSON.stringify(result.issues)}`);
 }
 
 describe("migrate-workflow-format-v2 — parallel branch wrappers", () => {

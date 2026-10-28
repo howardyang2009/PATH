@@ -12,6 +12,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { openProject } from "@path/engine";
+import { englishText, type Message } from "@path/i18n";
 import type { ListWorkflowsResponse } from "@path/schema";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type PathServerHandle, startPathServer } from "../src/create-server.js";
@@ -258,8 +259,8 @@ describe("the requester's view in hosted mode", () => {
     const res = await launch(url, ALICE, parent);
 
     expect(res.status).toBe(400);
-    const { error } = (await res.json()) as { error: { details: string[] } };
-    expect(error.details.join("\n")).toContain(`ref "${ref}"`);
+    const { error } = (await res.json()) as { error: { details: Message[] } };
+    expect(error.details.map(englishText).join("\n")).toContain(`ref "${ref}"`);
   });
 
   it("refuses a ref through a symlink that leads out of the view", async () => {
@@ -277,8 +278,8 @@ describe("the requester's view in hosted mode", () => {
     const res = await launch(url, ALICE, parent);
 
     expect(res.status).toBe(400);
-    const { error } = (await res.json()) as { error: { details: string[] } };
-    expect(error.details.join("\n")).toContain('ref "./child.workflow.json"');
+    const { error } = (await res.json()) as { error: { details: Message[] } };
+    expect(error.details.map(englishText).join("\n")).toContain('ref "./child.workflow.json"');
   });
 
   it("checks a shared workflow's refs against the launcher's view, not the creator's", async () => {

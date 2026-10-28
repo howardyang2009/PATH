@@ -1,4 +1,4 @@
-import { isMessageKey, type Message, verbatim } from "@path/i18n";
+import { decodeError, type ErrorParams, isMessageKey, type Message, verbatim } from "@path/i18n";
 import type { JsonValue, WireError } from "@path/schema";
 
 /** A minimal `fetch` shape — injectable so browser/React Native/tests can supply their own. */
@@ -69,7 +69,7 @@ export class PathApiError extends Error {
     message: string,
     readonly details?: JsonValue,
     readonly code?: string,
-    readonly params?: { [name: string]: string | number },
+    readonly params?: ErrorParams,
   ) {
     super(message);
     this.name = "PathApiError";
@@ -78,12 +78,26 @@ export class PathApiError extends Error {
 
 /** A failure as the UI shows it: a known code from the catalogue, else the English text as is. */
 export function apiErrorMessage(error: unknown): Message {
-  if (error instanceof PathApiError && error.code !== undefined) {
-    const key = `errors.${error.code}`;
-    if (isMessageKey(key))
-      return error.params === undefined ? { key } : { key, params: error.params };
-  }
-  return verbatim(error instanceof Error ? error.message : String(error));
+  const text = error instanceof Error ? error.message : String(error);
+  if (!(error instanceof PathApiError)) return verbatim(text);
+  return decodeError(error.code, error.params, text);
+}
+
+/** A discovery row's `error` as the UI shows it: its first coded issue, else its code, else the
+ * English `message` as is. */
+export function wireErrorMessage(error: WireError["error"]): Message {
+  const first = Array.isArray(error.details) ? error.details[0] : undefined;
+  if (isCodedIssue(first)) return first;
+  return decodeError(error.code, error.params, error.message);
+}
+
+function isCodedIssue(value: unknown): value is Message {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { key?: unknown }).key === "string" &&
+    isMessageKey((value as { key: string }).key)
+  );
 }
 
 export interface RequestOptions {

@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { englishText } from "@path/i18n";
 import { describe, expect, it } from "vitest";
 import { safeParseWorkflowFile } from "../src/workflow-file.js";
 import { builtinRegistry } from "./builtin-registry.js";
@@ -17,7 +18,7 @@ describe("real acceptance workflow files validate clean", () => {
     const result = safeParseWorkflowFile(loadJson("release-notes.workflow.json"), builtinRegistry);
     if (!result.success) {
       throw new Error(
-        `release-notes.workflow.json failed to validate:\n${result.errors.join("\n")}`,
+        `release-notes.workflow.json failed to validate:\n${result.issues.map(englishText).join("\n")}`,
       );
     }
     expect(result.success).toBe(true);
@@ -27,7 +28,7 @@ describe("real acceptance workflow files validate clean", () => {
     const result = safeParseWorkflowFile(loadJson("revise-cycle.workflow.json"), builtinRegistry);
     if (!result.success) {
       throw new Error(
-        `revise-cycle.workflow.json failed to validate:\n${result.errors.join("\n")}`,
+        `revise-cycle.workflow.json failed to validate:\n${result.issues.map(englishText).join("\n")}`,
       );
     }
     expect(result.success).toBe(true);
@@ -40,7 +41,7 @@ describe("real acceptance workflow files validate clean", () => {
     );
     if (!result.success) {
       throw new Error(
-        `do-not-wait-probe.workflow.json failed to validate:\n${result.errors.join("\n")}`,
+        `do-not-wait-probe.workflow.json failed to validate:\n${result.issues.map(englishText).join("\n")}`,
       );
     }
     expect(result.success).toBe(true);

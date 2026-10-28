@@ -1,8 +1,14 @@
 import { ConfigObjectSchema, type StartRunResponse } from "@path/schema";
 import { z } from "zod";
-import { type RouteReply, readRequestBody, replyError, replyRefusal } from "../http-json.js";
+import {
+  type RouteReply,
+  readRequestBody,
+  replyError,
+  replyRefusal,
+  replyRefused,
+} from "../http-json.js";
 import { operatorConfigEnvError, prepareRunWorkflow } from "../launch.js";
-import { ResumeNotFound, ResumeRefused, type StartedRun } from "../live-runs.js";
+import type { ResumeOutcome } from "../live-runs.js";
 import { resolveRun } from "./resolve-run.js";
 import type { ApiRequest } from "./route-context.js";
 
@@ -32,32 +38,18 @@ export async function handleResumeRun({
 
   // The predecessor's root row — never another row whose status could disagree with the root's.
   const address = resolveRun(ctx, rootRunId);
-  if (!address.ok) return replyRefusal(address.status, address);
+  if (!address.ok) return replyRefused(address);
   const { root } = address;
 
   // Recover and re-validate the workflow as it stands now: gone → `404`, now-invalid → `400`, no
-  // longer this run's workflow (id changed, ADR 0006) → `409`. No `escapesRoot`: the path came from
-  // our own row.
-  const prepared = await prepareRunWorkflow(ctx.layout, root, {
-    notFound: () => ({
-      code: "run.workflow-missing",
-      params: { rootRunId, workflowPath: root.workflowPath ?? "" },
-    }),
-    noRun: () => ({ code: "run.not-found", params: { rootRunId } }),
-    noPath: () => ({ code: "run.resume.no-path", params: { rootRunId } }),
-    swapped: (workflowPath) => ({
-      code: "run.resume.swapped",
-      params: { workflowPath, rootRunId },
-    }),
-  });
-  if (!prepared.ok) {
-    return replyRefusal(prepared.refusal.status, prepared.refusal, prepared.refusal.details);
-  }
+  // longer this run's workflow (id changed, ADR 0006) → `409`.
+  const prepared = await prepareRunWorkflow(ctx.layout, root, { kind: "resume", rootRunId });
+  if (!prepared.ok) return replyRefused(prepared.refusal);
   const { workflow } = prepared;
 
-  let ids: StartedRun;
+  let resumed: ResumeOutcome;
   try {
-    ids = await ctx.live.resume(workflow.rootFile, rootRunId, workflow.workflowDir, {
+    resumed = await ctx.live.resume(workflow.rootFile, rootRunId, workflow.workflowDir, {
       files: workflow.files,
       // Dispatch reuses the registry the load validated the file against (ADR 0019 sub-15); no
       // re-scan.
@@ -73,20 +65,14 @@ export async function handleResumeRun({
       userSecrets: ctx.secrets?.values(),
     });
   } catch (err) {
-    // The row vanished between the check above and the engine's own lookup (a concurrent `rm`).
-    if (err instanceof ResumeNotFound) {
-      return replyError(404, "run.not-found", { rootRunId });
-    }
-    // A refusal from the engine's one Resume gate (a live or fully succeeded tree, or an illegal
-    // K), before any successor started. The route only translates.
-    if (err instanceof ResumeRefused) {
-      return replyRefusal(err.refusal.status, err.refusal);
-    }
     return replyError(500, "run.resume.start-failed", {
       message: err instanceof Error ? err.message : String(err),
     });
   }
 
-  const started: StartRunResponse = { run_id: ids.runId, root_run_id: ids.rootRunId };
+  // A refusal from the engine's one Resume gate, before any successor started: a predecessor that
+  // vanished meanwhile, a live or fully succeeded tree, or an illegal K.
+  if (!resumed.ok) return replyRefused(resumed.refusal);
+  const started: StartRunResponse = { run_id: resumed.runId, root_run_id: resumed.rootRunId };
   return { status: 202, body: started };
 }

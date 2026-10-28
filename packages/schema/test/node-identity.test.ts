@@ -1,3 +1,4 @@
+import { englishText } from "@path/i18n";
 import { describe, expect, it } from "vitest";
 import {
   duplicateIdErrors,
@@ -154,7 +155,7 @@ describe("the identity rules each door enforces (ADR 0015)", () => {
 
     expect(result.success).toBe(false);
     if (result.success) return;
-    expect(result.errors.join("\n")).toContain(
+    expect(result.issues.map(englishText).join("\n")).toContain(
       'body.1.name: duplicate name "first": names must be unique across the whole file',
     );
   });

@@ -1,3 +1,4 @@
+import { englishText } from "@path/i18n";
 import { describe, expect, it } from "vitest";
 import { gotoIssues } from "../src/goto.js";
 import { instantiate } from "../src/instantiate.js";
@@ -41,7 +42,7 @@ function parse(body: unknown[]) {
 function errorsOf(body: unknown[]): string[] {
   const result = parse(body);
   expect(result.success).toBe(false);
-  return result.success ? [] : result.errors;
+  return result.success ? [] : result.issues.map(englishText);
 }
 
 describe("goto — the node grammar", () => {

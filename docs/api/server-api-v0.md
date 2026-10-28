@@ -615,13 +615,19 @@ Response `200 OK`:
       "name": null,
       "valid": false,
       "is_root": null,
-      "error": { "message": "unexpected token in JSON at position 12", "details": "..." }
+      "error": {
+        "code": "workflow.invalid",
+        "params": {},
+        "message": "users/local/workflow/broken.workflow.json: unexpected token in JSON at position 12",
+        "details": [{ "key": "shared.issueAtPath", "params": { "path": "…", "issue": { "key": "shared.verbatim", "params": { "text": "unexpected token in JSON at position 12" } } } }]
+      }
     }
   ],
   "roots": [
-    { "origin": "user", "relative_path": "users/local/workflow" },
-    { "origin": "shared", "relative_path": "shared/workflow" }
-  ]
+    { "origin": "user", "relative_path": "users/local/workflow", "folders": ["team"] },
+    { "origin": "shared", "relative_path": "shared/workflow", "folders": [] }
+  ],
+  "max_file_bytes": null
 }
 ```
 
@@ -636,10 +642,13 @@ Response `200 OK`:
 | `name` | string \| null | The workflow's human `name` (same best-effort rule as `id`). |
 | `valid` | boolean | `loadWorkflowTree(f).success` — a static load + schema/ref/cycle validate that never executes a step. It is **registry-relative**: a file naming a step type this tree holds no plugin for is `false`. |
 | `is_root` | boolean \| null | `true` unreferenced; `false` reachable as another discovered workflow's nested ref; `null` when `valid: false`. |
-| `error` | object \| null | The shared error shape (§1) when `valid: false` (bad JSON, schema violation, missing ref, cycle, unknown step type, broken plugin folder); `null` otherwise. |
+| `error` | object \| null | The shared error shape (§1) when `valid: false` (bad JSON, schema violation, missing ref, cycle, unknown step type, broken plugin folder); `null` otherwise. Its `code` is `workflow.invalid`, `details` holds one `Message` per load issue (the same shape as a `PUT` refusal's), and `message` is the first issue in English. |
 
 `roots` lists the writable workflow roots by project path, the user's own first: where a new workflow
-may land. A client reads them here instead of carrying the folder layout itself.
+may land. Each root's `folders` lists its subfolders relative to it, sorted, empty ones included
+(dot-folders are skipped). `max_file_bytes` is the largest authored file the requester may write, or
+`null` when unlimited (local mode). A client reads these here instead of carrying the folder layout or
+the limit itself.
 
 - **A file whose step-type plugin is absent is `valid: false`, not valid-but-unlaunchable**
   ([#315](https://github.com/howardyang2009/PATH/issues/315)). The set of valid leaf step types is a fact
@@ -756,7 +765,9 @@ This is the read side the precondition needs, and the ADR 0015 handoff the Desig
 carries no body, so the path rides a query param. It is still an opaque `/`-bearing string, no `%2F`
 router split.
 
-**Always raw.** It streams the file bytes verbatim and returns a strong `ETag` (sha256 of those bytes).
+**Always raw.** It returns the file bytes verbatim as `text`, with their strong ETag (sha256 of those
+bytes) as `etag` in the same body. The ETag rides the body because a compressing proxy may weaken a
+response header to `W/"…"`, which the strong `If-Match` compare then refuses.
 It **never runs the loader**. That is deliberate. (a) The ETag must hash the exact on-disk bytes anyway.
 (b) The Designer needs the raw body to preserve unknown fields and to receive an **id-less** file, so it
 can stamp ids on import (ADR 0015). (c) Validation already has homes: discovery reports `valid`/`error`
@@ -771,8 +782,8 @@ contradiction: discovery reports launch-validity, and this route reports bytes.
 
 Responses:
 
-- `200 OK` — `Content-Type: application/json`, the body is the file's raw bytes, the `ETag` header is
-  set.
+- `200 OK` — `{ "text": "<the file's raw bytes>", "etag": "\"<sha256>\"" }`. The `ETag` header carries
+  the same value for HTTP caches; a client reads the body's `etag`.
 - `404 Not Found` — the file does not exist, `path` escapes the project root, or a path component is a
   symlink (same confinement as §7).
 - `403 Forbidden` — a `GET` is ungated (§2.1), so this arises only if a future auth layer lands. It is
@@ -1021,7 +1032,12 @@ Response `200 OK`:
       "origin": "user",
       "read_only": false,
       "valid": false,
-      "error": { "message": "unregistered step type \"api-call\"", "details": ["…"] }
+      "error": {
+        "code": "template.invalid",
+        "params": {},
+        "message": "body.0.type: unregistered step type \"api-call\"",
+        "details": [{ "key": "shared.issueAtPath", "params": { "path": "body.0.type", "issue": { "key": "…" } } }]
+      }
     }
   ]
 }

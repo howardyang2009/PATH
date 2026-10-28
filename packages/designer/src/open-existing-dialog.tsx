@@ -5,6 +5,7 @@ import {
   isFolderOnOpenChain,
   nextOpenFolder,
   ORIGIN_FOLDER,
+  wireErrorMessage,
   workflowBaseName,
 } from "@path/client-core";
 import { useMessage } from "@path/i18n/react";
@@ -132,6 +133,7 @@ function WorkflowTree({
   onCopy: (shippedPath: string) => void;
 }): JSX.Element {
   const t = useTranslations();
+  const renderMessage = useMessage();
   return (
     <ul className="workflows" aria-label={label}>
       {nodes.map((node) =>
@@ -162,7 +164,9 @@ function WorkflowTree({
                 {workflowBaseName(node.workflow.relative_path)}
               </span>
               <span className="pane-note pane-error">
-                {node.workflow.error?.message ?? t("designer.openWorkflowDialog.notLoaded")}
+                {node.workflow.error
+                  ? renderMessage(wireErrorMessage(node.workflow.error))
+                  : t("designer.openWorkflowDialog.notLoaded")}
               </span>
             </div>
           </li>

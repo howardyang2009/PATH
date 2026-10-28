@@ -114,7 +114,7 @@ export function validateJsonPayload(
   const result = safeParseWorkflowFile(trial, wireToRegistry(plugins));
   return result.success
     ? { ok: true, value: next }
-    : { ok: false, error: result.issues[0] ?? verbatim(result.errors.join("\n")) };
+    : { ok: false, error: result.issues[0] ?? verbatim("invalid") };
 }
 
 /**

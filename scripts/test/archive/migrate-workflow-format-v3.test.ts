@@ -55,7 +55,7 @@ function expectSchemaValid(file: string): void {
   runCodemod([copy], dir, "archive/migrate-workflow-format-v5.ts");
   runCodemod([copy], dir, "migrate-workflow-format-v6.ts");
   const result = safeParseWorkflowFile(JSON.parse(readFileSync(copy, "utf8")), builtinRegistry);
-  expect(result.success, result.success ? "" : result.errors.join("\n")).toBe(true);
+  expect(result.success, result.success ? "" : JSON.stringify(result.issues)).toBe(true);
 }
 
 describe("migrate-workflow-format-v3 — the rewrite", () => {

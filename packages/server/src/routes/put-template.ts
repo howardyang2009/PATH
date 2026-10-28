@@ -1,5 +1,5 @@
 import type { WireTemplateWriteResponse } from "@path/schema";
-import { type RouteReply, replyRefusal } from "../http-json.js";
+import { type RouteReply, replyRefused } from "../http-json.js";
 import { firstHeader } from "../origin-gate.js";
 import { templatesOf } from "../template-store.js";
 import type { ApiRequest } from "./route-context.js";
@@ -27,11 +27,7 @@ export async function handlePutTemplate({
   // suspension point before it and only an *external* writer can invalidate the token.
   const written = templatesOf(ctx).update(id, raw.value, firstHeader(req.headers["if-match"]));
   if (!written.ok) {
-    return replyRefusal(
-      written.status,
-      written,
-      "details" in written ? written.details : undefined,
-    );
+    return replyRefused(written);
   }
   const reply: WireTemplateWriteResponse = {
     id,

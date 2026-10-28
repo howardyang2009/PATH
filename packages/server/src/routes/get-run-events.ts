@@ -1,6 +1,6 @@
 import type { IncomingMessage } from "node:http";
 import { encodeEventFrame } from "@path/schema";
-import { replyRefusal, sendReply } from "../http-json.js";
+import { replyRefused, sendReply } from "../http-json.js";
 import { withOldErrorCode } from "../old-error-code.js";
 import { resolveTree } from "./resolve-run.js";
 import type { StreamRequest } from "./route-context.js";
@@ -34,7 +34,7 @@ export function handleGetRunEvents({
   // Unknown root run → 404. A run row exists the moment `POST /v0/runs` returns.
   const address = resolveTree(ctx, rootRunId);
   if (!address.ok) {
-    sendReply(res, replyRefusal(address.status, address));
+    sendReply(res, replyRefused(address));
     return;
   }
 

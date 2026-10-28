@@ -1,7 +1,8 @@
 import { readFileSync } from "node:fs";
 import { dirname, relative, resolve } from "node:path";
+import { codedMessage, type Message, verbatim } from "@path/i18n";
 import {
-  duplicateIdErrors,
+  duplicateIdIssues,
   makeWorkflowFileSchema,
   safeParseWorkflowFileWith,
   type WorkflowFile,
@@ -38,7 +39,12 @@ export interface LoadedWorkflow {
 
 export type LoadResult =
   | { success: true; workflow: LoadedWorkflow }
-  | { success: false; errors: string[] };
+  | { success: false; issues: Message[] };
+
+/** `issue` about the file at `absPath`, as one line of a load failure. */
+function atFile(absPath: string, issue: Message): Message {
+  return { key: "shared.issueAtPath", params: { path: absPath, issue } };
+}
 
 // A `workflow` step's ref can sit at any nesting depth, so this walks the whole body with
 // @path/schema's descent; restating the descent would let a new block type hide a file.
@@ -61,7 +67,7 @@ export async function loadWorkflowTree(
   { refAllowed = () => true }: LoadWorkflowTreeOptions = {},
 ): Promise<LoadResult> {
   const files = new Map<string, WorkflowFile>();
-  const errors: string[] = [];
+  const issues: Message[] = [];
 
   // The one freeze point (ADR 0019 sub-15): scan the plugin folder into a registry and build the
   // file schema once, before the first parse. A broken plugin folder fails the whole load naming
@@ -73,7 +79,9 @@ export async function loadWorkflowTree(
 
   function visit(absPath: string, chain: string[]): void {
     if (chain.includes(absPath)) {
-      errors.push(`ref cycle: ${[...chain, absPath].join(" -> ")}`);
+      issues.push(
+        codedMessage("workflow.load.ref-cycle", { chain: [...chain, absPath].join(" -> ") }),
+      );
       return;
     }
 
@@ -83,18 +91,18 @@ export async function loadWorkflowTree(
     try {
       raw = JSON.parse(readFileSync(absPath, "utf8"));
     } catch (err) {
-      errors.push(`${absPath}: ${err instanceof Error ? err.message : String(err)}`);
+      issues.push(atFile(absPath, verbatim(err instanceof Error ? err.message : String(err))));
       return;
     }
 
     const parsed = safeParseWorkflowFileWith(schema, raw);
     if (!parsed.success) {
-      errors.push(...parsed.errors.map((e) => `${absPath}: ${e}`));
+      issues.push(...parsed.issues.map((issue) => atFile(absPath, issue)));
       return;
     }
-    const duplicates = duplicateIdErrors(parsed.data);
+    const duplicates = duplicateIdIssues(parsed.data);
     if (duplicates.length > 0) {
-      errors.push(...duplicates.map((e) => `${absPath}: ${e}`));
+      issues.push(...duplicates.map((issue) => atFile(absPath, issue)));
       return;
     }
 
@@ -103,22 +111,20 @@ export async function loadWorkflowTree(
     for (const ref of collectWorkflowRefs(parsed.data.body)) {
       const target = resolve(dirname(absPath), ref);
       if (refAllowed(target)) visit(target, [...chain, absPath]);
-      else errors.push(`${absPath}: ref "${ref}" is outside the files this load may read`);
+      else issues.push(atFile(absPath, codedMessage("workflow.load.ref-outside", { ref })));
     }
   }
 
   const rootPath = resolve(entryPath);
   visit(rootPath, []);
 
-  if (errors.length > 0) {
-    return { success: false, errors };
-  }
+  if (issues.length > 0) return { success: false, issues };
 
   const rootFile = files.get(rootPath);
   if (!rootFile) {
     return {
       success: false,
-      errors: [`${rootPath}: internal error: entry file missing from the loaded tree`],
+      issues: [atFile(rootPath, codedMessage("workflow.load.entry-missing"))],
     };
   }
 

@@ -35,7 +35,7 @@ function strongEtag(bytes: string): string {
 }
 
 describe("GET /v0/workflows/file", () => {
-  it("returns the file's raw bytes verbatim with a strong ETag and JSON content-type", async () => {
+  it("returns the file's raw bytes verbatim with a strong ETag in the body and the header", async () => {
     // Odd whitespace and an unknown top-level field: the route must preserve both byte-for-byte
     // (it never parses or re-serializes — server-api-v0.md §7.1).
     const raw =
@@ -44,9 +44,8 @@ describe("GET /v0/workflows/file", () => {
 
     const res = await readFile("solo.workflow.json");
     expect(res.status).toBe(200);
-    expect(res.headers.get("content-type")).toBe("application/json");
     expect(res.headers.get("etag")).toBe(strongEtag(raw));
-    expect(await res.text()).toBe(raw);
+    expect(await res.json()).toEqual({ text: raw, etag: strongEtag(raw) });
   });
 
   it("resolves a `/`-bearing nested path", async () => {
@@ -55,7 +54,7 @@ describe("GET /v0/workflows/file", () => {
 
     const res = await readFile("lib/deep/flow.workflow.json");
     expect(res.status).toBe(200);
-    expect(await res.text()).toBe(raw);
+    expect(((await res.json()) as { text: string }).text).toBe(raw);
   });
 
   it("serves an id-less-but-otherwise-valid file rather than rejecting it (ADR 0015)", async () => {
@@ -67,7 +66,7 @@ describe("GET /v0/workflows/file", () => {
 
     const res = await readFile("draft.workflow.json");
     expect(res.status).toBe(200);
-    expect(await res.text()).toBe(raw);
+    expect(((await res.json()) as { text: string }).text).toBe(raw);
   });
 
   it("404s a file that is not on disk", async () => {

@@ -98,7 +98,7 @@ describe("migrate-workflow-format-v6 — `output` condition paths move to `previ
 
     expect(bytes(file)).toBe(text.replace("path/workflow@5", "path/workflow@6"));
     const result = safeParseWorkflowFile(read(file), builtinRegistry);
-    expect(result.success, result.success ? "" : result.errors.join("\n")).toBe(true);
+    expect(result.success, result.success ? "" : JSON.stringify(result.issues)).toBe(true);
   });
 
   it("rewrites every condition slot at any depth, byte-preserving the rest, and loads", () => {
@@ -113,7 +113,7 @@ describe("migrate-workflow-format-v6 — `output` condition paths move to `previ
         .replaceAll('"path": "output', '"path": "previous'),
     );
     const result = safeParseWorkflowFile(read(file), builtinRegistry);
-    expect(result.success, result.success ? "" : result.errors.join("\n")).toBe(true);
+    expect(result.success, result.success ? "" : JSON.stringify(result.issues)).toBe(true);
   });
 
   it("leaves a `path` outside any condition alone, falling back to a re-serialize", () => {
@@ -129,7 +129,7 @@ describe("migrate-workflow-format-v6 — `output` condition paths move to `previ
     expect(doc.input).toEqual({ path: "output.keep" });
     expect(JSON.stringify(doc.body)).not.toContain('"output');
     const result = safeParseWorkflowFile(doc, builtinRegistry);
-    expect(result.success, result.success ? "" : result.errors.join("\n")).toBe(true);
+    expect(result.success, result.success ? "" : JSON.stringify(result.issues)).toBe(true);
   });
 
   it("migrates a Step-Template, and it loads", () => {
@@ -144,7 +144,7 @@ describe("migrate-workflow-format-v6 — `output` condition paths move to `previ
 
     expect(bytes(file)).not.toContain('"output');
     const result = safeParseStepTemplate(read(file), builtinRegistry);
-    expect(result.success, result.success ? "" : result.errors.join("\n")).toBe(true);
+    expect(result.success, result.success ? "" : JSON.stringify(result.issues)).toBe(true);
   });
 
   it("is idempotent — an already-@6 file is left byte-unchanged", () => {

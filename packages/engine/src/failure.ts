@@ -1,4 +1,13 @@
-import { type ErrorCode, englishText, type Message, type MessageParam } from "@path/i18n";
+import {
+  type CodedError,
+  codedMessage,
+  type ErrorCode,
+  type ErrorParams,
+  englishText,
+  errorCodeOf,
+  errorText,
+  type Message,
+} from "@path/i18n";
 
 /**
  * A failure PATH owns (ADR 0107): `errorMessage` is what the client renders from its catalogue,
@@ -9,8 +18,8 @@ export interface Failure {
   errorMessage: Message;
 }
 
-export function failure(code: ErrorCode, params?: Record<string, MessageParam>): Failure {
-  return described({ key: `errors.${code}`, ...(params ? { params } : {}) });
+export function failure(code: ErrorCode, params?: ErrorParams): Failure {
+  return described(codedMessage(code, params));
 }
 
 /** A {@link Failure} for a `Message` already built, e.g. a `verbatim` one. */
@@ -18,30 +27,29 @@ export function described(errorMessage: Message): Failure {
   return { error: englishText(errorMessage), errorMessage };
 }
 
-/** A refusal PATH owns: the code and flat params the wire carries (ADR 0107 point 2). */
-export interface CodedRefusal {
-  code: ErrorCode;
-  params: Record<string, string | number>;
+/** A refusal PATH owns: the code and params the wire carries (ADR 0107 point 2). */
+export interface CodedRefusal extends CodedError {
+  params: ErrorParams;
   /** English, for the CLI. */
   message: string;
 }
 
-export function refusal(code: ErrorCode, params: Record<string, string | number>): CodedRefusal {
-  return { code, params, message: englishText({ key: `errors.${code}`, params }) };
+export function refusal(code: ErrorCode, params: ErrorParams): CodedRefusal {
+  return { code, params, message: errorText(code, params) };
 }
 
 /** The event fields of a failure (ADR 0107 point 4): a code only for an `errors.*` message. */
 export function errorEventFields(failure: Partial<Failure>): {
   error?: string;
   error_code?: string;
-  error_params?: Record<string, MessageParam>;
+  error_params?: ErrorParams;
 } {
   if (failure.error === undefined) return {};
-  const message = failure.errorMessage;
-  if (message === undefined || !message.key.startsWith("errors.")) return { error: failure.error };
+  const coded = failure.errorMessage && errorCodeOf(failure.errorMessage);
+  if (coded === undefined) return { error: failure.error };
   return {
     error: failure.error,
-    error_code: message.key.slice("errors.".length),
-    ...(message.params ? { error_params: message.params } : {}),
+    error_code: coded.code,
+    ...(coded.params ? { error_params: coded.params } : {}),
   };
 }

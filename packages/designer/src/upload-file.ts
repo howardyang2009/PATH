@@ -1,5 +1,6 @@
 import { apiErrorMessage, type PathApiClient, PathApiError } from "@path/client-core";
 import type { Message } from "@path/i18n";
+import { instantiateWorkflow, type WorkflowFile } from "@path/schema";
 import type { TemplateSource } from "./session-reducer.js";
 import {
   checkUploadFile,
@@ -39,8 +40,9 @@ export interface UploadContext {
 /** Check and read one picked file, before the user picks its folder. */
 export async function readPickedFile(
   file: File,
+  maxBytes: number | null,
 ): Promise<{ status: "read"; upload: Upload } | { status: "refused"; message: Message }> {
-  const checked = checkUploadFile(file);
+  const checked = checkUploadFile(file, maxBytes);
   if (!checked.ok) return { status: "refused", message: checked.message };
   const read = readUpload(checked, await file.text());
   if (!read.ok) return { status: "refused", message: read.message };
@@ -77,13 +79,19 @@ export async function uploadCopy(
   name: string,
 ): Promise<UploadOutcome> {
   const suffix = upload.fileName.slice(upload.stem.length);
-  const checked = checkUploadFile({ name: `${name}${suffix}`, size: 0 });
+  const checked = checkUploadFile({ name: `${name}${suffix}`, size: 0 }, null);
   if (!checked.ok) return { status: "refused", message: checked.message };
   const copy: Upload = {
     ...upload,
     stem: checked.stem,
     fileName: checked.fileName,
-    content: { ...upload.content, id: crypto.randomUUID() },
+    // A workflow copy re-stamps every id, as Save as and a shipped copy do.
+    content:
+      upload.kind === "workflow"
+        ? (instantiateWorkflow(
+            upload.content as unknown as WorkflowFile,
+          ) as unknown as Upload["content"])
+        : { ...upload.content, id: crypto.randomUUID() },
   };
   try {
     if (copy.kind === "template") return await writeUpload(client, copy, { action: "create" });
@@ -128,7 +136,7 @@ async function writeUpload(
     await client.putWorkflow({
       workflowPath: path,
       workflow: upload.content,
-      ifMatch: etag ?? undefined,
+      ifMatch: etag,
     });
   } finally {
     if (!lease?.heldPaths.includes(path))

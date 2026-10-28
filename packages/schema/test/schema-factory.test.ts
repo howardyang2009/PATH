@@ -1,3 +1,4 @@
+import { englishText } from "@path/i18n";
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { makeNodeSchema, type StepPluginRegistry } from "../src/nodes.js";
@@ -134,7 +135,7 @@ describe("makeWorkflowFileSchema — unknown / absent type", () => {
     );
     expect(result.success).toBe(false);
     if (result.success) return;
-    const joined = result.errors.join("\n");
+    const joined = result.issues.map(englishText).join("\n");
     // Every missing type in one pass, not just the first.
     expect(joined).toContain('"foo"');
     expect(joined).toContain('"bar"');
@@ -150,7 +151,7 @@ describe("makeWorkflowFileSchema — unknown / absent type", () => {
     );
     expect(result.success).toBe(false);
     if (result.success) return;
-    const joined = result.errors.join("\n");
+    const joined = result.issues.map(englishText).join("\n");
     expect(joined).toContain("(none)");
     expect(joined).toContain("packages/engine/plugin/step-plugin/");
   });

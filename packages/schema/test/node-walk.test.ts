@@ -1,3 +1,4 @@
+import { englishText } from "@path/i18n";
 import { describe, expect, it } from "vitest";
 import type { WorkflowNode } from "../src/node-type.js";
 import {
@@ -204,14 +205,14 @@ describe("validation reaches deeply nested bodies", () => {
     );
     expect(result.success).toBe(false);
     if (result.success) throw new Error("expected a failure");
-    expect(result.errors.join("\n")).toMatch(/twice/);
+    expect(result.issues.map(englishText).join("\n")).toMatch(/twice/);
   });
 
   it("catches a parallel branch node's name colliding with a deeply nested node's name", () => {
     const result = safeParseWorkflowFile(file([deeplyNested(step("route"))]), builtinRegistry);
     expect(result.success).toBe(false);
     if (result.success) throw new Error("expected a failure");
-    expect(result.errors.join("\n")).toMatch(/route/);
+    expect(result.issues.map(englishText).join("\n")).toMatch(/route/);
   });
 
   it("catches two concurrent branches publishing the same key from nested bodies", () => {
@@ -245,7 +246,7 @@ describe("validation reaches deeply nested bodies", () => {
     const result = safeParseWorkflowFile(file([racing]), builtinRegistry);
     expect(result.success).toBe(false);
     if (result.success) throw new Error("expected a failure");
-    expect(result.errors.join("\n")).toMatch(/shared/);
+    expect(result.issues.map(englishText).join("\n")).toMatch(/shared/);
   });
 
   it("does not call sequential republishing of one key inside a sequence a collision", () => {

@@ -2,6 +2,7 @@ import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } 
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { englishText } from "@path/i18n";
 import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { type CliIo, main } from "../../src/cli.js";
@@ -177,7 +178,7 @@ describe("acceptance: do-not-wait publish rejection at load (issue #216, spec §
     const loaded = await loadWorkflowTree(injected);
     expect(loaded.success).toBe(false);
     if (!loaded.success) {
-      expect(loaded.errors.join("\n")).toMatch(/do-not-wait/);
+      expect(loaded.issues.map(englishText).join("\n")).toMatch(/do-not-wait/);
     }
   });
 });
@@ -237,7 +238,7 @@ async function killWithBranchInFlight(): Promise<string> {
   };
 
   const loaded = await loadWorkflowTree(join(harness.projectDir, WORKFLOW_FILE));
-  if (!loaded.success) throw new Error(loaded.errors.join("\n"));
+  if (!loaded.success) throw new Error(loaded.issues.map(englishText).join("\n"));
   const rootFile = loaded.workflow.rootFile;
   const opened = openProject(harness.projectDir);
   if (!opened.success) throw new Error(opened.error);

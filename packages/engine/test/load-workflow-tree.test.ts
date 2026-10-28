@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
+import { englishText } from "@path/i18n";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { loadWorkflowTree } from "../src/load-workflow-tree.js";
 
@@ -33,7 +34,7 @@ describe("loadWorkflowTree", () => {
     const result = await loadWorkflowTree(join(fixtures, "cycle-a.workflow.json"));
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.errors.join("\n")).toMatch(/cycle/i);
+      expect(result.issues.map(englishText).join("\n")).toMatch(/cycle/i);
     }
   });
 
@@ -41,7 +42,7 @@ describe("loadWorkflowTree", () => {
     const result = await loadWorkflowTree(join(fixtures, "missing-ref.workflow.json"));
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.errors.join("\n")).toMatch(/does-not-exist\.workflow\.json/);
+      expect(result.issues.map(englishText).join("\n")).toMatch(/does-not-exist\.workflow\.json/);
     }
   });
 
@@ -49,8 +50,8 @@ describe("loadWorkflowTree", () => {
     const result = await loadWorkflowTree(join(fixtures, "invalid-schema.workflow.json"));
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.errors.join("\n")).toMatch(/invalid-schema\.workflow\.json/);
-      expect(result.errors.join("\n")).toMatch(/bogus_field/);
+      expect(result.issues.map(englishText).join("\n")).toMatch(/invalid-schema\.workflow\.json/);
+      expect(result.issues.map(englishText).join("\n")).toMatch(/bogus_field/);
     }
   });
 
@@ -59,8 +60,10 @@ describe("loadWorkflowTree", () => {
     const result = await loadWorkflowTree(parent, { refAllowed: (abs) => abs === parent });
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.errors).toHaveLength(1);
-      expect(result.errors[0]).toMatch(/parent-with-child\.workflow\.json: ref ".*child/);
+      expect(result.issues.map(englishText)).toHaveLength(1);
+      expect(result.issues.map(englishText)[0]).toMatch(
+        /parent-with-child\.workflow\.json: ref ".*child/,
+      );
     }
   });
 
@@ -211,7 +214,7 @@ describe("loadWorkflowTree — superseded format versions", () => {
     const result = await loadWorkflowTree(absPath);
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.errors).toEqual([`${absPath}: ${V1_REJECTION}`]);
+      expect(result.issues.map(englishText)).toEqual([`${absPath}: ${V1_REJECTION}`]);
     }
   });
 
@@ -220,7 +223,7 @@ describe("loadWorkflowTree — superseded format versions", () => {
     const result = await loadWorkflowTree(absPath);
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.errors).toEqual([`${absPath}: ${V0_REJECTION}`]);
+      expect(result.issues.map(englishText)).toEqual([`${absPath}: ${V0_REJECTION}`]);
     }
   });
 
@@ -230,7 +233,9 @@ describe("loadWorkflowTree — superseded format versions", () => {
     if (!result.success) {
       // The parent itself is fine — only the child is named, so the operator knows which file to
       // migrate.
-      expect(result.errors).toEqual([`${join(dir, "v1.workflow.json")}: ${V1_REJECTION}`]);
+      expect(result.issues.map(englishText)).toEqual([
+        `${join(dir, "v1.workflow.json")}: ${V1_REJECTION}`,
+      ]);
     }
   });
 });
@@ -312,7 +317,7 @@ describe("loadWorkflowTree — worker_defaults registry validation (ADR 0044, #5
     const result = await loadWorkflowTree(join(dir, "wd-bad.workflow.json"));
     expect(result.success).toBe(false);
     if (!result.success) {
-      const joined = result.errors.join("\n");
+      const joined = result.issues.map(englishText).join("\n");
       expect(joined).toMatch(/unknown worker "openai"/);
       expect(joined).toMatch(/"prompt" ships/);
     }
@@ -325,14 +330,14 @@ describe("loadWorkflowTree — worker_defaults registry validation (ADR 0044, #5
       const childPath = join(dir, "wd-child.workflow.json");
       const parentPath = join(dir, "wd-parent.workflow.json");
       // Every worker_defaults error is attributed to the child's path…
-      const wdErrors = result.errors.filter((e) => /worker_defaults/.test(e));
+      const wdErrors = result.issues.map(englishText).filter((e) => /worker_defaults/.test(e));
       expect(wdErrors.length).toBeGreaterThan(0);
       for (const e of wdErrors) {
         expect(e.startsWith(`${childPath}: `)).toBe(true);
         expect(e.startsWith(`${parentPath}: `)).toBe(false);
       }
       // …and both bad entries are reported in the one pass.
-      const joined = result.errors.join("\n");
+      const joined = result.issues.map(englishText).join("\n");
       expect(joined).toMatch(/unknown step type "nope"/);
       expect(joined).toMatch(/unknown worker "openai"/);
     }
@@ -377,11 +382,10 @@ describe("loadWorkflowTree — duplicate ids", () => {
   it("refuses a file whose nodes share an id, naming both paths", async () => {
     const path = join(dir, "dup.workflow.json");
     const result = await loadWorkflowTree(path);
-    expect(result).toEqual({
-      success: false,
-      errors: [
-        `${path}: body.1.id: duplicate id "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d": id already used at body.0.id`,
-      ],
-    });
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect(result.issues.map(englishText)).toEqual([
+      `${path}: body.1.id: duplicate id "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d": id already used at body.0.id`,
+    ]);
   });
 });

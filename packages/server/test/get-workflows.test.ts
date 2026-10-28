@@ -144,7 +144,16 @@ describe("GET /v0/workflows", () => {
     expect(old.error?.message).toBe(
       `${join(projectDir, u("old.workflow.json"))}: path/workflow@1 is no longer read — run scripts/archive/migrate-workflow-format-v2.ts then scripts/archive/migrate-workflow-format-v3.ts then scripts/archive/migrate-workflow-format-v4.ts then scripts/archive/migrate-workflow-format-v5.ts then scripts/migrate-workflow-format-v6.ts to migrate this file to path/workflow@6`,
     );
-    expect(old.error?.details).toHaveLength(1);
+    expect(old.error?.code).toBe("workflow.invalid");
+    expect(old.error?.details).toEqual([
+      {
+        key: "shared.issueAtPath",
+        params: {
+          path: join(projectDir, u("old.workflow.json")),
+          issue: expect.objectContaining({ key: "errors.schema.format.superseded" }),
+        },
+      },
+    ]);
   });
 
   it("yields null id/name for a syntactically broken file", async () => {
@@ -248,9 +257,10 @@ describe("GET /v0/workflows", () => {
   it("lists the writable workflow roots, the user's own first", async () => {
     const { body } = await listWorkflows();
     expect(body.roots).toEqual([
-      { origin: "user", relative_path: join("users", "local", "workflow") },
-      { origin: "shared", relative_path: join("shared", "workflow") },
+      { origin: "user", relative_path: join("users", "local", "workflow"), folders: [] },
+      { origin: "shared", relative_path: join("shared", "workflow"), folders: [] },
     ]);
+    expect(body.max_file_bytes).toBeNull();
   });
 
   it("lists shipped workflows relative to the shipped root, flagging their nested refs", async () => {

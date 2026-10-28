@@ -12,6 +12,7 @@ import {
   nextOpenFolder,
   ORIGIN_FOLDER,
   parentFolderPath,
+  wireErrorMessage,
   workflowBaseName,
   workflowTreePath,
 } from "@path/client-core";
@@ -192,6 +193,7 @@ function WorkflowTree({
   onToggleFolder: (path: string) => void;
 }) {
   const t = useTranslations("viewer.launchPanel");
+  const renderMessage = useMessage();
   return (
     <ul className="workflows">
       {nodes.map((node) =>
@@ -255,7 +257,9 @@ function WorkflowTree({
                   className="workflow-error-detail"
                   data-testid={`workflow-error-${node.workflow.relative_path}`}
                 >
-                  {node.workflow.error?.message ?? t("loadFailed")}
+                  {node.workflow.error
+                    ? renderMessage(wireErrorMessage(node.workflow.error))
+                    : t("loadFailed")}
                 </p>
               ))}
           </li>

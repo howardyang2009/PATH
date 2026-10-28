@@ -4,6 +4,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadWorkflowTree, openProject, type Project } from "@path/engine";
+import { englishText } from "@path/i18n";
 import type { LogEvent, WorkflowFile } from "@path/schema";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { LiveRuns, StartRunOptions } from "../src/live-runs.js";
@@ -76,7 +77,7 @@ async function workflow(
     JSON.stringify({ format: "path/workflow@6", id: idFor(name), name, body, ...extra }),
   );
   const loaded = await loadWorkflowTree(path);
-  if (!loaded.success) throw new Error(loaded.errors.join("\n"));
+  if (!loaded.success) throw new Error(loaded.issues.map(englishText).join("\n"));
   const { rootFile, workflowDir, files, registry } = loaded.workflow;
   return [rootFile, workflowDir, { files, registry, userSecrets: { API_TOKEN: "sk-alice" } }];
 }
@@ -178,6 +179,7 @@ describe.skipIf(!image)("the run lifecycle in real VMs", () => {
 
     const fixed = await workflow("flaky", [shell("a", "printf A"), shell("wait", "printf W")]);
     const successor = await runs.resume(fixed[0], rootRunId, fixed[1], fixed[2]);
+    if (!successor.ok) throw new Error(successor.refusal.code);
     await runs.idle();
     expect(store.archive.tree(successor.rootRunId)?.root?.status).toBe("succeeded");
   }, 180_000);

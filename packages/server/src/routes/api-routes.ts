@@ -92,7 +92,7 @@ const API_ROUTES: readonly ApiRoute[] = [
   // `/`-bearing path in the body.
   { method: "GET", path: "/v0/workflows", handle: handleGetWorkflows },
   { method: "PUT", path: "/v0/workflows", handle: handlePutWorkflow, gate: "write" },
-  { method: "GET", path: "/v0/workflows/file", stream: handleGetWorkflowFile },
+  { method: "GET", path: "/v0/workflows/file", handle: handleGetWorkflowFile },
   { method: "GET", path: "/v0/workflows/download", stream: handleGetWorkflowDownload },
   { method: "DELETE", path: "/v0/workflows/file", handle: handleDeleteWorkflow },
   { method: "POST", path: "/v0/workflows/copy", handle: handlePostWorkflowCopy, gate: "write" },

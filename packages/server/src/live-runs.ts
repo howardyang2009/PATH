@@ -11,6 +11,7 @@ import {
 } from "@path/engine";
 import type { ConfigObject, JsonValue, LogEvent, WorkflowFile } from "@path/schema";
 import { createDeferred } from "./deferred.js";
+import type { StatusRefusal } from "./http-json.js";
 import { createLiveLogBackend } from "./live-log-backend.js";
 import { RunEventHub, streamRun } from "./run-event-hub.js";
 
@@ -31,7 +32,7 @@ export interface LiveRuns {
     resumeRootRunId: string,
     workflowDir: string,
     options: ResumeRunOptions,
-  ): Promise<StartedRun>;
+  ): Promise<ResumeOutcome>;
   /** Signals a run's abort, best-effort (mvp spec §5.6). `false` means no run by that id executes
    * here, so the caller must not report a cancel it cannot perform; a second cancel still answers
    * `true`. */
@@ -128,21 +129,29 @@ export interface CompleteRunOptions {
   userSecrets?: UserSecrets;
 }
 
-/** Thrown by `resume` when the engine reports the predecessor root run id unknown. */
-export class ResumeNotFound extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "ResumeNotFound";
+/** What a Resume answers: the successor's ids, or why no successor started. */
+export type ResumeOutcome = ({ ok: true } & StartedRun) | { ok: false; refusal: StatusRefusal };
+
+/** Thrown by an executor's `resume` before the successor's root exists; `LiveRuns.resume` answers
+ * it as a refusal. */
+export class ResumeRejected extends Error {
+  constructor(readonly refusal: StatusRefusal) {
+    super(refusal.code);
+    this.name = "ResumeRejected";
   }
 }
 
-/** Thrown by `resume` when `Project.resume` refuses a Resume-from-K selection (ADR 0032), carrying
- * its status and code. */
-export class ResumeRefused extends Error {
-  constructor(readonly refusal: ResumeRefusal) {
-    super(refusal.message);
-    this.name = "ResumeRefused";
-  }
+/** The rejection for an engine Resume check that found no predecessor (a 404) or refused it (a
+ * live or succeeded tree, an illegal K). */
+export function resumeRejected(
+  problem: { error: string } | { refusal: ResumeRefusal },
+  rootRunId: string,
+): ResumeRejected {
+  return new ResumeRejected(
+    "refusal" in problem
+      ? problem.refusal
+      : { status: 404, code: "run.not-found", params: { rootRunId } },
+  );
 }
 
 export interface StartedRun {
@@ -261,7 +270,15 @@ export function liveRunsOver(store: Project, executor: RunExecutor): LiveRuns {
       launch((drive) => executor.start(rootFile, workflowDir, options, drive)),
 
     resume: (rootFile, resumeRootRunId, workflowDir, options) =>
-      launch((drive) => executor.resume(rootFile, resumeRootRunId, workflowDir, options, drive)),
+      launch((drive) =>
+        executor.resume(rootFile, resumeRootRunId, workflowDir, options, drive),
+      ).then(
+        (ids): ResumeOutcome => ({ ok: true, ...ids }),
+        (err: unknown): ResumeOutcome => {
+          if (err instanceof ResumeRejected) return { ok: false, refusal: err.refusal };
+          throw err;
+        },
+      ),
 
     async complete(rootFile, rootRunId, stepRunId, output, workflowDir, options) {
       // A Complete re-drives an existing tree (ADR 0041): it files the known root so Cancel
@@ -362,11 +379,7 @@ export function inProcessExecutor(project: Project): RunExecutor {
         .resume(rootFile, resumeRootRunId, workflowDir, { ...options, ...hooks(drive) })
         .then((result) => {
           // No successor started: the refusal, or a 404, is the launch's rejection.
-          if (!result.found) {
-            throw "refusal" in result
-              ? new ResumeRefused(result.refusal)
-              : new ResumeNotFound(result.error);
-          }
+          if (!result.found) throw resumeRejected(result, resumeRootRunId);
           if (result.status === "failed") console.error(`resumed run failed: ${result.error}`);
         }, crashed("resumed run")),
 

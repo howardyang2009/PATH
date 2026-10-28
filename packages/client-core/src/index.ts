@@ -61,6 +61,7 @@ export {
   type TemplateWriteResult,
   type WorkflowFileRaw,
   type WorkflowLease,
+  wireErrorMessage,
 } from "./api-client.js";
 // Sign-in (spec path-website §7): the mode from `GET /v0/auth-config`, and Clerk only in hosted mode.
 export {

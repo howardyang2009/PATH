@@ -1,4 +1,4 @@
-import { englishText, type Message, verbatim } from "@path/i18n";
+import { codedMessage, englishText, type Message, verbatim } from "@path/i18n";
 import {
   type Condition,
   type ConditionOutcome,
@@ -75,20 +75,14 @@ function evaluateLeaf(
   if (condition.type === "exists") {
     return resolved.found
       ? { ...base, outcome: "true", value: resolved.value }
-      : withReason(
-          { ...base, outcome: "false" },
-          { key: "errors.condition.unresolved", params: { path } },
-        );
+      : withReason({ ...base, outcome: "false" }, codedMessage("condition.unresolved", { path }));
   }
 
   // Every other predicate reads a value: an unresolvable path is a strict error, not a false.
   if (!resolved.found) {
     return withReason(
       { ...base, outcome: "error" },
-      {
-        key: "errors.condition.unresolved-because",
-        params: { path, reason: resolved.error },
-      },
+      codedMessage("condition.unresolved-because", { path, reason: resolved.error }),
     );
   }
   const value = resolved.value;
@@ -106,10 +100,7 @@ function evaluateLeaf(
       if (typeof value !== "string") {
         return withReason(
           { ...base, outcome: "error", value },
-          {
-            key: "errors.condition.wants-string",
-            params: { predicate: "matches", got: jsonType(value) },
-          },
+          codedMessage("condition.wants-string", { predicate: "matches", got: jsonType(value) }),
         );
       }
       return {
@@ -121,7 +112,7 @@ function evaluateLeaf(
       if (typeof value !== "number") {
         return withReason(
           { ...base, outcome: "error", value },
-          { key: "errors.condition.wants-number", params: { got: jsonType(value) } },
+          codedMessage("condition.wants-number", { got: jsonType(value) }),
         );
       }
       const withinMin = condition.min === undefined || value >= condition.min;
@@ -132,10 +123,7 @@ function evaluateLeaf(
       if (typeof value !== "string") {
         return withReason(
           { ...base, outcome: "error", value },
-          {
-            key: "errors.condition.wants-string",
-            params: { predicate: "valid-json", got: jsonType(value) },
-          },
+          codedMessage("condition.wants-string", { predicate: "valid-json", got: jsonType(value) }),
         );
       }
       try {
@@ -144,7 +132,7 @@ function evaluateLeaf(
       } catch {
         return withReason(
           { ...base, outcome: "false", value },
-          { key: "errors.condition.invalid-json" },
+          codedMessage("condition.invalid-json"),
         );
       }
   }
@@ -201,12 +189,9 @@ export function describeConditionFailure(trace: Trace): Message {
   const falseLeaf = findLeaf(trace, "false");
   if (falseLeaf?.message) return leafReason(falseLeaf, falseLeaf.message);
   if (falseLeaf) {
-    return {
-      key: "errors.condition.was-false",
-      params: { predicate: falseLeaf.type, path: falseLeaf.path },
-    };
+    return codedMessage("condition.was-false", { predicate: falseLeaf.type, path: falseLeaf.path });
   }
-  return { key: "errors.condition.not-satisfied" };
+  return codedMessage("condition.not-satisfied");
 }
 
 // A leaf this module did not evaluate (e.g. one read back from a log) has only its text.

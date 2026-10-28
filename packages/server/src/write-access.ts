@@ -27,6 +27,8 @@ export type WorkflowWriteVerdict =
 
 export interface WriteAccess {
   readonly layout: AuthoredLayout;
+  /** The largest authored file the requester may write, in bytes; `undefined` when unlimited. */
+  readonly maxFileBytes: number | undefined;
   /** Whether the requester may change the workflow at `path`: in view, not shipped or a template,
    * inside the project, and for an existing shared file only its creator. A missing file passes,
    * so a door that creates asks {@link createRefusal} next. */
@@ -56,6 +58,7 @@ export function writeAccess(
 
   return {
     layout,
+    maxFileBytes: limits?.maxFileBytes,
     workflow(path) {
       if (!layout.inView(path)) return { ok: false, status: 404, code: "request.not-found" };
       const refusal = layout.workflowRefusal(path, "write");

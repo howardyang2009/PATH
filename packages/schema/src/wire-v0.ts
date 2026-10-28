@@ -1,3 +1,4 @@
+import type { ErrorParams } from "@path/i18n";
 import type { ConfigObject } from "./config-value-type.js";
 import type { JsonValue } from "./json-value.js";
 import type { LaunchFacts } from "./launch-facts.js";
@@ -181,12 +182,19 @@ export interface WireCopyWorkflowResponse {
   root_path: string;
 }
 
+/** `GET /v0/workflows/file` reply (server-api-v0.md §7.1): the file's exact bytes and their strong
+ * ETag, the Baseline a later `If-Match` names. */
+export interface WireWorkflowFileResponse {
+  text: string;
+  etag: string;
+}
+
 /** The shared error envelope for every non-2xx response (server-api-v0.md §1). */
 export interface WireError {
   error: {
     /** The ADR 0107 error code, the client's `errors.<code>` key; absent from an older server. */
     code?: string;
-    params?: { [name: string]: string | number };
+    params?: ErrorParams;
     /** English, for `curl`, an older client and a code the client does not know. */
     message: string;
     details?: JsonValue;
@@ -221,12 +229,16 @@ export interface WorkflowSummary {
 export interface WorkflowRootSummary {
   origin: "shared" | "user";
   relative_path: string;
+  /** The root's subfolders, relative to it and sorted, empty ones included. */
+  folders: string[];
 }
 
 export interface ListWorkflowsResponse {
   workflows: WorkflowSummary[];
   /** The writable workflow roots, the user's own first: where a new workflow may land. */
   roots: WorkflowRootSummary[];
+  /** The largest authored file the requester may write, in bytes; `null` when unlimited. */
+  max_file_bytes: number | null;
 }
 
 /**
