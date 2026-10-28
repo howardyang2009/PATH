@@ -1,5 +1,5 @@
 import { isTerminal } from "@path/schema";
-import { type RouteReply, replyError, replyRefusal } from "../http-json.js";
+import { type RouteReply, replyError, replyRefused } from "../http-json.js";
 import { resolveRun } from "./resolve-run.js";
 import type { ApiRequest } from "./route-context.js";
 
@@ -17,7 +17,7 @@ export function handleDeleteRun({
 
   // The root row specifically: a child can read terminal while the tree still runs.
   const address = resolveRun(ctx, rootRunId);
-  if (!address.ok) return replyRefusal(address.status, address);
+  if (!address.ok) return replyRefused(address);
 
   if (!isTerminal(address.root.status)) {
     return replyError(409, "run.delete.running", { rootRunId, status: address.root.status });

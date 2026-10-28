@@ -1,6 +1,6 @@
 import type { WireCopyWorkflowResponse } from "@path/schema";
 import { z } from "zod";
-import { type RouteReply, readRequestBody, replyRefusal } from "../http-json.js";
+import { type RouteReply, readRequestBody, replyRefused } from "../http-json.js";
 import { copyShippedWorkflow } from "../shipped-workflows.js";
 import type { ApiRequest } from "./route-context.js";
 
@@ -16,7 +16,7 @@ export async function handlePostWorkflowCopy({ body, ctx }: ApiRequest): Promise
   if (!parsed.ok) return parsed.reply;
 
   const copied = copyShippedWorkflow(ctx.layout, parsed.data.shipped_path);
-  if (!copied.ok) return replyRefusal(copied.status, copied);
+  if (!copied.ok) return replyRefused(copied);
   const reply: WireCopyWorkflowResponse = {
     relative_path: copied.relativePath,
     root_path: copied.rootPath,

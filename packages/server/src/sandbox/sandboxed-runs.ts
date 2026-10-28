@@ -25,10 +25,9 @@ import { refusalText } from "../http-json.js";
 import {
   type LiveRuns,
   liveRunsOver,
-  ResumeNotFound,
-  ResumeRefused,
   type RunDrive,
   type RunExecutor,
+  resumeRejected,
   type StartRunOptions,
 } from "../live-runs.js";
 import type { SandboxMount, SandboxProcess, SandboxRuntime } from "./sandbox-runtime.js";
@@ -249,11 +248,7 @@ export function vmExecutor(store: Project, sandbox: SandboxOptions, owner: RunOw
 
     async resume(rootFile, resumeRootRunId, workflowDir, options, drive) {
       const refusal = store.checkResume(rootFile, resumeRootRunId, workflowDir, options);
-      if (refusal !== undefined) {
-        throw "refusal" in refusal
-          ? new ResumeRefused(refusal.refusal)
-          : new ResumeNotFound(refusal.error);
-      }
+      if (refusal !== undefined) throw resumeRejected(refusal, resumeRootRunId);
       const job = vmJob(store, randomUUID(), rootFile, workflowDir, options, {
         kind: "resume",
         predecessorRootRunId: resumeRootRunId,

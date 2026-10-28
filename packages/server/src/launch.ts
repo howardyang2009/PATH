@@ -34,37 +34,29 @@ export function operatorConfigEnvError(config: ConfigObject): Refusal | undefine
   return { code: "run.config-env", params: { paths: paths.map((p) => `"${p}"`).join(", ") } };
 }
 
-/** How a route words its two 404s — the only wording that legitimately differs between the
- * surfaces. */
-export interface NotFoundMessages {
-  notFound(workflowPath: string): Refusal;
-  escapesRoot?(workflowPath: string): Refusal;
-}
+/** An action on an existing run: which door asks, and the ids its refusals name. */
+export type RunAction =
+  | { kind: "resume"; rootRunId: string }
+  | { kind: "complete"; rootRunId: string; stepRunId: string };
 
 /** Resolve a path within the project root, confirm it may run and exists, then load and validate
  * it. 404 when it escapes or is missing, 403 for a shipped file, 400 when it fails to load; a
  * missing tail reads as `notFound`, not an escape. */
-export async function prepareWorkflow(
+async function loadInView(
   layout: AuthoredLayout,
   workflowPath: string,
-  messages: NotFoundMessages,
+  notFound: Refusal,
+  escapesRoot: Refusal,
 ): Promise<PreparedWorkflow> {
   // Another user's path reads as missing, so a refusal never confirms that it exists.
-  if (!layout.inView(workflowPath)) {
-    return { ok: false, refusal: { status: 404, ...messages.notFound(workflowPath) } };
-  }
+  if (!layout.inView(workflowPath)) return { ok: false, refusal: { status: 404, ...notFound } };
   const absPath = confineToProjectRoot(layout.projectDir, workflowPath, {
     allowMissingTail: true,
   });
-  if (!absPath) {
-    const escaped = (messages.escapesRoot ?? messages.notFound)(workflowPath);
-    return { ok: false, refusal: { status: 404, ...escaped } };
-  }
+  if (!absPath) return { ok: false, refusal: { status: 404, ...escapesRoot } };
   const refusal = layout.workflowRefusal(workflowPath, "run");
   if (refusal !== undefined) return { ok: false, refusal };
-  if (!existsSync(absPath)) {
-    return { ok: false, refusal: { status: 404, ...messages.notFound(workflowPath) } };
-  }
+  if (!existsSync(absPath)) return { ok: false, refusal: { status: 404, ...notFound } };
 
   const loadResult = await loadWorkflowTree(absPath, { refAllowed: layout.inView });
   if (!loadResult.success) {
@@ -76,33 +68,54 @@ export async function prepareWorkflow(
   return { ok: true, workflow: loadResult.workflow };
 }
 
-/** The two refusals an action on an existing run owns beyond the path gate (ADR 0006 identity). */
-export interface RunWorkflowMessages extends NotFoundMessages {
-  /** The reply for a run whose workflow lies outside the requester's view: an unknown run. */
-  noRun(): Refusal;
-  noPath(): Refusal;
-  swapped(workflowPath: string): Refusal;
+/** The workflow a launch (`POST /v0/runs`) names, through the path gate. */
+export function prepareLaunch(
+  layout: AuthoredLayout,
+  workflowPath: string,
+): Promise<PreparedWorkflow> {
+  const params = { workflowPath };
+  return loadInView(
+    layout,
+    workflowPath,
+    { code: "workflow.not-found", params },
+    { code: "workflow.escapes-root", params },
+  );
 }
 
 /** The **current authoring** of the workflow an existing run was launched from: recover the
- * store-relative path from the run's root row, run the same escape/not-found/invalid gate, and
- * confirm it is still the same workflow by id (ADR 0006); a predecessor with no recorded id skips
- * that check. */
+ * store-relative path from the run's root row, run the same path gate, and confirm it is still the
+ * same workflow by id (ADR 0006); a predecessor with no recorded id skips that check. Each refusal
+ * is named for `action`'s door. */
 export async function prepareRunWorkflow(
   layout: AuthoredLayout,
   root: Pick<RunRecord, "workflowId" | "workflowPath">,
-  messages: RunWorkflowMessages,
+  action: RunAction,
 ): Promise<PreparedWorkflow> {
-  if (!root.workflowPath) {
-    return { ok: false, refusal: { status: 409, ...messages.noPath() } };
+  const { kind, rootRunId } = action;
+  const workflowPath = root.workflowPath;
+  if (!workflowPath) {
+    return {
+      ok: false,
+      refusal: { status: 409, code: `run.${kind}.no-path`, params: { rootRunId } },
+    };
   }
-  if (!layout.inView(root.workflowPath)) {
-    return { ok: false, refusal: { status: 404, ...messages.noRun() } };
+  // A run whose workflow lies outside the requester's view reads as an unknown run.
+  if (!layout.inView(workflowPath)) {
+    const noRun: Refusal =
+      action.kind === "resume"
+        ? { code: "run.not-found", params: { rootRunId } }
+        : { code: "run.step-not-found", params: { stepRunId: action.stepRunId } };
+    return { ok: false, refusal: { status: 404, ...noRun } };
   }
-  const prepared = await prepareWorkflow(layout, root.workflowPath, messages);
+  // The path came from our own row, so an escape reads as missing too.
+  const missing: Refusal = { code: "run.workflow-missing", params: { rootRunId, workflowPath } };
+  const prepared = await loadInView(layout, workflowPath, missing, missing);
   if (!prepared.ok) return prepared;
   if (root.workflowId && prepared.workflow.rootFile.id !== root.workflowId) {
-    return { ok: false, refusal: { status: 409, ...messages.swapped(root.workflowPath) } };
+    return {
+      ok: false,
+      refusal: { status: 409, code: `run.${kind}.swapped`, params: { workflowPath, rootRunId } },
+    };
   }
   return prepared;
 }

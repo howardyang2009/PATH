@@ -14,7 +14,7 @@ import { loadWorkflowTree, openProject, type Project, rootRunTreeDir } from "@pa
 import { englishText } from "@path/i18n";
 import type { LogEvent, WorkflowFile } from "@path/schema";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { type LiveRuns, ResumeNotFound, type StartRunOptions } from "../src/live-runs.js";
+import type { LiveRuns, StartRunOptions } from "../src/live-runs.js";
 import {
   createSandboxedRuns,
   type RunOwner,
@@ -559,6 +559,7 @@ describe("a sandboxed Resume", () => {
       step("b", "process.stdout.write('B')"),
     ]);
     const successor = await runs.resume(file, first.rootRunId, workflowDir, options);
+    if (!successor.ok) throw new Error(successor.refusal.code);
 
     expect(successor.rootRunId).not.toBe(first.rootRunId);
     expect(await settled(runs, successor.rootRunId)).toBe("succeeded");
@@ -581,9 +582,10 @@ describe("a sandboxed Resume", () => {
   it("refuses an unknown predecessor without a VM", async () => {
     const { runtime, runs } = sandboxed(inProcessVm);
     const [file, workflowDir, options] = await writeWorkflow("flaky", [step("a", "")]);
-    await expect(runs.resume(file, "nope", workflowDir, options)).rejects.toBeInstanceOf(
-      ResumeNotFound,
-    );
+    expect(await runs.resume(file, "nope", workflowDir, options)).toMatchObject({
+      ok: false,
+      refusal: { status: 404, code: "run.not-found" },
+    });
     expect(runtime.vms).toHaveLength(0);
   });
 });
@@ -632,6 +634,7 @@ describe("a lost VM", () => {
 
     const healthy = sandboxed(inProcessVm);
     const successor = await healthy.runs.resume(wf[0], rootRunId, wf[1], wf[2]);
+    if (!successor.ok) throw new Error(successor.refusal.code);
     await healthy.runs.idle();
     const parked = store.archive.tree(successor.rootRunId)?.runs;
     expect(parked?.some((r) => r.status === "awaiting")).toBe(true);

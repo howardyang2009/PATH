@@ -1,4 +1,4 @@
-import { type RouteReply, replyError, replyRefusal } from "../http-json.js";
+import { type RouteReply, replyError, replyRefused } from "../http-json.js";
 import { firstHeader } from "../origin-gate.js";
 import { workflowsOf } from "../workflow-store.js";
 import type { ApiRequest } from "./route-context.js";
@@ -18,7 +18,7 @@ export function handleDeleteWorkflow({ req, ctx, query }: ApiRequest): RouteRepl
     firstHeader(req.headers["if-match"]),
     query.get("session_id"),
   );
-  if (!removed.ok) return replyRefusal(removed.status, removed);
+  if (!removed.ok) return replyRefused(removed);
 
   return { status: 204 };
 }

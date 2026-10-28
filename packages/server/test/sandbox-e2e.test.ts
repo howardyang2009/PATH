@@ -179,6 +179,7 @@ describe.skipIf(!image)("the run lifecycle in real VMs", () => {
 
     const fixed = await workflow("flaky", [shell("a", "printf A"), shell("wait", "printf W")]);
     const successor = await runs.resume(fixed[0], rootRunId, fixed[1], fixed[2]);
+    if (!successor.ok) throw new Error(successor.refusal.code);
     await runs.idle();
     expect(store.archive.tree(successor.rootRunId)?.root?.status).toBe("succeeded");
   }, 180_000);

@@ -6,7 +6,7 @@ import { type LoadedWorkflow, loadWorkflowTree, openProject, type Project } from
 import { englishText } from "@path/i18n";
 import type { LogEvent, RunStatus } from "@path/schema";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createLiveRuns, type LiveRuns, ResumeNotFound } from "../src/live-runs.js";
+import { createLiveRuns, type LiveRuns } from "../src/live-runs.js";
 import { createSandboxedRuns, SANDBOX_LIMITS } from "../src/sandbox/sandboxed-runs.js";
 import { createVmSlots } from "../src/sandbox/vm-slots.js";
 import { fakeRuntime, inProcessVm } from "./fixtures/fake-sandbox.js";
@@ -114,9 +114,12 @@ describe.each(ADAPTERS)("LiveRuns %s", (_name, liveRunsOf) => {
   it("rejects a Resume of an unknown root before any successor exists", async () => {
     const live = liveRunsOf(store);
     const workflow = await load("failing-step.workflow.json");
-    await expect(
-      live.resume(workflow.rootFile, "no-such-root", workflow.workflowDir, options(workflow)),
-    ).rejects.toBeInstanceOf(ResumeNotFound);
+    expect(
+      await live.resume(workflow.rootFile, "no-such-root", workflow.workflowDir, options(workflow)),
+    ).toEqual({
+      ok: false,
+      refusal: { status: 404, code: "run.not-found", params: { rootRunId: "no-such-root" } },
+    });
     await live.idle();
     expect(live.cancellable).toBe(0);
   });

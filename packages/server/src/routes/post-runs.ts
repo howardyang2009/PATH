@@ -7,8 +7,14 @@ import {
   validateLaunchWorkerDefaults,
 } from "@path/schema";
 import { z } from "zod";
-import { type RouteReply, readRequestBody, replyError, replyRefusal } from "../http-json.js";
-import { operatorConfigEnvError, prepareWorkflow } from "../launch.js";
+import {
+  type RouteReply,
+  readRequestBody,
+  replyError,
+  replyRefusal,
+  replyRefused,
+} from "../http-json.js";
+import { operatorConfigEnvError, prepareLaunch } from "../launch.js";
 import type { StartedRun } from "../live-runs.js";
 import type { ApiRequest } from "./route-context.js";
 
@@ -46,13 +52,8 @@ export async function handlePostRuns({ body, ctx }: ApiRequest): Promise<RouteRe
   }
 
   // Escape / not-found / invalid, decided once for both launch surfaces (launch.ts).
-  const prepared = await prepareWorkflow(ctx.layout, workflowPath, {
-    notFound: (p) => ({ code: "workflow.not-found", params: { workflowPath: p } }),
-    escapesRoot: (p) => ({ code: "workflow.escapes-root", params: { workflowPath: p } }),
-  });
-  if (!prepared.ok) {
-    return replyRefusal(prepared.refusal.status, prepared.refusal, prepared.refusal.details);
-  }
+  const prepared = await prepareLaunch(ctx.layout, workflowPath);
+  if (!prepared.ok) return replyRefused(prepared.refusal);
   const { workflow } = prepared;
 
   // The launch channel of ADR 0044's registry-relative validation: `worker_defaults` is operator

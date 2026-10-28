@@ -52,6 +52,17 @@ export function replyRefusal(status: number, refusal: Refusal, details?: unknown
   return replyError(status, refusal.code, refusal.params, details);
 }
 
+/** A refusal that names its own HTTP status, as a store, lookup or engine gate decides it. */
+export interface StatusRefusal extends Refusal {
+  status: number;
+  details?: unknown;
+}
+
+/** {@link replyError} for a refusal that carries its own status and details. */
+export function replyRefused(refusal: StatusRefusal): RouteReply {
+  return replyError(refusal.status, refusal.code, refusal.params, refusal.details);
+}
+
 /** Write one `reply` route's answer. */
 export function sendReply(res: ServerResponse, reply: RouteReply): void {
   if (reply.body === undefined) {
