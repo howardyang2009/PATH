@@ -154,6 +154,11 @@ export {
   runFileSetFromDisk,
   runFileSetOf,
 } from "./run-file-set.js";
+export {
+  RUN_STATUS_ORDER,
+  type RunStatusReading,
+  runStatusReading,
+} from "./run-status.js";
 export { buildRunTree, type RunTreeNode } from "./run-tree.js";
 export {
   type RunEventSubscription,

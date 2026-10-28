@@ -1,11 +1,10 @@
 import type { LogEvent, RunStatus } from "@path/client-core";
-import { eventMessage } from "@path/client-core";
+import { eventMessage, runStatusReading } from "@path/client-core";
 import { loadMessages, renderMessage } from "@path/i18n";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { createTranslator } from "use-intl/core";
 import { describe, expect, it } from "vitest";
 import { Narrative } from "../src/narrative.js";
-import { STATUS_GLYPH } from "../src/status-glyph.js";
 
 function started(seq: number, nodeId: string | null): LogEvent {
   return {
@@ -64,7 +63,7 @@ describe("Narrative", () => {
 
     const row = screen.getAllByRole("listitem")[0]!;
     expect(row).toHaveAttribute("data-status", "failed");
-    expect(row).toHaveTextContent(STATUS_GLYPH.failed);
+    expect(row).toHaveTextContent(runStatusReading("failed").glyph);
     expect(row).toHaveTextContent("step-a (step-a) failed");
   });
 

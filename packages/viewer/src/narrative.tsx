@@ -1,9 +1,14 @@
-import { eventMessage, eventOutcome, type LogEvent, type StreamPhase } from "@path/client-core";
+import {
+  eventMessage,
+  eventOutcome,
+  type LogEvent,
+  runStatusReading,
+  type StreamPhase,
+} from "@path/client-core";
 import { useMessage } from "@path/i18n/react";
 import { useEffect, useRef, useState } from "react";
 import { useLocale, useTranslations } from "use-intl";
 import { formatClockTime } from "./format-time.js";
-import { STATUS_GLYPH } from "./status-glyph.js";
 
 export interface NarrativeProps {
   /** The complete narrative as the view-model holds it: `seq`-ordered and deduped. */
@@ -105,7 +110,7 @@ function EventRow({ event }: { event: LogEvent }) {
       <span className="event-msg">
         {outcome !== null && (
           <span className="event-glyph" aria-hidden="true">
-            {STATUS_GLYPH[outcome]}
+            {runStatusReading(outcome).glyph}
           </span>
         )}
         {renderMessage(eventMessage(event))}

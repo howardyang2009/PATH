@@ -1,11 +1,16 @@
-import { type PathApiClient, type RunStatus, runRowActions, shortGuid } from "@path/client-core";
+import {
+  type PathApiClient,
+  RUN_STATUS_ORDER,
+  type RunStatus,
+  runRowActions,
+  shortGuid,
+} from "@path/client-core";
 import { useEffect, useRef, useState } from "react";
 import { useLocale, useTranslations } from "use-intl";
 import { DeleteButton } from "./delete-button.js";
 import { formatTimestamp } from "./format-time.js";
 import { PaneError, PaneLoading } from "./pane-note.js";
 import { ResumeActions, type ResumeFromAffordance } from "./resume-actions.js";
-import { ORDERED_RUN_STATUSES } from "./status-glyph.js";
 import { StatusPill } from "./status-pill.js";
 import { useResource } from "./use-resource.js";
 import type { WatchedRun } from "./watched-run.js";
@@ -24,7 +29,7 @@ export const RUNS_REFRESH_MS = 5000;
 
 /** The statuses a listed run can show: no run is stored `pending`, the engine writes a row
  * `running` when its step starts. */
-const FILTER_STATUSES = ORDERED_RUN_STATUSES.filter((status) => status !== "pending");
+const FILTER_STATUSES = RUN_STATUS_ORDER.filter((status) => status !== "pending");
 
 /** One `RunStatus`, or `"all"` for the unfiltered list. */
 type StatusFilter = RunStatus | "all";
