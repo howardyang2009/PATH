@@ -79,6 +79,32 @@
         margin: 0;
         color: var(--muted);
       }
+      .self-host {
+        margin-top: 40px;
+        padding: 24px;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        background: var(--card);
+      }
+      .self-host h2 {
+        margin: 0 0 6px;
+        font-size: 20px;
+      }
+      .self-host p {
+        margin: 0 0 12px;
+        color: var(--muted);
+      }
+      .self-host pre {
+        margin: 0 0 12px;
+        padding: 12px 16px;
+        overflow-x: auto;
+        border-radius: 8px;
+        background: var(--bg);
+        font: 14px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+      }
+      .self-host a {
+        color: var(--accent);
+      }
       footer {
         display: flex;
         flex-wrap: wrap;
@@ -218,9 +244,20 @@
           <p data-i18n="designer">Author workflows and step templates on a visual canvas.</p>
         </a>
       </div>
+      <section class="self-host">
+        <h2 data-i18n="selfHostTitle">Run PATH on your own computer</h2>
+        <p data-i18n="selfHost">
+          PATH is open source. Download the source code from GitHub, then deploy and use PATH on your
+          own computer. You need Node 24 or later and pnpm.
+        </p>
+        <pre><code>git clone https://github.com/howardyang2009/PATH.git
+cd PATH
+pnpm install
+pnpm serve   # http://localhost:8081</code></pre>
+        <a href="https://github.com/howardyang2009/PATH" data-i18n="github">Get the source code on GitHub &rarr;</a>
+      </section>
       <footer>
         <span>
-          <a href="https://github.com/howardyang2009/PATH" data-i18n="github">PATH on GitHub</a> ·
           <a href="https://rheinwegde.de/" data-i18n="by">by RheinWeg</a> ·
           <a href="/privacy" data-i18n="privacy">Privacy</a> ·
           <a href="/terms" data-i18n="terms">Terms</a>
@@ -262,7 +299,9 @@
             viewer: "Workflows starten, Läufe live verfolgen, fortsetzen und abschließen.",
             designer: "Workflows und Schrittvorlagen auf einer visuellen Arbeitsfläche erstellen.",
             by: "von RheinWeg",
-            github: "PATH auf GitHub",
+            selfHostTitle: "PATH auf dem eigenen Computer ausführen",
+            selfHost: "PATH ist Open Source. Laden Sie den Quellcode von GitHub herunter, und stellen Sie PATH dann auf Ihrem eigenen Computer bereit und nutzen Sie es. Sie benötigen Node 24 oder neuer und pnpm.",
+            github: "Quellcode auf GitHub holen →",
             privacy: "Datenschutz",
             terms: "Nutzungsbedingungen",
             langLabel: "Sprache",
@@ -277,7 +316,9 @@
             viewer: "启动工作流，实时查看运行，恢复并完成运行。",
             designer: "在可视化画布上编写工作流和步骤模板。",
             by: "RheinWeg 出品",
-            github: "GitHub 上的 PATH",
+            selfHostTitle: "在你自己的电脑上运行 PATH",
+            selfHost: "PATH 是开源软件。从 GitHub 下载源代码，即可在你自己的电脑上部署和使用 PATH。需要 Node 24 或更高版本以及 pnpm。",
+            github: "在 GitHub 上获取源代码 →",
             privacy: "隐私政策",
             terms: "服务条款",
             langLabel: "语言",
