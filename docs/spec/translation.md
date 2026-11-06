@@ -142,8 +142,8 @@ A new leaf package. The Viewer, the Designer, `client-core` and the server impor
 - **Courtesy note** in a box under the `<h1>`, on `en` and `zh` only:
   - en: "This is a courtesy translation. Only the [German version](/de/privacy) is legally binding."
   - zh: "本文为参考译文，仅[德文版本](/de/privacy)具有法律约束力。"
-- **Language links:** a row "Deutsch · English · 中文" at the top links to the same page in the other
-  languages; the current one is marked, not linked. These links do not write the cookie. Internal
+- **No language links:** the pages carry no language switch. The reader picks a language with the
+  switch on the landing page, and bare `/privacy` and `/terms` follow that choice. Internal
   links stay in the same language. The back-link goes to `/`. The Impressum link stays
   `rheinwegde.de/de/impressum/`.
 - **Privacy section 7** adds `RHEINWEG_LOCALE`: a language preference the user sets explicitly,
