@@ -24,17 +24,12 @@ function hrefs(html: string): string[] {
 const CASES = LANGS.flatMap((lang) => PAGES.map((name) => [lang, name] as const));
 
 describe("the legal pages", () => {
-  it.each(CASES)("%s/%s links the same page in the other languages, not its own", (lang, name) => {
-    const row = block(page(lang, name), "nav", "langs");
-    const others = LANGS.filter((other) => other !== lang).map((other) => `/${other}/${name}`);
-    expect(hrefs(row)).toEqual(others);
-    expect(row).toContain('aria-current="page"');
+  it.each(CASES)("%s/%s has no language switch: the landing page owns it", (lang, name) => {
+    expect(page(lang, name)).not.toContain('class="langs"');
   });
 
   it.each(CASES)("%s/%s keeps its internal links in its own language", (lang, name) => {
-    const html = page(lang, name)
-      .replace(block(page(lang, name), "nav", "langs"), "")
-      .replace(block(page(lang, name), "p", "courtesy"), "");
+    const html = page(lang, name).replace(block(page(lang, name), "p", "courtesy"), "");
     const internal = hrefs(html).filter((href) => href.startsWith("/"));
     expect(internal).toContain("/");
     for (const href of internal) expect(href === "/" || href.startsWith(`/${lang}/`)).toBe(true);
